@@ -2134,7 +2134,13 @@ export default function Challenges({ embedded = false }) {
   const challengesEnabled = useFeatureEnabled('challenges');
   const chalCacheKey = `challenges-${profile?.gym_id}`;
   const [challenges, setChallenges]       = useCachedState(chalCacheKey, []);
-  const [participants, setParticipants]   = useCachedState(`${chalCacheKey}-parts`, []);
+  // My own joined challenge ids — queried directly (not derived from the whole
+  // gym's participant rows, which were capped at .limit(500) and silently broke
+  // both the counts and this user's Join/Leave state past the cap).
+  const [myJoinedIds, setMyJoinedIds] = useState(() => new Set());
+  // Per-challenge visible participant counts from a server-side aggregate
+  // (get_challenge_participant_counts) that excludes leaderboard-hidden members.
+  const [challengeCounts, setChallengeCounts] = useState({});
   const [loading, setLoading]             = useState(!hasCachedState(chalCacheKey));
   const [tab, setTab]                     = useState('live');
   const chalTabIndex = TABS.indexOf(tab);
@@ -2151,21 +2157,35 @@ export default function Challenges({ embedded = false }) {
     let cancelled = false;
     const load = async () => {
       try {
-        const [{ data: cData }, { data: pData }] = await Promise.all([
-          // status filter: drafts/archived are admin-side states — members only
-          // ever see launched challenges (live/upcoming/ended tabs come from
-          // dates via statusOf, which assumes the row was actually published).
-          supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id, exercise_id, scoring_metric, team_size, exercise_ids, milestone_target, status').eq('gym_id', profile.gym_id).in('status', ['active', 'completed']).order('start_date', { ascending: false }).limit(50),
-          supabase.from('challenge_participants').select('challenge_id, profile_id, score').eq('gym_id', profile.gym_id).limit(500),
-        ]);
+        // status filter: drafts/archived are admin-side states — members only
+        // ever see launched challenges (live/upcoming/ended tabs come from
+        // dates via statusOf, which assumes the row was actually published).
+        const { data: cData } = await supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id, exercise_id, scoring_metric, team_size, exercise_ids, milestone_target, status').eq('gym_id', profile.gym_id).in('status', ['active', 'completed']).order('start_date', { ascending: false }).limit(50);
         if (cancelled) return;
         setChallenges(cData || []);
-        setParticipants(pData || []);
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
     load();
+
+    // My own joined challenge ids (bounded by how many I've joined) + per-card
+    // visible counts (one server-side aggregate) — replaces the old gym-wide
+    // participant pull capped at 500. Both refresh on foreground (chalRefreshKey).
+    supabase.from('challenge_participants')
+      .select('challenge_id')
+      .eq('gym_id', profile.gym_id)
+      .eq('profile_id', user.id)
+      .then(({ data }) => { if (!cancelled) setMyJoinedIds(new Set((data || []).map(p => p.challenge_id))); });
+
+    supabase.rpc('get_challenge_participant_counts', { p_gym_id: profile.gym_id })
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        const m = {};
+        (data || []).forEach(r => { m[r.challenge_id] = Number(r.cnt) || 0; });
+        setChallengeCounts(m);
+      });
+
     return () => { cancelled = true; };
   }, [profile?.gym_id, user?.id, chalRefreshKey]);
 
@@ -2195,10 +2215,15 @@ export default function Challenges({ embedded = false }) {
         .eq('status', 'accepted')
         .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
       if (cancelled || frErr) { if (!cancelled) setFeaturedFriends([]); return; }
-      const ids = new Set((fr || []).map(f => (f.requester_id === user.id ? f.addressee_id : f.requester_id)));
-      const inChallenge = participants
-        .filter(p => p.challenge_id === featuredId && ids.has(p.profile_id))
-        .map(p => p.profile_id);
+      const friendIds = [...new Set((fr || []).map(f => (f.requester_id === user.id ? f.addressee_id : f.requester_id)))];
+      if (!friendIds.length) { if (!cancelled) setFeaturedFriends([]); return; }
+      // Query only the featured challenge's participants that are my friends
+      // (bounded by friend count) instead of scanning a gym-wide array.
+      const { data: parts } = await supabase.from('challenge_participants')
+        .select('profile_id')
+        .eq('challenge_id', featuredId)
+        .in('profile_id', friendIds);
+      const inChallenge = (parts || []).map(p => p.profile_id);
       if (!inChallenge.length) { if (!cancelled) setFeaturedFriends([]); return; }
       const { data: profs } = await supabase.from('gym_member_profiles_safe')
         .select('id, full_name, avatar_url, avatar_type, avatar_value')
@@ -2206,7 +2231,7 @@ export default function Challenges({ embedded = false }) {
       if (!cancelled) setFeaturedFriends(profs || []);
     })().catch(() => { if (!cancelled) setFeaturedFriends([]); });
     return () => { cancelled = true; };
-  }, [user?.id, challenges, participants]);
+  }, [user?.id, challenges]);
 
   // Deep-link focus: /challenges?challenge=<id> (e.g. scanned from the gym TV
   // "Join now" QR) jumps to the tab that holds that challenge and scrolls it
@@ -2267,9 +2292,17 @@ export default function Challenges({ embedded = false }) {
   const handleJoin = async (challengeId) => {
     // null challengeId = refresh signal from TeamFormationModal (team already joined)
     if (!challengeId) {
-      const { data: pData } = await supabase.from('challenge_participants')
-        .select('challenge_id, profile_id, score').eq('gym_id', profile.gym_id).limit(500);
-      setParticipants(pData || []);
+      // Team already joined via TeamFormationModal — refresh only my joined set
+      // + the per-card counts (not the whole gym's participant rows).
+      const [{ data: mine }, { data: counts }] = await Promise.all([
+        supabase.from('challenge_participants').select('challenge_id').eq('gym_id', profile.gym_id).eq('profile_id', user.id),
+        supabase.rpc('get_challenge_participant_counts', { p_gym_id: profile.gym_id }),
+      ]);
+      setMyJoinedIds(new Set((mine || []).map(p => p.challenge_id)));
+      if (Array.isArray(counts)) {
+        const m = {}; counts.forEach(r => { m[r.challenge_id] = Number(r.cnt) || 0; });
+        setChallengeCounts(m);
+      }
       // Points for team joins are awarded in the team-specific flow; skip here to avoid double-award.
       return;
     }
@@ -2288,7 +2321,8 @@ export default function Challenges({ embedded = false }) {
       .select('challenge_id, profile_id, score')
       .single();
     if (!error && data) {
-      setParticipants(prev => [...prev, data]);
+      setMyJoinedIds(prev => new Set(prev).add(challengeId));
+      setChallengeCounts(prev => ({ ...prev, [challengeId]: (prev[challengeId] || 0) + 1 }));
       posthog?.capture('challenge_joined', { challenge_name: challenge.name, challenge_type: challenge.type });
       // Guard: only award points if this user hasn't already earned them for this challenge.
       // The server-side unique constraint (dedup_key) is the authoritative enforcement;
@@ -2320,37 +2354,16 @@ export default function Challenges({ embedded = false }) {
       .eq('profile_id', user.id);
     if (!error) {
       posthog?.capture('challenge_left', { challenge_name: challenge?.name });
-      setParticipants(prev => prev.filter(p => !(p.challenge_id === challengeId && p.profile_id === user.id)));
+      setMyJoinedIds(prev => { const n = new Set(prev); n.delete(challengeId); return n; });
+      setChallengeCounts(prev => ({ ...prev, [challengeId]: Math.max((prev[challengeId] || 1) - 1, 0) }));
     } else {
       console.error('[challenge leave] failed:', error);
       showToast(t('common:somethingWentWrong'), 'error');
     }
   };
 
-  const myJoinedIds = new Set(participants.filter(p => p.profile_id === user?.id).map(p => p.challenge_id));
-
-  // Card counts must obey the SAME visibility rules as the participant lists
-  // (staff + leaderboard-hidden members are excluded there) — otherwise the
-  // card says "2 joined" while the opened list shows 1 because a staff test
-  // account had joined. null = not yet resolved → count raw to avoid a 0
-  // flash; the resolved set corrects it a beat later. myJoinedIds above
-  // stays RAW on purpose: a staff account's own join state must still work.
-  const [visibleParticipantIds, setVisibleParticipantIds] = useState(null);
-  useEffect(() => {
-    let cancelled = false;
-    const ids = [...new Set(participants.map(p => p.profile_id))];
-    if (ids.length === 0) { setVisibleParticipantIds(new Set()); return undefined; }
-    fetchMemberProfiles(ids).then(profs => {
-      if (!cancelled) setVisibleParticipantIds(new Set(profs.keys()));
-    });
-    return () => { cancelled = true; };
-  }, [participants]);
-
-  const countMap = participants.reduce((acc, p) => {
-    if (visibleParticipantIds && !visibleParticipantIds.has(p.profile_id)) return acc;
-    acc[p.challenge_id] = (acc[p.challenge_id] ?? 0) + 1;
-    return acc;
-  }, {});
+  // myJoinedIds + challengeCounts are now loaded directly (see the load effect)
+  // — no gym-wide participant array to derive from or visibility-filter here.
 
   const liveCount = challenges.filter(c => statusOf(c) === 'live').length;
 
@@ -2464,7 +2477,7 @@ export default function Challenges({ embedded = false }) {
                         gymId={profile.gym_id}
                         myId={user.id}
                         joined={myJoinedIds.has(featuredChallenge.id)}
-                        participantCount={countMap[featuredChallenge.id] ?? 0}
+                        participantCount={challengeCounts[featuredChallenge.id] ?? 0}
                         friends={featuredFriends}
                         onJoin={handleJoin}
                         onLeave={handleLeave}
@@ -2506,7 +2519,7 @@ export default function Challenges({ embedded = false }) {
                                 gymId={profile.gym_id}
                                 myId={user.id}
                                 joined={myJoinedIds.has(c.id)}
-                                participantCount={countMap[c.id] ?? 0}
+                                participantCount={challengeCounts[c.id] ?? 0}
                                 onJoin={handleJoin}
                                 onLeave={handleLeave}
                                 onInvite={handleInviteChallenge}
@@ -2524,7 +2537,7 @@ export default function Challenges({ embedded = false }) {
                                 gymId={profile.gym_id}
                                 myId={user.id}
                                 joined={myJoinedIds.has(c.id)}
-                                participantCount={countMap[c.id] ?? 0}
+                                participantCount={challengeCounts[c.id] ?? 0}
                                 onJoin={handleJoin}
                                 onLeave={handleLeave}
                                 onInvite={handleInviteChallenge}
