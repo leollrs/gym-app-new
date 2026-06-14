@@ -25,6 +25,7 @@ import EmptyState from '../components/EmptyState';
 import LoadMoreButton from '../components/LoadMoreButton';
 import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
+import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { timeAgoFine as timeAgo, fmtDuration } from '../lib/dateUtils';
 import { takePhoto } from '../lib/takePhoto';
 
@@ -915,6 +916,16 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
 });
 
 
+// Feed cache + revalidation throttle. The feed paints instantly from its
+// localStorage cache (no skeleton on revisit); we only re-hit the network when
+// the cache is missing or older than this TTL — so bouncing in and out of the
+// feed doesn't refetch the (still relatively heavy) feed RPC every time, and
+// the gym DB isn't hammered at scale. Module-scoped so it survives the page's
+// unmount/remount within a session; resets on a full app cold start, where a
+// fresh fetch on first open is what we want anyway.
+const FEED_TTL_MS = 60_000;
+const feedFetchedAt = new Map(); // userId → last full-feed-load timestamp (ms)
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 // hideComposer: used by the trainer embed (TrainerSocial) — hides the
 // create-post composer + "My Posts" tab and renders only the For You feed.
@@ -927,8 +938,11 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const { showToast } = useToast();
   const posthog = usePostHog();
   const socialEnabled = useFeatureEnabled('social');
-  const [feed, setFeed]               = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const feedCacheKey = `social-feed-${user?.id || 'anon'}`;
+  // Feed (+ friendships/streaks below) are cached so the page paints instantly
+  // on revisit instead of flashing a skeleton and refetching every single time.
+  const [feed, setFeed]               = useCachedState(feedCacheKey, []);
+  const [loading, setLoading]         = useState(!hasCachedState(feedCacheKey));
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]         = useState(true);
   // My Posts tab — its own paginated list (decoupled from the friend feed, so
@@ -938,11 +952,11 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const [myPostsLoadingMore, setMyPostsLoadingMore] = useState(false);
   const [myPostsHasMore, setMyPostsHasMore]       = useState(true);
   const [myPostsLoaded, setMyPostsLoaded]         = useState(false);
-  const [friendships, setFriendships] = useState([]);
+  const [friendships, setFriendships] = useCachedState(`social-friendships-${user?.id || 'anon'}`, []);
   const [showFriends, setShowFriends]   = useState(false);
   const FEED_TABS = ['forYou', 'mine'];
   const [tab, setTab]                 = useState('forYou');
-  const [friendStreaks, setFriendStreaks] = useState([]);
+  const [friendStreaks, setFriendStreaks] = useCachedState(`social-streaks-${user?.id || 'anon'}`, []);
   // All accepted friends (resolved via the safe view) for the feed's friend row —
   // shown regardless of streak, with the streak overlaid as a badge when > 0.
   const [friendsRow, setFriendsRow] = useState([]);
@@ -1154,6 +1168,9 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
     if (!cursor && streakResult.data) {
       setFriendStreaks(streakResult.data);
     }
+    // Mark the feed freshly loaded so the SWR throttle can skip a refetch on a
+    // quick revisit. Full loads only — load-more keeps the existing timestamp.
+    if (!cursor && user?.id) feedFetchedAt.set(user.id, Date.now());
 
     if (!items?.length) {
       if (!cursor) setFeed([]);
@@ -1220,14 +1237,22 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   useEffect(() => {
     if (!user || !profile) return;
     let cancelled = false;
+    // Stale-while-revalidate: the cached feed is already painted. Skip the
+    // network entirely if we did a full load within the TTL — so rapid in/out
+    // navigation doesn't refetch. The workout-changed handler (below) refreshes
+    // immediately after posting, and cold starts have no timestamp so they
+    // always revalidate.
+    const lastAt = feedFetchedAt.get(user.id) || 0;
+    if (hasCachedState(feedCacheKey) && Date.now() - lastAt < FEED_TTL_MS) {
+      setLoading(false);
+      return () => {};
+    }
     const init = async () => {
-      setLoading(true);
+      // Only show the skeleton when there's nothing cached to paint.
+      if (!hasCachedState(feedCacheKey)) setLoading(true);
       try {
-        // Fetch friendships IN PARALLEL with the feed. loadFeed doesn't depend
-        // on them (its first arg is unused — the feed RPC joins friendships
-        // server-side); friendships are only for the friend-count badge and
-        // the For-You ranking. Awaiting them first just added a serial network
-        // hop to the critical load path, a big chunk of the 10s cold load.
+        // Friendships load in parallel with the feed (only for the friend-count
+        // badge + For-You ranking; the feed RPC joins friendships server-side).
         const friendshipsPromise = supabase
           .from('friendships')
           .select('id, requester_id, addressee_id, status')
@@ -1237,9 +1262,8 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
           .catch(() => {});
         await Promise.all([loadFeed(null), friendshipsPromise]);
       } finally {
-        // loadFeed sets loading=false on success paths, but if either await
-        // above throws we still need to clear the skeleton — otherwise the
-        // feed shows the skeleton forever.
+        // loadFeed clears loading on success; this catches a thrown await so the
+        // skeleton never sticks.
         if (!cancelled) setLoading(false);
       }
     };
