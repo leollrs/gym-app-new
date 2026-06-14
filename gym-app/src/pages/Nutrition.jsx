@@ -2489,7 +2489,7 @@ const getWeekDates = () => {
 
 const PLANNER_SLOT_KEYS = ['breakfast', 'lunch', 'dinner'];
 
-const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false }) => {
+const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false, onAddRecipeToGrocery }) => {
   const { t, i18n } = useTranslation('pages');
   const posthogPlanner = usePostHog();
   const lang = i18n.language || 'en';
@@ -2728,6 +2728,42 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
 
   const activeDateStr = weekDates[activeDay] || weekDates[0];
   const activeDayData = plan[activeDateStr] || {};
+
+  // Resolve a planned meal to its full RECIPES record (which carries the
+  // ingredient list the grocery handler needs). Match by id first, then by
+  // name; fall back to the meal itself if it already carries ingredients.
+  const resolvePlannerRecipe = useCallback((meal) => {
+    if (!meal) return null;
+    return (
+      RECIPES.find(r => r.id === meal.id) ||
+      RECIPES.find(r => (r.title || r.name) === (meal.name || meal.title) && (meal.name || meal.title)) ||
+      ((meal.ingredients || []).length ? meal : null)
+    );
+  }, []);
+
+  // "Add to list" for the whole active day — push every planned meal's recipe
+  // through the parent grocery handler (which dedupes + categorises). Per-meal
+  // version below shares the same resolver.
+  const addMealsToGrocery = useCallback((meals) => {
+    if (!onAddRecipeToGrocery) {
+      setToast(t('nutrition.fillFromMealsError', 'Could not add to list'));
+      setTimeout(() => setToast(''), 2000);
+      return;
+    }
+    let added = 0;
+    const seen = new Set();
+    meals.forEach(meal => {
+      const recipe = resolvePlannerRecipe(meal);
+      if (!recipe || seen.has(recipe.id)) return;
+      seen.add(recipe.id);
+      onAddRecipeToGrocery(recipe);
+      added++;
+    });
+    setToast(added > 0
+      ? t('nutrition.addedToGroceryList', 'Added to Grocery List')
+      : t('nutrition.fillFromMealsEmpty', 'No active meal plan to pull from'));
+    setTimeout(() => setToast(''), 2000);
+  }, [onAddRecipeToGrocery, resolvePlannerRecipe, t]);
   const activeDayCal = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.calories || 0), 0);
   const activeDayP = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.protein || 0), 0);
   const activeDayC = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.carbs || 0), 0);
@@ -2864,7 +2900,10 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           <div style={{ fontFamily: TU.display, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.4 }}>
             {dayShorts[activeDay]} {new Date(activeDateStr + 'T12:00:00').getDate()} {'\u2014'} {t('nutrition.mealsLabel', 'meals')}
           </div>
-          <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold"
+          <button
+            type="button"
+            onClick={() => addMealsToGrocery(PLANNER_SLOT_KEYS.map(k => activeDayData[k]).filter(Boolean))}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold focus:outline-none active:scale-95"
             style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
             <ShoppingCart size={12} />{t('nutrition.addToList', 'Add to list')}
           </button>
@@ -2920,7 +2959,8 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                     style={{ color: 'var(--color-danger)', background: 'transparent', border: 'none' }}>
                     <Trash2 size={12} />{t('nutrition.removeMeal', 'Remove')}
                   </button>
-                  <button className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                  <button type="button" onClick={() => addMealsToGrocery([meal])}
+                    className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
                     style={{ color: 'var(--color-text-muted)', background: 'transparent', border: 'none' }}>
                     <ShoppingCart size={12} />{t('nutrition.list', 'List')}
                   </button>
@@ -3258,7 +3298,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
   );
 };
 
-const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onLogMeal, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit, embedded = false, userId, recentScans = [], onRepeatScan, scannedFavorites = [], onOpenFavorite, groceryList = [], onAddGroceryItems }) => {
+const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onLogMeal, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit, embedded = false, userId, recentScans = [], onRepeatScan, scannedFavorites = [], onOpenFavorite, groceryList = [], onAddGroceryItems, onAddRecipeToGrocery }) => {
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
 
@@ -3376,6 +3416,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       onOpenSearch={onOpenSearch}
       userId={userId}
       embedded={embedded}
+      onAddRecipeToGrocery={onAddRecipeToGrocery}
     />
   );
 
@@ -6743,6 +6784,7 @@ export default function Nutrition({ embedded = false }) {
               userId={user?.id}
               groceryList={groceryList}
               onAddGroceryItems={handleAddGroceryItemsRaw}
+              onAddRecipeToGrocery={handleAddToGrocery}
               recentScans={recentScans}
               scannedFavorites={scannedFavorites}
               onRepeatScan={(r) => {
