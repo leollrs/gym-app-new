@@ -2659,27 +2659,39 @@ export const ExerciseLibraryPage = () => {
   // useful for new users that haven't completed any sessions yet.
   useEffect(() => {
     if (!user?.id) return;
-    const since = new Date(Date.now() - 30 * 86400000).toISOString();
-    supabase
-      .from('workout_sessions')
-      .select('id, completed_at, session_exercises(exercise_id, session_sets(is_completed))')
-      .eq('profile_id', user.id)
-      .eq('status', 'completed')
-      .gte('completed_at', since)
-      .then(({ data, error }) => {
-        const ids = new Set();
-        if (error) {
-          logger.error('Recent sessions load error:', error);
-        } else {
-          (data || []).forEach(s => {
-            (s.session_exercises || []).forEach(se => {
-              const completedAny = (se.session_sets || []).some(set => set?.is_completed !== false);
-              if (se?.exercise_id && completedAny) ids.add(se.exercise_id);
-            });
+    let cancelled = false;
+    (async () => {
+      // Prefer the server-side distinct-id RPC (one small result set) over
+      // pulling 30d of sessions WITH nested session_exercises→session_sets
+      // just to flatten to a Set of ids.
+      const { data, error } = await supabase.rpc('get_recent_exercise_ids', { p_profile_id: user.id, p_days: 30 });
+      if (!error) {
+        if (!cancelled) setRecentExerciseIds(new Set((data || []).map(r => r.exercise_id).filter(Boolean)));
+        return;
+      }
+      // Fallback (e.g. RPC not deployed yet): the original nested pull. Same
+      // predicate as the RPC (is_completed is NOT NULL, so !== false == true).
+      const since = new Date(Date.now() - 30 * 86400000).toISOString();
+      const { data: fb, error: fbErr } = await supabase
+        .from('workout_sessions')
+        .select('id, completed_at, session_exercises(exercise_id, session_sets(is_completed))')
+        .eq('profile_id', user.id)
+        .eq('status', 'completed')
+        .gte('completed_at', since);
+      const ids = new Set();
+      if (fbErr) {
+        logger.error('Recent sessions load error:', fbErr);
+      } else {
+        (fb || []).forEach(s => {
+          (s.session_exercises || []).forEach(se => {
+            const completedAny = (se.session_sets || []).some(set => set?.is_completed !== false);
+            if (se?.exercise_id && completedAny) ids.add(se.exercise_id);
           });
-        }
-        setRecentExerciseIds(ids);
-      });
+        });
+      }
+      if (!cancelled) setRecentExerciseIds(ids);
+    })();
+    return () => { cancelled = true; };
   }, [user?.id]);
 
   // Hung-write guard: WKWebView fetches can pend FOREVER on a zombie socket
