@@ -265,9 +265,27 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
             <div className="flex items-center gap-4 mb-5">
               <UserAvatar user={profileData} size={60} />
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-[17px] truncate leading-snug" style={{ color: 'var(--color-text-primary)' }}>
-                  {displayName}
-                </p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="font-bold text-[17px] truncate leading-snug" style={{ color: 'var(--color-text-primary)' }}>
+                    {displayName}
+                  </p>
+                  {profileData?.role && profileData.role !== 'member' && (
+                    <span
+                      className="text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md flex-shrink-0"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                        color: 'var(--color-accent, #D4AF37)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {profileData.role === 'super_admin'
+                        ? t('messages.superAdmin', { defaultValue: 'Super Admin' })
+                        : profileData.role === 'admin'
+                          ? t('messages.admin', { defaultValue: 'Admin' })
+                          : t('messages.trainer', { defaultValue: 'Trainer' })}
+                    </span>
+                  )}
+                </div>
                 {username && (
                   <p className="text-[13px] mt-0.5 truncate" style={{ color: 'var(--color-text-subtle)' }}>@{username}</p>
                 )}

@@ -389,7 +389,8 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
   };
 
   const inputStyle = {
-    width: '100%', background: TT.surface2,
+    width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box',
+    background: TT.surface2,
     border: `1px solid ${TT.borderSolid}`, borderRadius: 12,
     padding: '10px 14px', minHeight: 44, fontSize: 14,
     color: TT.text, outline: 'none',

@@ -1811,7 +1811,8 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
 };
 
 // ── DAILY SUGGESTION ("Sugerencia del Día") ─────────────────
-const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, t, userId, workoutBurn = 0 }) => {
+const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, t, userId, gymId, workoutBurn = 0 }) => {
+  const { showToast } = useToast();
   const SLOT_ICONS = ['\u{1F305}', '\u{2600}\u{FE0F}', '\u{1F319}']; // sunrise, sun, moon
   const SLOT_LABELS = [t('nutrition.meals.breakfast'), t('nutrition.meals.lunch'), t('nutrition.meals.dinner')];
   const SLOT_COLORS = ['#F97316', '#F59E0B', '#8B5CF6'];
@@ -1836,6 +1837,30 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
 
   const [removedIdx, setRemovedIdx] = useState(null);
   const [replacements, setReplacements] = useState([]);
+
+  // The member's own private custom meals (custom_meals table) — visible only to
+  // them (RLS) and offered first when swapping a suggestion. Mirrors the trainer
+  // pattern: map a DB row to the local meal shape so it slots in everywhere.
+  const customMealToMeal = (r) => ({
+    id: `custom_${r.id}`,
+    title: r.name, title_es: r.name_es || r.name,
+    calories: Number(r.calories) || 0, protein: Number(r.protein_g) || 0,
+    carbs: Number(r.carbs_g) || 0, fat: Number(r.fat_g) || 0,
+    category: r.category || 'custom', custom: true, image: null,
+  });
+  const [customMeals, setCustomMeals] = useState([]);
+  const [showAddMeal, setShowAddMeal] = useState(false);
+  const [newMeal, setNewMeal] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+  const [savingNewMeal, setSavingNewMeal] = useState(false);
+  // Load custom meals once the swap list is open (removedIdx set) and we know who.
+  useEffect(() => {
+    if (removedIdx == null || !userId) return;
+    let alive = true;
+    supabase.from('custom_meals').select('*').eq('created_by', userId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { if (alive) setCustomMeals((data || []).map(customMealToMeal)); });
+    return () => { alive = false; };
+  }, [removedIdx, userId]);
 
   // Auto-generate on first visit each day
   useEffect(() => {
@@ -1893,6 +1918,27 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
     setReplacements([]);
     try { localStorage.setItem(storageKey, JSON.stringify(updated)); } catch {}
   }, [meals, storageKey]);
+
+  // Save a member-authored meal to custom_meals (created_by = their profile id),
+  // prepend it to the picker list, and drop it straight into the open slot.
+  const addCustomMeal = async () => {
+    if (!newMeal.name.trim() || savingNewMeal || !userId) return;
+    setSavingNewMeal(true);
+    const { data, error } = await supabase.from('custom_meals').insert({
+      created_by: userId, gym_id: gymId || null,
+      name: newMeal.name.trim(),
+      calories: Number(newMeal.calories) || 0, protein_g: Number(newMeal.protein) || 0,
+      carbs_g: Number(newMeal.carbs) || 0, fat_g: Number(newMeal.fat) || 0,
+      category: 'custom',
+    }).select('*').single();
+    setSavingNewMeal(false);
+    if (error) { showToast(t('nutrition.addMealFailed', 'Could not add meal'), 'error'); return; }
+    const meal = customMealToMeal(data);
+    setCustomMeals(prev => [meal, ...prev]);
+    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+    setShowAddMeal(false);
+    if (removedIdx != null) handleReplace(removedIdx, meal); // use it now in the open slot
+  };
 
   const mealTitle = (r) => r ? ((lang === 'es' && r.title_es) ? r.title_es : r.title) : '';
 
@@ -1954,13 +2000,44 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
                 <span className="text-[11px] font-bold" style={{ color: TU.coach }}>
                   {t('nutrition.replaceMeal', 'Pick a replacement')}
                 </span>
-                <button onClick={() => { setRemovedIdx(null); setReplacements([]); }}
+                <button onClick={() => { setRemovedIdx(null); setReplacements([]); setShowAddMeal(false); }}
                   className="text-[10px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
                   {t('nutrition.cancel', 'Cancel')}
                 </button>
               </div>
+              {/* Add your own meal → saved to the member's private custom-meal library */}
+              <div className="px-3 pt-3">
+                <button type="button" onClick={() => setShowAddMeal(s => !s)}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-[12px] text-[12px] font-bold active:scale-[0.98] transition-transform"
+                  style={{ background: `${TU.coach}12`, color: TU.coach, border: `1px dashed ${TU.coach}55` }}>
+                  <Plus size={14} /> {t('nutrition.addCustomMeal', 'Add your own meal')}
+                </button>
+                {showAddMeal && (
+                  <div className="mt-2 rounded-[12px] p-3 space-y-2" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                    <input value={newMeal.name} onChange={e => setNewMeal(n => ({ ...n, name: e.target.value }))}
+                      placeholder={t('nutrition.mealName', 'Meal name')}
+                      className="w-full rounded-[10px] px-3 py-2 text-[16px] outline-none"
+                      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                    <div className="grid grid-cols-4 gap-2">
+                      {[['calories', 'Cal'], ['protein', 'P'], ['carbs', 'C'], ['fat', 'F']].map(([k, labk]) => (
+                        <input key={k} type="number" inputMode="numeric" min="0" value={newMeal[k]} onChange={e => setNewMeal(n => ({ ...n, [k]: e.target.value }))}
+                          placeholder={labk}
+                          className="w-full rounded-[10px] px-2 py-2 text-[14px] text-center outline-none"
+                          style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
+                      ))}
+                    </div>
+                    <button type="button" onClick={addCustomMeal} disabled={!newMeal.name.trim() || savingNewMeal}
+                      className="w-full py-2 rounded-[10px] text-[13px] font-bold disabled:opacity-40 flex items-center justify-center gap-1.5"
+                      style={{ background: TU.coach, color: '#fff' }}>
+                      {savingNewMeal ? <Loader size={14} className="animate-spin" /> : <Plus size={14} />}
+                      {t('nutrition.saveAndUseMeal', 'Save & use')}
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="px-3 py-3 space-y-2 max-h-[280px] overflow-y-auto">
-                {replacements.map(({ meal: rMeal }) => (
+                {/* The member's custom meals first (Custom tag), then the AI suggestions. */}
+                {[...customMeals.map(m => ({ meal: m })), ...replacements].map(({ meal: rMeal }) => (
                   <button key={rMeal.id} onClick={() => handleReplace(idx, rMeal)}
                     className="w-full flex items-center gap-3 p-2.5 rounded-[14px] text-left transition-all active:scale-[0.975]"
                     style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
@@ -1970,7 +2047,14 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
                       <FoodTile name={mealTitle(rMeal)} size={44} seed={rMeal.id?.charCodeAt?.(1) || 0} />
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{mealTitle(rMeal)}</p>
+                      <p className="text-[13px] font-bold truncate flex items-center gap-1.5" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
+                        <span className="truncate">{mealTitle(rMeal)}</span>
+                        {rMeal.custom && (
+                          <span className="shrink-0 text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: `${TU.coach}1f`, color: TU.coach }}>
+                            {t('nutrition.customTag', 'Custom')}
+                          </span>
+                        )}
+                      </p>
                       <div className="flex items-center gap-2 mt-0.5 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                         <span><strong style={{ color: 'var(--color-text-primary)' }}>{rMeal.calories}</strong> kcal</span>
                         <span><strong style={{ color: TU.macroP }}>{rMeal.protein}P</strong></span>
@@ -1980,7 +2064,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
                     </div>
                   </button>
                 ))}
-                {replacements.length === 0 && (
+                {replacements.length === 0 && customMeals.length === 0 && (
                   <p className="text-[11px] text-center py-4" style={{ color: 'var(--color-text-muted)' }}>
                     {t('nutrition.noResultsFound', 'No results found')}
                   </p>
@@ -3298,7 +3382,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
   );
 };
 
-const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onLogMeal, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit, embedded = false, userId, recentScans = [], onRepeatScan, scannedFavorites = [], onOpenFavorite, groceryList = [], onAddGroceryItems, onAddRecipeToGrocery }) => {
+const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRecipe, onLogMeal, onOpenSearch, onDeleteLog, onOpenLog, setView, openEdit, embedded = false, userId, gymId, recentScans = [], onRepeatScan, scannedFavorites = [], onOpenFavorite, groceryList = [], onAddGroceryItems, onAddRecipeToGrocery }) => {
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
 
@@ -3645,6 +3729,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
         lang={lang}
         t={t}
         userId={userId}
+        gymId={gymId}
         workoutBurn={totalBurn}
       />
 
@@ -6786,6 +6871,7 @@ export default function Nutrition({ embedded = false }) {
               openEdit={openEdit}
               embedded={embedded}
               userId={user?.id}
+              gymId={profile?.gym_id}
               groceryList={groceryList}
               onAddGroceryItems={handleAddGroceryItemsRaw}
               onAddRecipeToGrocery={handleAddToGrocery}

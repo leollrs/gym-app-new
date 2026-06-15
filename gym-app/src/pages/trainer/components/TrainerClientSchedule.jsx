@@ -294,8 +294,8 @@ export default function TrainerClientSchedule({ clientId }) {
         </div>
         <button onClick={save} disabled={busy || loadError}
           className="tt-btn tt-btn--primary"
-          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, borderRadius: 12, fontFamily: TFont.display, fontWeight: 800, fontSize: 13, opacity: (busy || loadError) ? 0.5 : 1 }}>
-          <Check size={15} strokeWidth={2.4} /> {t('trainerSchedule.saveSchedule', 'Save schedule')}
+          style={{ width: '100%', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, borderRadius: 14, fontFamily: TFont.display, fontWeight: 800, fontSize: 15, letterSpacing: 0.2, opacity: (busy || loadError) ? 0.5 : 1 }}>
+          <Check size={17} strokeWidth={2.4} /> {t('trainerSchedule.saveSchedule', 'Save schedule')}
         </button>
       </div>
     </>

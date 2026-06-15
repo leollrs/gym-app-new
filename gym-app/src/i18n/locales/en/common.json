@@ -192,6 +192,7 @@
     "members": "Member Lookup",
     "auditLog": "Audit Log",
     "errorLogs": "Errors",
+    "customMeals": "Custom Meals",
     "settings": "Settings",
     "gymHealth": "Gym Health",
     "adoption": "Adoption",
@@ -479,5 +480,7 @@
     "addedGeneric": "Friend added!"
   },
   "inviteForNewAccounts": "Invite codes are for new accounts",
-  "referralForNewSignups": "Referral codes are for new signups"
+  "referralForNewSignups": "Referral codes are for new signups",
+  "previous": "Previous",
+  "next": "Next"
 }

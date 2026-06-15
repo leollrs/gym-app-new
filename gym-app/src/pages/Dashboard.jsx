@@ -1208,11 +1208,20 @@ const Dashboard = () => {
     });
   }, [recoveryRecentSessions, recoveryMetrics, readinessOpen, wellnessRefreshKey]);
 
-  // Gym is only "closed" if gym_hours says closed AND there's no program workout scheduled
-  // (user who chose "Start Today" on a closed day overrides the gym schedule)
+  // Gym is only "closed" if gym_hours says closed AND there's no program workout
+  // scheduled AND no training was actually done that day. A workout OR a CARDIO
+  // session on a closed day overrides the gym schedule — cardio is training too
+  // (same principle as the streak logic in migration 0365).
   const gymNormallyClosed = gymClosedDays.has(selectedDate.getDay());
   const hasScheduledWorkout = !!schedule[selectedDate.getDay()];
-  const isGymClosedToday = gymNormallyClosed && !hasScheduledWorkout && !selectedRoutine;
+  const _selClosedKey = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
+  const cardioOnSelectedDate = (weekCardioSessions || []).some((c) => {
+    const ts = c.completed_at || c.started_at;
+    if (!ts) return false;
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === _selClosedKey;
+  });
+  const isGymClosedToday = gymNormallyClosed && !hasScheduledWorkout && !selectedRoutine && !cardioOnSelectedDate;
 
   const workoutType = isGymClosedToday
     ? t('dashboard.gymClosed', 'Gym Closed')

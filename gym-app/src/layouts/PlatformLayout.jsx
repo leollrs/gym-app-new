@@ -5,6 +5,7 @@ import {
   Building2, Users, BarChart3, Search, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, Bug, Bell,
   Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle, Printer, ListChecks, Repeat,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,6 +33,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/platform/error-logs',  labelKey: 'platformNav.errorLogs',  icon: Bug },
       { to: '/platform/audit-log',   labelKey: 'platformNav.auditLog',   icon: ScrollText },
+      { to: '/platform/custom-meals', labelKey: 'platformNav.customMeals', icon: UtensilsCrossed },
     ],
   },
   {

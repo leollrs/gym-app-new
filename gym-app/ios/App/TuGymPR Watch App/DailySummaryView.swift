@@ -21,9 +21,16 @@ struct DailySummaryView: View {
     private var standGoal: Int { max(defaults?.integer(forKey: "standGoal") ?? 12, 1) }
 
     private var pointsToday: Int { defaults?.integer(forKey: "pointsToday") ?? 0 }
+    /// Lifetime reward points — the number the user recognizes from the app
+    /// profile. The tile used to show today's points ("+25"), which read as
+    /// an unexplained number on the glance.
+    private var pointsTotal: Int { defaults?.integer(forKey: "pointsTotal") ?? 0 }
 
     var body: some View {
-        ScrollView {
+        // Touch the published version so SwiftUI re-reads the UserDefaults-backed
+        // ring/points values whenever the iPhone pushes a fresh daily_summary.
+        _ = session.dailySummaryVersion
+        return ScrollView {
             VStack(spacing: 8) {
                 WatchStatusBar(title: session.tr("TODAY", "HOY"))
 
@@ -62,7 +69,7 @@ struct DailySummaryView: View {
                     tile(
                         icon: "star.fill",
                         iconColor: DS.brandAccent,
-                        value: pointsToday > 0 ? "+\(pointsToday)" : "0",
+                        value: "\(pointsTotal)",
                         valueColor: DS.brandAccent,
                         label: session.tr("POINTS", "PUNTOS"),
                         bg: DS.accentTealSoft
@@ -227,26 +234,8 @@ struct NutritionView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 10)
-
-                Button {
-                    session.openNutritionOnPhone()
-                    WKInterfaceDevice.current().play(.click)
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(session.tr("Log food", "Registrar comida"))
-                            .font(.system(.caption, design: .rounded).weight(.heavy))
-                    }
-                    .foregroundColor(Color(red: 0, green: 0.08, blue: 0.07))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background(DS.brandAccent)
-                    .cornerRadius(12)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 10)
-                .padding(.top, 4)
+                // (Removed the "Log food" button — it only deep-linked to the
+                // phone, which defeats the point of a wrist glance.)
             }
             .padding(.bottom, 8)
         }

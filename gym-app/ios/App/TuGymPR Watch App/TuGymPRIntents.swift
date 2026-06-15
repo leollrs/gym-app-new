@@ -10,13 +10,19 @@ struct StartWorkoutIntent: AppIntent {
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let manager = WatchSessionManager.shared
-        let routines = manager.availableRoutines
-
-        if let firstRoutine = routines.first,
-           let routineId = firstRoutine["id"] as? String {
-            let name = firstRoutine["name"] as? String ?? "your workout"
+        // WatchSessionManager mutates @Published state in startWorkout, so do
+        // the read + start on the main actor. Prefer today's scheduled
+        // workout over an arbitrary first routine.
+        let started: String? = await MainActor.run {
+            let manager = WatchSessionManager.shared
+            let routines = manager.availableRoutines
+            let pick = routines.first { ($0["isTodayWorkout"] as? Bool) == true } ?? routines.first
+            guard let routine = pick, let routineId = routine["id"] as? String else { return nil }
             manager.startWorkout(routineId: routineId)
+            return routine["name"] as? String ?? "your workout"
+        }
+
+        if let name = started {
             return .result(dialog: "Starting \(name). Let's go!")
         } else {
             return .result(dialog: "No routines available. Open TuGymPR on your iPhone to sync your routines.")

@@ -42,7 +42,7 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
     let cancelled = false;
     supabase
       .from('trainer_meal_plans')
-      .select('id, name, description, target_calories, target_protein_g, target_carbs_g, target_fat_g, meals, is_active, created_at, trainer:profiles!trainer_meal_plans_trainer_id_fkey(full_name)')
+      .select('id, name, description, target_calories, target_protein_g, target_carbs_g, target_fat_g, meals, is_active, created_at, start_date, duration_weeks, trainer:profiles!trainer_meal_plans_trainer_id_fkey(full_name)')
       .eq('client_id', uid)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
@@ -202,6 +202,24 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
               {t('trainerMealPlan.sectionTitle', 'Meal plan from your coach')}
             </p>
             <p className="text-[14px] font-bold truncate mt-0.5" style={{ color: 'var(--color-text-primary)' }}>{plan.name}</p>
+            {(() => {
+              const dw = Number(plan.duration_weeks) || 1;
+              if (dw <= 1) return null;
+              // Which week the member is on, from the plan's start (or created) date.
+              const start = plan.start_date ? new Date(plan.start_date + 'T00:00:00') : (plan.created_at ? new Date(plan.created_at) : null);
+              let curWeek = null;
+              if (start) {
+                const wk = Math.floor((Date.now() - start.getTime()) / (7 * 86400000)) + 1;
+                if (wk >= 1 && wk <= dw) curWeek = wk;
+              }
+              return (
+                <p className="text-[11px] mt-0.5 font-semibold truncate" style={{ color: 'var(--color-accent)' }}>
+                  {curWeek
+                    ? t('trainerMealPlan.weekOf', 'Week {{w}} of {{n}}', { w: curWeek, n: dw })
+                    : t('trainerMealPlan.weekPlan', '{{n}}-week plan', { n: dw })}
+                </p>
+              );
+            })()}
             {plan.trainer?.full_name && (
               <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
                 {t('trainerMealPlan.byCoach', 'From {{name}}', { name: plan.trainer.full_name })}

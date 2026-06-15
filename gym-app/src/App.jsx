@@ -181,6 +181,7 @@ const SupportConsole     = lazy(() => import('./pages/platform/SupportConsole'))
 const PlatformSettings   = lazy(() => import('./pages/platform/PlatformSettings'));
 const AuditLog           = lazy(() => import('./pages/platform/AuditLog'));
 const ErrorLogs          = lazy(() => import('./pages/platform/ErrorLogs'));
+const CustomMeals        = lazy(() => import('./pages/platform/CustomMeals'));
 const GymHealth          = lazy(() => import('./pages/platform/GymHealth'));
 const FeatureAdoption    = lazy(() => import('./pages/platform/FeatureAdoption'));
 const CardQueue          = lazy(() => import('./pages/platform/CardQueue'));
@@ -1709,6 +1710,7 @@ function App() {
                 <Route path="/settings"     element={<PlatformSettings />} />
                 <Route path="/audit-log"    element={<AuditLog />} />
                 <Route path="/error-logs"   element={<ErrorLogs />} />
+                <Route path="/custom-meals" element={<CustomMeals />} />
                 <Route path="*"             element={<Navigate to="/platform/attention" replace />} />
               </Routes>
               </Suspense>

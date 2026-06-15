@@ -21,6 +21,36 @@ import {
   fmtVolume, fmtDurationStrip,
 } from './strataTokens';
 
+// ─── Role badge ──────────────────────────────────────────────────────────────
+// Accent-tinted pill shown next to a non-member's name (trainer / admin /
+// super_admin), matching the badge in Messages.jsx. `role` comes from the
+// actor profile JSON returned by get_friend_feed.
+function RoleBadge({ role, t }) {
+  if (!role || role === 'member') return null;
+  const label =
+    role === 'super_admin'
+      ? t('messages.superAdmin', { defaultValue: 'Super Admin' })
+      : role === 'admin'
+        ? t('messages.admin', { defaultValue: 'Admin' })
+        : t('messages.trainer', { defaultValue: 'Trainer' });
+  return (
+    <span
+      className="uppercase flex-shrink-0"
+      style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: 0.6,
+        padding: '2px 6px',
+        borderRadius: 6,
+        background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+        color: 'var(--color-accent, #2EC4C4)',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 // ─── Stat strip ─────────────────────────────────────────────────────────────
 // Tabular row at the top of every metric-bearing post. The visual heartbeat
 // of the Strata card — telemetry first, body second.
@@ -734,6 +764,9 @@ function CommentRow({ comment, currentUserId, onDelete, onBlocked, onReported })
         >
           {comment.profiles?.full_name ?? t('social.memberFallback', { defaultValue: 'Member' })}{' '}
         </span>
+        {comment.profiles?.role && comment.profiles.role !== 'member' && (
+          <RoleBadge role={comment.profiles.role} t={t} />
+        )}
         <span style={{ fontSize: 12.5, color: 'var(--color-text-secondary)' }}>
           {sanitize(comment.content)}
         </span>
@@ -874,19 +907,22 @@ function StrataFeedCard({
           />
         </button>
         <div className="flex-1 min-w-0">
-          <button
-            type="button"
-            onClick={() => onProfilePreview?.(item.actor_id)}
-            className="block text-left truncate"
-            style={{
-              fontSize: 14,
-              fontWeight: 800,
-              color: 'var(--color-text-primary)',
-              letterSpacing: -0.2,
-            }}
-          >
-            {fullName}
-          </button>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => onProfilePreview?.(item.actor_id)}
+              className="text-left truncate"
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                color: 'var(--color-text-primary)',
+                letterSpacing: -0.2,
+              }}
+            >
+              {fullName}
+            </button>
+            <RoleBadge role={item.profiles?.role} t={t} />
+          </div>
           <div
             className="flex items-center gap-1.5 mt-0.5"
             style={{ fontSize: 11, color: 'var(--color-text-muted)' }}

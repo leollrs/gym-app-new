@@ -29,6 +29,21 @@ struct ActiveWorkoutView: View {
         hasEditedReps ? editedReps : session.suggestedReps
     }
 
+    /// Sets to show on the end-confirmation sheet. Free-lift sessions keep
+    /// `totalSets == 0`, so the old `totalSets > 0 ? setNumber-1 : 0` always
+    /// read 0 — sum the logged sets across every free-lift entry instead, and
+    /// fall back to the locally-tracked count for routines the phone hasn't
+    /// advanced.
+    private var endConfirmCompletedSets: Int {
+        if session.isFreeLiftActive {
+            return session.freeLiftEntries.reduce(0) { acc, entry in
+                acc + ((entry["sets"] as? [[String: Any]])?.count ?? 0)
+            }
+        }
+        if session.totalSets > 0 { return max(0, session.setNumber - 1) }
+        return localCompletedSets
+    }
+
     /// True when the user has logged every set the phone said belonged to
     /// this exercise. Used to flip "DONE SET" into an "EXERCISE DONE"
     /// state instead of bumping the counter past the configured total.
@@ -95,10 +110,10 @@ struct ActiveWorkoutView: View {
                 // Single inline row matching the iPhone set-logger:
                 //   [ −5 ]  135 lbs  [ +5 ]
                 HStack(spacing: 6) {
-                    miniStepButton("−5", role: .minus) { adjustWeight(-5) }
+                    miniStepButton("−2.5", role: .minus) { adjustWeight(-2.5) }
                     VStack(spacing: 0) {
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("\(Int(currentWeight))")
+                            Text(formatWeight(currentWeight))
                                 .font(.system(size: 30, weight: .heavy, design: .rounded))
                                 .foregroundColor(DS.brandAccent)
                                 .monospacedDigit()
@@ -114,7 +129,7 @@ struct ActiveWorkoutView: View {
                             .foregroundColor(DS.textFaint)
                     }
                     .frame(maxWidth: .infinity)
-                    miniStepButton("+5", role: .plus) { adjustWeight(5) }
+                    miniStepButton("+2.5", role: .plus) { adjustWeight(2.5) }
                 }
                 .padding(.horizontal, 10)
 
@@ -280,7 +295,7 @@ struct ActiveWorkoutView: View {
         .sheet(isPresented: $showEndConfirmation) {
             EndWorkoutConfirmView(
                 elapsedTime: localElapsed,
-                completedSets: session.totalSets > 0 ? session.setNumber - 1 : 0,
+                completedSets: endConfirmCompletedSets,
                 onSaveAndEnd: {
                     showEndConfirmation = false
                     session.saveAndEndWorkout()
@@ -359,6 +374,14 @@ struct ActiveWorkoutView: View {
     private func adjustWeight(_ delta: Double) {
         editedWeight = max(0, currentWeight + delta)
         hasEditedWeight = true
+    }
+
+    /// Render whole weights as "135" and half-pound suggestions as "137.5"
+    /// (the overload engine works on a 2.5 lb grid). Previously the view used
+    /// `Int(currentWeight)`, which truncated 137.5 → "137" and logged the
+    /// wrong weight.
+    private func formatWeight(_ w: Double) -> String {
+        w == w.rounded() ? String(Int(w)) : String(format: "%.1f", w)
     }
 
     private func adjustReps(_ delta: Int) {

@@ -494,6 +494,10 @@ const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
       .select('profile_id, score')
       .eq('challenge_id', challenge.id)
       .order('score', { ascending: false })
+      // Tie-break: whoever reached the score first ranks higher (and stays
+      // higher until the other passes them). score_updated_at is stamped by a
+      // trigger on every score change (migration 0570).
+      .order('score_updated_at', { ascending: true })
       .limit(100);
 
     // Names via the member-safe view — see fetchMemberProfiles. Participants
@@ -788,6 +792,10 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
       .select('profile_id, score')
       .eq('challenge_id', challenge.id)
       .order('score', { ascending: false })
+      // Tie-break: whoever reached the score first ranks higher (and stays
+      // higher until the other passes them). score_updated_at is stamped by a
+      // trigger on every score change (migration 0570).
+      .order('score_updated_at', { ascending: true })
       .limit(100);
     // Member-safe name resolution — see fetchMemberProfiles.
     const profs = await fetchMemberProfiles((data || []).map(p => p.profile_id));

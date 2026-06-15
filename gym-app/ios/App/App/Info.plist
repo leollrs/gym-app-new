@@ -49,15 +49,15 @@
 		<false/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>TuGymPR uses your camera to scan QR codes for gym check-in and to take progress photos.</string>
+	<string>TuGymPR uses your camera to scan QR codes for gym account syncing, to analyze food items via the AI calory analyzer, and to take progress photos.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>TuGymPR reads your health data to display steps, sync weight measurements, and track workout activity.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>TuGymPR saves your workouts and weight logs to Apple Health so all your fitness data stays in one place.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TuGymPR uses your location to track your outdoor runs and cardio workouts with distance, pace, and route mapping.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>TuGymPR keeps tracking your cardio session in the background while your phone is locked, so your distance, pace, and route stay accurate for the entire workout.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>TuGymPR uses your location to track your outdoor runs and cardio workouts with distance, pace, and route mapping.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>TuGymPR uses motion data to count steps and estimate calories during your outdoor runs.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
@@ -91,10 +91,10 @@
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>

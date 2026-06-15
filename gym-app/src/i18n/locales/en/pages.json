@@ -409,7 +409,12 @@
     "share": "Share",
     "editAvatar": "Edit avatar",
     "shareAchievement": "Share achievement",
-    "shareMonth": "Share this month"
+    "shareMonth": "Share this month",
+    "myTrainer": "My trainer",
+    "myTrainerSubtitle": "View your coach",
+    "trainerNext": "Next: {{when}}",
+    "messageTrainer": "Message",
+    "openChatFailed": "Could not open the chat. Try again."
   },
   "rewards": {
     "title": "Rewards",
@@ -1280,7 +1285,12 @@
     "scanWithAi": "Scan with AI instead",
     "ofSevenDays": "of 7 days",
     "prevWeek": "Previous week",
-    "refreshSuggestion": "Refresh suggestion"
+    "refreshSuggestion": "Refresh suggestion",
+    "addCustomMeal": "Add your own meal",
+    "mealName": "Meal name",
+    "saveAndUseMeal": "Save & use",
+    "addMealFailed": "Could not add meal",
+    "customTag": "Custom"
   },
   "sessionSummary": {
     "workoutComplete": "Workout Complete",
@@ -8140,7 +8150,13 @@
       "meal": "Meal",
       "sampleDay": "Sample day",
       "customPlan": "Custom Plan",
-      "planSuffix": "Plan"
+      "planSuffix": "Plan",
+      "thisWeek": "This week",
+      "noLogsThisWeek": "No food logs this week",
+      "useExisting": "Use existing",
+      "useExistingTitle": "Choose a plan",
+      "noSavedPlans": "You have no saved meal plans yet.",
+      "planCopied": "Plan assigned"
     },
     "errors": {
       "saveNotesFailed": "Could not save notes",
@@ -8403,7 +8419,9 @@
     "failedToGrant": "Failed to grant consent",
     "toggleFailed": "Could not save. Try again.",
     "saved": "Saved",
-    "consentRevoked": "AI consent removed"
+    "consentRevoked": "AI consent removed",
+    "trainerEditMeasurements": "Let my trainer edit my measurements",
+    "trainerEditMeasurementsDesc": "Your trainer can record and update your body measurements."
   },
   "milestones": {
     "noMilestonesYet": "No milestones yet",
@@ -10348,7 +10366,22 @@
     "duplicateForBody": "Who is the copy for?",
     "regenConfirmTitle": "Regenerate the whole week?",
     "regenConfirmBody": "You swapped or hand-picked some meals. Regenerating replaces everything with a fresh plan.",
-    "regenConfirmAction": "Regenerate"
+    "regenConfirmAction": "Regenerate",
+    "allEquipment": "All equipment",
+    "allMuscles": "All",
+    "saveDraft": "Draft",
+    "draft": "Draft",
+    "drafts": "Drafts",
+    "draftBadge": "DRAFT",
+    "noClientGeneric": "No client (generic plan)",
+    "genericPlan": "Generic",
+    "customWeeks": "Custom weeks",
+    "addCustomMeal": "Add your own meal",
+    "mealName": "Meal name",
+    "saveAndUseMeal": "Save & use",
+    "addMealFailed": "Could not add meal",
+    "customTag": "Custom",
+    "planLength": "Plan length"
   },
   "trainerPrograms": {
     "title": "Program Library",
@@ -10758,7 +10791,15 @@
       "viewOnly": "View only",
       "viewPhoto": "View photo",
       "waist": "Waist",
-      "weightTrend": "Weight trend"
+      "weightTrend": "Weight trend",
+      "edit": "Edit",
+      "add": "Add",
+      "cancel": "Cancel",
+      "save": "Save",
+      "editMeasurements": "Edit measurements",
+      "measurementsSaved": "Measurements saved",
+      "saveFailed": "Could not save measurements",
+      "editingDisabled": "This member has turned off trainer editing of measurements."
     },
     "history": {
       "title": "Workout history",
@@ -10877,7 +10918,41 @@
       "sms": "Text message (SMS)",
       "contactBtn": "Contact"
     },
-    "showMore": "Show more"
+    "showMore": "Show more",
+    "dayN": "Day {{n}}",
+    "program": {
+      "empty": "This program has no content yet.",
+      "restWeek": "Rest / no sessions"
+    },
+    "prefs": {
+      "title": "Preferences",
+      "editTitle": "Edit preferences",
+      "none": "No dietary preferences set.",
+      "dietsLabel": "Dietary restrictions",
+      "allergensLabel": "Allergies",
+      "saved": "Preferences saved",
+      "saveFailed": "Could not save preferences",
+      "diets": {
+        "vegan": "Vegan",
+        "vegetarian": "Vegetarian",
+        "pescatarian": "Pescatarian",
+        "keto": "Keto",
+        "gluten_free": "Gluten-free",
+        "dairy_free": "Dairy-free",
+        "halal": "Halal"
+      },
+      "allergens": {
+        "nuts": "Nuts",
+        "shellfish": "Shellfish",
+        "dairy": "Dairy",
+        "eggs": "Eggs",
+        "soy": "Soy",
+        "wheat": "Wheat",
+        "fish": "Fish"
+      },
+      "avoidLabel": "Foods to avoid",
+      "avoidPlaceholder": "e.g. cilantro, mushrooms"
+    }
   },
   "trainerProfile": {
     "title": "Profile",
@@ -12216,6 +12291,35 @@
       "inviteNoGym": "This member has no gym — assign a gym first",
       "inviteGenerateFailed": "Could not generate an invite code",
       "protectedAccount": "Protected account — super admin role and status can only be changed in the database"
+    },
+    "customMeals": {
+      "title": "Custom Meals",
+      "subtitle": "User-submitted dishes from trainers and members",
+      "searchPlaceholder": "Search by meal or creator name...",
+      "headerMeal": "Meal",
+      "headerMacros": "Macros",
+      "headerCreator": "Creator",
+      "headerGym": "Gym",
+      "headerDate": "Added",
+      "totalMeals": "Total Meals",
+      "uniqueCreators": "Creators",
+      "gymsRepresented": "Gyms",
+      "noMeals": "No custom meals yet",
+      "noMealsHint": "Dishes added by trainers and members will appear here",
+      "noResults": "No meals match your search",
+      "noResultsHint": "Try a different meal or creator name",
+      "fetchFailed": "Could not load custom meals",
+      "fetchFailedHint": "The query failed — this is not an empty library.",
+      "retry": "Retry",
+      "loading": "Loading...",
+      "loadMore": "Load more",
+      "unknownCreator": "Unknown",
+      "noGym": "No gym",
+      "cal": "cal",
+      "roleSuperAdmin": "Super Admin",
+      "roleAdmin": "Admin",
+      "roleTrainer": "Trainer",
+      "roleMember": "Member"
     },
     "errors": {
       "title": "Errors",
@@ -13744,7 +13848,9 @@
     "addToMyPlanFailed": "Couldn't add — try again",
     "replacePlanConfirm": "This replaces this week's My Plan with your coach's plan. Continue?",
     "addToGroceries": "Add to grocery list",
-    "addedToGroceries": "In your grocery list"
+    "addedToGroceries": "In your grocery list",
+    "weekOf": "Week {{w}} of {{n}}",
+    "weekPlan": "{{n}}-week plan"
   },
   "shareMonth": {
     "title": "Share month",
@@ -13830,5 +13936,17 @@
     "resettingBtn": "Clearing…",
     "reset": "Reset",
     "close": "Close"
+  },
+  "equipment": {
+    "Barbell": "Barbell",
+    "Dumbbell": "Dumbbell",
+    "Cable": "Cable",
+    "Machine": "Machine",
+    "Bodyweight": "Bodyweight",
+    "Kettlebell": "Kettlebell",
+    "Resistance Band": "Resistance Band",
+    "Smith Machine": "Smith Machine",
+    "Cardio Machine": "Cardio Machine",
+    "EZ Bar": "EZ Bar"
   }
 }

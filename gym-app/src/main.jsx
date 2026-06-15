@@ -272,10 +272,11 @@ onWatchMessage(async (msg) => {
               const prog = programs?.[0];
               if (prog && new Date(prog.expires_at) > new Date()) {
                 // Inline calendar-week math (no top-level import — main.jsx is the bootstrap).
+                // Anniversary week math — mirrors getProgramWeekNum (programWeek.js).
+                // Week 1 = first 7 days from program_start; no calendar-Sunday jump.
                 const _start = new Date(prog.program_start); _start.setHours(0, 0, 0, 0);
-                const _sunday = new Date(_start); _sunday.setDate(_sunday.getDate() - _sunday.getDay());
                 const _today = new Date(); _today.setHours(0, 0, 0, 0);
-                const weekNum = Math.floor((_today - _sunday) / 86400000 / 7) + 1;
+                const weekNum = Math.max(1, Math.floor((_today - _start) / 86400000 / 7) + 1);
                 const isWeekA = weekNum % 2 === 1;
                 todayIds = new Set(
                   cached.data
@@ -338,6 +339,26 @@ onWatchMessage(async (msg) => {
             id: 99901,
             title: 'TuGymPR',
             body: 'Tap to show your QR code',
+            sound: 'default',
+            extra: { action: 'open_qr' },
+          }]
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }
+
+  if (action === 'check_in') {
+    // Siri "Gym Check-In" from the watch. A real check-in still needs the QR
+    // scanned at the front desk (or GPS near the gym), so surface the user's
+    // QR — previously this action was sent but never handled (no-op).
+    window.dispatchEvent(new CustomEvent('watch-open-qr'));
+    if (isNative) {
+      import('@capacitor/local-notifications').then(({ LocalNotifications }) => {
+        LocalNotifications.schedule({
+          notifications: [{
+            id: 99903,
+            title: 'TuGymPR',
+            body: 'Tap to show your check-in QR',
             sound: 'default',
             extra: { action: 'open_qr' },
           }]

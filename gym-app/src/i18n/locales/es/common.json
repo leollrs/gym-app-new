@@ -192,6 +192,7 @@
     "members": "Buscar Miembro",
     "auditLog": "Registro de Auditoría",
     "errorLogs": "Errores",
+    "customMeals": "Comidas Personalizadas",
     "settings": "Configuración",
     "gymHealth": "Salud del Gimnasio",
     "adoption": "Adopción",
@@ -479,5 +480,7 @@
     "addedGeneric": "¡Amigo agregado!"
   },
   "inviteForNewAccounts": "Los códigos de invitación son para cuentas nuevas",
-  "referralForNewSignups": "Los códigos de referido son para nuevos registros"
+  "referralForNewSignups": "Los códigos de referido son para nuevos registros",
+  "previous": "Anterior",
+  "next": "Siguiente"
 }

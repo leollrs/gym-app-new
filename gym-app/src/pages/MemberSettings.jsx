@@ -71,6 +71,7 @@ export default function MemberSettings() {
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
   const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
   const [leaderboardVisible, setLeaderboardVisible] = useState(profile?.leaderboard_visible ?? true);
+  const [allowTrainerMeas, setAllowTrainerMeas] = useState(profile?.allow_trainer_measurements ?? true);
   const { showToast } = useToast();
   const [exporting, setExporting] = useState({ workouts: false, prs: false, body: false });
   const [blockedList, setBlockedList] = useState([]);
@@ -396,6 +397,41 @@ export default function MemberSettings() {
               </div>
               <div className={`w-10 h-6 rounded-full transition-colors relative ${leaderboardVisible ? 'bg-[#10B981]' : 'bg-[#374151]'}`}>
                 <div className={`w-4.5 h-4.5 rounded-full bg-white absolute top-[3px] transition-transform ${leaderboardVisible ? 'translate-x-[19px]' : 'translate-x-[3px]'}`} />
+              </div>
+            </button>
+            {/* Let the member's trainer record/edit their body measurements */}
+            <button
+              type="button"
+              aria-pressed={allowTrainerMeas}
+              onClick={async () => {
+                const newVal = !allowTrainerMeas;
+                const prev = allowTrainerMeas;
+                setAllowTrainerMeas(newVal);
+                if (!user?.id) return;
+                const { error } = await supabase
+                  .from('profiles')
+                  .update({ allow_trainer_measurements: newVal })
+                  .eq('id', user.id);
+                if (error) {
+                  console.error('[Settings] allow_trainer_measurements update failed:', error);
+                  setAllowTrainerMeas(prev);
+                  showToast(t('settingsPrivacy.toggleFailed', { defaultValue: 'Could not save. Try again.' }), 'error');
+                  return;
+                }
+                try { await refreshProfile?.(); } catch { /* noop */ }
+                showToast(t('settingsPrivacy.saved', { defaultValue: 'Saved' }), 'success');
+              }}
+              className="w-full flex items-center justify-between px-5 py-4 text-left border-t border-white/[0.06] hover:bg-white/[0.06] transition-colors duration-200"
+            >
+              <div className="flex items-center gap-3">
+                <Shield size={16} style={{ color: 'var(--color-text-subtle)' }} />
+                <div>
+                  <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('settingsPrivacy.trainerEditMeasurements', { defaultValue: 'Let my trainer edit my measurements' })}</span>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{t('settingsPrivacy.trainerEditMeasurementsDesc', { defaultValue: 'Your trainer can record and update your body measurements.' })}</p>
+                </div>
+              </div>
+              <div className={`w-10 h-6 rounded-full transition-colors relative shrink-0 ${allowTrainerMeas ? 'bg-[#10B981]' : 'bg-[#374151]'}`}>
+                <div className={`w-4.5 h-4.5 rounded-full bg-white absolute top-[3px] transition-transform ${allowTrainerMeas ? 'translate-x-[19px]' : 'translate-x-[3px]'}`} />
               </div>
             </button>
           </div>

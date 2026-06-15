@@ -497,27 +497,14 @@ export const AuthProvider = ({ children }) => {
       const capturedData = data;
       watchSyncTimeoutRef.current = setTimeout(() => {
         Promise.all([
-          supabase.from('check_ins').select('checked_in_at').eq('profile_id', capturedData.id).order('checked_in_at', { ascending: false }).limit(30),
+          supabase.from('streak_cache').select('current_streak_days').eq('profile_id', capturedData.id).maybeSingle(),
           supabase.from('workout_sessions').select('completed_at').eq('profile_id', capturedData.id).eq('status', 'completed').gte('completed_at', new Date(Date.now() - 7 * 86400000).toISOString()),
-        ]).then(([checkInsRes, weeklyRes]) => {
-          // Calculate streak from check-ins
-          let streak = 0;
-          const checkIns = checkInsRes.data || [];
-          if (checkIns.length > 0) {
-            const today = new Date(); today.setHours(0,0,0,0);
-            let checkDay = new Date(checkIns[0].checked_in_at); checkDay.setHours(0,0,0,0);
-            const diffDays = Math.round((today - checkDay) / 86400000);
-            if (diffDays <= 1) {
-              streak = 1;
-              for (let i = 1; i < checkIns.length; i++) {
-                const prev = new Date(checkIns[i].checked_in_at); prev.setHours(0,0,0,0);
-                if (Math.round((checkDay - prev) / 86400000) === 1) {
-                  streak++;
-                  checkDay = prev;
-                } else break;
-              }
-            }
-          }
+        ]).then(([streakRes, weeklyRes]) => {
+          // Real streak = streak_cache.current_streak_days (the single source
+          // of truth the app itself shows). Previously this recomputed a streak
+          // from check-ins only, so the watch read 0 for users who train but
+          // don't QR check-in — i.e. "no muestra mi racha".
+          const streak = streakRes.data?.current_streak_days ?? 0;
           // Read latest gym branding from offline cache (populated by gym query)
           let watchGymName = '';
           let watchAccent = '';

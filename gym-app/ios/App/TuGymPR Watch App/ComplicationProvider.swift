@@ -206,9 +206,18 @@ struct TuGymPRComplicationEntryView: View {
     }
 
     private func formatRelativeDate(_ dateString: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: dateString) else { return dateString }
+        // The iPhone may send a plain "yyyy-MM-dd" OR a full ISO8601 timestamp
+        // (completed_at). Accept either, falling back to the date prefix, so we
+        // never render a raw timestamp on the complication.
+        let parsed: Date?
+        if let iso = ISO8601DateFormatter().date(from: dateString) {
+            parsed = iso
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            parsed = formatter.date(from: String(dateString.prefix(10)))
+        }
+        guard let date = parsed else { return "" }
 
         let calendar = Calendar.current
         let now = Date()

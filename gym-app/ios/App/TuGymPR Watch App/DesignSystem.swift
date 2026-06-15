@@ -102,10 +102,22 @@ extension Color {
     init?(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
-        guard s.count == 6, let v = UInt64(s, radix: 16) else { return nil }
-        let r = Double((v >> 16) & 0xff) / 255.0
-        let g = Double((v >> 8) & 0xff) / 255.0
-        let b = Double(v & 0xff) / 255.0
+        // Expand 3-digit shorthand (#RGB → #RRGGBB).
+        if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
+        // Accept #RRGGBB and #RRGGBBAA (alpha is dropped — the watch UI is
+        // opaque). Previously only length 6 was allowed, so any gym accent
+        // stored with an alpha channel silently fell back to default teal.
+        guard s.count == 6 || s.count == 8, let v = UInt64(s, radix: 16) else { return nil }
+        let r, g, b: Double
+        if s.count == 8 {
+            r = Double((v >> 24) & 0xff) / 255.0
+            g = Double((v >> 16) & 0xff) / 255.0
+            b = Double((v >> 8) & 0xff) / 255.0
+        } else {
+            r = Double((v >> 16) & 0xff) / 255.0
+            g = Double((v >> 8) & 0xff) / 255.0
+            b = Double(v & 0xff) / 255.0
+        }
         self = Color(red: r, green: g, blue: b)
     }
 }

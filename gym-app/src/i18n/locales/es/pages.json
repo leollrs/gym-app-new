@@ -409,7 +409,12 @@
     "share": "Compartir",
     "editAvatar": "Editar avatar",
     "shareAchievement": "Compartir logro",
-    "shareMonth": "Compartir este mes"
+    "shareMonth": "Compartir este mes",
+    "myTrainer": "Mi entrenador",
+    "myTrainerSubtitle": "Ver a tu entrenador",
+    "trainerNext": "Próxima: {{when}}",
+    "messageTrainer": "Mensaje",
+    "openChatFailed": "No se pudo abrir el chat. Inténtalo de nuevo."
   },
   "rewards": {
     "title": "Recompensas",
@@ -1280,7 +1285,12 @@
     "scanWithAi": "Escanear con IA",
     "ofSevenDays": "de 7 días",
     "prevWeek": "Semana anterior",
-    "refreshSuggestion": "Actualizar sugerencia"
+    "refreshSuggestion": "Actualizar sugerencia",
+    "addCustomMeal": "Añade tu comida",
+    "mealName": "Nombre de la comida",
+    "saveAndUseMeal": "Guardar y usar",
+    "addMealFailed": "No se pudo añadir la comida",
+    "customTag": "Personalizada"
   },
   "sessionSummary": {
     "workoutComplete": "Entrenamiento Completo",
@@ -8308,7 +8318,13 @@
       "meal": "Comida",
       "sampleDay": "Día de ejemplo",
       "customPlan": "Plan Personalizado",
-      "planSuffix": "Plan"
+      "planSuffix": "Plan",
+      "thisWeek": "Esta semana",
+      "noLogsThisWeek": "Sin registros de comida esta semana",
+      "useExisting": "Usar existente",
+      "useExistingTitle": "Elige un plan",
+      "noSavedPlans": "Aún no tienes planes de comida guardados.",
+      "planCopied": "Plan asignado"
     },
     "errors": {
       "saveNotesFailed": "No se pudieron guardar las notas",
@@ -8571,7 +8587,9 @@
     "failedToGrant": "No se pudo conceder el consentimiento",
     "toggleFailed": "No se pudo guardar. Inténtalo de nuevo.",
     "saved": "Guardado",
-    "consentRevoked": "Consentimiento retirado"
+    "consentRevoked": "Consentimiento retirado",
+    "trainerEditMeasurements": "Permitir que mi entrenador edite mis medidas",
+    "trainerEditMeasurementsDesc": "Tu entrenador puede registrar y actualizar tus medidas corporales."
   },
   "milestones": {
     "noMilestonesYet": "Aún no hay logros",
@@ -10516,7 +10534,22 @@
     "duplicateForBody": "¿Para qué cliente es la copia?",
     "regenConfirmTitle": "¿Regenerar toda la semana?",
     "regenConfirmBody": "Cambiaste o escogiste comidas a mano. Al regenerar se reemplaza todo con un plan nuevo.",
-    "regenConfirmAction": "Regenerar"
+    "regenConfirmAction": "Regenerar",
+    "allEquipment": "Todo el equipo",
+    "allMuscles": "Todos",
+    "saveDraft": "Borrador",
+    "draft": "Borrador",
+    "drafts": "Borradores",
+    "draftBadge": "BORRADOR",
+    "noClientGeneric": "Sin cliente (plan genérico)",
+    "genericPlan": "Genérico",
+    "customWeeks": "Semanas personalizadas",
+    "addCustomMeal": "Añade tu comida",
+    "mealName": "Nombre de la comida",
+    "saveAndUseMeal": "Guardar y usar",
+    "addMealFailed": "No se pudo añadir la comida",
+    "customTag": "Personalizada",
+    "planLength": "Duración del plan"
   },
   "trainerPrograms": {
     "title": "Biblioteca de Programas",
@@ -10926,7 +10959,15 @@
       "viewOnly": "Solo ver",
       "viewPhoto": "Ver foto",
       "waist": "Cintura",
-      "weightTrend": "Tendencia de peso"
+      "weightTrend": "Tendencia de peso",
+      "edit": "Editar",
+      "add": "Añadir",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "editMeasurements": "Editar medidas",
+      "measurementsSaved": "Medidas guardadas",
+      "saveFailed": "No se pudieron guardar las medidas",
+      "editingDisabled": "Este miembro desactivó la edición de medidas por el entrenador."
     },
     "history": {
       "title": "Historial de entrenos",
@@ -11045,7 +11086,41 @@
       "sms": "Mensaje de texto (SMS)",
       "contactBtn": "Contacto"
     },
-    "showMore": "Ver más"
+    "showMore": "Ver más",
+    "dayN": "Día {{n}}",
+    "program": {
+      "empty": "Este programa aún no tiene contenido.",
+      "restWeek": "Descanso / sin sesiones"
+    },
+    "prefs": {
+      "title": "Preferencias",
+      "editTitle": "Editar preferencias",
+      "none": "Sin preferencias dietéticas.",
+      "dietsLabel": "Restricciones dietéticas",
+      "allergensLabel": "Alergias",
+      "saved": "Preferencias guardadas",
+      "saveFailed": "No se pudieron guardar las preferencias",
+      "diets": {
+        "vegan": "Vegano",
+        "vegetarian": "Vegetariano",
+        "pescatarian": "Pescetariano",
+        "keto": "Keto",
+        "gluten_free": "Sin gluten",
+        "dairy_free": "Sin lácteos",
+        "halal": "Halal"
+      },
+      "allergens": {
+        "nuts": "Frutos secos",
+        "shellfish": "Mariscos",
+        "dairy": "Lácteos",
+        "eggs": "Huevos",
+        "soy": "Soja",
+        "wheat": "Trigo",
+        "fish": "Pescado"
+      },
+      "avoidLabel": "Alimentos a evitar",
+      "avoidPlaceholder": "p. ej. cilantro, champiñones"
+    }
   },
   "trainerProfile": {
     "title": "Perfil",
@@ -12369,6 +12444,35 @@
       "inviteNoGym": "Este miembro no tiene gimnasio — asígnale uno primero",
       "inviteGenerateFailed": "No se pudo generar el código de invitación",
       "protectedAccount": "Cuenta protegida — el rol y estado de super admin solo pueden cambiarse en la base de datos"
+    },
+    "customMeals": {
+      "title": "Comidas personalizadas",
+      "subtitle": "Platos enviados por entrenadores y miembros",
+      "searchPlaceholder": "Buscar por comida o creador...",
+      "headerMeal": "Comida",
+      "headerMacros": "Macros",
+      "headerCreator": "Creador",
+      "headerGym": "Gimnasio",
+      "headerDate": "Añadida",
+      "totalMeals": "Total de comidas",
+      "uniqueCreators": "Creadores",
+      "gymsRepresented": "Gimnasios",
+      "noMeals": "Aún no hay comidas personalizadas",
+      "noMealsHint": "Los platos añadidos por entrenadores y miembros aparecerán aquí",
+      "noResults": "Ninguna comida coincide con tu búsqueda",
+      "noResultsHint": "Prueba con otro nombre de comida o creador",
+      "fetchFailed": "No se pudieron cargar las comidas personalizadas",
+      "fetchFailedHint": "La consulta falló — esto no es una biblioteca vacía.",
+      "retry": "Reintentar",
+      "loading": "Cargando...",
+      "loadMore": "Cargar más",
+      "unknownCreator": "Desconocido",
+      "noGym": "Sin gimnasio",
+      "cal": "cal",
+      "roleSuperAdmin": "Super Admin",
+      "roleAdmin": "Admin",
+      "roleTrainer": "Entrenador",
+      "roleMember": "Miembro"
     },
     "errors": {
       "title": "Errores",
@@ -13895,7 +13999,9 @@
     "addToMyPlanFailed": "No se pudo agregar — inténtalo de nuevo",
     "replacePlanConfirm": "Esto reemplaza tu Mi Plan de esta semana con el plan de tu coach. ¿Continuar?",
     "addToGroceries": "Agregar a la lista de compras",
-    "addedToGroceries": "En tu lista de compras"
+    "addedToGroceries": "En tu lista de compras",
+    "weekOf": "Semana {{w}} de {{n}}",
+    "weekPlan": "Plan de {{n}} semanas"
   },
   "shareMonth": {
     "title": "Compartir mes",
@@ -13981,5 +14087,17 @@
     "resettingBtn": "Limpiando…",
     "reset": "Restablecer",
     "close": "Cerrar"
+  },
+  "equipment": {
+    "Barbell": "Barra",
+    "Dumbbell": "Mancuerna",
+    "Cable": "Cable",
+    "Machine": "Máquina",
+    "Bodyweight": "Peso corporal",
+    "Kettlebell": "Pesa rusa",
+    "Resistance Band": "Banda de resistencia",
+    "Smith Machine": "Máquina Smith",
+    "Cardio Machine": "Máquina de cardio",
+    "EZ Bar": "Barra Z"
   }
 }

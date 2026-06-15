@@ -38,6 +38,12 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     /// so SwiftUI views observing it will re-load the image from disk.
     @Published var qrImageVersion: Int = 0
 
+    /// Increments every time fresh activity-ring / points data lands from the
+    /// iPhone. DailySummaryView reads those values straight out of shared
+    /// UserDefaults (not @Published), so it references this to know when to
+    /// re-read on a live push instead of showing stale rings.
+    @Published var dailySummaryVersion: Int = 0
+
     // MARK: - PR celebration
     @Published var prJustHit: Bool = false
     @Published var prExerciseName: String = ""
@@ -754,9 +760,10 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
             if let pt = ctx["pointsToday"] as? Int { sharedDefaults?.set(pt, forKey: "pointsToday") }
             if let pTotal = ctx["pointsTotal"] as? Int { sharedDefaults?.set(pTotal, forKey: "pointsTotal") }
             sharedDefaults?.synchronize()
-            // Bumping a published flag would force DailySummaryView to
-            // refresh, but it already polls UserDefaults via @State accessors
-            // each time the tab becomes visible, so a pure write is enough.
+            // Bump a published version so DailySummaryView (which reads the
+            // ring values straight out of shared UserDefaults) re-renders on
+            // a live push instead of sitting on stale rings.
+            dailySummaryVersion &+= 1
             WidgetCenter.shared.reloadAllTimelines()
 
         case "qr_png":

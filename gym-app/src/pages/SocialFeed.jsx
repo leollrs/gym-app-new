@@ -479,6 +479,33 @@ const FriendButton = ({ status, onAdd, onAccept, t }) => {
   );
 };
 
+// ── Role badge ──────────────────────────────────────────────────────────────
+// Accent-tinted pill shown next to a non-member's name (trainer / admin /
+// super_admin), matching the badge style in Messages.jsx. `role` comes from
+// the actor profile JSON (get_friend_feed) or a comment author profile
+// (gym_member_profiles_safe). Renders nothing for members or when role absent.
+const RoleBadge = ({ role, t }) => {
+  if (!role || role === 'member') return null;
+  const label =
+    role === 'super_admin'
+      ? t('messages.superAdmin', { defaultValue: 'Super Admin' })
+      : role === 'admin'
+        ? t('messages.admin', { defaultValue: 'Admin' })
+        : t('messages.trainer', { defaultValue: 'Trainer' });
+  return (
+    <span
+      className="text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md flex-shrink-0"
+      style={{
+        background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+        color: 'var(--color-accent, #D4AF37)',
+        fontWeight: 700,
+      }}
+    >
+      {label}
+    </span>
+  );
+};
+
 // ── Comment Item ──────────────────────────────────────────────────────────────
 const CommentRow = ({ comment }) => {
   const { t } = useTranslation('pages');
@@ -489,6 +516,7 @@ const CommentRow = ({ comment }) => {
       <span className="font-semibold text-[13px]" style={{ color: 'var(--color-text-primary)' }}>
         {comment.profiles?.full_name ?? t('social.memberFallback', { defaultValue: 'Member' })}{' '}
       </span>
+      <RoleBadge role={comment.profiles?.role} t={t} />{comment.profiles?.role && comment.profiles.role !== 'member' ? ' ' : ''}
       <span className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}><RichText text={sanitize(comment.content)} /></span>
     </div>
   </div>
@@ -616,7 +644,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
     if (commenterIds.length) {
       const { data: profs } = await supabase
         .from('gym_member_profiles_safe')
-        .select('id, full_name, username, avatar_url, avatar_type, avatar_value')
+        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
         .in('id', commenterIds);
       (profs ?? []).forEach((p) => { profileMap[p.id] = p; });
     }
@@ -655,7 +683,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
     const { data: newComment, error } = await supabase
       .from('feed_comments')
       .insert({ feed_item_id: item.id, profile_id: currentUserId, content })
-      .select('id, content, created_at, profile_id, profiles(id, full_name, username, avatar_url, avatar_type, avatar_value)')
+      .select('id, content, created_at, profile_id, profiles(id, full_name, username, avatar_url, avatar_type, avatar_value, role)')
       .single();
     if (error && (error.code === '23514' || error.message?.includes('community guidelines'))) {
       showToast(t('moderation.contentBlocked', { defaultValue: 'Comment blocked: content violates community guidelines.' }), 'error');
@@ -708,14 +736,17 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           <Avatar src={item.profiles?.avatar_url} name={item.profiles?.full_name ?? '?'} avatarType={item.profiles?.avatar_type} avatarValue={item.profiles?.avatar_value} />
         </button>
         <div className="flex-1 min-w-0">
-          <button
-            type="button"
-            onClick={() => onProfilePreview?.(item.actor_id)}
-            className="font-semibold text-[15px] leading-snug truncate max-w-[140px] block text-left hover:text-[#D4AF37] transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4AF37] rounded"
-            style={{ color: 'var(--color-text-primary)' }}
-          >
-            {item.profiles?.full_name ?? 'Gym Member'}
-          </button>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => onProfilePreview?.(item.actor_id)}
+              className="font-semibold text-[15px] leading-snug truncate max-w-[140px] text-left hover:text-[#D4AF37] transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4AF37] rounded"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
+              {item.profiles?.full_name ?? 'Gym Member'}
+            </button>
+            <RoleBadge role={item.profiles?.role} t={t} />
+          </div>
           <button
             type="button"
             onClick={() => onProfilePreview?.(item.actor_id)}
@@ -1218,6 +1249,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
         avatar_url:   profile.avatar_url,
         avatar_type:  profile.avatar_type,
         avatar_value: profile.avatar_value,
+        role:         profile.role,
       },
     }));
     setMyPostsHasMore(withProfile.length === MY_POSTS_PAGE_SIZE);
@@ -1497,6 +1529,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
         avatar_url:   profile.avatar_url,
         avatar_type:  profile.avatar_type,
         avatar_value: profile.avatar_value,
+        role:         profile.role,
       },
       reactionCounts: {},
       currentReaction: null,

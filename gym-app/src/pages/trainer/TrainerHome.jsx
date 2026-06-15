@@ -14,6 +14,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
+import { exName } from '../../lib/exerciseName';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
 import { deriveClientStatus, needsAttention, weeklyAdherence, daysSince, RISK } from '../../lib/clientStatus';
 import {
@@ -229,7 +230,7 @@ export default function TrainerHome() {
         ),
         selectInBatches(
           (ids) => supabase.from('personal_records')
-            .select('id, profile_id, exercise_id, weight_lbs, reps, achieved_at, exercises(name)')
+            .select('id, profile_id, exercise_id, weight_lbs, reps, achieved_at, exercises(name, name_es)')
             .in('profile_id', ids).gte('achieved_at', sevenDaysAgo)
             .order('achieved_at', { ascending: false }).limit(8),
           clientIds,
@@ -426,7 +427,7 @@ export default function TrainerHome() {
         clientId: p.profile_id,
         clientName: c?.full_name || c?.username || t('trainerCalendar.client', 'Client'),
         avatarUrl: c?.avatar_url,
-        exercise: p.exercises?.name || '',
+        exercise: exName(p.exercises) || '',
         detail: `${p.weight_lbs} lb × ${p.reps}`,
       };
     });
@@ -688,7 +689,7 @@ export default function TrainerHome() {
                     {heroPR && (
                       <div style={{ flex: 1, background: isDark ? TT.surface : 'rgba(255,255,255,0.7)', border: `1px solid ${TT.border}`, borderRadius: 12, padding: '9px 11px' }}>
                         <div style={{ fontSize: 10, color: TT.textMute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>{t('trainerHome.lastPR', 'Last PR')}</div>
-                        <div style={{ fontSize: 13, color: TT.text, fontWeight: 700, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{heroPR.exercises?.name || ''} · {heroPR.weight_lbs} lb × {heroPR.reps}</div>
+                        <div style={{ fontSize: 13, color: TT.text, fontWeight: 700, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exName(heroPR.exercises) || ''} · {heroPR.weight_lbs} lb × {heroPR.reps}</div>
                       </div>
                     )}
                     {heroClientLastActive && (
@@ -720,11 +721,16 @@ export default function TrainerHome() {
                   style={{ width: 48, height: 48, padding: 0, borderRadius: 14, display: 'grid', placeItems: 'center' }}>
                   <MessageSquare size={19} strokeWidth={2.1} />
                 </button>
-                <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)} aria-label={t('trainerHome.openClientShort', 'Open client')}
-                  className="tt-btn tt-btn--secondary"
-                  style={{ width: 48, height: 48, padding: 0, borderRadius: 14, display: 'grid', placeItems: 'center' }}>
-                  <User size={19} strokeWidth={2.1} />
-                </button>
+                {/* "Open client" icon — only when the primary CTA is NOT already
+                    "Open client" (i.e. on a today session where primary = Start),
+                    so it never duplicates the main button. */}
+                {heroIsToday && (
+                  <button type="button" onClick={() => navigate(`/trainer/clients/${heroClientId}`)} aria-label={t('trainerHome.openClientShort', 'Open client')}
+                    className="tt-btn tt-btn--secondary"
+                    style={{ width: 48, height: 48, padding: 0, borderRadius: 14, display: 'grid', placeItems: 'center' }}>
+                    <User size={19} strokeWidth={2.1} />
+                  </button>
+                )}
               </div>
             </TCard>
           ) : (

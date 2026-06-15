@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { validateImageFile } from '../../lib/validateImage';
+import { markAdminSetupSeen } from '../../lib/adminSetupSeen';
 
 // ── Constants ────────────────────────────────────────────────
 const TOTAL_STEPS = 7;
@@ -615,6 +616,11 @@ export default function AdminOnboardingWizard({ onComplete }) {
       } catch (err) {
         showToast(err.message || 'Failed to save', 'error');
       } finally {
+        // Durably remember we showed setup — even if an upload above threw
+        // before setup_completed was written, the admin should never be
+        // re-nagged on this browser. gyms.setup_completed remains the
+        // cross-device truth; this is the local safety net.
+        markAdminSetupSeen(gymId);
         setSaving(false);
       }
       return;
@@ -698,20 +704,26 @@ export default function AdminOnboardingWizard({ onComplete }) {
   }, [step]);
 
   const handleSkip = useCallback(() => {
-    if (step === TOTAL_STEPS - 1) {
-      // Skip on last step = complete without saving remaining
-      setSaving(true);
-      supabase.from('gyms').update({ setup_completed: true, setup_step: TOTAL_STEPS }).eq('id', gymId)
-        .then(() => refreshProfile())
-        .then(() => onComplete?.())
-        .finally(() => setSaving(false));
-      return;
-    }
-    setDirection(1);
-    const nextStep = step + 1;
-    setStep(nextStep);
-    saveStepProgress(nextStep);
-  }, [step, gymId, refreshProfile, onComplete, saveStepProgress]);
+    // Skip = "not now" → dismiss the ENTIRE wizard and remember it durably so
+    // it never nags again. Previously this only advanced one step, so a user
+    // who "skipped" still saw it next login. Mark the local seen-flag first
+    // (guaranteed), then best-effort mark setup complete in the DB for
+    // cross-device. supabase.rpc/from() returns a thenable without .catch, so
+    // wrap in Promise.resolve before attaching one.
+    markAdminSetupSeen(gymId);
+    setSaving(true);
+    Promise.resolve(
+      gymId
+        ? supabase.from('gyms').update({ setup_completed: true, setup_step: TOTAL_STEPS }).eq('id', gymId)
+        : null
+    )
+      .then(() => refreshProfile())
+      .catch(() => { /* local flag already set — non-fatal */ })
+      .finally(() => {
+        setSaving(false);
+        onComplete?.();
+      });
+  }, [gymId, refreshProfile, onComplete]);
 
   // Animation variants
   const slideVariants = {

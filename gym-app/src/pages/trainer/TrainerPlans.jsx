@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell,
   ClipboardList, Search, ToggleLeft, ToggleRight, ArrowLeft, StickyNote,
@@ -16,6 +17,7 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { enUS as enLocale } from 'date-fns/locale/en-US';
 import { useTranslation } from 'react-i18next';
 import { generateProgram } from '../../lib/workoutGenerator';
+import { generateRoutineName, translateCreativeName } from '../../lib/programNaming';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateWeekPlan, generateDayPlan } from '../../lib/mealPlanner';
 import { MEALS } from '../../data/meals';
@@ -126,16 +128,41 @@ const getMuscleColor = (group) => {
 
 // ── Exercise Search Panel ────────────────────────────────
 const ExerciseSearchPanel = ({ exercises, exSearch, setExSearch, onAdd, exLabel, muscleLabelFor, t }) => {
+  const [muscle, setMuscle] = useState('all');
+  const [equipment, setEquipment] = useState('all');
+  const equipmentLabelFor = useCallback((eq) => (eq ? t(`equipment.${eq}`, eq) : ''), [t]);
+
+  const muscles = useMemo(() => {
+    const present = new Set(exercises.map(e => e.muscle_group).filter(Boolean));
+    return ['all', ...[...present].sort()];
+  }, [exercises]);
+  const equipmentList = useMemo(() => {
+    const present = new Set(exercises.map(e => e.equipment).filter(Boolean));
+    return ['all', ...[...present].sort()];
+  }, [exercises]);
+
   const filteredExercises = useMemo(() => {
-    if (!exSearch.trim()) return exercises;
-    const q = exSearch.toLowerCase();
-    return exercises.filter(e =>
-      e.name.toLowerCase().includes(q) ||
-      e.name_es?.toLowerCase().includes(q) ||
-      e.muscle_group?.toLowerCase().includes(q) ||
-      muscleLabelFor(e.muscle_group)?.toLowerCase().includes(q)
-    );
-  }, [exercises, exSearch, muscleLabelFor]);
+    const q = exSearch.trim().toLowerCase();
+    return exercises.filter(e => {
+      if (muscle !== 'all' && e.muscle_group !== muscle) return false;
+      if (equipment !== 'all' && e.equipment !== equipment) return false;
+      if (!q) return true;
+      return e.name?.toLowerCase().includes(q) ||
+        e.name_es?.toLowerCase().includes(q) ||
+        e.muscle_group?.toLowerCase().includes(q) ||
+        muscleLabelFor(e.muscle_group)?.toLowerCase().includes(q) ||
+        e.equipment?.toLowerCase().includes(q) ||
+        equipmentLabelFor(e.equipment)?.toLowerCase().includes(q);
+    });
+  }, [exercises, exSearch, muscle, equipment, muscleLabelFor, equipmentLabelFor]);
+
+  const chipStyle = (active) => ({
+    padding: '5px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+    whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0,
+    border: `1px solid ${active ? TT.accent : TT.border}`,
+    background: active ? TT.accent : TT.surface2,
+    color: active ? '#fff' : TT.textSub,
+  });
 
   return (
     <div className="space-y-2">
@@ -160,6 +187,24 @@ const ExerciseSearchPanel = ({ exercises, exSearch, setExSearch, onAdd, exLabel,
           </button>
         )}
       </div>
+      {/* Muscle-group filter chips (member-style) */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+        {muscles.map(m => (
+          <button key={m} type="button" onClick={() => setMuscle(m)} style={chipStyle(muscle === m)}>
+            {m === 'all' ? t('trainerPlans.allMuscles', 'All') : muscleLabelFor(m)}
+          </button>
+        ))}
+      </div>
+      {/* Equipment filter chips (only when there's a real choice) */}
+      {equipmentList.length > 2 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+          {equipmentList.map(eq => (
+            <button key={eq} type="button" onClick={() => setEquipment(eq)} style={chipStyle(equipment === eq)}>
+              {eq === 'all' ? t('trainerPlans.allEquipment', 'All equipment') : equipmentLabelFor(eq)}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="space-y-0.5 max-h-[320px] overflow-y-auto overscroll-contain">
         {filteredExercises.length === 0 && (
           <p className="text-[12px] text-center py-4" style={{ color: TT.textMute }}>{t('trainerPlans.noExercisesFound', 'No exercises found')}</p>
@@ -399,12 +444,19 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const [name, setName]             = useState(init.name ?? '');
   const [description, setDesc]      = useState(init.description ?? '');
   const [durationWeeks, setDuration]= useState(init.duration_weeks ?? 4);
+  const PRESET_DURATIONS = [4, 6, 8, 10, 12];
+  const isCustomDuration = !PRESET_DURATIONS.includes(durationWeeks);
+  const setCustomDuration = (raw) => {
+    const v = parseInt(raw, 10);
+    if (!isNaN(v)) setDuration(Math.max(1, Math.min(52, v)));
+  };
   const [weeks, setWeeks]           = useState(() => normalizeWeeks(init.weeks, t));
   const [exercises, setExercises]   = useState([]);
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [copyWeekMenu, setCopyWeekMenu]   = useState(null);
   const [copyDayMenu, setCopyDayMenu]     = useState(null);
   const [saving, setSaving]         = useState(false);
+  const [isDraftSave, setIsDraftSave] = useState(init.is_draft ?? false);
   const [error, setError]           = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -451,7 +503,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   useEffect(() => {
     // exercises table can exceed 1000 rows — paginate to get all of them
     selectAllRows((from, to) =>
-      supabase.from('exercises').select('id, name, name_es, muscle_group').order('name').range(from, to),
+      supabase.from('exercises').select('id, name, name_es, muscle_group, equipment').order('name').range(from, to),
     ).then(({ data, error }) => {
       if (error) console.error('[TrainerPlans] Failed to load exercises:', error);
       setExercises(data || []);
@@ -541,10 +593,18 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       const result = generateProgram(onbWithOverrides, goals || []);
       const clientName = clients.find(c => c.id === clientId)?.full_name || '';
 
-      // Map generator output → plan weeks format
-      // routinesA/B: [{ name, exercises: [{ exerciseId, sets, reps, restSeconds }] }]
-      const mapRoutine = (routine) => routine.map(day => ({
-        name: day.name || day.label || t('trainerPlans.dayPrefix', 'Day {{num}}', { num: '' }).trim(),
+      // Map generator output → plan weeks format.
+      // Day names use the SAME creative pool as the member generator (Apex Build,
+      // Iron Frame, …) instead of "Upper A / Lower B", localized to the current
+      // language and with NO "Auto:" prefix — the client shouldn't see that the
+      // plan was machine-generated. Cardio/rest days (no slotsKey) keep their
+      // themed name. Variant B's name index is bumped past the half-pool so the
+      // A/B weeks pull different names.
+      const nameSeed = result.seed || Math.floor(Math.random() * 100000);
+      const mapRoutine = (routine, isVariantB) => routine.map(day => ({
+        name: day.slotsKey
+          ? translateCreativeName(generateRoutineName(day.slotsKey, (day.variantIndex || 0) + (isVariantB ? 5 : 0), nameSeed))
+          : (day.name || day.label || t('trainerPlans.dayPrefix', 'Day {{num}}', { num: '' }).trim()),
         exercises: (day.exercises || []).map(ex => ({
           id: ex.exerciseId || ex.id,
           sets: ex.sets ?? DEFAULT_SETS,
@@ -554,8 +614,8 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
         })),
       }));
 
-      const routinesA = mapRoutine(result.routinesA || []);
-      const routinesB = mapRoutine(result.routinesB || []);
+      const routinesA = mapRoutine(result.routinesA || [], false);
+      const routinesB = mapRoutine(result.routinesB || [], true);
       const newWeeks = {};
       const newDuration = Math.max(durationWeeks, 4);
       for (let wk = 1; wk <= newDuration; wk++) {
@@ -564,7 +624,9 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
 
       setWeeks(newWeeks);
       setDuration(newDuration);
-      setName(t('trainerPlans.autoNamePrefix', 'Auto: {{splitLabel}} — {{clientName}}', { splitLabel: result.splitLabel || t('trainerPlans.programFallback', 'Program'), clientName }));
+      // Clean, client-facing name — no "Auto:" prefix.
+      const splitLabel = result.splitLabel || t('trainerPlans.programFallback', 'Program');
+      setName(clientName ? `${splitLabel} — ${clientName}` : splitLabel);
       setDesc(t('trainerPlans.autoDescTemplate', '{{split}} split, {{goal}} goal, {{level}} level', { split: result.split, goal: onb.primary_goal || 'general', level: onb.fitness_level || 'intermediate' }));
       setSelectedWeek(1);
     } catch (err) {
@@ -659,8 +721,10 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
     return kept;
   };
 
-  const handleSave = () => {
-    if (!clientId) { setError(t('trainerPlans.selectClientError', 'Please select a client.')); return; }
+  // Client is OPTIONAL — a plan with no client is a generic template/draft.
+  const handleSave = (opts = {}) => {
+    const draft = !!opts.draft;
+    setIsDraftSave(draft);
     if (!name.trim()) { setError(t('trainerPlans.nameRequired', 'Plan name is required.')); return; }
     const prunedWithContent = Object.entries(weeks)
       .filter(([wk, days]) => Number(wk) > durationWeeks
@@ -671,10 +735,13 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       setConfirmPrune({ prunedWeeks: prunedWithContent });
       return;
     }
-    doSave();
+    doSave(draft);
   };
 
-  const doSave = async () => {
+  const doSave = async (draftArg) => {
+    // Called directly and from the prune dialog (which passes no boolean) —
+    // fall back to the intent captured in handleSave.
+    const draft = typeof draftArg === 'boolean' ? draftArg : isDraftSave;
     setConfirmPrune(null);
     setSaving(true);
     setError('');
@@ -682,12 +749,14 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       const payload = {
         gym_id: gymId,
         trainer_id: trainerId,
-        client_id: clientId,
+        client_id: clientId || null,
         name: name.trim(),
         description: description.trim(),
         duration_weeks: durationWeeks,
         weeks: buildWeeksPayload(),
-        is_active: plan?.is_active ?? true,
+        is_draft: draft,
+        // A draft is never an active assignment; published plans keep their state.
+        is_active: draft ? false : (plan?.is_active ?? true),
         updated_at: new Date().toISOString(),
       };
       const { error: err } = isEdit
@@ -755,11 +824,18 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               style={{ color: TT.text }}
             />
           </div>
-          <button onClick={handleSave} disabled={saving || !name?.trim()}
-            className="px-4 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-50 transition-colors whitespace-nowrap min-h-[44px]"
-            style={{ backgroundColor: TT.accent, color: '#06363B' }}>
-            {saving ? t('trainerPlans.saving', 'Saving...') : isEdit ? t('trainerPlans.saveChanges', 'Save') : t('trainerPlans.createPlan', 'Create')}
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => handleSave({ draft: true })} disabled={saving || !name?.trim()}
+              className="px-3 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-50 transition-colors whitespace-nowrap min-h-[44px]"
+              style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
+              {t('trainerPlans.saveDraft', 'Draft')}
+            </button>
+            <button onClick={() => handleSave()} disabled={saving || !name?.trim()}
+              className="px-4 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-50 transition-colors whitespace-nowrap min-h-[44px]"
+              style={{ backgroundColor: TT.accent, color: '#06363B' }}>
+              {saving ? t('trainerPlans.saving', 'Saving...') : isEdit ? t('trainerPlans.saveChanges', 'Save') : t('trainerPlans.createPlan', 'Create')}
+            </button>
+          </div>
         </div>
 
         {/* Row 2: Client selector + Status + Auto-generate */}
@@ -767,7 +843,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           <select value={clientId} onChange={e => setClientId(e.target.value)} disabled={isEdit}
             className="bg-transparent text-[13px] outline-none disabled:opacity-60 max-w-[200px] sm:max-w-[180px] truncate cursor-pointer py-2 min-h-[44px]"
             style={{ color: TT.textSub }}>
-            <option value="">{t('trainerPlans.selectClient', 'Select client...')}</option>
+            <option value="">{t('trainerPlans.noClientGeneric', 'No client (generic plan)')}</option>
             {/* Assigned client no longer in the active list (deactivated) —
                 keep an option so the select shows their name, not the
                 placeholder. The select is disabled on edit anyway. */}
@@ -779,10 +855,12 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
             {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
           </select>
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-            style={(plan?.is_active ?? true)
-              ? { background: TT.goodSoft, color: TT.goodInk }
-              : { background: TT.surface2, color: TT.textMute }}>
-            {(plan?.is_active ?? true) ? t('trainerPlans.active', 'Active') : t('trainerPlans.inactive', 'Inactive')}
+            style={isDraftSave
+              ? { background: TT.warnSoft, color: TT.warnInk }
+              : (plan?.is_active ?? true)
+                ? { background: TT.goodSoft, color: TT.goodInk }
+                : { background: TT.surface2, color: TT.textMute }}>
+            {isDraftSave ? t('trainerPlans.draft', 'Draft') : (plan?.is_active ?? true) ? t('trainerPlans.active', 'Active') : t('trainerPlans.inactive', 'Inactive')}
           </span>
           <div className="flex-1" />
           {clientId && clientProfile?.onboarding && (
@@ -929,7 +1007,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           <div className="flex items-center gap-2 mb-3">
             <p className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: TT.textMute }}>{t('trainerPlans.duration', 'Duration')}</p>
             <div className="flex gap-1.5 flex-wrap">
-              {[4, 6, 8, 10, 12].map(w => (
+              {PRESET_DURATIONS.map(w => (
                 <button key={w} onClick={() => setDuration(w)}
                   className="px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors min-h-[44px] min-w-[44px]"
                   style={durationWeeks === w
@@ -939,6 +1017,16 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                   {w}{t('trainerPlans.wSuffix', 'w')}
                 </button>
               ))}
+              {/* Custom weeks — uneven counts, 12+ */}
+              <div className="flex items-center gap-1 px-2.5 rounded-lg min-h-[44px]"
+                style={isCustomDuration ? { backgroundColor: TT.accent } : { backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
+                <input type="number" inputMode="numeric" min={1} max={52} value={durationWeeks}
+                  onChange={e => setCustomDuration(e.target.value)}
+                  aria-label={t('trainerPlans.customWeeks', 'Custom weeks')}
+                  className="w-9 bg-transparent text-center text-[12px] font-semibold outline-none"
+                  style={{ color: isCustomDuration ? '#06363B' : TT.text }} />
+                <span className="text-[11px] font-semibold" style={{ color: isCustomDuration ? '#06363B' : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
+              </div>
             </div>
           </div>
           {/* Week horizontal scroller */}
@@ -969,8 +1057,8 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
             {/* Duration selector */}
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: TT.textMute }}>{t('trainerPlans.duration', 'Duration')}</p>
-              <div className="flex gap-1.5">
-                {[4, 6, 8, 10, 12].map(w => {
+              <div className="flex gap-1.5 flex-wrap">
+                {PRESET_DURATIONS.map(w => {
                   const active = durationWeeks === w;
                   return (
                     <button key={w} onClick={() => setDuration(w)}
@@ -982,6 +1070,16 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                     </button>
                   );
                 })}
+                {/* Custom weeks — uneven counts, 12+ */}
+                <div className="flex items-center gap-1 px-2 rounded-xl min-h-[44px]"
+                  style={isCustomDuration ? { background: TT.accentSoft, border: `1px solid ${TT.accent}` } : { background: TT.surface, border: `1px solid ${TT.border}` }}>
+                  <input type="number" inputMode="numeric" min={1} max={52} value={durationWeeks}
+                    onChange={e => setCustomDuration(e.target.value)}
+                    aria-label={t('trainerPlans.customWeeks', 'Custom weeks')}
+                    className="w-9 bg-transparent text-center text-[12px] font-semibold outline-none"
+                    style={{ color: isCustomDuration ? TT.accentInk : TT.text }} />
+                  <span className="text-[11px] font-semibold" style={{ color: isCustomDuration ? TT.accentInk : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
+                </div>
               </div>
             </div>
 
@@ -1146,7 +1244,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                 style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
                 {t('trainerPlans.cancel', 'Cancel')}
               </button>
-              <button onClick={doSave}
+              <button onClick={() => doSave()}
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
                 style={{ background: TT.hotSoft, color: TT.hot }}>
                 {t('trainerPlans.prunedWeeksConfirm', 'Save and remove')}
@@ -1222,7 +1320,7 @@ export default function TrainerPlans() {
   const [mealPlansLoading, setMealPlansLoading] = useState(true);
   const [mealFilterStatus, setMealFilterStatus] = useState('active');
   const [showMealModal, setShowMealModal] = useState(false);
-  const [mealForm, setMealForm] = useState({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '' });
+  const [mealForm, setMealForm] = useState({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4 });
   const [mealSaving, setMealSaving] = useState(false);
   const [mealClientProfile, setMealClientProfile] = useState(null);
   const [mealGoalOverride, setMealGoalOverride] = useState(null);
@@ -1363,16 +1461,57 @@ export default function TrainerPlans() {
   // Manual meal picker state
   const [mealPickerSlot, setMealPickerSlot] = useState(null); // { dayIdx, mealIdx } or null
   const [mealSearch, setMealSearch] = useState('');
+  // Trainer's private custom meals (custom_meals table) — usable in plans and
+  // visible only to the trainer (+ super-admin). Map DB rows to the meal shape.
+  const [customMeals, setCustomMeals] = useState([]);
+  const [showAddMeal, setShowAddMeal] = useState(false);
+  const [newMeal, setNewMeal] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+  const [savingNewMeal, setSavingNewMeal] = useState(false);
+  const customMealToMeal = (r) => ({
+    id: `custom_${r.id}`,
+    title: r.name, title_es: r.name_es || r.name,
+    calories: Number(r.calories) || 0, protein: Number(r.protein_g) || 0,
+    carbs: Number(r.carbs_g) || 0, fat: Number(r.fat_g) || 0,
+    category: r.category || 'custom', custom: true, image: null,
+  });
+  useEffect(() => {
+    if (!showMealModal || !profile?.id) return;
+    let alive = true;
+    supabase.from('custom_meals').select('*').eq('created_by', profile.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { if (alive) setCustomMeals((data || []).map(customMealToMeal)); });
+    return () => { alive = false; };
+  }, [showMealModal, profile?.id]);
+  const addCustomMeal = async () => {
+    if (!newMeal.name.trim() || savingNewMeal) return;
+    setSavingNewMeal(true);
+    const { data, error } = await supabase.from('custom_meals').insert({
+      created_by: profile.id, gym_id: profile.gym_id || null,
+      name: newMeal.name.trim(),
+      calories: Number(newMeal.calories) || 0, protein_g: Number(newMeal.protein) || 0,
+      carbs_g: Number(newMeal.carbs) || 0, fat_g: Number(newMeal.fat) || 0,
+      category: 'custom',
+    }).select('*').single();
+    setSavingNewMeal(false);
+    if (error) { showToast(t('trainerPlans.addMealFailed', 'Could not add meal'), 'error'); return; }
+    const meal = customMealToMeal(data);
+    setCustomMeals(prev => [meal, ...prev]);
+    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+    setShowAddMeal(false);
+    pickMeal(meal); // use the new meal immediately in the open slot
+  };
   // True once the trainer swapped/hand-picked a meal — Regenerate confirms
   // before throwing that work away.
   const [mealsDirty, setMealsDirty] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  // Trainer's custom meals first, then the shared catalog.
+  const pickableMeals = [...customMeals, ...MEALS];
   const filteredMeals = mealSearch.trim()
-    ? MEALS.filter(m => {
+    ? pickableMeals.filter(m => {
         const q = mealSearch.toLowerCase();
         return (m.title?.toLowerCase().includes(q) || m.title_es?.toLowerCase().includes(q) || m.category?.toLowerCase().includes(q));
-      }).slice(0, 30)
-    : MEALS.slice(0, 30);
+      }).slice(0, 40)
+    : pickableMeals.slice(0, 40);
 
   const pickMeal = (meal) => {
     if (!mealPickerSlot) return;
@@ -1518,6 +1657,10 @@ export default function TrainerPlans() {
       meals: (day.meals || []).map(m => ({ id: m.id, slotType: m.slotType || m.slot, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime })),
       totals: day.totals,
     })) : [];
+    // Plan length → duration_weeks + an end_date the member view counts against.
+    const durWeeks = Math.max(1, Math.min(52, parseInt(mealForm.duration_weeks, 10) || 1));
+    const startDate = new Date();
+    const endDate = new Date(startDate.getTime() + durWeeks * 7 * 86400000);
     const { error } = await supabase.from('trainer_meal_plans').insert({
       gym_id: profile.gym_id,
       trainer_id: profile.id,
@@ -1528,6 +1671,8 @@ export default function TrainerPlans() {
       target_protein_g: mealForm.target_protein_g ? parseInt(mealForm.target_protein_g) : null,
       target_carbs_g: mealForm.target_carbs_g ? parseInt(mealForm.target_carbs_g) : null,
       target_fat_g: mealForm.target_fat_g ? parseInt(mealForm.target_fat_g) : null,
+      duration_weeks: durWeeks,
+      end_date: endDate.toISOString().split('T')[0],
       meals: mealsJson,
     });
     if (error) {
@@ -1537,7 +1682,7 @@ export default function TrainerPlans() {
     }
     setMealSaving(false);
     setShowMealModal(false);
-    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '' });
+    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4 });
     setGeneratedMeals(null);
     setMealStep('settings');
     loadMealPlans();
@@ -1651,9 +1796,10 @@ export default function TrainerPlans() {
 
   const filtered = useMemo(() => {
     let result = plans;
-    // Status filter
-    if (filterStatus === 'active') result = result.filter(p => p.is_active);
-    else if (filterStatus === 'archived') result = result.filter(p => !p.is_active);
+    // Status filter — drafts are their own bucket, excluded from active/archived.
+    if (filterStatus === 'active') result = result.filter(p => p.is_active && !p.is_draft);
+    else if (filterStatus === 'archived') result = result.filter(p => !p.is_active && !p.is_draft);
+    else if (filterStatus === 'draft') result = result.filter(p => p.is_draft);
     // Client filter
     if (filterClient !== 'all') result = result.filter(p => p.client_id === filterClient);
     return result;
@@ -1892,6 +2038,7 @@ export default function TrainerPlans() {
               <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto', alignItems: 'center' }} className="scrollbar-hide">
                 {[
                   { key: 'active',   label: t('trainerPlans.active', 'Active') },
+                  { key: 'draft',    label: t('trainerPlans.drafts', 'Drafts') },
                   { key: 'all',      label: t('trainerPlans.statusAll', 'All') },
                   { key: 'archived', label: t('trainerPlans.archives', 'Archives') },
                 ].map((tab) => (
@@ -2000,7 +2147,11 @@ export default function TrainerPlans() {
                               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                               minWidth: 0,
                             }}>{plan.name}</span>
-                            {!plan.is_active && (
+                            {plan.is_draft ? (
+                              <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>
+                                {t('trainerPlans.draftBadge', 'DRAFT')}
+                              </TPill>
+                            ) : !plan.is_active && (
                               <TPill tone="neutral" size="s" style={{ flexShrink: 0 }}>
                                 {t('trainerPlans.inactiveBadge', 'INACTIVE')}
                               </TPill>
@@ -2010,9 +2161,11 @@ export default function TrainerPlans() {
                             fontSize: 11.5, color: TT.textSub, marginTop: 2,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                           }}>
-                            {type} · {plan.duration_weeks || 0} {t('trainerPlans.weeks', 'weeks')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {assignedCount === 1
-                              ? t('trainerPlans.assigned_one', '{{count}} client', { count: assignedCount })
-                              : t('trainerPlans.assigned_other', '{{count}} clients', { count: assignedCount })}
+                            {type} · {plan.duration_weeks || 0} {t('trainerPlans.weeks', 'weeks')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {assignedCount === 0
+                              ? t('trainerPlans.genericPlan', 'Generic')
+                              : assignedCount === 1
+                                ? t('trainerPlans.assigned_one', '{{count}} client', { count: assignedCount })
+                                : t('trainerPlans.assigned_other', '{{count}} clients', { count: assignedCount })}
                           </div>
                         </div>
                         <button
@@ -2209,9 +2362,12 @@ export default function TrainerPlans() {
         <div style={{ height: 90 }} />
       </div>
 
-      {/* ── Meal Plan Creation Modal (2-step: Settings → Meals) ── */}
-      {showMealModal && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }}>
+      {/* ── Meal Plan Creation Modal (2-step: Settings → Meals) ──
+          Portaled to <body> so it escapes any ancestor stacking context and
+          always sits above the trainer header + bottom nav (was rendering
+          "behind" them). */}
+      {showMealModal && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }}>
           <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
@@ -2317,6 +2473,31 @@ export default function TrainerPlans() {
                             placeholder={placeholder} className="w-full bg-transparent text-[20px] font-bold outline-none" style={{ color: TT.text }} />
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Plan length — how many weeks the client follows this plan */}
+                  <div>
+                    <label className="text-[12px] font-medium mb-2 block" style={{ color: TT.textSub }}>{t('trainerPlans.planLength', 'Plan length')}</label>
+                    <div className="flex gap-1.5 flex-wrap items-center">
+                      {[1, 2, 4, 6, 8, 12].map(w => (
+                        <button key={w} type="button" onClick={() => setMealForm(f => ({ ...f, duration_weeks: w }))}
+                          className="px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors min-h-[44px] min-w-[44px]"
+                          style={Number(mealForm.duration_weeks) === w
+                            ? { backgroundColor: TT.accent, color: '#06363B' }
+                            : { backgroundColor: TT.surface2, color: TT.textMute, border: `1px solid ${TT.border}` }}>
+                          {w}{t('trainerPlans.wSuffix', 'w')}
+                        </button>
+                      ))}
+                      <div className="flex items-center gap-1 px-2.5 rounded-lg min-h-[44px]"
+                        style={![1, 2, 4, 6, 8, 12].includes(Number(mealForm.duration_weeks)) ? { backgroundColor: TT.accent } : { backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
+                        <input type="number" inputMode="numeric" min={1} max={52} value={mealForm.duration_weeks}
+                          onChange={e => { const v = parseInt(e.target.value, 10); setMealForm(f => ({ ...f, duration_weeks: isNaN(v) ? '' : Math.max(1, Math.min(52, v)) })); }}
+                          aria-label={t('trainerPlans.customWeeks', 'Custom weeks')}
+                          className="w-9 bg-transparent text-center text-[12px] font-semibold outline-none"
+                          style={{ color: ![1, 2, 4, 6, 8, 12].includes(Number(mealForm.duration_weeks)) ? '#06363B' : TT.text }} />
+                        <span className="text-[11px] font-semibold" style={{ color: ![1, 2, 4, 6, 8, 12].includes(Number(mealForm.duration_weeks)) ? '#06363B' : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2445,6 +2626,34 @@ export default function TrainerPlans() {
                                   className="w-full rounded-xl pl-10 pr-4 py-2.5 text-[16px] sm:text-[14px] outline-none"
                                   style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
                               </div>
+                              {/* Add your own meal → saved to the trainer's private custom-meal library */}
+                              <button type="button" onClick={() => setShowAddMeal(s => !s)}
+                                className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12.5px] font-bold"
+                                style={{ background: TT.accentSoft, color: TT.accentInk, border: `1px dashed ${TT.accent}` }}>
+                                <Plus size={14} /> {t('trainerPlans.addCustomMeal', 'Add your own meal')}
+                              </button>
+                              {showAddMeal && (
+                                <div className="mt-2 rounded-xl p-3 space-y-2" style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}>
+                                  <input value={newMeal.name} onChange={e => setNewMeal(n => ({ ...n, name: e.target.value }))}
+                                    placeholder={t('trainerPlans.mealName', 'Meal name')}
+                                    className="w-full rounded-lg px-3 py-2 text-[16px] sm:text-[14px] outline-none"
+                                    style={{ background: TT.surface, border: `1px solid ${TT.border}`, color: TT.text }} />
+                                  <div className="grid grid-cols-4 gap-2">
+                                    {[['calories', t('trainerNotes.nutrition.cal', 'Cal')], ['protein', t('trainerClientDetail.macros.gramsProtein', 'P')], ['carbs', t('trainerClientDetail.macros.gramsCarbs', 'C')], ['fat', t('trainerClientDetail.macros.gramsFat', 'F')]].map(([k, lab]) => (
+                                      <input key={k} type="number" inputMode="numeric" min="0" value={newMeal[k]} onChange={e => setNewMeal(n => ({ ...n, [k]: e.target.value }))}
+                                        placeholder={lab}
+                                        className="w-full rounded-lg px-2 py-2 text-[14px] text-center outline-none"
+                                        style={{ background: TT.surface, border: `1px solid ${TT.border}`, color: TT.text }} />
+                                    ))}
+                                  </div>
+                                  <button type="button" onClick={addCustomMeal} disabled={!newMeal.name.trim() || savingNewMeal}
+                                    className="w-full py-2 rounded-lg text-[13px] font-bold disabled:opacity-40 flex items-center justify-center gap-1.5"
+                                    style={{ background: TT.accent, color: '#06363B' }}>
+                                    {savingNewMeal ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                    {t('trainerPlans.saveAndUseMeal', 'Save & use')}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                             <div className="flex-1 overflow-y-auto p-2">
                               {filteredMeals.map(meal => {
@@ -2461,7 +2670,14 @@ export default function TrainerPlans() {
                                       </div>
                                     )}
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-[13px] font-semibold truncate">{title}</p>
+                                      <p className="text-[13px] font-semibold truncate flex items-center gap-1.5">
+                                        <span className="truncate">{title}</span>
+                                        {meal.custom && (
+                                          <span className="shrink-0 text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: TT.accentSoft, color: TT.accentInk }}>
+                                            {t('trainerPlans.customTag', 'Custom')}
+                                          </span>
+                                        )}
+                                      </p>
                                       <div className="flex items-center gap-2.5 mt-0.5 text-[10px]">
                                         <span style={{ color: TT.accent }}>{meal.calories} {t('common:cal', 'cal')}</span>
                                         <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
@@ -2504,7 +2720,8 @@ export default function TrainerPlans() {
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Delete confirmation modal */}

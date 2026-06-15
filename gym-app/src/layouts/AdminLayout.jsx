@@ -12,6 +12,7 @@ import { InsightsRangeProvider } from '../contexts/InsightsRangeContext';
 import { supabase } from '../lib/supabase';
 import UserAvatar from '../components/UserAvatar';
 import AdminTour from '../components/admin/AdminTour';
+import { isAdminSetupSeen } from '../lib/adminSetupSeen';
 
 const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboardingWizard'));
 const ScanFeedback = lazy(() => import('../components/admin/ScanFeedback'));
@@ -141,12 +142,15 @@ export default function AdminLayout({ children }) {
   useEffect(() => {
     if (!profile?.gym_id) return;
     const page = location.pathname.replace('/admin', '') || '/';
-    // Initial heartbeat
-    supabase.rpc('admin_heartbeat', { p_page: page }).catch(() => {});
+    // Initial heartbeat. supabase.rpc() returns a thenable PostgrestBuilder,
+    // NOT a real Promise — it has .then() but no .catch(). Wrap in
+    // Promise.resolve() so the fire-and-forget .catch() doesn't throw
+    // synchronously and take down the whole AdminLayout via the ErrorBoundary.
+    Promise.resolve(supabase.rpc('admin_heartbeat', { p_page: page })).catch(() => {});
     // Periodic heartbeat every 60s
     const interval = setInterval(() => {
       const currentPage = location.pathname.replace('/admin', '') || '/';
-      supabase.rpc('admin_heartbeat', { p_page: currentPage }).catch(() => {});
+      Promise.resolve(supabase.rpc('admin_heartbeat', { p_page: currentPage })).catch(() => {});
     }, 60_000);
     return () => clearInterval(interval);
   }, [profile?.gym_id, location.pathname]);
@@ -176,10 +180,14 @@ export default function AdminLayout({ children }) {
   // the wizard the first time they enter the admin view.
   const isAdminEntitled = availableRoles?.some(r => r === 'admin' || r === 'super_admin');
   useEffect(() => {
-    if (isAdminEntitled && gymConfig.setupCompleted === false) {
-      setShowOnboardingWizard(true);
-    }
-  }, [isAdminEntitled, gymConfig.setupCompleted]);
+    if (!isAdminEntitled || gymConfig.setupCompleted !== false) return;
+    // Respect a durable per-browser "already dismissed" flag. gyms.setup_completed
+    // is the cross-device source of truth, but if that write is ever flaky the
+    // admin must not be re-nagged on every login — this local gate guarantees
+    // skip/complete sticks. Set by AdminOnboardingWizard on both paths.
+    if (isAdminSetupSeen(profile?.gym_id)) return;
+    setShowOnboardingWizard(true);
+  }, [isAdminEntitled, gymConfig.setupCompleted, profile?.gym_id]);
 
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
 

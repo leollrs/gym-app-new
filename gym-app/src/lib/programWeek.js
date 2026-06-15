@@ -1,14 +1,14 @@
 // Program week math.
 //
-// The user thinks of "this week" as the calendar week (Sun → Sat) that
-// contains today. Anniversary math (`floor(days_since_start / 7) + 1`) breaks
-// for any mid-week signup: a Thursday-start program kept the user on "Week 1"
-// through the following Wednesday, even though Sunday's roll-over should have
-// moved them into Week 2 already.
+// Anniversary-based: Week 1 = the first 7 days from `programStart`, Week 2 the
+// next 7, and so on. A freshly-created program holds Week 1 for a full week
+// instead of jumping to Week 2 at the next calendar Sunday — the old
+// calendar-week math bumped a Saturday signup to Week 2 the very next day, and
+// a timezone-shifted start could read Week 2 immediately on creation.
 //
-// `getProgramWeekNum` returns the 1-indexed calendar-week index since the
-// week containing `programStart`. Pair it with
-// `getTotalProgramWeeks(program)` so the "Week X of Y" pill stays consistent.
+// Pair with `getTotalProgramWeeks(program)` so the "Week X of Y" pill stays
+// consistent. NOTE: pause/resume backdating in personalProgramService.js
+// mirrors this math — keep the two in sync.
 
 const startOfDay = (d) => {
   const x = new Date(d);
@@ -16,18 +16,13 @@ const startOfDay = (d) => {
   return x;
 };
 
-const startOfCalendarWeek = (d) => {
-  const x = startOfDay(d);
-  x.setDate(x.getDate() - x.getDay()); // Sunday-anchored
-  return x;
-};
-
 export function getProgramWeekNum(programStart, today = new Date()) {
   if (!programStart) return 0;
-  const startSunday = startOfCalendarWeek(programStart);
+  const startMid = startOfDay(programStart);
   const todayMid = startOfDay(today);
-  const days = Math.floor((todayMid - startSunday) / 86400000);
-  return Math.floor(days / 7) + 1;
+  const days = Math.floor((todayMid - startMid) / 86400000);
+  // Clamp to >=1 so a start that parses a day ahead (timezone edge) never reads week 0.
+  return Math.max(1, Math.floor(days / 7) + 1);
 }
 
 export function getTotalProgramWeeks(program) {

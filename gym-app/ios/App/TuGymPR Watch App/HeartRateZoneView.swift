@@ -15,6 +15,17 @@ struct HeartRateZoneView: View {
         zones.first { $0.0 == workoutSession.heartRateZone }?.2 ?? DS.zoneCardio
     }
 
+    /// Fully-localized zone eyebrow. The enum rawValue is English-only, so the
+    /// old `rawValue + tr("ZONE","ZONA")` rendered "CARDIO ZONA" in Spanish.
+    private func zoneLabel(_ zone: HeartRateZone) -> String {
+        switch zone {
+        case .warmup:  return session.tr("WARM UP ZONE", "ZONA CALENTAMIENTO")
+        case .fatBurn: return session.tr("FAT BURN ZONE", "ZONA QUEMA GRASA")
+        case .cardio:  return session.tr("CARDIO ZONE", "ZONA CARDIO")
+        case .peak:    return session.tr("PEAK ZONE", "ZONA PICO")
+        }
+    }
+
     @EnvironmentObject var session: WatchSessionManager
 
     var body: some View {
@@ -49,10 +60,12 @@ struct HeartRateZoneView: View {
             }
 
             // Zone label eyebrow
-            Text(workoutSession.heartRateZone.rawValue.uppercased() + " " + session.tr("ZONE", "ZONA"))
+            Text(zoneLabel(workoutSession.heartRateZone))
                 .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .kerning(0.6)
                 .foregroundColor(currentZoneColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
             // 4-segment zone bar (matches reference HR face)
             HStack(spacing: 3) {

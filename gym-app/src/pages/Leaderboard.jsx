@@ -652,14 +652,12 @@ const Leaderboard = ({ embedded = false }) => {
   // ranking is intact). Applied to the DATA so every surface — podium, preview
   // cards, expanded list — is consistent. friendIds may still be empty on first
   // paint; friends reveal automatically once it loads (it's in the deps).
-  const anonymize = useCallback((entries) => {
-    if (!Array.isArray(entries)) return entries;
-    return entries.map((e) =>
-      (e && (e.id === uid || friendIds.has(e.id)))
-        ? e
-        : { ...e, name: t('leaderboard.anonMember', 'Member'), avatar: null, username: null, anon: true }
-    );
-  }, [uid, friendIds, t]);
+  // Gym leaderboards show every listed member's real name + avatar. Members who
+  // don't want to appear opt out via the leaderboard-visibility toggle, which
+  // the RPCs already enforce (WHERE p.leaderboard_visible = TRUE) — so everyone
+  // shown has consented. (Previously non-friends were blanked to an anonymous
+  // "Member", which isn't useful for a gym community.)
+  const anonymize = useCallback((entries) => entries, []);
 
   const aVolume       = useMemo(() => anonymize(volume.data),       [volume.data, anonymize]);
   const aWorkouts     = useMemo(() => anonymize(workouts.data),     [workouts.data, anonymize]);
@@ -895,12 +893,9 @@ const Leaderboard = ({ embedded = false }) => {
                 {milestones.data.slice(0, 5).map(entry => {
                   const cfg = MILESTONE_CFG[entry.type] ?? { icon: Sparkles, color: ACCENT, label: (d, t) => t('leaderboard.milestone') };
                   const MIcon = cfg.icon;
-                  // Same privacy rule as the boards: only reveal real names for
-                  // yourself + friends. Match on profile_id (the row's `id` is the
-                  // milestone-event PK, NOT the profile UUID, so anonymize() can't
-                  // be reused here).
-                  const isSelfOrFriend = entry.profile_id === uid || friendIds.has(entry.profile_id);
-                  const displayName = isSelfOrFriend ? entry.name : t('leaderboard.anonMember', 'Member');
+                  // Real names: get_milestone_feed already opt-in filters by
+                  // leaderboard_visible, so everyone shown has consented.
+                  const displayName = entry.name;
                   return (
                     <div key={entry.id} className="flex items-center gap-3 py-2.5 last:border-0" style={{ borderBottom: '1px solid var(--color-border, rgba(200,200,200,0.08))' }}>
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `color-mix(in srgb, ${cfg.color} 10%, transparent)` }}>

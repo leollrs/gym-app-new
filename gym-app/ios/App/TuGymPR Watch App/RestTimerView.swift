@@ -63,6 +63,11 @@ struct RestTimerView: View {
                 Button {
                     countdown += 30
                     totalDuration = max(totalDuration, countdown)
+                    // If the timer already expired it was invalidated — restart
+                    // it so the added time actually counts down instead of
+                    // sitting frozen at 0:30.
+                    hasNotified = false
+                    startLocalCountdown()
                     WKInterfaceDevice.current().play(.click)
                 } label: {
                     Text("+30s")

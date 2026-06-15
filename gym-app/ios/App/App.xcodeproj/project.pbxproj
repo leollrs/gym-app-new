@@ -44,11 +44,11 @@
 		BA9170BFFF9F1B3CA82D1840 /* WorkoutSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A434F2C1C19F03605D7A4A6 /* WorkoutSummaryView.swift */; };
 		BC09EC3355AAA66143F6286B /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3294E4E5654B9CF76BCF60B4 /* ActiveWorkoutView.swift */; };
 		BF5F63E0BAA9E50896377EFD /* WatchSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B0988A94CC5E9A5B4FE3F9 /* WatchSessionManager.swift */; };
-		D246FF9902F6DA6E668F2FA2 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C742B0DF62AA337106B6FF3 /* LiveActivityPlugin.swift */; };
 		BL01AA11BB22CC33DD44EE55 /* BackgroundLocationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BL99FF88EE77DD66CC55BB44 /* BackgroundLocationPlugin.swift */; };
+		D246FF9902F6DA6E668F2FA2 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C742B0DF62AA337106B6FF3 /* LiveActivityPlugin.swift */; };
+		FF0AB5165FA433283A04AD40 /* TuGymPRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F9CC45A5BEBAE50BBE3A446 /* TuGymPRApp.swift */; };
 		IG01AA22BB33CC44DD55EE66 /* InstagramSharePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = IG99FF88EE77DD66CC55BB44 /* InstagramSharePlugin.swift */; };
 		SS01AA22BB33CC44DD55EE66 /* SocialSharePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS99FF88EE77DD66CC55BB44 /* SocialSharePlugin.swift */; };
-		FF0AB5165FA433283A04AD40 /* TuGymPRApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F9CC45A5BEBAE50BBE3A446 /* TuGymPRApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,9 +113,6 @@
 		3294E4E5654B9CF76BCF60B4 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
 		371B6B3F284B551A1CE290C5 /* DesignSystem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		4C742B0DF62AA337106B6FF3 /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
-		BL99FF88EE77DD66CC55BB44 /* BackgroundLocationPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundLocationPlugin.swift; sourceTree = "<group>"; };
-		IG99FF88EE77DD66CC55BB44 /* InstagramSharePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InstagramSharePlugin.swift; sourceTree = "<group>"; };
-		SS99FF88EE77DD66CC55BB44 /* SocialSharePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SocialSharePlugin.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -153,11 +150,14 @@
 		B17137942F6F62F400B2C367 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		B17137962F6F62F400B2C367 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		B17137B62F6F637C00B2C367 /* WorkoutActivityWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WorkoutActivityWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BL99FF88EE77DD66CC55BB44 /* BackgroundLocationPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundLocationPlugin.swift; sourceTree = "<group>"; };
 		C077625A4BC216FDB749B8E4 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C35734DAAEB75D4D53037E9A /* WorkoutActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkoutActivityAttributes.swift; sourceTree = "<group>"; };
 		E81F010895C2E9D45D078439 /* WatchConnectivity.framework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
 		FA0E8499DBF211F1636EBAC3 /* RestTimerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RestTimerView.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
+		IG99FF88EE77DD66CC55BB44 /* InstagramSharePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InstagramSharePlugin.swift; sourceTree = "<group>"; };
+		SS99FF88EE77DD66CC55BB44 /* SocialSharePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SocialSharePlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -781,7 +781,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
@@ -811,7 +811,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
@@ -839,6 +839,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
@@ -847,7 +848,7 @@
 				CODE_SIGN_ENTITLEMENTS = "TuGymPR Watch App/TuGymPR Watch App.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -878,7 +879,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -888,6 +889,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
@@ -896,7 +898,7 @@
 				CODE_SIGN_ENTITLEMENTS = "TuGymPR Watch App/TuGymPR Watch App.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -925,7 +927,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
@@ -940,7 +942,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -975,7 +977,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1007,7 +1009,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1041,7 +1043,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1075,7 +1077,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1118,7 +1120,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2605120200;
+				CURRENT_PROJECT_VERSION = 2606140002;
 				DEVELOPMENT_TEAM = J3L5DWU6FT;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;

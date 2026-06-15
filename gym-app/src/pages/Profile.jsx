@@ -21,6 +21,7 @@ import { validateImageFile } from '../lib/validateImage';
 import { stripExif } from '../lib/stripExif';
 import logger from '../lib/logger';
 import AvatarPicker from '../components/AvatarPicker';
+import MyTrainerCard from '../components/MyTrainerCard';
 import UserAvatar from '../components/UserAvatar';
 import ShareAchievementSheet from '../components/share/ShareAchievementSheet';
 import ShareMonthSheet from '../components/share/ShareMonthSheet';
@@ -1018,6 +1019,9 @@ const Profile = () => {
           <ChevronRight size={18} className="text-[#60A5FA]/60 flex-shrink-0" />
         </button>
       )}
+
+      {/* ── My Trainer card (only when the member has an active trainer) ──── */}
+      <MyTrainerCard />
 
       {/* ── Underline tabs (Profile A) ──────────────────────────────────── */}
       <div

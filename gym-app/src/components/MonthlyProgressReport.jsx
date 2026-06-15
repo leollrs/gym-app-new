@@ -538,8 +538,8 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
   if (isModal && !isOpen) return null;
 
   const content = (
-    <div data-swipe-ignore role={isModal ? 'dialog' : undefined} aria-modal={isModal ? 'true' : undefined} aria-labelledby="monthly-report-title" className={`${isModal ? 'fixed inset-0 z-50 backdrop-blur-xl bg-black/60 flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)]' : 'w-full bg-[var(--color-bg-primary)]'}`}>
-      <div className={`w-full ${isModal ? 'max-w-2xl mx-auto mt-12 mb-4 md:my-8 px-3' : 'max-w-2xl mx-auto'}`}>
+    <div data-swipe-ignore role={isModal ? 'dialog' : undefined} aria-modal={isModal ? 'true' : undefined} aria-labelledby="monthly-report-title" className={`${isModal ? 'fixed inset-0 z-[100] backdrop-blur-xl bg-black/60 flex items-start justify-center overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]' : 'w-full bg-[var(--color-bg-primary)]'}`}>
+      <div className={`w-full ${isModal ? 'max-w-2xl mx-auto mt-12 mb-8 md:my-8 px-3' : 'max-w-2xl mx-auto'}`}>
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: -12 }}
