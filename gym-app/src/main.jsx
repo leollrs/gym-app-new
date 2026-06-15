@@ -12,6 +12,7 @@ import App from './App.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
+import LaunchSplash from './components/LaunchSplash.jsx';
 import Toast from './components/Toast.jsx';
 import StuckLoadingRecovery from './components/StuckLoadingRecovery.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -854,6 +855,7 @@ const renderApp = () => {
               <ThemeProvider>
                 <ToastProvider>
                   <AuthProvider>
+                    <LaunchSplash />
                     <App />
                   </AuthProvider>
                   <Toast />
