@@ -1508,6 +1508,21 @@ export default function TrainerPlans() {
       .then(({ data }) => { if (alive) setCustomMeals((data || []).map(customMealToMeal)); });
     return () => { alive = false; };
   }, [showMealModal, profile?.id]);
+
+  // Close the meal-plan modal AND clear all of its working state, so reopening
+  // starts fresh instead of showing the previous plan's data.
+  const closeMealModal = () => {
+    setShowMealModal(false);
+    setMealStep('settings');
+    setGeneratedMeals(null);
+    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4 });
+    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '' });
+    setShowAddMeal(false);
+    setMealPickerSlot(null);
+    setMealSearch('');
+    setMealsDirty(false);
+    setMealGoalOverride(null);
+  };
   const addCustomMeal = async () => {
     if (!newMeal.name.trim() || savingNewMeal) return;
     setSavingNewMeal(true);
@@ -2437,7 +2452,7 @@ export default function TrainerPlans() {
           always sits above the trainer header + bottom nav (was rendering
           "behind" them). */}
       {showMealModal && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={closeMealModal}>
           <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
@@ -2451,7 +2466,7 @@ export default function TrainerPlans() {
                   {mealStep === 'settings' ? t('trainerPlans.createMealPlan', 'Create Meal Plan') : t('trainerPlans.weeklyMeals', 'Weekly Meals')}
                 </h2>
               </div>
-              <button onClick={() => { setShowMealModal(false); setMealStep('settings'); setGeneratedMeals(null); }} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
+              <button onClick={closeMealModal} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
                 <X size={18} />
               </button>
             </div>
@@ -2459,7 +2474,7 @@ export default function TrainerPlans() {
             {/* ── STEP 1: Settings ── */}
             {mealStep === 'settings' && (
               <>
-                <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+                <div className="p-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
                   {/* Client */}
                   <div>
                     <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.client', 'Client')}</label>
@@ -2574,7 +2589,7 @@ export default function TrainerPlans() {
 
                 {/* Footer — Step 1 */}
                 <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-                  <button onClick={() => { setShowMealModal(false); setMealStep('settings'); }}
+                  <button onClick={closeMealModal}
                     className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-medium min-h-[44px]"
                     style={{ backgroundColor: TT.surface2, color: TT.textSub }}>
                     {t('trainerPlans.cancel', 'Cancel')}
@@ -2593,7 +2608,7 @@ export default function TrainerPlans() {
             {/* ── STEP 2: Meal Preview ── */}
             {mealStep === 'meals' && generatedMeals && (
               <>
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto">
                   {/* Day selector — Atelier filter chips */}
                   <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
                     {DAY_LABELS.map((label, i) => (
@@ -2701,8 +2716,8 @@ export default function TrainerPlans() {
 
                       {/* ── Meal Picker Overlay ── */}
                       {mealPickerSlot && (
-                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setMealPickerSlot(null)}>
-                          <div className="rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
+                        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={() => setMealPickerSlot(null)}>
+                          <div className="rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
                             <div className="p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
                               <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-[15px] font-bold" style={{ color: TT.text }}>
@@ -2770,7 +2785,7 @@ export default function TrainerPlans() {
                                 </div>
                               )}
                             </div>
-                            <div className="flex-1 overflow-y-auto p-2">
+                            <div className="flex-1 min-h-0 overflow-y-auto p-2">
                               {filteredMeals.map(meal => {
                                 const title = i18n.language === 'es' && meal.title_es ? meal.title_es : meal.title;
                                 return (
@@ -2894,7 +2909,7 @@ export default function TrainerPlans() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {mealDetail.description && (
                 <p className="text-[12px] px-4 pt-3" style={{ color: TT.textSub }}>{mealDetail.description}</p>
               )}

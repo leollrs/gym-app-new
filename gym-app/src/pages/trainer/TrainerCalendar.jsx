@@ -485,13 +485,13 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
 
           {/* Date & Time */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
+            <div className="min-w-0">
               <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
                 {t('pages:trainerCalendar.dateLabel')}
               </label>
               <input type="date" value={dateVal} onChange={e => setDateVal(e.target.value)} style={{ ...inputStyle, minWidth: 0, maxWidth: '100%' }} />
             </div>
-            <div>
+            <div className="min-w-0">
               <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
                 {t('pages:trainerCalendar.timeLabel')}
               </label>

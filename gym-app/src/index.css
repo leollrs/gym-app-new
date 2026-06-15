@@ -1537,3 +1537,22 @@ body.trainer-thread-active .trainer-messages-page {
     height: 100vh;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Native date/time inputs.
+   iOS/WebKit gives <input type="date|time|datetime-local"> a FIXED intrinsic
+   width that ignores width:100% / min-width:0, so in any modal grid/flex they
+   overflow the container and let the modal slide sideways (trainer session +
+   class-proposal modals). `appearance:none` removes that intrinsic sizing so
+   they respect their container like every other field.
+   ────────────────────────────────────────────────────────────────────────── */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
