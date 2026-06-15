@@ -7,6 +7,7 @@ import {
   Trash2, Bell, BellOff, Repeat, Dumbbell,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
@@ -84,6 +85,7 @@ const WorkoutChip = ({ name }) => {
 const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gymId, workoutPlans, presetClientId }) => {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation(['pages', 'common']);
+  useScrollLock(true); // modal only mounts when open → lock the page behind
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const focusTrapRef = useFocusTrap(true, onClose);
   const isEdit = !!session;

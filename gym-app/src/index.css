@@ -1556,3 +1556,18 @@ input[type="datetime-local"] {
   max-width: 100%;
   box-sizing: border-box;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Modal scroll lock — while a modal is open (useScrollLock toggles this class),
+   the page behind must not scroll. On the trainer side the page scrolls inside
+   the content region (not <body>), so we freeze that too.
+   ────────────────────────────────────────────────────────────────────────── */
+html.modal-scroll-lock,
+body.modal-scroll-lock {
+  overflow: hidden !important;
+}
+body.modal-scroll-lock #main-content,
+body.modal-scroll-lock .trainer-scroll-region {
+  overflow: hidden !important;
+  touch-action: none;
+}

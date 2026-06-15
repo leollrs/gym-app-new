@@ -12,6 +12,7 @@ import { Capacitor } from '@capacitor/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { encryptMessage, decryptMessage } from '../../lib/messageEncryption';
 import { sanitize } from '../../lib/sanitize';
@@ -182,6 +183,7 @@ function MessageBody({ body, t }) {
 
 // ── Client picker (start a new chat with one of the trainer's clients) ──
 function ClientPicker({ open, onClose, trainerId, onPick, t }) {
+  useScrollLock(open);
   const [clients, setClients] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);

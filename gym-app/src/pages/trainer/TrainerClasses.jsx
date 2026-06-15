@@ -6,6 +6,7 @@ import {
   Trash2, Search, Check, UserCheck, X, ChevronRight, ChevronLeft,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
@@ -88,6 +89,7 @@ async function mergeSafeProfiles(rows) {
 
 // ── Class Detail Drawer (for My Classes tab) ──
 function ClassDetailDrawer({ cls, gymId, onClose, t, tc, dateLocale }) {
+  useScrollLock(true);
   const [adding, setAdding] = useState(false);
   const [newSlot, setNewSlot] = useState({ day_of_week: 1, start_time: '09:00', end_time: '10:00' });
   const queryClient = useQueryClient();
@@ -1318,6 +1320,7 @@ function TemplatesTab({ classes, gymId, t }) {
 // ── Propose New Class Modal ──
 function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
   const { showToast } = useToast();
+  useScrollLock(true);
   const [form, setForm] = useState({ name: '', description: '', day_of_week: 1, start_time: '09:00', duration: 60 });
   const [submitting, setSubmitting] = useState(false);
 

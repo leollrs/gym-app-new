@@ -7,6 +7,7 @@ import {
   Activity, Target, MoreHorizontal,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { selectAllRows } from '../../lib/churn/batchedSelect';
@@ -468,6 +469,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const [clientProfile, setClientProfile] = useState(null);
   const [confirmPrune, setConfirmPrune] = useState(null); // { prunedWeeks } pending save
   const [confirmDiscard, setConfirmDiscard] = useState(false); // unsaved-changes guard
+  useScrollLock(!!confirmPrune || confirmDiscard); // lock page behind builder dialogs
   // Editing a plan whose client was deactivated: the active-clients list no
   // longer contains them, so the (disabled) select showed "Select client...".
   // Keep the assigned name around for display.
@@ -1545,6 +1547,8 @@ export default function TrainerPlans() {
   // before throwing that work away.
   const [mealsDirty, setMealsDirty] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  // Lock the page behind any of this view's modals.
+  useScrollLock(showMealModal || !!mealPickerSlot || !!confirmDeletePlan || !!mealDetail || !!duplicateTarget || confirmRegen || !!confirmDeleteMealPlan);
   // Trainer's custom meals first, then the shared catalog.
   const pickableMeals = [...customMeals, ...MEALS];
   const filteredMeals = mealSearch.trim()

@@ -9,6 +9,7 @@ import {
   Loader2, Play, Eye, MessageCircle, Smartphone,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -188,6 +189,7 @@ function ProgramDetailModal({ program, onClose }) {
   const { t, i18n } = useTranslation(['pages', 'common']);
   const [exMap, setExMap] = useState({});
   const [openWeek, setOpenWeek] = useState(1);
+  useScrollLock(!!program); // lock page behind when this modal is showing
 
   useEffect(() => {
     if (!program) return;
@@ -1534,6 +1536,10 @@ export default function TrainerClientNotes() {
     const days = Math.floor((new Date() - new Date(oldest + 'T00:00:00')) / 86400000);
     return Math.min(7, Math.floor(days / 7));
   }, [foodLogSummary]);
+
+  // Lock the page behind any of this page's modals (kept above the early
+  // returns so the hook count stays stable).
+  useScrollLock(!!editMeas || !!editPrefs || !!planPicker || showFollowupModal || showReport || !!viewProgram || showContactSheet);
 
   if (loading) {
     return (
