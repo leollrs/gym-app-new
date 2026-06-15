@@ -87,6 +87,8 @@ export default function AdminSettingsBranding() {
   const [logoUrl, setLogoUrl] = useState('');
   const [logoFile, setLogoFile] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [splashVideoUrl, setSplashVideoUrl] = useState('');
+  const [uploadingSplash, setUploadingSplash] = useState(false);
   const [selectedPalette, setSelectedPalette] = useState(null);
   const [customPrimary, setCustomPrimary] = useState('');
   const [customSecondary, setCustomSecondary] = useState('');
@@ -101,7 +103,7 @@ export default function AdminSettingsBranding() {
     queryFn: async () => {
       const { data, error: brandErr } = await supabase
         .from('gym_branding')
-        .select('primary_color, accent_color, welcome_message, logo_url, palette_name')
+        .select('primary_color, accent_color, welcome_message, logo_url, palette_name, splash_video_url')
         .eq('gym_id', gymId)
         .maybeSingle();
       if (brandErr) logger.warn('Failed to load branding settings', brandErr);
@@ -128,7 +130,54 @@ export default function AdminSettingsBranding() {
       }
     }
     setLogoUrl(signedLogoUrl);
+    setSplashVideoUrl(branding?.splash_video_url || '');
   }, [brandingData]);
+
+  const getVideoDuration = (file) => new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); resolve(v.duration); };
+    v.onerror = () => { URL.revokeObjectURL(v.src); reject(new Error('bad video')); };
+    v.src = URL.createObjectURL(file);
+  });
+
+  const handleSplashVideoUpload = async (file) => {
+    if (!file || !gymId) return;
+    const okTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
+    if (!okTypes.includes(file.type)) { showToast(t('admin.settings.videoBadType', 'Use an MP4 (H.264) video'), 'error'); return; }
+    if (file.size > 6 * 1024 * 1024) { showToast(t('admin.settings.videoTooLarge', 'Video must be 6 MB or less'), 'error'); return; }
+    const dur = await getVideoDuration(file).catch(() => null);
+    if (dur != null && dur > 4.2) { showToast(t('admin.settings.videoTooLong', 'Keep it under ~3 seconds'), 'error'); return; }
+    setUploadingSplash(true);
+    try {
+      const ext = file.type === 'video/webm' ? 'webm' : file.type === 'video/quicktime' ? 'mov' : 'mp4';
+      const path = `${gymId}/splash.${ext}`;
+      const { error: upErr } = await supabase.storage.from('splash-videos').upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('splash-videos').getPublicUrl(path);
+      // ?v= cache-busts the stable public URL on re-upload (the SW caches by URL).
+      const url = `${pub.publicUrl}?v=${Date.now()}`;
+      const { error: dbErr } = await supabase.from('gym_branding').upsert({ gym_id: gymId, splash_video_url: url }, { onConflict: 'gym_id' });
+      if (dbErr) throw dbErr;
+      setSplashVideoUrl(url);
+      showToast(t('admin.settings.videoSaved', 'Launch video saved'), 'success');
+    } catch (err) {
+      showToast(`${t('admin.settings.videoUploadFailed', 'Video upload failed')}: ${err.message || ''}`, 'error');
+    } finally { setUploadingSplash(false); }
+  };
+
+  const handleRemoveSplashVideo = async () => {
+    if (!gymId) return;
+    setUploadingSplash(true);
+    try {
+      await supabase.storage.from('splash-videos').remove([`${gymId}/splash.mp4`, `${gymId}/splash.webm`, `${gymId}/splash.mov`]).catch(() => {});
+      await supabase.from('gym_branding').upsert({ gym_id: gymId, splash_video_url: null }, { onConflict: 'gym_id' });
+      setSplashVideoUrl('');
+      showToast(t('admin.settings.videoRemoved', 'Launch video removed'), 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed', 'error');
+    } finally { setUploadingSplash(false); }
+  };
 
   const handleLogoUpload = async (file) => {
     if (!file) return;
@@ -274,6 +323,28 @@ export default function AdminSettingsBranding() {
                   <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} disabled={uploadingLogo}
                     onChange={e => { const f = e.target.files?.[0]; if (f) { setLogoFile(f); handleLogoUpload(f); } }} />
                 </label>
+              </div>
+
+              <Fld>{t('admin.settings.launchVideo', 'Launch Video')}</Fld>
+              <Help>{t('admin.settings.launchVideoHelp', 'Optional. Plays when the app opens, falling back to the default animation. Vertical 9:16, 3 seconds or less, 6 MB max, MP4.')}</Help>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', marginTop: 6 }}>
+                {splashVideoUrl ? (
+                  <video src={splashVideoUrl} muted loop playsInline autoPlay style={{ width: 54, height: 54, borderRadius: 13, objectFit: 'cover', flexShrink: 0, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }} />
+                ) : (
+                  <span style={{ width: 54, height: 54, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}><Ico ch={DIC.upload} size={20} color={TK.textMute} stroke={1.9} /></span>
+                )}
+                <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 12, border: `1.5px dashed ${TK.borderSolid}`, background: TK.surface2, fontFamily: FK.body, fontSize: 14, fontWeight: 600, color: TK.textMute, cursor: uploadingSplash ? 'default' : 'pointer' }}>
+                  <Ico ch={DIC.upload} size={16} color={TK.textMute} stroke={2} />
+                  {uploadingSplash ? t('admin.settings.uploading', 'Uploading...') : t('admin.settings.uploadVideo', 'Upload video')}
+                  <input type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: 'none' }} disabled={uploadingSplash}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleSplashVideoUpload(f); e.target.value = ''; }} />
+                </label>
+                {splashVideoUrl && (
+                  <button type="button" onClick={handleRemoveSplashVideo} disabled={uploadingSplash}
+                    style={{ flexShrink: 0, padding: '0 14px', borderRadius: 12, border: `1px solid ${TK.borderSolid}`, background: TK.surface2, color: 'var(--color-danger, #E5484D)', fontFamily: FK.body, fontSize: 13, fontWeight: 700, cursor: uploadingSplash ? 'default' : 'pointer' }}>
+                    {t('admin.settings.removeVideo', 'Remove')}
+                  </button>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 4 }}>

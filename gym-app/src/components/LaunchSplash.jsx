@@ -1,21 +1,28 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 // ── Branded launch animation ────────────────────────────────────────────────
 // Plays once per COLD launch (module flag survives re-renders/navigation; resets
-// on a fresh JS load = a real app open). Choreographed, no "pop":
-//   bg ignition blooms → logo fades/scales in (subtle) → specular shimmer sweeps
-//   across the logo → hold → whole thing fades into the app.
+// on a fresh JS load = a real app open).
 //
-// White-label: gym's own logo when in a gym; the gym NAME wordmark while its
-// logo URL resolves (never flashes the platform brand at a gym's members); the
-// platform logo (/tugympr-logo.png, wordmark fallback) on the pre-login launch.
+// Per-gym custom video → code default fallback:
+//   • If the gym uploaded a splash video, it plays over the code default and
+//     fades in the moment it actually starts; the splash ends when it finishes.
+//   • If there's no video, it's slow to start (>VIDEO_START_MS), or it errors,
+//     the choreographed code default runs instead (mesh + ignition + logo shimmer).
+//   • First launch (video not cached) shows the default while the file is
+//     prefetched into the SW cache → the gym's video plays from the 2nd launch.
+//
+// White-label logo (default path): gym's own logo in a gym; the gym NAME wordmark
+// while its logo URL resolves; the platform logo (wordmark fallback) pre-login.
 
 let splashPlayed = false;
 
-const MIN_MS = 1900;   // lets the full choreography play even on instant boots
-const MAX_MS = 4000;   // hard cap so a slow/stuck boot never traps the user
+const MIN_MS = 1900;          // default-path: deliberate beat even on instant boots
+const MAX_MS = 6000;          // hard backstop (also caps an over-long video)
+const VIDEO_START_MS = 1200;  // window for the video to actually start, else → default
 const SPLASH_BG = '#05070B';
 const PLATFORM_LOGO_SRC = '/tugympr-logo.png';
 const ACCENT = 'var(--color-accent, #D4AF37)';
@@ -26,8 +33,6 @@ const reduce =
 
 const LOGO_STYLE = { position: 'relative', width: 'min(48vw, 200px)', maxHeight: 200, objectFit: 'contain', display: 'block' };
 
-// Sweeping specular sheen, clipped to the logo's shape via mask-image so only
-// the logo pixels light up. Skipped under reduced-motion.
 const Shimmer = ({ src }) => (
   <motion.div
     aria-hidden
@@ -46,7 +51,6 @@ const Shimmer = ({ src }) => (
   />
 );
 
-// Wordmark with an accent highlight sweeping through the text (background-clip).
 const Wordmark = ({ text }) => (
   <motion.span
     style={{
@@ -80,9 +84,50 @@ const PlatformMark = () => {
 
 export default function LaunchSplash() {
   const { gymLogoUrl, gymName, profile, loading } = useAuth();
+  const gymId = profile?.gym_id || null;
+  const videoKey = gymId ? `splash_video_${gymId}` : null;
+
   const [show, setShow] = useState(!splashPlayed);
   const [minElapsed, setMinElapsed] = useState(false);
+  const [videoUrl, setVideoUrl] = useState(() => {
+    try { return (videoKey && localStorage.getItem(videoKey)) || ''; } catch { return ''; }
+  });
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
 
+  // Resolve / refresh the gym's splash video URL (members can read gym_branding
+  // directly — RLS gym_id = current_gym_id()). Cache it for instant cold-start
+  // and prefetch the file so the SW caches it → it plays from the 2nd launch on.
+  useEffect(() => {
+    if (!gymId) return;
+    let cancelled = false;
+    supabase.from('gym_branding').select('splash_video_url').eq('gym_id', gymId).maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const url = data?.splash_video_url || '';
+        try { if (videoKey) localStorage.setItem(videoKey, url); } catch { /* ignore */ }
+        if (url) {
+          // Fire-and-forget; NOT aborted on unmount so it finishes caching.
+          try { fetch(url).catch(() => {}); } catch { /* ignore */ }
+          setVideoUrl(prev => prev || url);
+        } else {
+          setVideoUrl('');
+        }
+      }, () => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gymId]);
+
+  const useVideo = !reduce && !!videoUrl && !videoFailed;
+
+  // Give the video a window to actually start; if it doesn't, drop to the default.
+  useEffect(() => {
+    if (!show || !useVideo || videoReady) return;
+    const f = setTimeout(() => setVideoFailed(true), VIDEO_START_MS);
+    return () => clearTimeout(f);
+  }, [show, useVideo, videoReady]);
+
+  // Default-path timing (min beat + hard backstop).
   useEffect(() => {
     if (!show) { splashPlayed = true; return; }
     const minT = setTimeout(() => setMinElapsed(true), MIN_MS);
@@ -90,11 +135,14 @@ export default function LaunchSplash() {
     return () => { clearTimeout(minT); clearTimeout(maxT); };
   }, [show]);
 
+  // In video mode the <video> onEnded ends the splash; otherwise the default
+  // ends once the min beat passed AND the app finished booting.
   useEffect(() => {
-    if (show && minElapsed && !loading) setShow(false);
-  }, [show, minElapsed, loading]);
+    const inVideoMode = videoReady && !videoFailed;
+    if (show && !inVideoMode && minElapsed && !loading) setShow(false);
+  }, [show, videoReady, videoFailed, minElapsed, loading]);
 
-  const inGym = !!(gymLogoUrl || profile?.gym_id || gymName);
+  const inGym = !!(gymLogoUrl || gymId || gymName);
 
   let mark;
   if (gymLogoUrl) {
@@ -122,9 +170,9 @@ export default function LaunchSplash() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.55, ease: 'easeInOut' }}
         >
+          {/* ── Code default (renders underneath; shown until/unless the video plays) ── */}
           {!reduce && (
             <>
-              {/* Drifting accent mesh — ambient depth */}
               <motion.div aria-hidden style={{
                 position: 'absolute', top: '12%', left: '8%', width: 420, height: 420, borderRadius: '50%',
                 background: `radial-gradient(circle, color-mix(in srgb, ${ACCENT} 16%, transparent) 0%, transparent 70%)`,
@@ -135,15 +183,11 @@ export default function LaunchSplash() {
                 background: `radial-gradient(circle, color-mix(in srgb, ${ACCENT} 12%, transparent) 0%, transparent 70%)`,
                 filter: 'blur(48px)', pointerEvents: 'none',
               }} initial={{ opacity: 0, x: 30, y: 20 }} animate={{ opacity: 0.6, x: -20, y: -16 }} transition={{ duration: 7, ease: 'easeOut' }} />
-
-              {/* Center ignition — light blooms outward once, then settles */}
               <motion.div aria-hidden style={{
                 position: 'absolute', width: 540, height: 540, borderRadius: '50%',
                 background: `radial-gradient(circle, color-mix(in srgb, ${ACCENT} 30%, transparent) 0%, transparent 62%)`,
                 filter: 'blur(30px)', pointerEvents: 'none',
               }} initial={{ opacity: 0, scale: 0.4 }} animate={{ opacity: [0, 0.85, 0.4], scale: [0.4, 1, 0.92] }} transition={{ duration: 1.3, ease: [0.16, 1, 0.3, 1] }} />
-
-              {/* Expanding ring pulse */}
               <motion.div aria-hidden style={{
                 position: 'absolute', width: 200, height: 200, borderRadius: '50%',
                 border: `1px solid color-mix(in srgb, ${ACCENT} 45%, transparent)`, pointerEvents: 'none',
@@ -151,7 +195,6 @@ export default function LaunchSplash() {
             </>
           )}
 
-          {/* Logo / wordmark — smooth fade + gentle scale (no pop) */}
           <motion.div
             style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.965, y: 6 }}
@@ -161,11 +204,28 @@ export default function LaunchSplash() {
             {mark}
           </motion.div>
 
-          {/* Vignette for focus/depth */}
           <div aria-hidden style={{
             position: 'absolute', inset: 0, pointerEvents: 'none',
             background: 'radial-gradient(circle at center, transparent 45%, rgba(0,0,0,0.45) 100%)',
           }} />
+
+          {/* ── Custom gym video (on top; invisible until it actually starts) ── */}
+          {useVideo && (
+            <motion.video
+              src={videoUrl}
+              muted
+              playsInline
+              autoPlay
+              preload="auto"
+              onPlaying={() => setVideoReady(true)}
+              onEnded={() => setShow(false)}
+              onError={() => setVideoFailed(true)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: videoReady ? 1 : 0 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', background: SPLASH_BG, zIndex: 5 }}
+            />
+          )}
         </motion.div>
       )}
     </AnimatePresence>
