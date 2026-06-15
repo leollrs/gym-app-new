@@ -10554,7 +10554,11 @@
     "addMeal": "Añadir comida",
     "newMeal": "Nueva comida",
     "mealTime": "Hora de comida",
-    "mealNotes": "Notas (opcional)"
+    "mealNotes": "Notas (opcional)",
+    "addPhoto": "Añadir foto (opcional)",
+    "changePhoto": "Cambiar foto",
+    "uploading": "Subiendo…",
+    "photoUploadFailed": "No se pudo subir la foto"
   },
   "trainerPrograms": {
     "title": "Biblioteca de Programas",

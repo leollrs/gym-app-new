@@ -22,6 +22,11 @@ import { calculateMacros } from '../../lib/macroCalculator';
 import { generateWeekPlan, generateDayPlan } from '../../lib/mealPlanner';
 import { MEALS } from '../../data/meals';
 import { foodImageUrl } from '../../lib/imageUrl';
+import { validateImageFile } from '../../lib/validateImage';
+
+// Resolve a meal image: full URLs (uploaded custom-meal photos) pass through;
+// catalog paths go through the food-images resolver.
+const mealImgSrc = (img) => (img ? (/^https?:\/\//.test(img) ? img : foodImageUrl(img)) : null);
 import { motion } from 'framer-motion';
 import SwipeableTabView from '../../components/SwipeableTabView';
 import { UtensilsCrossed } from 'lucide-react';
@@ -1465,15 +1470,36 @@ export default function TrainerPlans() {
   // visible only to the trainer (+ super-admin). Map DB rows to the meal shape.
   const [customMeals, setCustomMeals] = useState([]);
   const [showAddMeal, setShowAddMeal] = useState(false);
-  const [newMeal, setNewMeal] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+  const [newMeal, setNewMeal] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '' });
   const [savingNewMeal, setSavingNewMeal] = useState(false);
+  const [uploadingMealPhoto, setUploadingMealPhoto] = useState(false);
   const customMealToMeal = (r) => ({
     id: `custom_${r.id}`,
     title: r.name, title_es: r.name_es || r.name,
     calories: Number(r.calories) || 0, protein: Number(r.protein_g) || 0,
     carbs: Number(r.carbs_g) || 0, fat: Number(r.fat_g) || 0,
-    category: r.category || 'custom', custom: true, image: null,
+    category: r.category || 'custom', custom: true, image: r.image_url || null,
   });
+  // Optional meal photo → user-writable meal-photos bucket (own folder).
+  const uploadMealPhoto = async (file) => {
+    if (!file || !profile?.id) return;
+    const check = await validateImageFile(file);
+    if (!check?.valid) { showToast(check?.error || t('trainerPlans.photoUploadFailed', 'Could not upload photo'), 'error'); return; }
+    setUploadingMealPhoto(true);
+    try {
+      const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const path = `${profile.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('meal-photos').upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+      if (upErr) throw upErr;
+      const { data: urlData } = supabase.storage.from('meal-photos').getPublicUrl(path);
+      setNewMeal(n => ({ ...n, imageUrl: urlData?.publicUrl || '' }));
+    } catch (err) {
+      logger.error('uploadMealPhoto failed:', err);
+      showToast(t('trainerPlans.photoUploadFailed', 'Could not upload photo'), 'error');
+    } finally {
+      setUploadingMealPhoto(false);
+    }
+  };
   useEffect(() => {
     if (!showMealModal || !profile?.id) return;
     let alive = true;
@@ -1490,13 +1516,13 @@ export default function TrainerPlans() {
       name: newMeal.name.trim(),
       calories: Number(newMeal.calories) || 0, protein_g: Number(newMeal.protein) || 0,
       carbs_g: Number(newMeal.carbs) || 0, fat_g: Number(newMeal.fat) || 0,
-      category: 'custom',
+      category: 'custom', image_url: newMeal.imageUrl || null,
     }).select('*').single();
     setSavingNewMeal(false);
     if (error) { showToast(t('trainerPlans.addMealFailed', 'Could not add meal'), 'error'); return; }
     const meal = customMealToMeal(data);
     setCustomMeals(prev => [meal, ...prev]);
-    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '' });
     setShowAddMeal(false);
     pickMeal(meal); // use the new meal immediately in the open slot
   };
@@ -1694,7 +1720,7 @@ export default function TrainerPlans() {
     // Serialize generated meals into compact JSONB
     const mealsJson = generatedMeals ? generatedMeals.map((day, di) => ({
       day: di + 1,
-      meals: (day.meals || []).map(m => ({ id: m.id, slotType: m.slotType || m.slot, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime, time: m.time || null, notes: m.notes || null })),
+      meals: (day.meals || []).map(m => ({ id: m.id, slotType: m.slotType || m.slot, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime, time: m.time || null, notes: m.notes || null, image: m.image || null })),
       totals: day.totals,
     })) : [];
     // Plan length → duration_weeks + an end_date the member view counts against.
@@ -2610,8 +2636,8 @@ export default function TrainerPlans() {
                           return (
                             <div key={mi} className="rounded-xl p-3 flex gap-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
                               {/* Meal image */}
-                              {foodImageUrl(meal.image) ? (
-                                <img src={foodImageUrl(meal.image)} alt={mealTitle} className="w-16 h-16 rounded-xl object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
+                              {mealImgSrc(meal.image) ? (
+                                <img src={mealImgSrc(meal.image)} alt={mealTitle} className="w-16 h-16 rounded-xl object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
                               ) : (
                                 <div className="w-16 h-16 rounded-xl shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}>
                                   <UtensilsCrossed size={20} style={{ color: TT.textMute }} />
@@ -2714,6 +2740,27 @@ export default function TrainerPlans() {
                                         style={{ background: TT.surface, border: `1px solid ${TT.border}`, color: TT.text }} />
                                     ))}
                                   </div>
+                                  {/* Optional photo */}
+                                  <div className="flex items-center gap-2">
+                                    {newMeal.imageUrl ? (
+                                      <img src={newMeal.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                                    ) : (
+                                      <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center" style={{ background: TT.surface, border: `1px solid ${TT.border}` }}>
+                                        <UtensilsCrossed size={16} style={{ color: TT.textMute }} />
+                                      </div>
+                                    )}
+                                    <label className="flex-1 cursor-pointer rounded-lg py-2 px-3 text-[12px] font-semibold text-center" style={{ background: TT.surface, border: `1px dashed ${TT.border}`, color: TT.textSub, opacity: uploadingMealPhoto ? 0.6 : 1 }}>
+                                      {uploadingMealPhoto ? t('trainerPlans.uploading', 'Uploading…') : newMeal.imageUrl ? t('trainerPlans.changePhoto', 'Change photo') : t('trainerPlans.addPhoto', 'Add photo (optional)')}
+                                      <input type="file" accept="image/*" className="hidden" disabled={uploadingMealPhoto}
+                                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadMealPhoto(f); e.target.value = ''; }} />
+                                    </label>
+                                    {newMeal.imageUrl && (
+                                      <button type="button" onClick={() => setNewMeal(n => ({ ...n, imageUrl: '' }))}
+                                        className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg" style={{ background: TT.hotSoft, color: TT.hot }}>
+                                        <X size={14} />
+                                      </button>
+                                    )}
+                                  </div>
                                   <button type="button" onClick={addCustomMeal} disabled={!newMeal.name.trim() || savingNewMeal}
                                     className="w-full py-2 rounded-lg text-[13px] font-bold disabled:opacity-40 flex items-center justify-center gap-1.5"
                                     style={{ background: TT.accent, color: '#06363B' }}>
@@ -2730,8 +2777,8 @@ export default function TrainerPlans() {
                                   <button key={meal.id} onClick={() => pickMeal(meal)}
                                     className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl transition-colors active:scale-[0.98]"
                                     style={{ color: TT.text }}>
-                                    {foodImageUrl(meal.image) ? (
-                                      <img src={foodImageUrl(meal.image)} alt={title} className="w-12 h-12 rounded-lg object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
+                                    {mealImgSrc(meal.image) ? (
+                                      <img src={mealImgSrc(meal.image)} alt={title} className="w-12 h-12 rounded-lg object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
                                     ) : (
                                       <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}>
                                         <UtensilsCrossed size={16} style={{ color: TT.textMute }} />

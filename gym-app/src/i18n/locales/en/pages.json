@@ -10386,7 +10386,11 @@
     "addMeal": "Add meal",
     "newMeal": "New meal",
     "mealTime": "Meal time",
-    "mealNotes": "Notes (optional)"
+    "mealNotes": "Notes (optional)",
+    "addPhoto": "Add photo (optional)",
+    "changePhoto": "Change photo",
+    "uploading": "Uploading…",
+    "photoUploadFailed": "Could not upload photo"
   },
   "trainerPrograms": {
     "title": "Program Library",

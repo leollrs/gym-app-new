@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { useNavigate } from 'react-router-dom';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
@@ -856,13 +857,16 @@ export default function TrainerClients() {
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const { showToast } = useToast();
-  const [clients,  setClients]  = useState([]);
-  const [loading,  setLoading]  = useState(true);
+  // Instant-load cache so returning to the list doesn't flash a spinner.
+  const clientsCacheKey = `clients:${profile?.id || 'x'}`;
+  const clientsCache = useMemo(() => readTrainerCache(clientsCacheKey), [clientsCacheKey]);
+  const [clients,  setClients]  = useState(() => clientsCache?.clients || []);
+  const [loading,  setLoading]  = useState(!clientsCache);
   const [selected, setSelected] = useState(null);
   const [search,   setSearch]   = useState('');
   const [filter,   setFilter]   = useState('all');
   const [sortBy,   setSortBy]   = useState('last_active');
-  const [churnScores, setChurnScores] = useState({});
+  const [churnScores, setChurnScores] = useState(() => clientsCache?.churnScores || {});
   const [showAddClient, setShowAddClient] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   // Removed (is_active=false) clients — loaded on demand for the chip
@@ -1039,6 +1043,12 @@ export default function TrainerClients() {
     };
     load();
   }, [profile?.gym_id, profile?.id, reloadKey]);
+
+  // Write-through cache for instant loads on the next visit.
+  useEffect(() => {
+    if (loading) return;
+    writeTrainerCache(clientsCacheKey, { clients, churnScores });
+  }, [loading, clients, churnScores, clientsCacheKey]);
 
   // ── Removed clients (is_active = false) — fetched when the chip is opened ──
   useEffect(() => {

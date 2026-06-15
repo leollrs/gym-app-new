@@ -322,7 +322,11 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
                     const title = isEs && (meal.title_es || full?.title_es)
                       ? (meal.title_es || full?.title_es)
                       : (meal.title || full?.title);
-                    const img = foodImageUrl(full?.image);
+                    // Custom-meal photos save a full URL on meal.image; catalog
+                    // meals resolve their path via the food-images bucket.
+                    const img = meal.image
+                      ? (/^https?:\/\//.test(meal.image) ? meal.image : foodImageUrl(meal.image))
+                      : foodImageUrl(full?.image);
                     return (
                       <div key={mi} className="rounded-xl p-2.5 flex gap-3 items-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
                         {img ? (

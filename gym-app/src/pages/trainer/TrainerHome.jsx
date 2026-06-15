@@ -15,6 +15,7 @@ import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { exName } from '../../lib/exerciseName';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
 import { deriveClientStatus, needsAttention, weeklyAdherence, daysSince, RISK } from '../../lib/clientStatus';
 import {
@@ -55,15 +56,20 @@ export default function TrainerHome() {
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
 
-  const [loading, setLoading] = useState(true);
+  // Instant-load cache: hydrate stable data from the last visit so navigating
+  // back doesn't flash a spinner. Live data (drafts) is never cached.
+  const homeCacheKey = `home:${profile?.id || 'x'}`;
+  const homeCache = useMemo(() => readTrainerCache(homeCacheKey), [homeCacheKey]);
+
+  const [loading, setLoading] = useState(!homeCache);
   const [error, setError] = useState(null);
 
-  const [clients, setClients] = useState([]);
-  const [weekSessions, setWeekSessions] = useState([]);
-  const [todaySessions, setTodaySessions] = useState([]);
-  const [churnScores, setChurnScores] = useState({});
-  const [moneyOverview, setMoneyOverview] = useState(null);
-  const [upcomingSessions, setUpcomingSessions] = useState([]);
+  const [clients, setClients] = useState(() => homeCache?.clients || []);
+  const [weekSessions, setWeekSessions] = useState(() => homeCache?.weekSessions || []);
+  const [todaySessions, setTodaySessions] = useState(() => homeCache?.todaySessions || []);
+  const [churnScores, setChurnScores] = useState(() => homeCache?.churnScores || {});
+  const [moneyOverview, setMoneyOverview] = useState(() => homeCache?.moneyOverview || null);
+  const [upcomingSessions, setUpcomingSessions] = useState(() => homeCache?.upcomingSessions || []);
   // Set of client profile ids who currently have an in-progress workout draft —
   // feeds the "Training now" indicators on hero/lineup/roster. Kept fresh by
   // the realtime effect below.
@@ -71,9 +77,9 @@ export default function TrainerHome() {
   // Full draft rows behind those ids — feeds the "En vivo ahora" rail
   // (routine name + pause-aware elapsed), not just the dot indicators.
   const [liveDrafts, setLiveDrafts] = useState([]);
-  const [recentPRs, setRecentPRs] = useState([]);
+  const [recentPRs, setRecentPRs] = useState(() => homeCache?.recentPRs || []);
   // gym_programs.id → name for the roster's assigned programs; null = fetch failed.
-  const [programNames, setProgramNames] = useState({});
+  const [programNames, setProgramNames] = useState(() => homeCache?.programNames || {});
 
   useEffect(() => { document.title = `${t('trainerHome.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -82,6 +88,12 @@ export default function TrainerHome() {
     fetchHomeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.gym_id, profile?.id]);
+
+  // Write-through cache of the stable data for instant loads next visit.
+  useEffect(() => {
+    if (loading) return;
+    writeTrainerCache(homeCacheKey, { clients, weekSessions, todaySessions, churnScores, moneyOverview, upcomingSessions, recentPRs, programNames });
+  }, [loading, clients, weekSessions, todaySessions, churnScores, moneyOverview, upcomingSessions, recentPRs, programNames, homeCacheKey]);
 
   // Cheap freshness: silently refetch when the tab/app comes back to the
   // foreground (no skeleton flash). Pull-to-refresh is deferred to v2.
