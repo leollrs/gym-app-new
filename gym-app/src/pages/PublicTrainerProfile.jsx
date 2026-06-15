@@ -115,7 +115,7 @@ function ContactPickerModal({ open, onClose, trainerName, isClient, onOpenMessag
             onClick={onOpenMessages}
             style={{
               width: '100%', padding: '12px 14px', borderRadius: 12, border: 'none',
-              background: TT.text, color: '#fff', fontFamily: TFont.display,
+              background: TT.text, color: TT.onInverse, fontFamily: TFont.display,
               fontWeight: 800, fontSize: 14, cursor: 'pointer',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               minHeight: 44,
@@ -620,7 +620,7 @@ export default function PublicTrainerProfile() {
             onClick={() => navigate(-1)}
             style={{
               padding: '10px 18px', borderRadius: 12, border: 'none',
-              background: TT.text, color: '#fff', fontFamily: TFont.display,
+              background: TT.text, color: TT.onInverse, fontFamily: TFont.display,
               fontWeight: 800, fontSize: 13.5, cursor: 'pointer', minHeight: 44,
             }}
           >
@@ -792,7 +792,7 @@ export default function PublicTrainerProfile() {
           onClick={() => setContactOpen(true)}
           style={{
             width: '100%', padding: '14px 16px', borderRadius: 14,
-            border: 'none', background: TT.text, color: '#fff',
+            border: 'none', background: TT.text, color: TT.onInverse,
             fontFamily: TFont.display, fontSize: 15, fontWeight: 800,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             boxShadow: '0 6px 16px rgba(20,22,26,0.2)', cursor: 'pointer',

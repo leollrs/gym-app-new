@@ -22,7 +22,7 @@ import UserAvatar from './UserAvatar';
  * trainer_clients row, the trainer's same-gym profile, and their own sessions).
  */
 export default function MyTrainerCard() {
-  const { user } = useAuth();
+  const { profile } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('pages');
@@ -33,19 +33,22 @@ export default function MyTrainerCard() {
   const [opening, setOpening] = useState(false);
 
   useEffect(() => {
-    if (!user?.id) return;
+    const memberId = profile?.id;
+    if (!memberId) return;
     let alive = true;
     (async () => {
-      // Most-recent active trainer assignment for this member.
-      const { data: tc, error } = await supabase
+      // Most-recent active trainer assignment for this member. Use limit(1) +
+      // [0] (not maybeSingle) so a member with >1 active trainer never 406s.
+      const { data: tcRows, error } = await supabase
         .from('trainer_clients')
         .select('trainer_id, assigned_at')
-        .eq('client_id', user.id)
+        .eq('client_id', memberId)
         .eq('is_active', true)
         .order('assigned_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error || !tc?.trainer_id || !alive) return;
+        .limit(1);
+      if (error) { logger.error('MyTrainerCard: trainer lookup failed:', error); return; }
+      const tc = tcRows?.[0];
+      if (!tc?.trainer_id || !alive) return;
 
       const [profRes, sessRes] = await Promise.all([
         supabase
@@ -56,20 +59,21 @@ export default function MyTrainerCard() {
         supabase
           .from('trainer_sessions')
           .select('scheduled_at, title, status')
-          .eq('client_id', user.id)
+          .eq('client_id', memberId)
           .eq('trainer_id', tc.trainer_id)
           .in('status', ['scheduled', 'confirmed'])
           .gte('scheduled_at', new Date().toISOString())
           .order('scheduled_at', { ascending: true })
-          .limit(1)
-          .maybeSingle(),
+          .limit(1),
       ]);
       if (!alive) return;
-      if (profRes.data) setTrainer(profRes.data);
-      if (sessRes.data) setNextSession(sessRes.data);
+      // Fall back to a minimal record so the card still shows even if the
+      // trainer's profile row can't be read for any reason.
+      setTrainer(profRes.data || { id: tc.trainer_id });
+      if (sessRes.data?.[0]) setNextSession(sessRes.data[0]);
     })();
     return () => { alive = false; };
-  }, [user?.id]);
+  }, [profile?.id]);
 
   if (!trainer) return null;
 
