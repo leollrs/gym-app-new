@@ -22,7 +22,7 @@ import {
 
 // Shared form styles (match TrainerProfile)
 const inputStyle = {
-  width: '100%', padding: '10px 12px', borderRadius: 10,
+  width: '100%', padding: '10px 12px', borderRadius: 10, boxSizing: 'border-box', minWidth: 0,
   fontSize: 13.5, border: `1px solid ${TT.borderSolid}`,
   background: TT.surface, color: TT.text, outline: 'none',
   fontFamily: 'inherit',
@@ -1330,7 +1330,7 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
         description: form.description.trim(),
         suggested_day: form.day_of_week,
         suggested_time: form.start_time,
-        duration_minutes: form.duration,
+        duration_minutes: Number(form.duration) || 60,
       };
       const { error } = await supabase.rpc('log_admin_action', {
         p_action: 'class_proposal',
@@ -1425,7 +1425,7 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
           </div>
           {/* Day + Time */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
+            <div className="min-w-0">
               <label style={labelStyle}>{t('trainerClasses.suggestedDay', 'Day')}</label>
               <select
                 value={form.day_of_week}
@@ -1437,7 +1437,7 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="min-w-0">
               <label style={labelStyle}>{t('trainerClasses.suggestedTime', 'Time')}</label>
               <input
                 type="time"
@@ -1452,8 +1452,20 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
             <label style={labelStyle}>{t('trainerClasses.duration', 'Duration (min)')}</label>
             <input
               type="number"
+              inputMode="numeric"
               value={form.duration}
-              onChange={e => setForm(s => ({ ...s, duration: Number(e.target.value) }))}
+              onChange={e => {
+                // Keep the raw value while editing (empty string allowed) so the
+                // field can be cleared and retyped. Binding straight to Number()
+                // snapped an empty field to 0 and made "4" → typing 5 become "45".
+                const v = e.target.value;
+                setForm(s => ({ ...s, duration: v === '' ? '' : Number(v) }));
+              }}
+              onBlur={e => {
+                // Clamp to the valid range on blur; restore a sane default if empty.
+                const n = Number(e.target.value);
+                setForm(s => ({ ...s, duration: Number.isFinite(n) && n > 0 ? Math.min(180, Math.max(15, n)) : 60 }));
+              }}
               min={15}
               max={180}
               style={inputStyle}

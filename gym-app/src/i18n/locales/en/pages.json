@@ -10381,7 +10381,12 @@
     "saveAndUseMeal": "Save & use",
     "addMealFailed": "Could not add meal",
     "customTag": "Custom",
-    "planLength": "Plan length"
+    "planLength": "Plan length",
+    "removeMeal": "Remove meal",
+    "addMeal": "Add meal",
+    "newMeal": "New meal",
+    "mealTime": "Meal time",
+    "mealNotes": "Notes (optional)"
   },
   "trainerPrograms": {
     "title": "Program Library",

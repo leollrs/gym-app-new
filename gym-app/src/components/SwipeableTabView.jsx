@@ -65,12 +65,30 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
   }, [activeIndex, count, scheduleSettle]);
 
   const onTouchStart = useCallback((e) => {
-    // Don't start a gesture from form controls / buttons — lets taps pass through cleanly
     const { target } = e;
-    if (target && target.closest && target.closest('button, a, input, textarea, select, [role="button"], [data-swipe-ignore]')) {
+    // Bail for form controls + explicit opt-outs (a tap/drag there must pass
+    // through). NOT buttons/cards — bailing on those killed swiping across dense
+    // list UIs (e.g. trainer Planes); a plain tap still works because it never
+    // locks 'h', so the click fires on touchend.
+    if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"], [data-swipe-ignore]')) {
       touchRef.current.dragging = false;
       touchRef.current.locked = null;
       return;
+    }
+    // Bail when the touch begins inside a horizontally-scrollable region so the
+    // user can scroll those rows (template/day/filter chips) instead of paging
+    // tabs. This is what the old blanket button-bail was really protecting.
+    let el = target;
+    while (el && el !== containerRef.current && el.nodeType === 1) {
+      if (el.scrollWidth > el.clientWidth + 4) {
+        const ox = window.getComputedStyle(el).overflowX;
+        if (ox === 'auto' || ox === 'scroll') {
+          touchRef.current.dragging = false;
+          touchRef.current.locked = null;
+          return;
+        }
+      }
+      el = el.parentElement;
     }
 
     touchRef.current = {

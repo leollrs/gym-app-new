@@ -1537,6 +1537,46 @@ export default function TrainerPlans() {
     setMealSearch('');
   };
 
+  // ── Manual meal editing in the builder (add / remove / per-meal fields) ──
+  const recomputeTotals = (meals) => ({
+    calories: meals.reduce((s, m) => s + (m.calories || 0), 0),
+    protein: meals.reduce((s, m) => s + (m.protein || 0), 0),
+    carbs: meals.reduce((s, m) => s + (m.carbs || 0), 0),
+    fat: meals.reduce((s, m) => s + (m.fat || 0), 0),
+  });
+  const removeMeal = (dayIdx, mealIdx) => {
+    setMealsDirty(true);
+    const targets = dayTargets();
+    setGeneratedMeals(prev => prev.map((d, di) => {
+      if (di !== dayIdx) return d;
+      const newMeals = d.meals.filter((_, mi) => mi !== mealIdx);
+      const totals = recomputeTotals(newMeals);
+      return { ...d, meals: newMeals, totals, fits: computeDayFits(totals, targets) };
+    }));
+  };
+  // Append a blank meal to a day, then open the picker on it. The slot type
+  // cycles through breakfast/lunch/snack/dinner so labels stay sensible.
+  const addMealToDay = (dayIdx) => {
+    setMealsDirty(true);
+    const day = generatedMeals[dayIdx];
+    const newIdx = day?.meals?.length || 0;
+    const slotType = (MEAL_SLOTS[newIdx]?.type) || 'snack';
+    setGeneratedMeals(prev => prev.map((d, di) => {
+      if (di !== dayIdx) return d;
+      const placeholder = { id: `new_${dayIdx}_${newIdx}_${(d.meals?.length || 0)}`, title: t('trainerPlans.newMeal', 'New meal'), title_es: t('trainerPlans.newMeal', 'New meal'), slotType, calories: 0, protein: 0, carbs: 0, fat: 0 };
+      return { ...d, meals: [...(d.meals || []), placeholder] };
+    }));
+    setMealPickerSlot({ dayIdx, mealIdx: newIdx });
+    setMealSearch('');
+  };
+  const updateMealField = (dayIdx, mealIdx, field, value) => {
+    setMealsDirty(true);
+    setGeneratedMeals(prev => prev.map((d, di) => di !== dayIdx ? d : {
+      ...d,
+      meals: d.meals.map((m, mi) => mi !== mealIdx ? m : { ...m, [field]: value }),
+    }));
+  };
+
   const handleAutoCalculateMacros = () => {
     const ob = mealClientProfile?.onboarding;
     if (!ob) return;
@@ -1654,7 +1694,7 @@ export default function TrainerPlans() {
     // Serialize generated meals into compact JSONB
     const mealsJson = generatedMeals ? generatedMeals.map((day, di) => ({
       day: di + 1,
-      meals: (day.meals || []).map(m => ({ id: m.id, slotType: m.slotType || m.slot, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime })),
+      meals: (day.meals || []).map(m => ({ id: m.id, slotType: m.slotType || m.slot, title: m.title, title_es: m.title_es, calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat, category: m.category, prepTime: m.prepTime, time: m.time || null, notes: m.notes || null })),
       totals: day.totals,
     })) : [];
     // Plan length → duration_weeks + an end_date the member view counts against.
@@ -1716,8 +1756,11 @@ export default function TrainerPlans() {
   };
 
   const deleteMealPlan = async (plan) => {
-    const { error } = await supabase.from('trainer_meal_plans').delete().eq('id', plan.id);
-    if (error) {
+    // .select() so a silently-blocked delete (RLS → 0 rows, no error) surfaces
+    // instead of looking like a no-op.
+    const { data, error } = await supabase.from('trainer_meal_plans').delete().eq('id', plan.id).select('id');
+    if (error || !data?.length) {
+      logger.error('deleteMealPlan failed:', error || 'no rows deleted');
       showToast(t('trainerPlans.errorDeletePlan', 'Failed to delete plan'), 'error');
       return;
     }
@@ -1785,8 +1828,9 @@ export default function TrainerPlans() {
   };
 
   const deletePlan = async (plan) => {
-    const { error } = await supabase.from('trainer_workout_plans').delete().eq('id', plan.id);
-    if (error) {
+    const { data, error } = await supabase.from('trainer_workout_plans').delete().eq('id', plan.id).select('id');
+    if (error || !data?.length) {
+      logger.error('deletePlan failed:', error || 'no rows deleted');
       showToast(t('trainerPlans.errorDeletePlan', 'Failed to delete plan'), 'error');
       return;
     }
@@ -2590,6 +2634,12 @@ export default function TrainerPlans() {
                                       title={t('trainerPlans.chooseMeal', 'Choose meal')}>
                                       <Pencil size={11} />
                                     </button>
+                                    <button onClick={() => removeMeal(mealPreviewDay, mi)}
+                                      className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded-lg transition-colors"
+                                      style={{ backgroundColor: TT.hotSoft, color: TT.hot }}
+                                      title={t('trainerPlans.removeMeal', 'Remove meal')}>
+                                      <Trash2 size={11} />
+                                    </button>
                                   </div>
                                 </div>
                                 <p className="text-[13px] font-semibold truncate mb-1" style={{ color: TT.text }}>{mealTitle}</p>
@@ -2599,10 +2649,28 @@ export default function TrainerPlans() {
                                   <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
                                   <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
                                 </div>
+                                {/* Optional eating time + notes (some diets are time-dependent) */}
+                                <div className="flex items-center gap-2 mt-2">
+                                  <div className="flex items-center gap-1 rounded-lg px-2 py-1" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.border}` }}>
+                                    <Clock size={11} style={{ color: TT.textMute }} />
+                                    <input type="time" value={meal.time || ''} onChange={e => updateMealField(mealPreviewDay, mi, 'time', e.target.value)}
+                                      aria-label={t('trainerPlans.mealTime', 'Meal time')}
+                                      className="bg-transparent text-[11px] outline-none" style={{ color: TT.text, width: 64 }} />
+                                  </div>
+                                  <input type="text" value={meal.notes || ''} onChange={e => updateMealField(mealPreviewDay, mi, 'notes', e.target.value)}
+                                    placeholder={t('trainerPlans.mealNotes', 'Notes (optional)')}
+                                    className="flex-1 min-w-0 rounded-lg px-2 py-1 text-[11px] outline-none" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.border}`, color: TT.text }} />
+                                </div>
                               </div>
                             </div>
                           );
                         })}
+                        {/* Add another meal to this day */}
+                        <button type="button" onClick={() => addMealToDay(mealPreviewDay)}
+                          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12.5px] font-bold"
+                          style={{ background: TT.accentSoft, color: TT.accentInk, border: `1px dashed ${TT.accent}` }}>
+                          <Plus size={14} /> {t('trainerPlans.addMeal', 'Add meal')}
+                        </button>
                       </div>
 
                       {/* ── Meal Picker Overlay ── */}

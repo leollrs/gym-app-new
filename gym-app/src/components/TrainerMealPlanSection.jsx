@@ -334,7 +334,7 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
                         )}
                         <div className="flex-1 min-w-0">
                           <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: slot.color }}>
-                            {t(slot.labelKey, meal.slotType || 'Meal')}
+                            {t(slot.labelKey, meal.slotType || 'Meal')}{meal.time ? ` · ${meal.time}` : ''}
                           </span>
                           <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{title}</p>
                           <div className="flex items-center gap-2.5 mt-0.5 text-[10.5px] tabular-nums">
@@ -343,6 +343,9 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
                             <span style={{ color: '#34D399' }}>{meal.carbs}g C</span>
                             <span style={{ color: '#F472B6' }}>{meal.fat}g F</span>
                           </div>
+                          {meal.notes && (
+                            <p className="text-[11px] mt-1 italic" style={{ color: 'var(--color-text-muted)' }}>{meal.notes}</p>
+                          )}
                         </div>
                       </div>
                     );
