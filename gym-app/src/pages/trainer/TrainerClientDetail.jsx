@@ -1513,6 +1513,28 @@ export default function TrainerClientNotes() {
     return notes || excludedNames.length ? { notes, excludedNames } : null;
   }, [onboarding]);
 
+  // Rolling 7-day window into the 8 weeks of food logs, driven by nutWeekOffset.
+  // MUST stay above the early returns below — these are hooks and would
+  // otherwise be called conditionally (crash: "rendered more hooks…").
+  const nutWindow = useMemo(() => {
+    const end = subDays(new Date(), nutWeekOffset * 7);
+    const start = subDays(end, 6);
+    const startStr = format(start, 'yyyy-MM-dd');
+    const endStr = format(end, 'yyyy-MM-dd');
+    return {
+      start, end, startStr, endStr,
+      days: (foodLogSummary || []).filter(d => d.date >= startStr && d.date <= endStr),
+    };
+  }, [foodLogSummary, nutWeekOffset]);
+  // How far back logs actually exist — caps the "previous week" arrow.
+  const oldestNutWeekOffset = useMemo(() => {
+    if (!foodLogSummary?.length) return 0;
+    const oldest = foodLogSummary[0]?.date;
+    if (!oldest) return 0;
+    const days = Math.floor((new Date() - new Date(oldest + 'T00:00:00')) / 86400000);
+    return Math.min(7, Math.floor(days / 7));
+  }, [foodLogSummary]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--tt-bg)] px-4 py-6 max-w-[480px] mx-auto">
@@ -1588,26 +1610,6 @@ export default function TrainerClientNotes() {
 
   // Map first 3 PRs into the "Personal records" grid
   const topPRs = (personalRecords || []).slice(0, prVisible);
-
-  // Rolling 7-day window into the 8 weeks of food logs, driven by nutWeekOffset.
-  const nutWindow = useMemo(() => {
-    const end = subDays(new Date(), nutWeekOffset * 7);
-    const start = subDays(end, 6);
-    const startStr = format(start, 'yyyy-MM-dd');
-    const endStr = format(end, 'yyyy-MM-dd');
-    return {
-      start, end, startStr, endStr,
-      days: (foodLogSummary || []).filter(d => d.date >= startStr && d.date <= endStr),
-    };
-  }, [foodLogSummary, nutWeekOffset]);
-  // How far back logs actually exist — caps the "previous week" arrow.
-  const oldestNutWeekOffset = useMemo(() => {
-    if (!foodLogSummary?.length) return 0;
-    const oldest = foodLogSummary[0]?.date;
-    if (!oldest) return 0;
-    const days = Math.floor((new Date() - new Date(oldest + 'T00:00:00')) / 86400000);
-    return Math.min(7, Math.floor(days / 7));
-  }, [foodLogSummary]);
 
   // Pinned-notes warm gradient is light-only; in dark mode fall back to the
   // theme-aware surface so it doesn't blow out. isDarkTheme comes from
