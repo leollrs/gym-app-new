@@ -94,8 +94,14 @@ const LogoMark = ({ src, fallbackText }) => {
 };
 
 export default function LaunchSplash() {
-  const { gymLogoUrl, gymName, profile, loading } = useAuth();
-  const gymId = profile?.gym_id || null;
+  const { gymLogoUrl, gymName, profile, loading, availableRoles, isImpersonating } = useAuth();
+  // Super admins operate the PLATFORM, not a tenant — they get the default
+  // TuGymPR splash (platform logo, gold, no gym video), never a gym's branded
+  // preload. While actively impersonating a gym we DO honor that gym's splash.
+  const isPlatformUser = !!availableRoles?.includes('super_admin') && !isImpersonating;
+  const effLogoUrl = isPlatformUser ? '' : gymLogoUrl;
+  const effGymName = isPlatformUser ? '' : gymName;
+  const gymId = isPlatformUser ? null : (profile?.gym_id || null);
   const videoKey = gymId ? `splash_video_${gymId}` : null;
 
   const [show, setShow] = useState(!splashPlayed);
@@ -105,13 +111,18 @@ export default function LaunchSplash() {
   });
   const [videoReady, setVideoReady] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  // Flips true once we KNOW whether this gym has a splash video, so the default
+  // animation never flashes before a known video takes over (and the two are
+  // never on screen together).
+  const [videoResolved, setVideoResolved] = useState(false);
   const videoElRef = useRef(null);
 
   // Resolve / refresh the gym's splash video URL (members can read gym_branding
   // directly — RLS gym_id = current_gym_id()). Cache it for instant cold-start
   // and prefetch the file so the SW caches it → it plays from the 2nd launch on.
   useEffect(() => {
-    if (!gymId) return;
+    if (!gymId) { setVideoResolved(true); return; }  // no gym / platform user → default
+    setVideoResolved(false);
     let cancelled = false;
     supabase.from('gym_branding').select('splash_video_url').eq('gym_id', gymId).maybeSingle()
       .then(({ data }) => {
@@ -129,12 +140,20 @@ export default function LaunchSplash() {
         } else {
           setVideoUrl('');
         }
-      }, () => {});
+        setVideoResolved(true);  // answer known → default path may now commit
+      }, () => { if (!cancelled) setVideoResolved(true); });  // error → fall to default
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gymId]);
 
   const useVideo = !reduce && !!videoUrl && !videoFailed;
+  // Mutually exclusive surfaces: a known gym video plays ALONE (the default
+  // animation/logo is not rendered); the default plays ALONE only once we've
+  // confirmed there's no video. Until that's known we hold on the bare
+  // background (no animation flash) — so the two are never on screen together.
+  const showVideo = useVideo;
+  const showDefault = videoResolved && !useVideo;
+  const runAnim = showDefault && !reduce;
 
   // Give the video a window to actually start; if it doesn't, drop to the default.
   useEffect(() => {
@@ -160,16 +179,18 @@ export default function LaunchSplash() {
   useEffect(() => {
     if (!show) return;
     if (useVideo) return;
-    if (minElapsed && !loading) setShow(false);
-  }, [show, useVideo, minElapsed, loading]);
+    // Don't end while we're still waiting to learn if this gym has a video,
+    // or we'd cut the splash before a known video gets its chance.
+    if (videoResolved && minElapsed && !loading) setShow(false);
+  }, [show, useVideo, videoResolved, minElapsed, loading]);
 
-  const inGym = !!(gymLogoUrl || gymId || gymName);
+  const inGym = !!(effLogoUrl || gymId || effGymName);
 
   let mark;
-  if (gymLogoUrl) {
-    mark = <LogoMark src={gymLogoUrl} fallbackText={gymName || ''} />;
+  if (effLogoUrl) {
+    mark = <LogoMark src={effLogoUrl} fallbackText={effGymName || ''} />;
   } else if (inGym) {
-    mark = <Wordmark text={gymName || ''} />;
+    mark = <Wordmark text={effGymName || ''} />;
   } else {
     mark = (
       <LogoMark
@@ -184,7 +205,7 @@ export default function LaunchSplash() {
       {show && (
         <motion.div
           key="launch-splash"
-          className={`fixed inset-0 flex items-center justify-center overflow-hidden${reduce ? '' : ' ls-run'}`}
+          className={`fixed inset-0 flex items-center justify-center overflow-hidden${runAnim ? ' ls-run' : ''}`}
           style={{
             background: SPLASH_BG,
             zIndex: 99999,
@@ -198,15 +219,18 @@ export default function LaunchSplash() {
         >
           <style>{SPLASH_CSS}</style>
 
-          {/* ── Code default (renders underneath; shown until/unless the video plays) ── */}
-          {!reduce && <div className="ls-glow" aria-hidden />}
+          {/* ── Code default — ALONE; rendered only once we know there's no gym
+                video (showDefault). While resolving we hold on the bare bg. ── */}
+          {showDefault && (
+            <>
+              {!reduce && <div className="ls-glow" aria-hidden />}
+              <div className="ls-center">{mark}</div>
+              <div className="ls-vignette" aria-hidden />
+            </>
+          )}
 
-          <div className="ls-center">{mark}</div>
-
-          <div className="ls-vignette" aria-hidden />
-
-          {/* ── Custom gym video (on top; invisible until it actually starts) ── */}
-          {useVideo && (
+          {/* ── Custom gym video — ALONE; invisible until it actually starts ── */}
+          {showVideo && (
             <motion.video
               ref={videoElRef}
               src={videoUrl}
