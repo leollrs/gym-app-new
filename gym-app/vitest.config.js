@@ -12,5 +12,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.{js,jsx}'],
+    // Dummy values so any module that transitively imports src/lib/supabase.js
+    // doesn't throw on its init-time env check. Tests must NOT hit a real
+    // backend — these are placeholders; real values are .env.local only.
+    env: {
+      VITE_SUPABASE_URL: 'https://test.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'test_anon_key',
+    },
   },
 })
