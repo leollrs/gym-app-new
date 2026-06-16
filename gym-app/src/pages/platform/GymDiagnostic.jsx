@@ -109,7 +109,13 @@ export default function GymDiagnostic() {
       plan = m.admin_note.replace('Imported plan: ', '').trim();
     }
 
-    const isCancelled = !!cancelDate;
+    // An imported_archived member is a churned ex-member by definition — even
+    // when the legacy CSV carried no cancellation_date (a sparse field) and the
+    // import never sets membership_status_updated_at. Treat them (and any
+    // 'cancelled'-status member) as churned so they stop being counted as
+    // survivors; with no known date they're simply excluded from the date-keyed
+    // charts (cohort timing, tenure, seasonality) below.
+    const isCancelled = m.imported_archived === true || m.membership_status === 'cancelled' || cancelDate != null;
     return { joinDate, cancelDate, plan, isCancelled };
   }).filter((m) => m.joinDate), [members]);
 
@@ -126,6 +132,11 @@ export default function GymDiagnostic() {
     const now = new Date();
 
     normalized.forEach((m) => {
+      // Churned but with no known cancel date (sparse legacy imports): we know
+      // they left, not when, so they can't be placed on the survival timeline.
+      // Exclude them rather than count them as survivors (which overstated
+      // retention) — right-censoring of unknown-timing churn.
+      if (m.isCancelled && !m.cancelDate) return;
       const key = format(m.joinDate, 'yyyy-MM');
       const cohort = grid.get(key) || { size: 0, atMonth: {} };
       cohort.size += 1;
@@ -168,10 +179,16 @@ export default function GymDiagnostic() {
   const avgTenure = useMemo(() => {
     if (normalized.length === 0) return null;
     const now = new Date();
-    const tenures = normalized.map((m) => {
-      const end = m.cancelDate || now;
-      return Math.max(0, differenceInCalendarMonths(end, m.joinDate));
-    });
+    const tenures = normalized
+      .map((m) => {
+        // Churned with unknown date → unknown tenure; exclude rather than let it
+        // accrue to now() (which treated ex-members as still-active forever).
+        if (m.isCancelled && !m.cancelDate) return null;
+        const end = m.cancelDate || now;
+        return Math.max(0, differenceInCalendarMonths(end, m.joinDate));
+      })
+      .filter((v) => v != null);
+    if (tenures.length === 0) return null;
     const sum = tenures.reduce((s, t) => s + t, 0);
     return {
       months: Math.round((sum / tenures.length) * 10) / 10,

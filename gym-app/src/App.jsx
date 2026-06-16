@@ -1655,6 +1655,20 @@ function App() {
           </ErrorBoundary>
         }
       />
+      {/* /invite/t/:id — the actual trainer share path (rides the CDN-propagated
+          /invite/* applink so it opens the app immediately; see trainerShareUrl).
+          Two segments, so it never collides with the /invite/:code route. Same
+          AppDownloadLanding fallback for visitors without the app. */}
+      <Route
+        path="/invite/t/:id"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton variant="page" />}>
+              <AppDownloadLanding />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
 
       {/* Public-facing trainer profile — viewable by members, trainers, and admins
           within the same gym (gym-id guard enforced inside the page). Standalone

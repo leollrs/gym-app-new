@@ -701,6 +701,23 @@ if (isNative) {
         if (trainerShareMatch) {
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/trainers/${trainerShareMatch[1]}` } }));
         }
+        // /invite/t/ID → trainer share link. Rides the already-CDN-propagated
+        // /invite/* applink so it opens the app right away (a fresh /t/* path
+        // waits on Apple's CDN re-crawl). The single-segment /invite/:code
+        // handler above can't match this two-segment path, so no conflict.
+        const trainerInviteMatch = path.match(/^\/invite\/t\/([^/]+)$/i);
+        if (trainerInviteMatch) {
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/trainers/${trainerInviteMatch[1]}` } }));
+        }
+        // Custom-scheme fallback: tugympr://t/ID. The /t/:id download landing
+        // hands off to the app via this scheme when the universal link doesn't
+        // fire (e.g. Apple's AASA CDN is still serving a stale copy missing
+        // /t/*). The OS routes a registered scheme straight to the app — no CDN
+        // involved — so "Open in app" works the moment the app is installed.
+        if (parsed.protocol === 'tugympr:' && parsed.host === 't') {
+          const tid = parsed.pathname.replace(/^\/+/, '').split('/')[0];
+          if (tid) window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/trainers/${tid}` } }));
+        }
       } catch {}
     });
 

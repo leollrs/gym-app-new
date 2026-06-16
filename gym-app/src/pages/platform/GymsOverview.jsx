@@ -3,18 +3,29 @@ import { useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Building2, Users, Activity,
   ChevronRight, TrendingUp, AlertTriangle,
+  CheckSquare, Square, X, ToggleRight, Power, CreditCard, Loader2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { selectInBatches, selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { logAdminAction } from '../../lib/adminAudit';
 import { healthScoreFromStatsRow, healthTier } from '../../lib/platform/healthScore';
 import logger from '../../lib/logger';
 import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
 import GymCreateModal from './components/GymCreateModal';
+
+// Bulk-action vocabularies — features mirror GymSettingsTab's ENTITLEMENT_FEATURES
+// (gym_entitlements rows); plans mirror PLAN_COLORS keys (gyms.plan_type, no CHECK).
+const BULK_FEATURES = ['referrals', 'social', 'messaging', 'challenges', 'nutrition', 'ai'];
+const FEATURE_FALLBACK = {
+  referrals: 'Referrals', social: 'Social feed', messaging: 'Messaging',
+  challenges: 'Challenges', nutrition: 'Nutrition', ai: 'AI photo analysis',
+};
+const BULK_PLANS = ['free', 'starter', 'pro', 'enterprise', 'lifetime'];
 
 const PLAN_COLORS = {
   starter:    { bg: 'bg-[#3B82F6]/15', text: 'text-[#60A5FA]', labelKey: 'platform.gyms.planStarter',    fallback: 'Starter' },
@@ -79,6 +90,15 @@ export default function GymsOverview() {
   const [filter, setFilter] = useState('all');
   const [sort, setSort] = useState('newest');
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // ── Bulk fleet actions ───────────────────────────────────────────────────
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkModal, setBulkModal] = useState(null);   // 'feature' | 'plan' | 'deactivate'
+  const [featureDraft, setFeatureDraft] = useState({ feature: 'messaging', enabled: false });
+  const [planDraft, setPlanDraft] = useState('starter');
+  const [deactivateConfirm, setDeactivateConfirm] = useState('');
 
   useEffect(() => {
     document.title = `${t('platform.gyms.title', 'Gyms')} | ${window.__APP_NAME || 'TuGymPR'}`;
@@ -197,6 +217,75 @@ export default function GymsOverview() {
     [gyms, statsByGym]
   );
 
+  // ── Selection + bulk apply ───────────────────────────────────────────────
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelect = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setBulkModal(null);
+    setDeactivateConfirm('');
+  }, []);
+
+  const visibleIds = useMemo(() => filtered.map(g => g.id), [filtered]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds(prev => {
+      const everySelected = visibleIds.length > 0 && visibleIds.every(id => prev.has(id));
+      return everySelected ? new Set() : new Set(visibleIds);
+    });
+  }, [visibleIds]);
+
+  // Single round-trip per action (.in()/array upsert) — not an N-call loop.
+  const applyBulk = useCallback(async (exec, audit, successMsg) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    const { error } = await exec(ids);
+    setBulkBusy(false);
+    if (error) {
+      showToast(t('platform.gyms.bulkFailed', 'Bulk action failed: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction(audit.action, 'gym', null, { ...audit.details, gym_count: ids.length, gym_ids: ids }, null);
+    showToast(successMsg(ids.length), 'success');
+    setBulkModal(null);
+    setDeactivateConfirm('');
+    await fetchData();
+    exitSelect();
+  }, [selectedIds, showToast, t, fetchData, exitSelect]);
+
+  const bulkSetActive = (active) => applyBulk(
+    (ids) => supabase.from('gyms').update({ is_active: active }).in('id', ids),
+    { action: active ? 'bulk_activate_gyms' : 'bulk_deactivate_gyms', details: { is_active: active } },
+    (n) => active
+      ? t('platform.gyms.bulkActivated', { count: n, defaultValue: '{{count}} gyms activated' })
+      : t('platform.gyms.bulkDeactivated', { count: n, defaultValue: '{{count}} gyms deactivated' }),
+  );
+
+  const bulkSetPlan = (tier) => applyBulk(
+    (ids) => supabase.from('gyms').update({ plan_type: tier }).in('id', ids),
+    { action: 'bulk_set_plan', details: { plan_type: tier } },
+    (n) => t('platform.gyms.bulkPlanSet', { count: n, defaultValue: 'Plan set for {{count}} gyms' }),
+  );
+
+  const bulkSetFeature = (feature, enabled) => applyBulk(
+    (ids) => supabase.from('gym_entitlements').upsert(
+      ids.map(id => ({ gym_id: id, feature, enabled, updated_at: new Date().toISOString() })),
+      { onConflict: 'gym_id,feature' },
+    ),
+    { action: 'bulk_set_entitlement', details: { feature, enabled } },
+    (n) => t('platform.gyms.bulkFeatureSet', { count: n, defaultValue: 'Feature updated for {{count}} gyms' }),
+  );
+
+  const selectedCount = selectedIds.size;
+
   if (loading) {
     return <PlatformSpinner />;
   }
@@ -212,9 +301,19 @@ export default function GymsOverview() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => { if (selectMode) exitSelect(); else setSelectMode(true); }}
+              className="rounded-lg px-3 py-2 text-[12px] font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0 whitespace-nowrap border"
+              style={selectMode
+                ? { background: 'rgba(212,175,55,0.12)', color: '#D4AF37', borderColor: 'rgba(212,175,55,0.3)' }
+                : { background: 'transparent', color: '#9CA3AF', borderColor: 'rgba(255,255,255,0.1)' }}
+            >
+              <CheckSquare size={14} />
+              {selectMode ? t('platform.gyms.selectDone', 'Done') : t('platform.gyms.select', 'Select')}
+            </button>
+            <button
               onClick={() => setShowCreateModal(true)}
               className="rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0 whitespace-nowrap"
-              style={{ background: '#D4AF37' }}
+              style={{ background: '#D4AF37', color: '#000' }}
             >
               <Plus size={14} />
               {t('platform.gyms.newGym', 'New Gym')}
@@ -291,7 +390,14 @@ export default function GymsOverview() {
           <div className="bg-[#0F172A] border border-white/6 rounded-xl overflow-hidden">
             {/* Desktop header */}
             <div className="hidden md:grid grid-cols-[1fr_100px_80px_80px_80px_100px_120px_32px] gap-4 px-4 py-3 border-b border-white/6 text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">
-              <span>{t('platform.gyms.headerGym', 'Gym')}</span>
+              <span className="flex items-center gap-2">
+                {selectMode && (
+                  <button onClick={toggleSelectAll} className="flex items-center" aria-label={t('platform.gyms.selectAll', 'Select all')}>
+                    {allVisibleSelected ? <CheckSquare size={15} className="text-[#D4AF37]" /> : <Square size={15} className="text-[#4B5563]" />}
+                  </button>
+                )}
+                {t('platform.gyms.headerGym', 'Gym')}
+              </span>
               <span>{t('platform.gyms.headerPlan', 'Plan')}</span>
               <span className="text-right">{t('platform.gyms.headerMembers', 'Members')}</span>
               <span className="text-center">{t('platform.gyms.headerHealth', 'Health')}</span>
@@ -302,18 +408,26 @@ export default function GymsOverview() {
             </div>
             {filtered.map((gym) => {
               const health = gymHealth(gym);
+              const isSelected = selectedIds.has(gym.id);
               return (
                 <button
                   key={gym.id}
-                  onClick={() => navigate(`/platform/gym/${gym.id}`)}
-                  className="w-full text-left grid grid-cols-1 md:grid-cols-[1fr_100px_80px_80px_80px_100px_120px_32px] gap-2 md:gap-4 px-4 py-3.5 border-b border-white/4 last:border-b-0 hover:bg-[#111827] transition-colors group"
+                  onClick={() => selectMode ? toggleSelect(gym.id) : navigate(`/platform/gym/${gym.id}`)}
+                  className={`w-full text-left grid grid-cols-1 md:grid-cols-[1fr_100px_80px_80px_80px_100px_120px_32px] gap-2 md:gap-4 px-4 py-3.5 border-b border-white/4 last:border-b-0 transition-colors group ${isSelected ? 'bg-[#D4AF37]/8' : 'hover:bg-[#111827]'}`}
                 >
-                  {/* Gym name */}
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-[#E5E7EB] truncate group-hover:text-white transition-colors">
-                      {gym.name}
-                    </p>
-                    <p className="text-[11px] text-[#6B7280] truncate">{gym.slug}</p>
+                  {/* Gym name (+ select checkbox) */}
+                  <div className="min-w-0 flex items-center gap-2.5">
+                    {selectMode && (
+                      isSelected
+                        ? <CheckSquare size={16} className="text-[#D4AF37] flex-shrink-0" />
+                        : <Square size={16} className="text-[#4B5563] flex-shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-[#E5E7EB] truncate group-hover:text-white transition-colors">
+                        {gym.name}
+                      </p>
+                      <p className="text-[11px] text-[#6B7280] truncate">{gym.slug}</p>
+                    </div>
                   </div>
 
                   {/* Mobile meta row */}
@@ -376,6 +490,153 @@ export default function GymsOverview() {
           showToast={showToast}
           profile={profile}
         />
+      )}
+
+      {/* ── Bulk action bar ─────────────────────────────────── */}
+      {/* Sits ABOVE the mobile bottom nav (fixed bottom-0 z-50, ~72px) on
+          phones and 16px from the edge on desktop (no bottom nav there). */}
+      {selectMode && selectedCount > 0 && (
+        <div className="fixed inset-x-0 z-[55] px-4 pointer-events-none bottom-[calc(80px+env(safe-area-inset-bottom))] md:bottom-4">
+          <div className="pointer-events-auto max-w-[480px] md:max-w-3xl mx-auto bg-[#0F172A]/95 backdrop-blur border border-white/10 rounded-2xl shadow-2xl px-3 py-2.5 flex items-center gap-2 flex-wrap">
+            <span className="text-[12px] font-semibold text-[#E5E7EB] px-1.5 whitespace-nowrap flex items-center gap-2">
+              {bulkBusy && <Loader2 size={14} className="animate-spin text-[#D4AF37]" />}
+              {t('platform.gyms.bulkSelected', { count: selectedCount, defaultValue: '{{count}} selected' })}
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+              <button onClick={() => setBulkModal('feature')} disabled={bulkBusy} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border border-white/8 bg-[#111827] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <ToggleRight size={13} />{t('platform.gyms.bulkFeature', 'Feature')}
+              </button>
+              <button onClick={() => setBulkModal('plan')} disabled={bulkBusy} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border border-white/8 bg-[#111827] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <CreditCard size={13} />{t('platform.gyms.bulkPlan', 'Plan')}
+              </button>
+              <button onClick={() => bulkSetActive(true)} disabled={bulkBusy} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border border-emerald-500/20 bg-emerald-500/8 text-emerald-400 hover:bg-emerald-500/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <Power size={13} />{t('platform.gyms.bulkActivate', 'Activate')}
+              </button>
+              <button onClick={() => { setDeactivateConfirm(''); setBulkModal('deactivate'); }} disabled={bulkBusy} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium border border-red-500/20 bg-red-500/8 text-red-400 hover:bg-red-500/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <Power size={13} />{t('platform.gyms.bulkDeactivate', 'Deactivate')}
+              </button>
+              <button onClick={exitSelect} className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/5 transition-colors" aria-label={t('platform.gyms.bulkClear', 'Clear selection')}>
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk: Set feature ───────────────────────────────── */}
+      {bulkModal === 'feature' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setBulkModal(null)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.gyms.bulkFeatureTitle', { count: selectedCount, defaultValue: 'Set feature for {{count}} gyms' })}</h3>
+              <button onClick={() => setBulkModal(null)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-[#6B7280] uppercase tracking-wider">{t('platform.gyms.bulkFeatureLabel', 'Feature')}</p>
+              <select
+                value={featureDraft.feature}
+                onChange={e => setFeatureDraft(d => ({ ...d, feature: e.target.value }))}
+                className="w-full bg-[#111827] border border-white/10 rounded-lg px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40"
+              >
+                {BULK_FEATURES.map(f => (
+                  <option key={f} value={f}>{t(`platform.gymDetail.settings.feature_${f}`, FEATURE_FALLBACK[f])}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              {[{ v: true, label: t('platform.gyms.bulkEnable', 'Enable') }, { v: false, label: t('platform.gyms.bulkDisable', 'Disable') }].map(opt => (
+                <button
+                  key={String(opt.v)}
+                  onClick={() => setFeatureDraft(d => ({ ...d, enabled: opt.v }))}
+                  className={`flex-1 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors border ${
+                    featureDraft.enabled === opt.v
+                      ? (opt.v ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-red-500/15 text-red-400 border-red-500/30')
+                      : 'bg-white/5 text-[#6B7280] border-transparent hover:bg-white/10'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-[#6B7280]">{t('platform.gyms.bulkFeatureNote', 'Global Operations kill switches still override these — off everywhere wins.')}</p>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setBulkModal(null)} className="flex-1 px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">{t('platform.gyms.bulkCancel', 'Cancel')}</button>
+              <button onClick={() => bulkSetFeature(featureDraft.feature, featureDraft.enabled)} disabled={bulkBusy} className="flex-1 px-3 py-2 rounded-lg text-[12px] font-medium hover:opacity-90 disabled:opacity-40 transition-colors" style={{ background: '#D4AF37', color: '#0F172A' }}>
+                {bulkBusy ? t('platform.gyms.bulkApplying', 'Applying…') : t('platform.gyms.bulkApply', 'Apply')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk: Set plan ──────────────────────────────────── */}
+      {bulkModal === 'plan' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setBulkModal(null)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.gyms.bulkPlanTitle', { count: selectedCount, defaultValue: 'Set plan for {{count}} gyms' })}</h3>
+              <button onClick={() => setBulkModal(null)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {BULK_PLANS.map(p => {
+                const plan = PLAN_COLORS[p];
+                const active = planDraft === p;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPlanDraft(p)}
+                    className={`px-3 py-2.5 rounded-lg text-[12px] font-medium transition-colors border ${active ? `${plan.bg} ${plan.text} border-current` : 'bg-[#111827] text-[#9CA3AF] border-white/8 hover:border-white/15'}`}
+                  >
+                    {t(plan.labelKey, plan.fallback)}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setBulkModal(null)} className="flex-1 px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">{t('platform.gyms.bulkCancel', 'Cancel')}</button>
+              <button onClick={() => bulkSetPlan(planDraft)} disabled={bulkBusy} className="flex-1 px-3 py-2 rounded-lg text-[12px] font-medium hover:opacity-90 disabled:opacity-40 transition-colors" style={{ background: '#D4AF37', color: '#0F172A' }}>
+                {bulkBusy ? t('platform.gyms.bulkApplying', 'Applying…') : t('platform.gyms.bulkApply', 'Apply')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk: Deactivate (typed-count confirm) ──────────── */}
+      {bulkModal === 'deactivate' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setBulkModal(null)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-red-400 flex items-center gap-2"><AlertTriangle size={16} />{t('platform.gyms.bulkDeactivateTitle', 'Deactivate gyms')}</h3>
+              <button onClick={() => setBulkModal(null)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+            <p className="text-[12px] text-[#9CA3AF] leading-relaxed">
+              {t('platform.gyms.bulkDeactivateWarn', { count: selectedCount, defaultValue: 'This immediately cuts off app access for all members of {{count}} gyms. It is reversible (Activate restores them), but members are booted right away.' })}
+            </p>
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-[#6B7280]">{t('platform.gyms.bulkDeactivateConfirmLabel', { count: selectedCount, defaultValue: 'Type {{count}} to confirm' })}</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={deactivateConfirm}
+                onChange={e => setDeactivateConfirm(e.target.value)}
+                placeholder={String(selectedCount)}
+                className="w-full bg-[#111827] border border-white/10 rounded-lg px-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-red-500/40 text-center font-mono tracking-widest"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setBulkModal(null)} className="flex-1 px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">{t('platform.gyms.bulkCancel', 'Cancel')}</button>
+              <button
+                onClick={() => bulkSetActive(false)}
+                disabled={bulkBusy || deactivateConfirm.trim() !== String(selectedCount)}
+                className="flex-1 px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: '#EF4444', color: '#fff' }}
+              >
+                {bulkBusy ? t('platform.gyms.bulkApplying', 'Applying…') : t('platform.gyms.bulkDeactivateConfirm', 'Deactivate')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

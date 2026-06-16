@@ -351,6 +351,47 @@ function DesignerFullPreview({ id, lang, gymName, gymLogoUrl, subject, preview }
   );
 }
 
+// Fit-to-width wrapper for the full-screen preview. Designer emails are a fixed
+// 640px canvas; on a phone that overflows the modal and gets clipped (you can't
+// reach the right side). Scale it to the available width — capped at 1 so desktop
+// still renders at native size — and size the box to the scaled height so the
+// whole email simply scrolls vertically.
+function ScaledFullEmail(props) {
+  const ref = useRef(null);
+  const innerRef = useRef(null);
+  const [scale, setScale] = useState(1);
+  const [boxH, setBoxH] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) {
+        const s = Math.min(1, w / 640);
+        setScale(s);
+        const natH = innerRef.current?.scrollHeight || 0;
+        setBoxH(natH * s);
+      }
+    };
+    measure();
+    // Re-measure once the logo / hero images load and change the height.
+    const tid = setTimeout(measure, 400);
+    if (typeof ResizeObserver === 'undefined') return () => clearTimeout(tid);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => { ro.disconnect(); clearTimeout(tid); };
+  }, []);
+  return (
+    <div ref={ref} style={{ width: '100%', overflow: 'hidden' }}>
+      <div style={{ height: boxH || undefined }}>
+        <div ref={innerRef} style={{ width: 640, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+          <DesignerEmail {...props} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FullPreviewModal({ entry, html, subject, preview /* eslint-disable-line no-unused-vars */, lang, gymName, gymLogoUrl, primary, secondary, onClose, onUse, onSendTest, sendingTest, testTargetEmail, t }) {
   if (!entry || typeof document === 'undefined') return null;
   // Portal to body so the modal escapes ANY parent stacking context: nothing
@@ -382,7 +423,7 @@ function FullPreviewModal({ entry, html, subject, preview /* eslint-disable-line
           </button>
         </div>
         <div className="flex-1 overflow-y-auto" style={{ background: '#f0eee9' }}>
-          <DesignerEmail
+          <ScaledFullEmail
             id={entry.id}
             lang={lang}
             gymName={gymName}

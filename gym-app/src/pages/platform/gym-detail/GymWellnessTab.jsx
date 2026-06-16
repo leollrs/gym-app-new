@@ -2,14 +2,16 @@
  * GymWellnessTab — the gym-owner "wellness" KPIs, mirrored into the platform
  * console so the super-admin can read any gym's health per gym.
  *
- * Reuses the exact admin KPI computation (fetchCurrentKPIs) so the numbers
- * match what the gym owner sees on Admin → Analytics, plus a composite health
- * score (same six-factor formula as the cross-gym Gym Health page) and the
- * at-risk/critical churn counts. All reads are gym-scoped and rely on the
- * platform-wide super_admin read access already used by GymHealth — no gated
- * admin RPCs, so it works for any gym the super-admin opens.
+ * The composite health score and the at-risk/critical counts come from the SAME
+ * platform_gym_stats row that drives GymsOverview and GymHealth (deduped to the
+ * latest churn score per member within a 7-day window) — passed down from
+ * GymDetail as `statsRow`. This guarantees the Wellness tab can never disagree
+ * with the cross-gym views for the same gym, and avoids the old raw
+ * churn_risk_scores re-query that counted every member's daily history (a member
+ * at-risk for 30 days was counted up to 30×) and the 5000-row truncation. The
+ * KPI grid reuses the admin KPI computation (fetchCurrentKPIs) so those numbers
+ * match Admin → Analytics.
  */
-import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { subDays } from 'date-fns';
@@ -19,12 +21,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { fetchCurrentKPIs } from '../../../lib/admin/currentKPIs';
-import { computeHealthScore } from '../../../lib/platform/healthScore';
+import { healthScoreFromStatsRow, colorForScore } from '../../../lib/platform/healthScore';
 import StatCard from '../../../components/platform/StatCard';
 
-const getScoreColor = (s) => (s == null ? '#6B7280' : s >= 80 ? '#10B981' : s >= 60 ? '#22C55E' : s >= 40 ? '#F59E0B' : s >= 20 ? '#F97316' : '#EF4444');
-
-export default function GymWellnessTab({ gymId }) {
+export default function GymWellnessTab({ gymId, statsRow }) {
   const { t } = useTranslation('pages');
 
   const { data: kpis, isLoading: kpisLoading } = useQuery({
@@ -34,57 +34,33 @@ export default function GymWellnessTab({ gymId }) {
     staleTime: 60_000,
   });
 
-  const { data: health, isLoading: healthLoading } = useQuery({
-    queryKey: ['platform', 'gym-wellness', 'health', gymId],
+  // Cards delivered (30d) is the only headline metric not carried on the
+  // platform_gym_stats row, so it gets its own lightweight head-count query
+  // (no row fetch, so no truncation).
+  const { data: cardsDelivered30d = 0, isLoading: cardsLoading } = useQuery({
+    queryKey: ['platform', 'gym-wellness', 'cards', gymId],
     queryFn: async () => {
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
-      const [profilesRes, sessionsRes, checkInsRes, churnRes, cardsRes] = await Promise.all([
-        supabase.from('profiles').select('id, last_active_at, is_onboarded, created_at')
-          .eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).limit(5000),
-        supabase.from('workout_sessions').select('profile_id').eq('gym_id', gymId)
-          .eq('status', 'completed').gte('started_at', thirtyDaysAgo).limit(5000),
-        supabase.from('check_ins').select('profile_id').eq('gym_id', gymId)
-          .gte('checked_in_at', thirtyDaysAgo).limit(5000),
-        supabase.from('churn_risk_scores').select('profile_id, score').eq('gym_id', gymId).limit(5000),
-        supabase.from('print_cards').select('id').eq('gym_id', gymId)
-          .eq('status', 'delivered').gte('delivered_at', thirtyDaysAgo).limit(5000),
-      ]);
-
-      const members = profilesRes.data || [];
-      const sessions = sessionsRes.data || [];
-      const checkIns = checkInsRes.data || [];
-      const churn = churnRes.data || [];
-      const totalMembers = members.length;
-
-      const active30d = members.filter((m) => m.last_active_at && m.last_active_at >= thirtyDaysAgo).length;
-      const checkedIn30d = new Set(checkIns.map((c) => c.profile_id)).size;
-      const onboarded = members.filter((m) => m.is_onboarded).length;
-      const new30d = members.filter((m) => m.created_at >= thirtyDaysAgo).length;
-      const avgChurn = churn.length ? churn.reduce((s, c) => s + (c.score || 0), 0) / churn.length : 0;
-      const atRisk = churn.filter((c) => c.score >= 60 && c.score < 80).length;
-      const critical = churn.filter((c) => c.score >= 80).length;
-
-      // Shared canonical formula (lib/platform/healthScore) — returns null for
-      // 0-member gyms (unscored) instead of a misleading 0/Critical.
-      const score = computeHealthScore({
-        totalMembers,
-        activeMembers30d: active30d,
-        totalSessions30d: sessions.length,
-        checkedInMembers30d: checkedIn30d,
-        onboardedMembers: onboarded,
-        avgChurnScore: avgChurn,
-        newMembers30d: new30d,
-      });
-
-      return { score, atRisk, critical, cardsDelivered30d: (cardsRes.data || []).length, totalMembers };
+      const { count } = await supabase
+        .from('print_cards')
+        .select('id', { count: 'exact', head: true })
+        .eq('gym_id', gymId)
+        .eq('status', 'delivered')
+        .gte('delivered_at', thirtyDaysAgo);
+      return count ?? 0;
     },
     enabled: !!gymId,
     staleTime: 60_000,
   });
 
-  const scoreColor = useMemo(() => getScoreColor(health?.score ?? null), [health?.score]);
+  // Health score + risk counts read from the canonical platform_gym_stats row
+  // (deduped, 7-day window) — never a raw churn_risk_scores re-query.
+  const score = healthScoreFromStatsRow(statsRow);
+  const critical = statsRow?.churn_critical ?? 0;
+  const atRisk = statsRow?.churn_high ?? 0;
+  const scoreColor = colorForScore(score);
 
-  if (kpisLoading || healthLoading) {
+  if (kpisLoading || cardsLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 size={22} className="animate-spin text-[#6B7280]" />
@@ -107,7 +83,7 @@ export default function GymWellnessTab({ gymId }) {
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             <p className="text-[34px] font-bold leading-none tabular-nums" style={{ color: scoreColor }}>
-              {health?.score ?? '—'}
+              {score ?? '—'}
             </p>
             <span className="text-[13px] text-[#6B7280]">/ 100</span>
           </div>
@@ -138,9 +114,9 @@ export default function GymWellnessTab({ gymId }) {
           {t('platform.gymWellness.attentionLabel', 'Needs attention')}
         </p>
         <div className="grid grid-cols-3 gap-3">
-          <StatCard label={t('platform.gymWellness.critical', 'Critical risk')} value={health?.critical ?? 0} icon={AlertTriangle} borderColor="#EF4444" />
-          <StatCard label={t('platform.gymWellness.atRisk', 'At risk')} value={health?.atRisk ?? 0} icon={AlertTriangle} borderColor="#F59E0B" />
-          <StatCard label={t('platform.gymWellness.cardsDelivered', 'Cards delivered (30d)')} value={health?.cardsDelivered30d ?? 0} icon={Printer} borderColor="#D4AF37" />
+          <StatCard label={t('platform.gymWellness.critical', 'Critical risk')} value={critical} icon={AlertTriangle} borderColor="#EF4444" />
+          <StatCard label={t('platform.gymWellness.atRisk', 'At risk')} value={atRisk} icon={AlertTriangle} borderColor="#F59E0B" />
+          <StatCard label={t('platform.gymWellness.cardsDelivered', 'Cards delivered (30d)')} value={cardsDelivered30d} icon={Printer} borderColor="#D4AF37" />
         </div>
       </div>
     </div>

@@ -1010,7 +1010,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
                 {m.role && m.role !== 'member' && (
                   <span className="text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0"
                     style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', fontWeight: 700 }}>
-                    {m.role}
+                    {m.role === 'super_admin'
+                      ? t('admin.messaging.roleSuperAdmin', 'Super Admin')
+                      : m.role === 'admin'
+                        ? t('admin.messaging.roleAdmin', 'Admin')
+                        : t('admin.messaging.roleTrainer', 'Trainer')}
                   </span>
                 )}
               </button>

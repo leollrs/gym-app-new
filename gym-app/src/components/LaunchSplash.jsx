@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -26,8 +26,8 @@ import { supabase } from '../lib/supabase';
 let splashPlayed = false;
 
 const MIN_MS = 1900;          // default-path: deliberate beat even on instant boots
-const MAX_MS = 6000;          // hard backstop (also caps an over-long video)
-const VIDEO_START_MS = 1200;  // window for the video to actually start, else → default
+const MAX_MS = 8000;          // hard backstop (covers a late-starting custom video)
+const VIDEO_START_MS = 3000;  // window for the video to actually start, else → default
 const SPLASH_BG = '#05070B';
 const PLATFORM_LOGO_SRC = '/tugympr-logo.png';
 const ACCENT = 'var(--ls-accent, #F5A623)';
@@ -105,6 +105,7 @@ export default function LaunchSplash() {
   });
   const [videoReady, setVideoReady] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  const videoElRef = useRef(null);
 
   // Resolve / refresh the gym's splash video URL (members can read gym_branding
   // directly — RLS gym_id = current_gym_id()). Cache it for instant cold-start
@@ -120,7 +121,11 @@ export default function LaunchSplash() {
         if (url) {
           // Fire-and-forget; NOT aborted on unmount so it finishes caching.
           try { fetch(url).catch(() => {}); } catch { /* ignore */ }
-          setVideoUrl(prev => prev || url);
+          // Adopt the latest DB url and re-arm. `prev || url` used to pin the
+          // stale cached url, so a re-upload (new ?v= cache-bust) never reached
+          // members; now the fresh url replaces it and gets its own start window.
+          setVideoUrl(prev => (prev === url ? prev : url));
+          setVideoFailed(false);
         } else {
           setVideoUrl('');
         }
@@ -146,12 +151,17 @@ export default function LaunchSplash() {
     return () => { clearTimeout(minT); clearTimeout(maxT); };
   }, [show]);
 
-  // In video mode the <video> onEnded ends the splash; otherwise the default
-  // ends once the min beat passed AND the app finished booting.
+  // While a known custom video is still in play — URL resolved and not yet
+  // failed — it OWNS when the splash ends (its onEnded), bounded only by the
+  // MAX_MS backstop. Holding through the video's start window stops the
+  // default's min-beat from cutting the video off right before it begins.
+  // With no video (or once it fails) the default ends after the min beat AND
+  // the app has finished booting.
   useEffect(() => {
-    const inVideoMode = videoReady && !videoFailed;
-    if (show && !inVideoMode && minElapsed && !loading) setShow(false);
-  }, [show, videoReady, videoFailed, minElapsed, loading]);
+    if (!show) return;
+    if (useVideo) return;
+    if (minElapsed && !loading) setShow(false);
+  }, [show, useVideo, minElapsed, loading]);
 
   const inGym = !!(gymLogoUrl || gymId || gymName);
 
@@ -198,11 +208,15 @@ export default function LaunchSplash() {
           {/* ── Custom gym video (on top; invisible until it actually starts) ── */}
           {useVideo && (
             <motion.video
+              ref={videoElRef}
               src={videoUrl}
               muted
               playsInline
               autoPlay
               preload="auto"
+              // Belt-and-suspenders for iOS: nudge playback the moment it can
+              // play, in case the autoPlay attribute alone doesn't kick in.
+              onCanPlay={() => { try { videoElRef.current?.play?.()?.catch?.(() => {}); } catch { /* ignore */ } }}
               onPlaying={() => setVideoReady(true)}
               onEnded={() => setShow(false)}
               onError={() => setVideoFailed(true)}

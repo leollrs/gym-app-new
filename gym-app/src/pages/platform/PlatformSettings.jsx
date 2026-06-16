@@ -174,12 +174,12 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
       const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
       const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
       if (newVideoFile.size > MAX_VIDEO_SIZE) {
-        alert('Video must be under 100MB');
+        alert(t('platformSettings.videoTooLarge', 'Video must be under 100MB'));
         setSaving(false);
         return;
       }
       if (!ALLOWED_VIDEO_TYPES.includes(newVideoFile.type)) {
-        alert('Only MP4, WebM, and MOV videos are allowed');
+        alert(t('platformSettings.videoTypeInvalid', 'Only MP4, WebM, and MOV videos are allowed'));
         setSaving(false);
         return;
       }
@@ -218,7 +218,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
     const { error } = await supabase.from('exercises').update(updates).eq('id', ex.id);
     setSaving(false);
     if (error) {
-      alert(`Save failed: ${error.message}`);
+      alert(t('platformSettings.saveFailed', 'Save failed: {{msg}}', { msg: error.message }));
       return;
     }
     onUpdate({ ...ex, ...updates });

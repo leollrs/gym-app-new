@@ -135,7 +135,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         });
         if (emailErr) throw emailErr;
       } else if (channel === 'sms') {
-        const smsText = fullMsg.length > 600 ? fullMsg.slice(0, 597) + '...' : fullMsg;
+        const smsText = fullMsg.length > 320 ? fullMsg.slice(0, 317) + '...' : fullMsg;
         const { data: { session: smsSession } } = await supabase.auth.getSession();
         if (!smsSession?.access_token) throw new Error('No active session');
         const smsPayload = { memberId: member.id, body: smsText, source: 'win_back' };

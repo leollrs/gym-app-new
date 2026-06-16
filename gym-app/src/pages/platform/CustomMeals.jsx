@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  UtensilsCrossed, Search, AlertTriangle, Loader2, Building2, User as UserIcon, Clock,
+  UtensilsCrossed, Search, AlertTriangle, Loader2, Building2, User as UserIcon, Clock, Trash2,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -30,7 +30,7 @@ function num(v) {
   return Number.isFinite(n) ? Math.round(n) : 0;
 }
 
-function MealRow({ meal, t }) {
+function MealRow({ meal, t, onDelete }) {
   const profile = meal.profiles || null;
   const creatorName = profile?.full_name || profile?.username || t('platform.customMeals.unknownCreator', 'Unknown');
   const role = profile?.role || null;
@@ -40,16 +40,37 @@ function MealRow({ meal, t }) {
   const gymName = meal.gyms?.name || t('platform.customMeals.noGym', 'No gym');
   const createdAt = meal.created_at ? new Date(meal.created_at) : null;
   const hasEs = meal.name_es && meal.name_es !== meal.name;
+  // image_url (migration 0580) may be a full public URL or a bare storage path.
+  const imageUrl = meal.image_url
+    ? (/^https?:\/\//.test(meal.image_url)
+        ? meal.image_url
+        : supabase.storage.from('meal-photos').getPublicUrl(meal.image_url).data?.publicUrl)
+    : null;
 
   return (
     <div className="py-3 px-1">
       <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_140px_120px_90px] gap-2 md:gap-3 items-start">
-        {/* Meal name */}
-        <div className="min-w-0">
-          <p className="text-[13px] text-[#E5E7EB] font-medium truncate">{meal.name}</p>
-          {hasEs && (
-            <p className="text-[11px] text-[#6B7280] truncate">{meal.name_es}</p>
+        {/* Meal name + photo (the key moderation signal for user-submitted dishes) */}
+        <div className="min-w-0 flex items-start gap-2">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt=""
+              loading="lazy"
+              className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-white/5"
+              onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-md flex-shrink-0 bg-white/[0.04] flex items-center justify-center">
+              <UtensilsCrossed size={14} className="text-[#4B5563]" />
+            </div>
           )}
+          <div className="min-w-0">
+            <p className="text-[13px] text-[#E5E7EB] font-medium truncate">{meal.name}</p>
+            {hasEs && (
+              <p className="text-[11px] text-[#6B7280] truncate">{meal.name_es}</p>
+            )}
+          </div>
         </div>
 
         {/* Macros */}
@@ -87,11 +108,23 @@ function MealRow({ meal, t }) {
           {gymName}
         </span>
 
-        {/* Date */}
-        <span className="text-[11px] text-[#6B7280] truncate flex items-center gap-1">
-          <Clock size={11} className="text-[#6B7280] flex-shrink-0 hidden md:block" />
-          {createdAt ? formatDistanceToNow(createdAt, { addSuffix: true }) : '—'}
-        </span>
+        {/* Date + moderation */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-[#6B7280] truncate flex items-center gap-1">
+            <Clock size={11} className="text-[#6B7280] flex-shrink-0 hidden md:block" />
+            {createdAt ? formatDistanceToNow(createdAt, { addSuffix: true }) : '—'}
+          </span>
+          {onDelete && (
+            <button
+              onClick={() => onDelete(meal)}
+              title={t('platform.customMeals.deleteMeal', 'Delete meal')}
+              aria-label={t('platform.customMeals.deleteMeal', 'Delete meal')}
+              className="p-1 rounded-md text-[#4B5563] hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -154,6 +187,16 @@ export default function CustomMeals() {
   }, [fetchMeals]);
 
   const handleLoadMore = () => fetchMeals(meals.length, true);
+
+  // Moderation: super_admin DELETE policy on custom_meals added in 0585.
+  const handleDelete = useCallback(async (meal) => {
+    const label = meal.name || 'this meal';
+    if (!window.confirm(t('platform.customMeals.deleteConfirm', { name: label, defaultValue: `Delete "${label}"? This permanently removes the user-submitted meal.` }))) return;
+    const { error } = await supabase.from('custom_meals').delete().eq('id', meal.id);
+    if (error) { window.alert(t('platform.customMeals.deleteFailed', 'Delete failed: {{msg}}', { msg: error.message })); return; }
+    setMeals((prev) => prev.filter((m) => m.id !== meal.id));
+    setTotalCount((c) => Math.max(0, c - 1));
+  }, [t]);
 
   // Client-side search over the loaded rows (meal name, name_es, or creator).
   const filtered = useMemo(() => {
@@ -274,7 +317,7 @@ export default function CustomMeals() {
           <>
             <div className="divide-y divide-white/4">
               {filtered.map((meal) => (
-                <MealRow key={meal.id} meal={meal} t={t} />
+                <MealRow key={meal.id} meal={meal} t={t} onDelete={handleDelete} />
               ))}
             </div>
 

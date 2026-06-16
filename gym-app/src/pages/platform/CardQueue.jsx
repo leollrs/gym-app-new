@@ -21,7 +21,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  Printer, Check, Truck, Calendar, Building2, Loader2,
+  Printer, Check, Truck, Calendar, Building2,
   ChevronDown, ChevronRight, PartyPopper, Sparkles, Award, Cake, Gift, ArrowLeftRight,
   AlertTriangle, RotateCcw, RefreshCw,
 } from 'lucide-react';

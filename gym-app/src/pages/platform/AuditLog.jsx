@@ -9,7 +9,6 @@ import { format, formatDistanceToNow, subDays, subHours } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
 
@@ -383,7 +382,6 @@ function LogEntry({ entry, t, dateFnsLocale }) {
 }
 
 export default function AuditLog() {
-  const { user } = useAuth();
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;

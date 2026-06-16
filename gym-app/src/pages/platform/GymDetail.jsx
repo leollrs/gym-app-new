@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Activity, Settings, Crown, ChevronDown,
-  Dumbbell, Clock, Pause, Play, X, Trash2,
+  Dumbbell, Clock, Pause, Play, X,
   UserPlus, Eye, EyeOff, AlertTriangle, RefreshCw,
   Trophy, Upload, Microscope, Database, HeartPulse,
 } from 'lucide-react';
@@ -32,6 +32,9 @@ const CHALLENGE_TYPES = ['consistency', 'volume', 'pr_count', 'team'];
 const CHALLENGE_STATUSES = ['draft', 'active', 'completed'];
 // Real achievement_category enum values (0001:32).
 const ACHIEVEMENT_CATEGORIES = ['milestone', 'challenge', 'strength_standard', 'streak', 'social'];
+// gym_rewards.reward_type CHECK values (0187). Cross-gym writes use the
+// super_admin FOR ALL policy added in 0585.
+const REWARD_TYPE_VALUES = ['custom', 'smoothie', 'guest_pass', 'merch', 'pt_session', 'free_month', 'class_pass', 'discount', 'bring_friend'];
 const ROLE_ORDER = { member: 0, trainer: 1, admin: 2, super_admin: 3 };
 // Same readable charset as generate_invite_code() (0107) — no I/L/O/0/1.
 const INVITE_CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -313,6 +316,97 @@ function AchievementModal({ achievement, onSave, onClose }) {
   );
 }
 
+function RewardModal({ reward, onSave, onClose }) {
+  const { t } = useTranslation('pages');
+  const [form, setForm] = useState({
+    name: reward?.name ?? '',
+    name_es: reward?.name_es ?? '',
+    reward_type: reward?.reward_type ?? 'custom',
+    cost_points: reward?.cost_points != null ? String(reward.cost_points) : '0',
+    emoji_icon: reward?.emoji_icon ?? '\u{1F381}',
+    is_active: reward?.is_active ?? true,
+    sort_order: reward?.sort_order != null ? String(reward.sort_order) : '0',
+  });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setFormError('');
+    if (!form.name.trim()) return;
+    const cost = parseInt(form.cost_points, 10);
+    if (Number.isNaN(cost) || cost < 0) {
+      setFormError(t('platform.gymDetail.modals.rewardCostInvalid', 'Cost must be 0 or more points'));
+      return;
+    }
+    setSaving(true);
+    const err = await onSave({
+      name: form.name.trim(),
+      name_es: form.name_es.trim() || null,
+      reward_type: form.reward_type,
+      cost_points: cost,
+      emoji_icon: form.emoji_icon.trim() || '\u{1F381}',
+      is_active: form.is_active,
+      sort_order: parseInt(form.sort_order, 10) || 0,
+    });
+    setSaving(false);
+    if (err) setFormError(err);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
+      <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{reward ? t('platform.gymDetail.modals.editReward', 'Edit reward') : t('platform.gymDetail.modals.newReward', 'New reward')}</h3>
+          <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label="Close dialog"><X className="w-4 h-4" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-[64px_1fr] gap-3">
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.rewardIcon', 'Icon')}</label>
+              <input type="text" value={form.emoji_icon} maxLength={24} onChange={e => setForm(p => ({ ...p, emoji_icon: e.target.value }))} placeholder={'\u{1F381}'} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[15px] text-center text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+            </div>
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.nameLabelReq')}</label>
+              <input type="text" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder={t('platform.gymDetail.modals.rewardNamePlaceholder', 'Free smoothie')} required className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.rewardNameEs', 'Name (Spanish, optional)')}</label>
+            <input type="text" value={form.name_es} onChange={e => setForm(p => ({ ...p, name_es: e.target.value }))} placeholder="Batido gratis" className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.rewardType', 'Type')}</label>
+              <select value={form.reward_type} onChange={e => setForm(p => ({ ...p, reward_type: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-2 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer">
+                {REWARD_TYPE_VALUES.map(v => (<option key={v} value={v}>{t(`platform.gymDetail.rewardType.${v}`, v.replace(/_/g, ' '))}</option>))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.rewardCost', 'Cost (pts)')}</label>
+              <input type="number" min="0" value={form.cost_points} onChange={e => setForm(p => ({ ...p, cost_points: e.target.value }))} required className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+            </div>
+            <div>
+              <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.rewardSort', 'Sort')}</label>
+              <input type="number" value={form.sort_order} onChange={e => setForm(p => ({ ...p, sort_order: e.target.value }))} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+            </div>
+          </div>
+          <label className="flex items-center justify-between p-3 bg-[#111827] rounded-xl border border-white/6 cursor-pointer">
+            <span className="text-[13px] text-[#E5E7EB]">{t('platform.gymDetail.modals.rewardActive', 'Active (visible to members)')}</span>
+            <input type="checkbox" checked={form.is_active} onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} className="accent-[#D4AF37] w-4 h-4" />
+          </label>
+          {formError && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
+            <button type="submit" disabled={saving} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50" style={{ background: '#D4AF37', color: '#000' }}>{saving ? t('platform.gymDetail.modals.saving') : reward ? t('platform.gymDetail.modals.update') : t('platform.gymDetail.modals.create')}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Add Member Modal Component ────────────────────────────────
 function AddMemberModal({ gymId, onClose, onCreated }) {
   const { t } = useTranslation('pages');
@@ -398,7 +492,7 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
 export default function GymDetail() {
   const { gymId } = useParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, impersonateGym } = useAuth();
   const { t } = useTranslation('pages');
 
   const [gym, setGym] = useState(null);
@@ -434,6 +528,8 @@ export default function GymDetail() {
   const [editingProgram, setEditingProgram] = useState(null);
   const [showAchievementModal, setShowAchievementModal] = useState(false);
   const [editingAchievement, setEditingAchievement] = useState(null);
+  const [showRewardModal, setShowRewardModal] = useState(false);
+  const [editingReward, setEditingReward] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [lifecycleModal, setLifecycleModal] = useState(null);
@@ -813,6 +909,27 @@ export default function GymDetail() {
     return null;
   };
   const deleteAchievement = async (achievementId) => { const { error } = await supabase.from('achievement_definitions').delete().eq('id', achievementId); if (error) { notify(t('platform.gymDetail.toasts.deleteEntityFailed', 'Delete failed: {{error}}', { error: error.message }), 'error'); } else { logAdminAction('delete_achievement', 'achievement', achievementId, { gym_name: gym?.name }, gymId); setAchievements(prev => prev.filter(a => a.id !== achievementId)); notify(t('platform.gymDetail.toasts.deleted', 'Deleted')); } setDeleteConfirm(null); };
+
+  // ── Rewards CRUD (gym_rewards; cross-gym writes via 0585 super_admin ALL) ──
+  const saveReward = async (payload) => {
+    if (editingReward) {
+      const { error } = await supabase.from('gym_rewards').update(payload).eq('id', editingReward.id);
+      if (error) { notify(t('platform.gymDetail.toasts.saveFailed', 'Save failed: {{error}}', { error: error.message }), 'error'); return error.message; }
+      setRewardsAvailable(prev => Array.isArray(prev) ? prev.map(r => r.id === editingReward.id ? { ...r, ...payload } : r) : prev);
+      logAdminAction('update_reward', 'reward', editingReward.id, { gym_name: gym?.name, name: payload.name }, gymId);
+    } else {
+      const { data, error } = await supabase.from('gym_rewards').insert({ gym_id: gymId, ...payload }).select().single();
+      if (error) { notify(t('platform.gymDetail.toasts.saveFailed', 'Save failed: {{error}}', { error: error.message }), 'error'); return error.message; }
+      setRewardsAvailable(prev => Array.isArray(prev) ? [...prev, data] : [data]);
+      logAdminAction('create_reward', 'reward', data.id, { gym_name: gym?.name, name: payload.name }, gymId);
+    }
+    setShowRewardModal(false);
+    setEditingReward(null);
+    notify(t('platform.gymDetail.toasts.saved', 'Saved'));
+    return null;
+  };
+  const deleteReward = async (rewardId) => { const { error } = await supabase.from('gym_rewards').delete().eq('id', rewardId); if (error) { notify(t('platform.gymDetail.toasts.deleteEntityFailed', 'Delete failed: {{error}}', { error: error.message }), 'error'); } else { logAdminAction('delete_reward', 'reward', rewardId, { gym_name: gym?.name }, gymId); setRewardsAvailable(prev => Array.isArray(prev) ? prev.filter(r => r.id !== rewardId) : prev); notify(t('platform.gymDetail.toasts.deleted', 'Deleted')); } setDeleteConfirm(null); };
+  const toggleRewardActive = async (reward) => { const next = !reward.is_active; const { error } = await supabase.from('gym_rewards').update({ is_active: next }).eq('id', reward.id); if (error) { notify(t('platform.gymDetail.toasts.saveFailed', 'Save failed: {{error}}', { error: error.message }), 'error'); return; } setRewardsAvailable(prev => Array.isArray(prev) ? prev.map(r => r.id === reward.id ? { ...r, is_active: next } : r) : prev); logAdminAction('toggle_reward', 'reward', reward.id, { gym_name: gym?.name, is_active: next }, gymId); };
   const getChallengeStatus = (c) => { const now = new Date(); if (c.status && c.status !== 'active') return c.status; if (c.end_date && new Date(c.end_date) < now) return 'ended'; if (c.start_date && new Date(c.start_date) > now) return 'upcoming'; return c.status ?? 'active'; };
 
   // ── Loading / not found ───────────────────────────────────
@@ -873,6 +990,14 @@ export default function GymDetail() {
               ) : (
                 <button onClick={() => setLifecycleModal('reactivate')} className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/10 text-emerald-400 transition-colors"><Play className="w-4 h-4" />{t('platform.gymDetail.lifecycle.reactivateBtn')}</button>
               )}
+              {/* Impersonate: open this gym's admin experience (read via super_admin
+                  RLS; the AdminLayout banner shows the active impersonation + exit). */}
+              <button
+                onClick={async () => { const ok = await impersonateGym(gymId); if (ok) navigate('/admin'); else notify(t('platform.gymDetail.impersonateFailed', 'Could not open the admin view'), 'error'); }}
+                className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-[#D4AF37]/20 hover:bg-[#D4AF37]/10 text-[#D4AF37] transition-colors"
+              >
+                <Eye className="w-4 h-4" />{t('platform.gymDetail.viewAsAdmin', 'View as admin')}
+              </button>
             </div>
           </div>
         </div>
@@ -954,10 +1079,10 @@ export default function GymDetail() {
 
         {/* Tab content */}
         {tab === 'overview' && <GymOverviewTab gym={gym} branding={branding} logoUrl={logoUrl} stats={stats} checkIns={checkIns} challenges={challenges} programs={programs} achievements={achievements} invites={invites} members={members} gymId={gymId} setTab={setTab} setContentSubTab={setContentSubTab} />}
-        {tab === 'wellness' && <GymWellnessTab gymId={gymId} />}
+        {tab === 'wellness' && <GymWellnessTab gymId={gymId} statsRow={statsRow?.row} />}
         {tab === 'people' && <GymPeopleTab members={members} invites={invites} updateMemberRole={updateMemberRole} updateMemberStatus={updateMemberStatus} deleteMember={deleteMember} setShowAddMemberModal={setShowAddMemberModal} createInvite={createInvite} revokeInvite={revokeInvite} copyInviteCode={copyInviteCode} />}
         {tab === 'activity' && <GymActivityTab sessions={sessions} checkIns={checkIns} gymId={gymId} />}
-        {tab === 'content' && <GymContentTab challenges={challenges} programs={programs} achievements={achievements} rewardsAvailable={rewardsAvailable} getChallengeStatus={getChallengeStatus} setEditingChallenge={setEditingChallenge} setShowChallengeModal={setShowChallengeModal} setEditingProgram={setEditingProgram} setShowProgramModal={setShowProgramModal} toggleProgramPublish={toggleProgramPublish} setEditingAchievement={setEditingAchievement} setShowAchievementModal={setShowAchievementModal} setDeleteConfirm={setDeleteConfirm} initialSubTab={contentSubTab} />}
+        {tab === 'content' && <GymContentTab challenges={challenges} programs={programs} achievements={achievements} rewardsAvailable={rewardsAvailable} getChallengeStatus={getChallengeStatus} setEditingChallenge={setEditingChallenge} setShowChallengeModal={setShowChallengeModal} setEditingProgram={setEditingProgram} setShowProgramModal={setShowProgramModal} toggleProgramPublish={toggleProgramPublish} setEditingAchievement={setEditingAchievement} setShowAchievementModal={setShowAchievementModal} setEditingReward={setEditingReward} setShowRewardModal={setShowRewardModal} toggleRewardActive={toggleRewardActive} setDeleteConfirm={setDeleteConfirm} initialSubTab={contentSubTab} />}
         {tab === 'settings' && <GymSettingsTab gym={gym} branding={branding} logoUrl={logoUrl} invites={invites} editingGym={editingGym} setEditingGym={setEditingGym} savingGym={savingGym} saveGymSettings={saveGymSettings} settingsError={settingsError} gymStatus={gymStatus} setLifecycleModal={setLifecycleModal} members={members} setGymOwner={setGymOwner} notify={notify} onBrandingSaved={(updates) => setBranding(prev => ({ ...(prev ?? { gym_id: gymId }), ...updates }))} t={t} />}
       </div>
 
@@ -981,6 +1106,7 @@ export default function GymDetail() {
       {showChallengeModal && <ChallengeModal challenge={editingChallenge} onSave={saveChallenge} onClose={() => { setShowChallengeModal(false); setEditingChallenge(null); }} />}
       {showProgramModal && <ProgramModal program={editingProgram} onSave={saveProgram} onClose={() => { setShowProgramModal(false); setEditingProgram(null); }} />}
       {showAchievementModal && <AchievementModal achievement={editingAchievement} onSave={saveAchievement} onClose={() => { setShowAchievementModal(false); setEditingAchievement(null); }} />}
+      {showRewardModal && <RewardModal reward={editingReward} onSave={saveReward} onClose={() => { setShowRewardModal(false); setEditingReward(null); }} />}
       {showAddMemberModal && <AddMemberModal gymId={gymId} onClose={() => setShowAddMemberModal(false)} onCreated={() => { setShowAddMemberModal(false); fetchMembers(); }} />}
 
       {/* Delete Confirmation */}
@@ -992,7 +1118,7 @@ export default function GymDetail() {
             <p className="text-[13px] text-[#6B7280] mb-6">{t('platform.gymDetail.deleteEntity.body', { name: deleteConfirm.name, defaultValue: 'Are you sure you want to delete {{name}}? This action cannot be undone.' })}</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.lifecycle.cancel', 'Cancel')}</button>
-              <button onClick={() => { if (deleteConfirm.type === 'challenge') deleteChallenge(deleteConfirm.id); else if (deleteConfirm.type === 'program') deleteProgram(deleteConfirm.id); else if (deleteConfirm.type === 'achievement') deleteAchievement(deleteConfirm.id); }} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors">{t('platform.gymDetail.deleteEntity.confirm', 'Delete')}</button>
+              <button onClick={() => { if (deleteConfirm.type === 'challenge') deleteChallenge(deleteConfirm.id); else if (deleteConfirm.type === 'program') deleteProgram(deleteConfirm.id); else if (deleteConfirm.type === 'achievement') deleteAchievement(deleteConfirm.id); else if (deleteConfirm.type === 'reward') deleteReward(deleteConfirm.id); }} style={{ background: 'rgba(239,68,68,0.85)' }} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors">{t('platform.gymDetail.deleteEntity.confirm', 'Delete')}</button>
             </div>
           </div>
         </div>
@@ -1041,7 +1167,7 @@ export default function GymDetail() {
             <div className="mb-4"><label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.lifecycle.deleteConfirmLabel', { name: gym.name })}</label><input type="text" value={deleteGymConfirmName} onChange={e => setDeleteGymConfirmName(e.target.value)} placeholder={gym.name} aria-label="Type gym name to confirm deactivation" className="w-full bg-[#111827] border border-red-500/20 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-red-400/40" /></div>
             <div className="flex justify-end gap-3">
               <button onClick={() => { setLifecycleModal(null); setDeleteGymConfirmName(''); }} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.lifecycle.cancel')}</button>
-              <button onClick={handleDeleteGym} disabled={lifecycleProcessing || deleteGymConfirmName !== gym.name} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmDeactivate', 'Deactivate Gym')}</button>
+              <button onClick={handleDeleteGym} disabled={lifecycleProcessing || deleteGymConfirmName !== gym.name} style={{ background: 'rgba(239,68,68,0.85)' }} className="px-4 py-2 text-[12px] font-semibold text-white bg-red-500/80 hover:bg-red-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{lifecycleProcessing ? t('platform.gymDetail.lifecycle.processing') : t('platform.gymDetail.lifecycle.confirmDeactivate', 'Deactivate Gym')}</button>
             </div>
           </div>
         </div>

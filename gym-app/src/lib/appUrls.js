@@ -13,12 +13,18 @@ export const PROD_RESET_URL = `${PROD_WEB_URL}/auth/reset-password`;
 export const APP_STORE_URL = '';
 export const PLAY_STORE_URL = '';
 
-// Public share link for a trainer profile. Points at the short `/t/:id` path
-// (NOT the in-app `/trainers/:id` route) so it behaves as a smart link:
-//  • app installed → the iOS/Android universal link opens the app on the profile
-//    (see `/t/*` in public/.well-known/* + the appUrlOpen handler in main.jsx)
-//  • no app        → the browser loads /t/:id, which renders AppDownloadLanding
-//    (a download CTA) — never the bare website profile.
+// Public share link for a trainer profile. Smart link:
+//  • app installed → iOS/Android universal link opens the app on the profile
+//    (appUrlOpen in main.jsx routes it to /trainers/:id)
+//  • no app        → the browser renders AppDownloadLanding (download CTA),
+//    never the bare website profile.
+//
+// IMPORTANT: this rides on the `/invite/*` applink, NOT a fresh `/t/*` path.
+// iOS reads the AASA from Apple's CDN, which only re-crawls every day or so — a
+// brand-new path opens the app only AFTER that crawl. `/invite/*` is already in
+// Apple's CDN (it's how invite/challenge/class links open the app today), so a
+// `/invite/t/:id` link opens the app IMMEDIATELY. The extra `/t/` segment keeps
+// it clear of the single-segment `/invite/:code` handler (no collision).
 export function trainerShareUrl(id) {
-  return `${PROD_WEB_URL}/t/${id || ''}`;
+  return `${PROD_WEB_URL}/invite/t/${id || ''}`;
 }

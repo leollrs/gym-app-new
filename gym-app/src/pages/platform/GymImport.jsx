@@ -36,7 +36,7 @@ export default function GymImport() {
   const [phase, setPhase] = useState('upload'); // 'upload' | 'preview' | 'result'
   const [filename, setFilename] = useState('');
   const [label, setLabel] = useState('');
-  const [parseResult, setParseResult] = useState(null); // { headers, rows, errors }
+  const [, setParseResult] = useState(null); // { headers, rows, errors }
   const [bucketed, setBucketed] = useState(null);
   const [parseError, setParseError] = useState(null);
   const [importResult, setImportResult] = useState(null);
@@ -486,6 +486,11 @@ export default function GymImport() {
             </div>
           )}
 
+          <p className="mt-4 text-[11px] text-[#9CA3AF] leading-relaxed">
+            Heads up: the final import skips any row whose phone or email already belongs to a live member of this gym
+            (deduplication runs server-side), so the number actually imported may be lower than the {bucketed.ready.length} previewed here.
+            Any skipped duplicates are itemized on the result screen.
+          </p>
           <div className="mt-5 flex items-center gap-3 justify-end">
             <button
               onClick={handleReset}

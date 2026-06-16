@@ -196,7 +196,7 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
                 </span>
               </div>
               <p className="text-[11.5px] text-[#6B7280] mt-2 leading-relaxed">
-                {t('admin.moderation.messageGuidance', { defaultValue: 'DM bodies are end-to-end encrypted and cannot be reviewed here. Use the reporter and reason below to decide whether to suspend the sender or block them via member management.' })}
+                {t('admin.moderation.messageGuidance', { defaultValue: 'DM bodies are encrypted at rest and aren\'t shown here. Use the reporter and reason below to decide whether to suspend the sender or block them via member management.' })}
               </p>
             </div>
           </div>

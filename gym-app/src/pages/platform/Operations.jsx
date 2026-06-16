@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, Database, Zap, HardDrive,
@@ -350,6 +350,7 @@ export default function Operations() {
 
   // Incidents (derived from errors + health)
   const [incidents, setIncidents] = useState([]);
+  const [incidentsError, setIncidentsError] = useState(false);
   const [mutedIncidents, setMutedIncidents] = useState(() => readMutedIncidents());
 
   // Blast radius
@@ -525,12 +526,22 @@ export default function Operations() {
     try {
       // Get recent errors (last 2 hours) to detect incidents
       const twoHoursAgo = subHours(new Date(), 2).toISOString();
-      const { data: recentErrors } = await supabase
+      const { data: recentErrors, error: incErr } = await supabase
         .from('error_logs')
         .select('type, gym_id, created_at, message, page')
         .gte('created_at', twoHoursAgo)
         .order('created_at', { ascending: false })
         .limit(200);
+
+      if (incErr) {
+        // A failed error_logs read must NOT fall through to the green "all
+        // systems operational" panel — incident detection is blind, so flag a
+        // degraded state instead (mirrors Attention/ErrorLogs honest-failure).
+        logger.error('fetchIncidents: error_logs query failed:', incErr);
+        setIncidentsError(true);
+        return;
+      }
+      setIncidentsError(false);
 
       const errors = recentErrors || [];
       const derived = [];
@@ -637,6 +648,7 @@ export default function Operations() {
       }));
     } catch (err) {
       logger.error('Failed to fetch incidents:', err);
+      setIncidentsError(true);
     }
   }, []);
 
@@ -905,7 +917,17 @@ export default function Operations() {
           </div>
 
           {visibleIncidents.length === 0 ? (
-            mutedCount > 0 ? (
+            incidentsError ? (
+              <div className="bg-[#0F172A] border border-amber-500/20 rounded-xl p-6 text-center">
+                <AlertTriangle size={28} className="mx-auto text-amber-400 mb-2" />
+                <p className="text-[13px] font-medium text-amber-400">
+                  {t('platform.ops.incidentsUnavailable', 'Could not evaluate incidents')}
+                </p>
+                <p className="text-[11px] text-[#6B7280] mt-1">
+                  {t('platform.ops.incidentsUnavailableDesc', 'The error feed could not be read, so incident detection is blind this cycle — this is not an all-clear. Retry shortly.')}
+                </p>
+              </div>
+            ) : mutedCount > 0 ? (
               <div className="bg-[#0F172A] border border-white/10 rounded-xl p-6 text-center">
                 <Bell size={28} className="mx-auto text-[#9CA3AF] mb-2" />
                 <p className="text-[13px] font-medium text-[#E5E7EB]">

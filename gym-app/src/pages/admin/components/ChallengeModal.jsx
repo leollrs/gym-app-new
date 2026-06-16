@@ -38,7 +38,7 @@ const DEFAULT_REWARDS = [
  * Create / Edit Challenge modal.
  * When `challenge` is provided, operates in edit mode.
  */
-export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challenge = null }) {
+export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challenge = null, prefill = null }) {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -67,6 +67,8 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
         cover_preset: '',
         enableRewards: false,
         rewards: [...DEFAULT_REWARDS],
+        // Quick-template prefill (create mode only) — seeds name/type/cover/desc.
+        ...(prefill || {}),
       };
     }
     let rewards = [...DEFAULT_REWARDS];
@@ -254,18 +256,19 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
         <div className="flex gap-2">
           {step === 2 && (
             <button onClick={() => setStep(1)}
-              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-semibold text-[13px] leading-tight text-center text-[#E5E7EB] bg-white/5 border border-white/6 hover:bg-white/10 transition-colors">
+              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-semibold text-[13px] leading-tight text-center transition-colors hover:brightness-95"
+              style={{ color: 'var(--color-admin-text)', background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
               <ArrowLeft size={14} className="flex-shrink-0" /> {t('admin.challenges.back', 'Back')}
             </button>
           )}
           {step === 1 ? (
             <button onClick={() => { if (!validateStep1()) return; setError(''); setStep(2); }}
-              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black transition-colors" style={{ background: '#D4AF37' }}>
+              className="flex items-center justify-center gap-1.5 flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center transition-colors hover:brightness-[1.04]" style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}>
               <span>{t('admin.challenges.nextStep', 'Scoring & Rewards')}</span> <ArrowRight size={14} className="flex-shrink-0" />
             </button>
           ) : (
             <button onClick={handleSave} disabled={saving}
-              className="flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center text-black disabled:opacity-50 transition-opacity" style={{ background: '#D4AF37' }}>
+              className="flex-1 px-4 py-3 rounded-xl font-bold text-[13px] leading-tight text-center disabled:opacity-50 transition-opacity" style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}>
               {saving ? (isEdit ? t('admin.challenges.saving', 'Saving...') : t('admin.challenges.creating', 'Creating...')) : isEdit ? t('admin.challenges.saveChanges', 'Save Changes') : t('admin.challenges.createChallenge', 'Create Challenge')}
             </button>
           )}
@@ -276,13 +279,14 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
       <div className="flex items-center gap-2 mb-4">
         {[1, 2].map(s => (
           <div key={s} className="flex items-center gap-2 flex-1">
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${
-              step >= s ? 'bg-[#D4AF37] text-black' : 'bg-white/8 text-[#6B7280]'
-            }`}>{s}</div>
-            <span className={`text-[11px] font-medium ${step >= s ? 'text-[#E5E7EB]' : 'text-[#6B7280]'}`}>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors"
+              style={step >= s
+                ? { background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }
+                : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-faint)' }}>{s}</div>
+            <span className="text-[11px] font-medium" style={{ color: step >= s ? 'var(--color-admin-text)' : 'var(--color-admin-text-faint)' }}>
               {s === 1 ? t('admin.challenges.stepBasic', 'Basic Info') : t('admin.challenges.stepRewards', 'Scoring & Rewards')}
             </span>
-            {s === 1 && <div className={`flex-1 h-[1px] ${step >= 2 ? 'bg-[#D4AF37]/40' : 'bg-white/8'}`} />}
+            {s === 1 && <div className="flex-1 h-[1px]" style={{ background: step >= 2 ? 'color-mix(in srgb, var(--color-accent) 40%, transparent)' : 'var(--color-admin-border)' }} />}
           </div>
         ))}
       </div>
@@ -290,26 +294,30 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
       {step === 1 ? (
         <div className="space-y-4">
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.challengeName', 'Challenge Name')} <span className="text-red-400">*</span></label>
+            <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.challenges.challengeName', 'Challenge Name')} <span style={{ color: 'var(--color-danger)' }}>*</span></label>
             <input value={form.name} onChange={e => set('name', e.target.value)}
               onBlur={() => handleBlur('name')}
               placeholder={t('admin.challenges.namePlaceholder', 'e.g. March Volume Wars')}
-              className={`w-full bg-[#111827] border rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:ring-2 focus:outline-none ${errors.name ? 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/30' : 'border-white/6 focus:border-[#D4AF37]/40 focus:ring-[#D4AF37]'}`} />
-            {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
+              className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-colors"
+              style={errors.name
+                ? { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-danger)', color: 'var(--color-admin-text)' }
+                : { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+            {errors.name && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{errors.name}</p>}
           </div>
 
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.typeLabel', 'Type')}</label>
+            <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.challenges.typeLabel', 'Type')}</label>
             <div className="space-y-2">
               {CHALLENGE_TYPES.map(ct => (
-                <label key={ct.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                  form.type === ct.value ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-white/6 hover:border-white/12'
-                }`}>
+                <label key={ct.value} className="flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-colors"
+                  style={form.type === ct.value
+                    ? { border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }
+                    : { border: '1px solid var(--color-admin-border)' }}>
                   <input type="radio" name="challenge-type" value={ct.value} checked={form.type === ct.value}
-                    onChange={e => set('type', e.target.value)} className="mt-0.5 accent-[#D4AF37]" />
+                    onChange={e => set('type', e.target.value)} className="mt-0.5" style={{ accentColor: 'var(--color-accent)' }} />
                   <div>
-                    <p className="text-[13px] font-semibold text-[#E5E7EB]">{t(`admin.challengeTypes.${ct.value}`)}</p>
-                    <p className="text-[11px] text-[#6B7280]">{t(`admin.challengeTypes.${ct.value}_desc`)}</p>
+                    <p className="text-[13px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{t(`admin.challengeTypes.${ct.value}`)}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t(`admin.challengeTypes.${ct.value}_desc`)}</p>
                   </div>
                 </label>
               ))}
@@ -318,32 +326,39 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.startDate', 'Start Date')} <span className="text-red-400">*</span></label>
+              <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.challenges.startDate', 'Start Date')} <span style={{ color: 'var(--color-danger)' }}>*</span></label>
               <input type="datetime-local" value={form.starts_at} onChange={e => set('starts_at', e.target.value)}
                 onBlur={() => handleBlur('starts_at')}
-                className={`w-full bg-[#111827] border rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:ring-2 focus:outline-none ${errors.starts_at ? 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/30' : 'border-white/6 focus:border-[#D4AF37]/40 focus:ring-[#D4AF37]'}`} />
-              {errors.starts_at && <p className="text-[11px] text-red-400 mt-1">{errors.starts_at}</p>}
+                className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                style={errors.starts_at
+                  ? { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-danger)', color: 'var(--color-admin-text)' }
+                  : { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+              {errors.starts_at && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{errors.starts_at}</p>}
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.endDate', 'End Date')} <span className="text-red-400">*</span></label>
+              <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.challenges.endDate', 'End Date')} <span style={{ color: 'var(--color-danger)' }}>*</span></label>
               <input type="datetime-local" value={form.ends_at} onChange={e => set('ends_at', e.target.value)}
                 onBlur={() => handleBlur('ends_at')}
-                className={`w-full bg-[#111827] border rounded-xl px-3 py-2.5 text-[13px] text-[#E5E7EB] outline-none focus:ring-2 focus:outline-none ${errors.ends_at ? 'border-red-500/50 focus:border-red-500/50 focus:ring-red-500/30' : 'border-white/6 focus:border-[#D4AF37]/40 focus:ring-[#D4AF37]'}`} />
-              {errors.ends_at && <p className="text-[11px] text-red-400 mt-1">{errors.ends_at}</p>}
+                className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
+                style={errors.ends_at
+                  ? { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-danger)', color: 'var(--color-admin-text)' }
+                  : { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+              {errors.ends_at && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{errors.ends_at}</p>}
             </div>
           </div>
 
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.challenges.descriptionLabel', 'Description (optional)')}</label>
+            <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.challenges.descriptionLabel', 'Description (optional)')}</label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)}
               rows={2} placeholder={t('admin.challenges.descriptionPlaceholder', 'Tell members what this challenge is about...')}
-              className="w-full bg-[#111827] border border-white/6 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 resize-none" />
+              className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none transition-colors"
+              style={{ backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
           </div>
 
           {/* Cover preset selection */}
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">
-              {t('admin.challenges.coverLabel', 'Cover Image')} <span className="text-red-400">*</span>
+            <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>
+              {t('admin.challenges.coverLabel', 'Cover Image')} <span style={{ color: 'var(--color-danger)' }}>*</span>
             </label>
             <div className="grid grid-cols-4 gap-2">
               {CHALLENGE_COVERS.map(c => {
@@ -352,39 +367,40 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                 return (
                   <button key={c.key} type="button"
                     onClick={() => set('cover_preset', c.key)}
-                    className={`rounded-xl p-2.5 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-white scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
-                    style={{ background: c.gradient }}>
+                    className={`rounded-xl p-2.5 flex flex-col items-center gap-1 transition-all ${selected ? 'scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
+                    style={{ background: c.gradient, boxShadow: selected ? '0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-accent)' : 'none' }}>
                     <Icon size={20} className="text-white/90" />
                     <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{t(c.labelKey)}</span>
                   </button>
                 );
               })}
             </div>
-            {errors.cover_preset && <p className="text-[11px] text-red-400 mt-1">{errors.cover_preset}</p>}
+            {errors.cover_preset && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{errors.cover_preset}</p>}
           </div>
 
-          {error && <p className="text-[12px] text-red-400">{error}</p>}
+          {error && <p className="text-[12px]" style={{ color: 'var(--color-danger)' }}>{error}</p>}
         </div>
       ) : (
         <div className="space-y-4">
           {/* Rewards toggle */}
           <div>
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className={`relative w-10 h-[22px] rounded-full transition-colors ${form.enableRewards ? 'bg-[#D4AF37]' : 'bg-[#1E293B]'}`}
+              <div className="relative w-10 h-[22px] rounded-full transition-colors"
+                style={{ background: form.enableRewards ? 'var(--color-accent)' : 'var(--color-admin-panel)' }}
                 onClick={() => set('enableRewards', !form.enableRewards)}>
-                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white transition-all ${form.enableRewards ? 'left-[22px]' : 'left-[3px]'}`} />
+                <div className={`absolute top-[3px] w-4 h-4 rounded-full transition-all ${form.enableRewards ? 'left-[22px]' : 'left-[3px]'}`} style={{ background: form.enableRewards ? 'var(--color-text-on-accent, #fff)' : 'var(--color-admin-text-muted)' }} />
               </div>
               <div className="flex items-center gap-2">
-                <Gift size={15} className={form.enableRewards ? 'text-[#D4AF37]' : 'text-[#6B7280]'} />
-                <span className="text-[13px] font-medium text-[#E5E7EB]">{t('admin.challenges.addRewards', 'Add Rewards')}</span>
+                <Gift size={15} style={{ color: form.enableRewards ? 'var(--color-accent)' : 'var(--color-admin-text-muted)' }} />
+                <span className="text-[13px] font-medium" style={{ color: 'var(--color-admin-text)' }}>{t('admin.challenges.addRewards', 'Add Rewards')}</span>
               </div>
             </label>
-            <p className="text-[11px] text-[#6B7280] mt-1 ml-[52px]">{t('admin.challenges.rewardsHint', 'Incentivize participation with points and prizes')}</p>
+            <p className="text-[11px] mt-1 ml-[52px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.challenges.rewardsHint', 'Incentivize participation with points and prizes')}</p>
           </div>
 
           {form.enableRewards && (
-            <div className="space-y-3 bg-[#111827] rounded-xl p-4 border border-white/6 overflow-hidden">
-              <p className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wide">{t('admin.challenges.rewardPerPlacement', 'Reward per placement')}</p>
+            <div className="space-y-3 rounded-xl p-4 overflow-hidden" style={{ backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.challenges.rewardPerPlacement', 'Reward per placement')}</p>
               {form.rewards.map((r, i) => (
                 <div key={r.place} className="space-y-2">
                   <div className="flex items-center gap-3">
@@ -403,16 +419,18 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                             updated[i] = { ...r, points: pts };
                             set('rewards', updated);
                           }}
-                          className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 text-center"
+                          className="w-full rounded-lg px-3 py-2 text-[13px] outline-none text-center transition-colors"
+                          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
                         />
-                        <p className="text-[10px] text-[#6B7280] text-center mt-0.5">{t('admin.challenges.points', 'points')}</p>
+                        <p className="text-[10px] text-center mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.challenges.points', 'points')}</p>
                       </div>
                       <div className="flex-1">
                         <div className="relative">
                           <select
                             value={r.prizeType}
                             onChange={e => handlePrizeTypeChange(i, e.target.value)}
-                            className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none pr-8 cursor-pointer"
+                            className="w-full rounded-lg px-3 py-2 text-[13px] outline-none appearance-none pr-8 cursor-pointer transition-colors"
+                            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
                           >
                             <option value="none">{t('admin.challenges.noPrize', 'Points only')}</option>
                             {gymProducts.length > 0 && (
@@ -420,9 +438,9 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                             )}
                             <option value="custom">{t('admin.challenges.customPrize', 'Custom prize')}</option>
                           </select>
-                          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
+                          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-admin-text-muted)' }} />
                         </div>
-                        <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.challenges.prizeOptional', 'prize (optional)')}</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.challenges.prizeOptional', 'prize (optional)')}</p>
                       </div>
                     </div>
                   </div>
@@ -434,7 +452,8 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                         <select
                           value={r.product_id || ''}
                           onChange={e => handleProductChange(i, e.target.value)}
-                          className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 appearance-none pr-8 cursor-pointer"
+                          className="w-full rounded-lg px-3 py-2 text-[13px] outline-none appearance-none pr-8 cursor-pointer transition-colors"
+                          style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
                         >
                           <option value="">{t('admin.challenges.selectProduct', 'Select product')}...</option>
                           {gymProducts.map(p => (
@@ -443,7 +462,7 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                             </option>
                           ))}
                         </select>
-                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] pointer-events-none" />
+                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-admin-text-muted)' }} />
                       </div>
                     </div>
                   )}
@@ -460,7 +479,8 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
                         }}
                         placeholder={t('admin.challenges.customPrizePlaceholder', 'e.g. Free smoothie, 1 PT session...')}
                         aria-label={`${medals[i]} ${t('admin.challenges.customPrize', 'Custom prize')}`}
-                        className="w-full bg-[#0F172A] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#9CA3AF] outline-none focus:border-[#D4AF37]/40 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                        className="w-full rounded-lg px-3 py-2 text-[13px] outline-none transition-colors"
+                        style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}
                       />
                     </div>
                   )}
@@ -471,12 +491,12 @@ export default function ChallengeModal({ isOpen, onClose, gymId, adminId, challe
 
           {!form.enableRewards && (
             <div className="text-center py-6">
-              <Gift size={28} className="text-[#6B7280] mx-auto mb-2" />
-              <p className="text-[13px] text-[#6B7280]">{t('admin.challenges.noRewardsHint', 'No rewards configured \u2014 challenge will be for bragging rights only')}</p>
+              <Gift size={28} className="mx-auto mb-2" style={{ color: 'var(--color-admin-text-muted)' }} />
+              <p className="text-[13px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.challenges.noRewardsHint', 'No rewards configured \u2014 challenge will be for bragging rights only')}</p>
             </div>
           )}
 
-          {error && <p className="text-[12px] text-red-400">{error}</p>}
+          {error && <p className="text-[12px]" style={{ color: 'var(--color-danger)' }}>{error}</p>}
         </div>
       )}
     </AdminModal>

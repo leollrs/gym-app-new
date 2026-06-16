@@ -285,14 +285,14 @@ export default function AdminAnalytics() {
 
       {/* icon tab nav */}
       <FadeIn delay={20}>
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${ANALYTICS_TABS.length},1fr)`, borderBottom: `1px solid ${TK.borderSolid}`, margin: '22px 0 4px' }}>
+        <div style={{ display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderBottom: `1px solid ${TK.borderSolid}`, margin: '22px 0 4px' }}>
           {ANALYTICS_TABS.map((tab) => {
             const on = tab.key === activeTab;
             return (
               <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '14px 4px 16px', position: 'relative', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '14px 12px 16px', position: 'relative', cursor: 'pointer', background: 'transparent', border: 'none', flex: '1 0 auto', minWidth: 76 }}>
                 <Ico ch={tab.icon} size={19} color={on ? TK.accent : TK.textMute} stroke={on ? 2.1 : 1.9} />
-                <span style={{ fontFamily: FK.body, fontSize: 13, fontWeight: on ? 700 : 600, color: on ? TK.accent : TK.textMute, textAlign: 'center', lineHeight: 1.1 }}>{tab.label}</span>
+                <span style={{ fontFamily: FK.body, fontSize: 13, fontWeight: on ? 700 : 600, color: on ? TK.accent : TK.textMute, textAlign: 'center', lineHeight: 1.1, whiteSpace: 'nowrap' }}>{tab.label}</span>
                 {on && <span style={{ position: 'absolute', left: '30%', right: '30%', bottom: -1, height: 2.5, borderRadius: 99, background: TK.accent }} />}
               </button>
             );

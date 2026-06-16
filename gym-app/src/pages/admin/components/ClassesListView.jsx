@@ -91,8 +91,8 @@ function GhostIcon({ icon: Icon, onClick, danger, label }) {
   return (
     <button onClick={onClick} aria-label={label}
       className="grid place-items-center flex-shrink-0 transition-colors hover:bg-[var(--color-bg-hover)]"
-      style={{ width: 34, height: 34, borderRadius: 10, background: 'transparent', border: '1px solid var(--color-admin-border)', color: danger ? 'var(--color-danger)' : 'var(--color-admin-text-muted)' }}>
-      <Icon size={15} strokeWidth={2} />
+      style={{ width: 40, height: 40, borderRadius: 10, background: 'transparent', border: '1px solid var(--color-admin-border)', color: danger ? 'var(--color-danger)' : 'var(--color-admin-text-muted)' }}>
+      <Icon size={16} strokeWidth={2} />
     </button>
   );
 }

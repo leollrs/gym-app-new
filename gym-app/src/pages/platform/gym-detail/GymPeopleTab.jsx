@@ -7,7 +7,11 @@ import StatusBadge from './StatusBadge';
 import UserAvatar from '../../../components/UserAvatar';
 
 const ROLE_OPTIONS = ['member', 'trainer', 'admin'];
-const STATUS_ACTIONS = ['active', 'deactivated', 'banned'];
+// All real membership_status values (enum: active/frozen/deactivated/cancelled/
+// banned). The dropdown must list every one so a frozen/cancelled member's
+// status renders correctly instead of falling back to the first option ("Active")
+// — and so the operator can actually set those states.
+const STATUS_ACTIONS = ['active', 'frozen', 'deactivated', 'cancelled', 'banned'];
 const PAGE_SIZE = 50;
 
 // Rows holding super_admin (primary OR additional_roles) are read-only here —
@@ -226,7 +230,11 @@ export default function GymPeopleTab({
 
           <div className="flex items-center justify-between mt-2">
             <p className="text-[11px] text-[#6B7280]">
-              {t('platform.gymDetail.people.showingOf', { filtered: pagedMembers.length, total: filteredMembers.length })}
+              {t('platform.gymDetail.people.showingOf', {
+                start: filteredMembers.length === 0 ? 0 : safePage * PAGE_SIZE + 1,
+                end: safePage * PAGE_SIZE + pagedMembers.length,
+                total: filteredMembers.length,
+              })}
             </p>
             {pageCount > 1 && (
               <div className="flex items-center gap-2">

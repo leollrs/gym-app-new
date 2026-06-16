@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
-import { Send } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 import { AdminModal } from '../../../components/admin';
 
 const GOLD = 'var(--color-accent)';
@@ -73,6 +73,20 @@ export function SurveyManagerModal({
       }
     >
       <div className="space-y-4">
+        {sending ? (
+          /* Sending can take a few seconds (push + in-app to every member) —
+             show an unmistakable loading state so it never looks frozen. */
+          <div className="flex flex-col items-center justify-center text-center gap-3 py-10">
+            <Loader2 className="w-9 h-9 animate-spin" style={{ color: GOLD }} />
+            <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              {t('admin.nps.sendingToAll', 'Sending survey to all members…')}
+            </p>
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {t('admin.nps.sendingWait', 'This may take a few seconds — keep the app open.')}
+            </p>
+          </div>
+        ) : (
+        <>
         {/* active-survey status + stop */}
         {isActive && (
           <div
@@ -128,6 +142,8 @@ export function SurveyManagerModal({
               {t('admin.nps.resendWarning', 'Resending relaunches the survey and notifies all members again. Existing responses are preserved. Use “Guardar” to just fix the wording without notifying.')}
             </p>
           </div>
+        )}
+        </>
         )}
       </div>
     </AdminModal>

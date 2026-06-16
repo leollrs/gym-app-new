@@ -453,6 +453,21 @@ export default function AdminProfile() {
                     <div className="mt-4 ml-0 sm:ml-11 space-y-3">
                       <input
                         type="password"
+                        autoComplete="current-password"
+                        placeholder={t('admin.profile.currentPassword', 'Current password')}
+                        aria-label={t('admin.profile.currentPassword', 'Current password')}
+                        value={passwords.current}
+                        onChange={(e) => setPasswords(p => ({ ...p, current: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border text-sm transition-colors"
+                        style={{
+                          background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                          borderColor: 'var(--color-border-subtle)',
+                          color: 'var(--color-text-primary)',
+                        }}
+                      />
+                      <input
+                        type="password"
+                        autoComplete="new-password"
                         placeholder={t('admin.profile.newPassword', 'New password')}
                         aria-label={t('admin.profile.newPassword', 'New password')}
                         value={passwords.new}
@@ -479,7 +494,7 @@ export default function AdminProfile() {
                       />
                       <button
                         onClick={handlePasswordChange}
-                        disabled={!passwords.new || !passwords.confirm}
+                        disabled={!passwords.current || !passwords.new || !passwords.confirm}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-[1.02] disabled:opacity-40 disabled:pointer-events-none"
                         style={{
                           background: 'var(--color-accent)',

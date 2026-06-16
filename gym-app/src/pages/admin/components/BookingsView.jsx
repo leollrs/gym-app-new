@@ -252,7 +252,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
               className="py-1.5 rounded-xl text-[12px] font-bold transition-all min-h-[34px]"
               style={{
                 background: active ? 'var(--color-accent)' : 'transparent',
-                color: active ? '#000' : 'var(--color-text-secondary)',
+                color: active ? 'var(--color-text-on-accent, #fff)' : 'var(--color-text-secondary)',
               }}
             >
               {opt.label}

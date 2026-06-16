@@ -229,6 +229,7 @@ export default function AdminChallenges() {
   const [awardingId, setAwardingId] = useState(null);
   const [leaderboardOpen, setLeaderboardOpen] = useState({});
   const [showTemplates, setShowTemplates] = useState(false);
+  const [templatePrefill, setTemplatePrefill] = useState(null);
 
   useEffect(() => { document.title = t('admin.challenges.title', 'Challenges') + ' | ' + (window.__APP_NAME || 'TuGymPR'); }, [t]);
 
@@ -559,11 +560,11 @@ export default function AdminChallenges() {
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { id: 'streak5', icon: ICON.flame, tone: 'hot', title: t('admin.challenges.tpl5Streak', '5-Day Streak'), desc: t('admin.challenges.tpl5StreakDesc', 'Visit 5 days in a row') },
-            { id: 'prparty', icon: ICON.trophy, tone: 'warn', title: t('admin.challenges.tplPRParty', 'PR Party'), desc: t('admin.challenges.tplPRPartyDesc', 'Set any PR this week') },
-            { id: 'bringfriend', icon: ICON.users, tone: 'coach', title: t('admin.challenges.tplBringFriend', 'Bring a Friend'), desc: t('admin.challenges.tplBringFriendDesc', 'Referral bonus doubled') },
+            { id: 'streak5', icon: ICON.flame, tone: 'hot', type: 'consistency', cover: 'fire', title: t('admin.challenges.tpl5Streak', '5-Day Streak'), desc: t('admin.challenges.tpl5StreakDesc', 'Visit 5 days in a row') },
+            { id: 'prparty', icon: ICON.trophy, tone: 'warn', type: 'pr_count', cover: 'compete', title: t('admin.challenges.tplPRParty', 'PR Party'), desc: t('admin.challenges.tplPRPartyDesc', 'Set any PR this week') },
+            { id: 'bringfriend', icon: ICON.users, tone: 'coach', type: 'team', cover: 'team', title: t('admin.challenges.tplBringFriend', 'Bring a Friend'), desc: t('admin.challenges.tplBringFriendDesc', 'Referral bonus doubled') },
           ].map((tpl) => (
-            <button key={tpl.id} type="button" onClick={() => { setShowTemplates(false); setShowCreate(true); }}
+            <button key={tpl.id} type="button" onClick={() => { setTemplatePrefill({ name: tpl.title, description: tpl.desc, type: tpl.type, cover_preset: tpl.cover }); setShowTemplates(false); setShowCreate(true); }}
               style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', borderRadius: 16, padding: '18px 18px 16px', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, cursor: 'pointer' }}>
               <IconChip ch={tpl.icon} tone={tpl.tone} size={44} r={13} strokeW={2} />
               <div style={{ fontFamily: FK.display, fontSize: 16.5, fontWeight: 800, color: TK.text, letterSpacing: -0.3, marginTop: 14 }}>{tpl.title}</div>
@@ -580,9 +581,10 @@ export default function AdminChallenges() {
       {showCreate && (
         <ChallengeModal
           isOpen={showCreate}
-          onClose={() => setShowCreate(false)}
+          onClose={() => { setShowCreate(false); setTemplatePrefill(null); }}
           gymId={gymId}
           adminId={user.id}
+          prefill={templatePrefill}
         />
       )}
 

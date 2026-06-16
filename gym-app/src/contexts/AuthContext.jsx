@@ -117,6 +117,14 @@ export const AuthProvider = ({ children }) => {
   const [memberBlocked, setMemberBlocked] = useState(null); // null = not blocked, 'deactivated' | 'banned'
   const [lifetimePoints, setLifetimePoints] = useState(null); // null = not loaded yet, 0+ = loaded
   const [mfaRequired, setMfaRequired] = useState(false);
+  // Platform super-admin "view as this gym's admin" (impersonation). Holds the
+  // TARGET gym's context; the super-admin's own loaded state is untouched —
+  // only the exposed context value is overridden. Session-scoped (sessionStorage)
+  // so a reload keeps it but it never persists across sessions. RLS is the real
+  // boundary: super_admin can read any gym, anyone else is blocked regardless.
+  const [impersonation, setImpersonation] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('tugympr_impersonation')) || null; } catch { return null; }
+  });
   const watchSyncTimeoutRef = useRef(null);
   // Tracks the user id whose profile we've already loaded (initially seeded
   // from the offline cache). Used in the SIGNED_IN handler to skip the
@@ -1030,6 +1038,7 @@ export const AuthProvider = ({ children }) => {
     try { localStorage.removeItem('tugympr_active_view'); } catch { /* noop */ }
     try { localStorage.removeItem('tugympr_landing_hint'); } catch { /* noop */ }
     try { setActiveView(null); } catch { /* noop */ }
+    try { setImpersonation(null); } catch { /* noop */ }
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -1245,9 +1254,12 @@ export const AuthProvider = ({ children }) => {
   // 2. else profile.role (their primary)
   // 3. else null while loading
   const effectiveView = useMemo(() => {
+    // Impersonating a gym → render the admin experience (gated on super_admin;
+    // RLS still enforces what's actually readable/writable).
+    if (impersonation && availableRoles.includes('super_admin')) return 'admin';
     if (activeView && availableRoles.includes(activeView)) return activeView;
     return profile?.role || null;
-  }, [activeView, availableRoles, profile?.role]);
+  }, [activeView, availableRoles, profile?.role, impersonation]);
 
   // switchView(role) — flips the active experience. The caller is
   // responsible for navigating to the right landing route after this
@@ -1282,18 +1294,64 @@ export const AuthProvider = ({ children }) => {
     return true;
   }, [availableRoles]);
 
+  // Enter "view as this gym's admin". Only a super_admin may start it (and RLS
+  // enforces it regardless); fetches the target gym's name/logo/config so the
+  // admin experience is faithful. The caller navigates to /admin afterwards.
+  const impersonateGym = useCallback(async (targetGymId) => {
+    if (!targetGymId || !availableRoles.includes('super_admin')) return false;
+    const [gymRes, brandRes] = await Promise.all([
+      supabase.from('gyms').select('id, name, qr_enabled, qr_display_format, classes_enabled, setup_completed, qr_payload_type, qr_payload_template, multi_admin_enabled').eq('id', targetGymId).single(),
+      supabase.from('gym_branding').select('logo_url, custom_app_name').eq('gym_id', targetGymId).maybeSingle(),
+    ]);
+    const g = gymRes.data;
+    if (!g) return false;
+    const b = brandRes.data;
+    let logoUrl = '';
+    if (b?.logo_url) {
+      const { data: signed } = await supabase.storage.from('gym-logos').createSignedUrl(b.logo_url, 60 * 60 * 24);
+      logoUrl = signed?.signedUrl || '';
+    }
+    const imp = {
+      gymId: g.id,
+      gymName: g.name || b?.custom_app_name || '',
+      gymLogoUrl: logoUrl,
+      gymConfig: {
+        qrEnabled: g.qr_enabled ?? false,
+        qrDisplayFormat: g.qr_display_format ?? 'qr_code',
+        classesEnabled: g.classes_enabled ?? false,
+        setupCompleted: g.setup_completed ?? true,
+        qrPayloadType: g.qr_payload_type ?? 'auto_id',
+        qrPayloadTemplate: g.qr_payload_template ?? null,
+        multiAdminEnabled: g.multi_admin_enabled ?? false,
+      },
+    };
+    setImpersonation(imp);
+    try { sessionStorage.setItem('tugympr_impersonation', JSON.stringify(imp)); } catch { /* quota */ }
+    return true;
+  }, [availableRoles]);
+
+  const stopImpersonating = useCallback(() => {
+    setImpersonation(null);
+    try { sessionStorage.removeItem('tugympr_impersonation'); } catch { /* ignore */ }
+  }, []);
+
   // Clear active view on sign-out so the next user doesn't inherit it.
   // Wrap signOut to do the cleanup. (signOut itself is defined later above
   // contextValue — we re-export a wrapper from there.)
 
-  const contextValue = useMemo(() => ({
+  const contextValue = useMemo(() => {
+    // When impersonating a gym, override ONLY the exposed gym context (gym_id +
+    // name/logo/config) so admin pages scope to the target gym. The super-admin's
+    // own underlying state and AuthContext effects are untouched.
+    const effProfile = impersonation && profile ? { ...profile, gym_id: impersonation.gymId } : profile;
+    return {
     user,
-    profile,
-    gymName,
-    gymLogoUrl,
+    profile: effProfile,
+    gymName: impersonation ? impersonation.gymName : gymName,
+    gymLogoUrl: impersonation ? impersonation.gymLogoUrl : gymLogoUrl,
     loading,
     gymDeactivated,
-    gymConfig,
+    gymConfig: impersonation ? impersonation.gymConfig : gymConfig,
     memberBlocked,
     lifetimePoints,
     refreshLifetimePoints,
@@ -1317,7 +1375,14 @@ export const AuthProvider = ({ children }) => {
     availableRoles,
     activeView: effectiveView,
     switchView,
-  }), [
+    // Platform impersonation ("view as this gym's admin").
+    isImpersonating: !!impersonation,
+    impersonatedGymName: impersonation ? impersonation.gymName : null,
+    impersonatedGymId: impersonation ? impersonation.gymId : null,
+    impersonateGym,
+    stopImpersonating,
+    };
+  }, [
     user,
     profile,
     gymName,
@@ -1342,6 +1407,9 @@ export const AuthProvider = ({ children }) => {
     availableRoles,
     effectiveView,
     switchView,
+    impersonation,
+    impersonateGym,
+    stopImpersonating,
   ]);
 
   return (

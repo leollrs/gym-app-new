@@ -51,6 +51,15 @@ export default function AppDownloadLanding() {
     PLAY_STORE_URL && { url: PLAY_STORE_URL, label: t('appDownload.playStore', 'Download for Android') },
   ].filter(Boolean);
 
+  const openInApp = () => {
+    // Hand off to the installed app via the registered custom scheme. Works even
+    // when the universal link doesn't fire (e.g. Apple's AASA CDN is still
+    // serving a stale copy) — the OS routes the scheme straight to the app, no
+    // CDN involved. If the app isn't installed nothing happens (page stays), so
+    // it's safe to show to everyone.
+    if (id) window.location.href = `tugympr://t/${id}`;
+  };
+
   return (
     <div
       style={{
@@ -116,6 +125,20 @@ export default function AppDownloadLanding() {
             {t('appDownload.comingSoon', 'Coming soon to the App Store and Google Play')}
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={openInApp}
+          style={{
+            marginTop: 18, background: 'none', border: 'none', cursor: 'pointer',
+            color: 'rgba(255,255,255,0.7)', fontSize: 13.5, fontWeight: 600,
+          }}
+        >
+          {t('appDownload.haveApp', 'Already have the app?')}{' '}
+          <span style={{ color: ACCENT, textDecoration: 'underline' }}>
+            {t('appDownload.openIt', 'Open it')}
+          </span>
+        </button>
       </div>
     </div>
   );

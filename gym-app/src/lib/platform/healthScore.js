@@ -52,3 +52,14 @@ export function healthTier(score) {
   if (score >= 40) return 'watch';
   return 'critical';
 }
+
+// Shared score → color, matching the canonical healthTier bands. Use this
+// everywhere a score is colored (GymHealth, GymWellnessTab, …) so no surface
+// can color the same score a different tier than another.
+export function colorForScore(score) {
+  if (score == null) return '#6B7280'; // new / unscored
+  if (score >= 75) return '#10B981';   // thriving
+  if (score >= 55) return '#22C55E';   // healthy
+  if (score >= 40) return '#F59E0B';   // watch
+  return '#EF4444';                    // critical
+}

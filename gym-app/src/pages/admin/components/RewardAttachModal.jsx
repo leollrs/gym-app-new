@@ -137,17 +137,24 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
   // inside a panel instead of the viewport.
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto"
+      style={{
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+        // Clear the mobile admin header (~56px) + bottom nav (~80px) + safe areas
+        // so the dialog is fully on-screen and scrolls under the keyboard.
+        paddingTop: 'calc(56px + env(safe-area-inset-top) + 12px)',
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom) + 12px)',
+        paddingLeft: '16px', paddingRight: '16px',
+      }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl max-h-[min(85vh,100%)] flex flex-col my-auto"
         style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-4 py-3"
+          className="flex items-center justify-between px-4 py-3 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
         >
           <div className="flex items-center gap-2">
@@ -176,7 +183,7 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
         </div>
 
         {/* Body */}
-        <div className="p-4">
+        <div className="p-4 overflow-y-auto flex-1">
           {hasReward ? (
             // Already attached — show summary + detach action
             <div className="space-y-4">

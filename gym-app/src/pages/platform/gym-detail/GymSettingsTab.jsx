@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Settings, Palette, QrCode, CalendarDays, Smartphone, Link2,
-  ShieldOff, AlertTriangle, Crown,
+  ShieldOff, AlertTriangle, Crown, ToggleRight, CreditCard, Upload,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../../lib/supabase';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { validateImageFile } from '../../../lib/validateImage';
 import RoleBadge from './RoleBadge';
 
 // A7: strict hex validation — deliberately NO var(--…) resolution here (the
@@ -14,6 +15,37 @@ import RoleBadge from './RoleBadge';
 // platform gold — the exact data bug this editor exists to repair).
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const asValidHex = (v) => (typeof v === 'string' && HEX_RE.test(v.trim()) ? v.trim() : '');
+
+// Per-gym feature entitlements (0586). classes + qr keep their dedicated cards
+// (they're gym-row flags), so the Features card manages the rest. A missing row
+// means enabled (default on); only an explicit `false` disables for this gym,
+// and the global Operations kill switches still override (off everywhere wins).
+const ENTITLEMENT_FEATURES = ['referrals', 'social', 'messaging', 'challenges', 'nutrition', 'ai'];
+const FEATURE_FALLBACK = {
+  referrals: 'Referrals', social: 'Social feed', messaging: 'Messaging',
+  challenges: 'Challenges', nutrition: 'Nutrition', ai: 'AI photo analysis',
+};
+
+// Logo compression — same 512px / JPEG approach as the admin branding editor so
+// platform-uploaded logos match member-uploaded ones.
+async function compressImage(file, maxSize = 512, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > height) { if (width > maxSize) { height = Math.round((height * maxSize) / width); width = maxSize; } }
+      else if (height > maxSize) { width = Math.round((width * maxSize) / height); height = maxSize; }
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => resolve(blob || file), 'image/jpeg', quality);
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 export default function GymSettingsTab({
   gym,
@@ -64,10 +96,20 @@ export default function GymSettingsTab({
     (!!branding?.primary_color && !storedPrimary) ||
     (!!branding?.accent_color && !storedAccent);
 
+  // custom_app_name (saved together with colors) + logo upload (immediate, like
+  // the admin branding editor; cross-gym storage write via 0589).
+  const storedAppName = branding?.custom_app_name ?? '';
+  const [appNameDraft, setAppNameDraft] = useState(undefined);
+  const appName = appNameDraft !== undefined ? appNameDraft : storedAppName;
+  const appNameDirty = appNameDraft !== undefined && appNameDraft.trim() !== storedAppName.trim();
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [localLogoUrl, setLocalLogoUrl] = useState(null);
+  const [logoError, setLogoError] = useState('');
+
   const saveBranding = async () => {
     if (!brandValid || brandSaving) return;
     setBrandSaving(true);
-    const payload = { primary_color: brandPrimary.trim(), accent_color: brandAccent.trim() };
+    const payload = { primary_color: brandPrimary.trim(), accent_color: brandAccent.trim(), custom_app_name: appName.trim() || null };
     const { error } = await supabase
       .from('gym_branding')
       .upsert({ gym_id: gym.id, ...payload, updated_at: new Date().toISOString() }, { onConflict: 'gym_id' });
@@ -82,7 +124,104 @@ export default function GymSettingsTab({
     onBrandingSaved?.(payload);
     setPrimaryDraft(undefined);
     setAccentDraft(undefined);
+    setAppNameDraft(undefined);
     notify?.(t('platform.gymDetail.settings.brandingSaved', 'Branding saved'));
+  };
+
+  const handleLogoUpload = async (file) => {
+    if (!file) return;
+    setLogoError('');
+    const validation = await validateImageFile(file);
+    if (!validation.valid) { setLogoError(validation.error); return; }
+    setUploadingLogo(true);
+    try {
+      const compressed = await compressImage(file);
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${gym.id}/logo.${ext}`;
+      const { error: upErr } = await supabase.storage.from('gym-logos').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) throw upErr;
+      const { error: dbErr } = await supabase.from('gym_branding').upsert({ gym_id: gym.id, logo_url: path, updated_at: new Date().toISOString() }, { onConflict: 'gym_id' });
+      if (dbErr) throw dbErr;
+      const { data: signed } = await supabase.storage.from('gym-logos').createSignedUrl(path, 60 * 60 * 24);
+      setLocalLogoUrl(signed?.signedUrl || null);
+      onBrandingSaved?.({ logo_url: path });
+      logAdminAction('update_gym_logo', 'gym', gym.id, { gym_name: gym.name }, gym.id);
+      notify?.(t('platform.gymDetail.settings.logoUploaded', 'Logo updated'));
+    } catch (err) {
+      setLogoError(err.message || 'Upload failed');
+      notify?.(t('platform.gymDetail.settings.logoUploadFailed', 'Logo upload failed: {{error}}', { error: err.message }), 'error');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  // ── Per-gym feature entitlements (0586) ──────────────────────────────────
+  const [entitlements, setEntitlements] = useState(null); // {feature: enabled} | null = loading
+  const [entSaving, setEntSaving] = useState(null);        // feature key currently saving
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('gym_entitlements').select('feature, enabled').eq('gym_id', gym.id);
+      if (cancelled) return;
+      if (error) { setEntitlements({}); return; }      // pre-migration → treat as all default-on
+      const map = {};
+      (data || []).forEach(r => { map[r.feature] = r.enabled; });
+      setEntitlements(map);
+    })();
+    return () => { cancelled = true; };
+  }, [gym.id]);
+
+  const toggleFeature = async (feature) => {
+    const current = entitlements?.[feature] !== false; // missing row = enabled
+    const next = !current;
+    setEntSaving(feature);
+    setEntitlements(prev => ({ ...(prev || {}), [feature]: next })); // optimistic
+    const { error } = await supabase.from('gym_entitlements').upsert(
+      { gym_id: gym.id, feature, enabled: next, updated_at: new Date().toISOString() },
+      { onConflict: 'gym_id,feature' },
+    );
+    setEntSaving(null);
+    if (error) {
+      setEntitlements(prev => ({ ...(prev || {}), [feature]: current })); // revert
+      notify?.(t('platform.gymDetail.settings.featureSaveFailed', 'Could not update feature: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction('set_gym_entitlement', 'gym', gym.id, { feature, enabled: next }, gym.id);
+  };
+
+  // ── Plan & billing metadata (cols: monthly_price/currency 0041/0397, trial/
+  //    renews/seat 0587). Self-contained: reads from gym (select '*'), writes
+  //    gyms directly — no billing engine, operator records only. ───────────
+  const [planDraft, setPlanDraft] = useState({ monthly_price: '', currency: 'USD', trial_ends_at: '', renews_at: '', member_seat_limit: '' });
+  const [planSaving, setPlanSaving] = useState(false);
+  useEffect(() => {
+    setPlanDraft({
+      monthly_price: gym.monthly_price ?? '',
+      currency: gym.currency ?? 'USD',
+      trial_ends_at: gym.trial_ends_at ? String(gym.trial_ends_at).slice(0, 10) : '',
+      renews_at: gym.renews_at ? String(gym.renews_at).slice(0, 10) : '',
+      member_seat_limit: gym.member_seat_limit ?? '',
+    });
+  }, [gym.id]); // re-init only when a different gym is opened
+
+  const savePlan = async () => {
+    setPlanSaving(true);
+    const payload = {
+      monthly_price: planDraft.monthly_price === '' ? null : Number(planDraft.monthly_price),
+      currency: (planDraft.currency || 'USD').toUpperCase().slice(0, 3),
+      trial_ends_at: planDraft.trial_ends_at || null,
+      renews_at: planDraft.renews_at || null,
+      member_seat_limit: planDraft.member_seat_limit === '' ? null : parseInt(planDraft.member_seat_limit, 10),
+    };
+    const { error } = await supabase.from('gyms').update(payload).eq('id', gym.id);
+    setPlanSaving(false);
+    if (error) {
+      notify?.(t('platform.gymDetail.settings.planSaveFailed', 'Could not save plan: {{error}}', { error: error.message }), 'error');
+      return;
+    }
+    logAdminAction('update_gym_plan', 'gym', gym.id, { gym_name: gym.name }, gym.id);
+    notify?.(t('platform.gymDetail.settings.planSaved', 'Plan & billing saved'));
   };
 
   return (
@@ -227,7 +366,7 @@ export default function GymSettingsTab({
         <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={saveBranding}
-            disabled={!brandValid || !brandDirty || brandSaving}
+            disabled={!brandValid || (!brandDirty && !appNameDirty) || brandSaving}
             className="rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: '#D4AF37', color: '#000' }}
           >
@@ -238,23 +377,43 @@ export default function GymSettingsTab({
           </p>
         </div>
 
-        {branding?.custom_app_name && (
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.customAppName')}</label>
-            <p className="text-[13px] text-[#E5E7EB]">{branding.custom_app_name}</p>
-          </div>
-        )}
+        <div>
+          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.customAppName')}</label>
+          <input
+            type="text"
+            value={appName}
+            onChange={e => setAppNameDraft(e.target.value)}
+            placeholder={gym.name}
+            maxLength={40}
+            className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+          />
+          <p className="text-[10px] text-[#6B7280] mt-1">{t('platform.gymDetail.settings.customAppNameHint', "Shown as the app name in this gym's build. Leave blank to use the gym name. Saved with the Save branding button.")}</p>
+        </div>
 
-        {logoUrl && (
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.logo')}</label>
-            <img
-              src={logoUrl}
-              alt={t('platform.gymDetail.settings.logoAlt', { name: gym.name })}
-              className="h-12 w-auto rounded-lg border border-white/6 bg-white/[0.03] p-1"
-            />
+        <div>
+          <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.logo')}</label>
+          <div className="flex items-center gap-3">
+            {(localLogoUrl || logoUrl) ? (
+              <img
+                src={localLogoUrl || logoUrl}
+                alt={t('platform.gymDetail.settings.logoAlt', { name: gym.name })}
+                className="h-12 w-12 rounded-lg border border-white/6 bg-white/[0.03] object-contain p-1 flex-shrink-0"
+              />
+            ) : (
+              <div className="h-12 w-12 rounded-lg border border-dashed border-white/10 bg-white/[0.02] flex items-center justify-center flex-shrink-0">
+                <Palette className="w-4 h-4 text-[#4B5563]" />
+              </div>
+            )}
+            <label className={`inline-flex items-center gap-2 text-[12px] font-semibold px-3 py-2 rounded-lg border border-white/8 bg-white/[0.04] text-[#E5E7EB] transition-colors ${uploadingLogo ? 'opacity-50' : 'hover:bg-white/[0.08] cursor-pointer'}`}>
+              <Upload size={13} className="text-[#D4AF37]" />
+              {uploadingLogo ? t('platform.gymDetail.settings.uploading', 'Uploading…') : t('platform.gymDetail.settings.uploadLogo', 'Upload logo')}
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploadingLogo}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ''; }} />
+            </label>
           </div>
-        )}
+          {logoError && <p className="text-[11px] text-red-400 mt-1.5">{logoError}</p>}
+          <p className="text-[10px] text-[#6B7280] mt-1.5">{t('platform.gymDetail.settings.logoUploadHint', 'PNG, JPEG or WebP, under 5 MB. Compressed to 512px. The app picks it up on next launch.')}</p>
+        </div>
       </div>
 
       {/* QR Code Configuration */}
@@ -421,6 +580,90 @@ export default function GymSettingsTab({
               className="w-16 bg-[#111827] border border-white/6 rounded-lg px-2 py-1.5 text-[13px] text-[#E5E7EB] text-center outline-none focus:border-[#D4AF37]/40" />
           </div>
         )}
+      </div>
+
+      {/* Plan & billing — operator-visible subscription metadata (no billing
+          engine). Drives MRR/ARR on Analytics + Attention "trials ending". */}
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-4 lg:col-span-2">
+        <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
+          <CreditCard className="w-4 h-4 text-[#D4AF37]" />
+          {t('platform.gymDetail.settings.planBilling', 'Plan & billing')}
+        </h3>
+        <p className="text-[11px] text-[#6B7280]">
+          {t('platform.gymDetail.settings.planBillingDesc', 'Drives MRR/ARR on Analytics and the Attention board. No charges are made — operator records only. The plan tier is set from the gym header.')}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.monthlyPrice', 'Monthly price')}</label>
+            <input type="number" min="0" step="0.01" value={planDraft.monthly_price}
+              onChange={e => setPlanDraft(p => ({ ...p, monthly_price: e.target.value }))}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.currency', 'Currency')}</label>
+            <input type="text" maxLength={3} value={planDraft.currency}
+              onChange={e => setPlanDraft(p => ({ ...p, currency: e.target.value }))}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] uppercase font-mono outline-none focus:border-[#D4AF37]/40" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.memberSeatLimit', 'Member seat limit')}</label>
+            <input type="number" min="0" value={planDraft.member_seat_limit}
+              onChange={e => setPlanDraft(p => ({ ...p, member_seat_limit: e.target.value }))}
+              placeholder={t('platform.gymDetail.settings.noLimit', 'No limit')}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.trialEnds', 'Trial ends')}</label>
+            <input type="date" value={planDraft.trial_ends_at}
+              onChange={e => setPlanDraft(p => ({ ...p, trial_ends_at: e.target.value }))}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.renewsAt', 'Renews / expires')}</label>
+            <input type="date" value={planDraft.renews_at}
+              onChange={e => setPlanDraft(p => ({ ...p, renews_at: e.target.value }))}
+              className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40" />
+          </div>
+        </div>
+        <button onClick={savePlan} disabled={planSaving}
+          className="rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50"
+          style={{ background: '#D4AF37', color: '#000' }}>
+          {planSaving ? t('platform.gymDetail.settings.saving') : t('platform.gymDetail.settings.savePlan', 'Save plan')}
+        </button>
+      </div>
+
+      {/* Per-gym feature entitlements (0586). Global Operations kill switches
+          override these — off-everywhere always wins. classes + qr have their
+          own cards above. */}
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-5 space-y-3 lg:col-span-2">
+        <h3 className="text-[14px] font-semibold text-[#E5E7EB] flex items-center gap-2">
+          <ToggleRight className="w-4 h-4 text-[#D4AF37]" />
+          {t('platform.gymDetail.settings.features', 'Features')}
+        </h3>
+        <p className="text-[11px] text-[#6B7280]">
+          {t('platform.gymDetail.settings.featuresDesc', 'Turn capabilities on or off for this gym. The global kill switches on Operations override these (off everywhere wins).')}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {ENTITLEMENT_FEATURES.map(f => {
+            const enabled = entitlements?.[f] !== false;
+            return (
+              <div key={f} className="flex items-center justify-between p-3 bg-[#111827] rounded-xl border border-white/6">
+                <p className="text-[13px] font-medium text-[#E5E7EB]">{t(`platform.gymDetail.settings.feature_${f}`, FEATURE_FALLBACK[f])}</p>
+                <button
+                  onClick={() => toggleFeature(f)}
+                  disabled={entitlements === null || entSaving === f}
+                  className="relative w-11 h-6 rounded-full transition-colors disabled:opacity-50"
+                  role="switch"
+                  aria-checked={enabled}
+                  aria-label={t(`platform.gymDetail.settings.feature_${f}`, FEATURE_FALLBACK[f])}
+                  style={{ background: enabled ? '#D4AF37' : '#374151' }}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${enabled ? 'left-[22px]' : 'left-0.5'}`} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* SMS Configuration */}

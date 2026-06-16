@@ -3684,6 +3684,7 @@
       "verified": "Verified",
       "change": "Change",
       "cancel": "Cancel",
+      "currentPassword": "Current password",
       "newPassword": "New password",
       "confirmPassword": "Confirm password",
       "updatePassword": "Update Password",
@@ -5228,7 +5229,7 @@
       "commentMissing": "Comment no longer exists.",
       "reportedMessage": "Reported Message",
       "messagePrivate": "Direct message — content private (encrypted).",
-      "messageGuidance": "DM bodies are end-to-end encrypted and cannot be reviewed here. Use the reporter and reason below to decide whether to suspend the sender or block them via member management.",
+      "messageGuidance": "DM bodies are encrypted at rest and aren't shown here. Use the reporter and reason below to decide whether to suspend the sender or block them via member management.",
       "reportedProfile": "Reported Profile",
       "profileGuidance": "Review the member in the Members admin page to suspend, message, or remove their access.",
       "profileMissing": "Profile no longer exists."
@@ -7163,6 +7164,8 @@
       "feedbackHighlights": "Feedback Highlights",
       "sendNpsSurvey": "Send NPS Survey",
       "sending": "Sending...",
+      "sendingToAll": "Sending survey to all members…",
+      "sendingWait": "This may take a few seconds — keep the app open.",
       "sendToAll": "Send to All Members",
       "npsSurveyLabel": "NPS Survey",
       "surveyQuestion": "How likely are you to recommend us?",
@@ -10186,7 +10189,10 @@
     "criteriaLabel": "Criteria (JSON, optional)",
     "criteriaInvalid": "Criteria must be valid JSON (e.g. {\"workouts\": 50}).",
     "storageProbe": "Storage buckets",
-    "storageReachable": "{{count}} buckets reachable"
+    "storageReachable": "{{count}} buckets reachable",
+    "videoTooLarge": "Video must be under 100MB",
+    "videoTypeInvalid": "Only MP4, WebM, and MOV videos are allowed",
+    "saveFailed": "Save failed: {{msg}}"
   },
   "trainerPlans": {
     "title": "Workout Plans",
@@ -11970,7 +11976,10 @@
         "managePeople": "Manage People",
         "manageContent": "Manage Content",
         "viewActivity": "View Activity",
-        "gymSettings": "Gym Settings"
+        "gymSettings": "Gym Settings",
+        "ownerContact": "Owner contact",
+        "whatsapp": "WhatsApp",
+        "noOwnerContact": "No contact info on file"
       },
       "people": {
         "membersTab": "Members ({{count}})",
@@ -11980,7 +11989,7 @@
         "searchAria": "Search members",
         "addMember": "Add Member",
         "noMembersFound": "No members found.",
-        "showingOf": "Showing {{filtered}} of {{total}} members",
+        "showingOf": "Showing {{start}}–{{end}} of {{total}} members",
         "noStaff": "No staff members",
         "noInvites": "No invites",
         "inviteRole": "Role: {{role}}",
@@ -12104,7 +12113,13 @@
         },
         "rewardsLoadFailed": "Couldn't load the rewards catalog",
         "rewardsLoadFailedDesc": "Reload the page to try again. If this persists, the gym_rewards read policy (migration 0542) may not be applied yet.",
-        "rewardInactive": "Inactive"
+        "rewardInactive": "Inactive",
+        "gymRewards": "Gym rewards",
+        "addReward": "Add reward",
+        "activate": "Activate",
+        "deactivate": "Deactivate",
+        "edit": "Edit",
+        "delete": "Delete"
       },
       "settings": {
         "gymInfo": "Gym Info",
@@ -12169,7 +12184,33 @@
         "brandingSaved": "Branding saved",
         "brandingSaveFailed": "Could not save branding: {{error}}",
         "brandingApplyNote": "The gym's app picks up new colors on its next launch.",
-        "brandingStoredInvalid": "A stored color isn't a valid hex value — pick a color and save to repair it."
+        "brandingStoredInvalid": "A stored color isn't a valid hex value — pick a color and save to repair it.",
+        "featureSaveFailed": "Could not update feature: {{error}}",
+        "features": "Features",
+        "featuresDesc": "Turn capabilities on or off for this gym. The global kill switches on Operations override these (off everywhere wins).",
+        "feature_referrals": "Referrals",
+        "feature_social": "Social feed",
+        "feature_messaging": "Messaging",
+        "feature_challenges": "Challenges",
+        "feature_nutrition": "Nutrition",
+        "feature_ai": "AI photo analysis",
+        "planBilling": "Plan & billing",
+        "planBillingDesc": "Drives MRR/ARR on Analytics and the Attention board. No charges are made — operator records only. The plan tier is set from the gym header.",
+        "monthlyPrice": "Monthly price",
+        "currency": "Currency",
+        "memberSeatLimit": "Member seat limit",
+        "noLimit": "No limit",
+        "trialEnds": "Trial ends",
+        "renewsAt": "Renews / expires",
+        "savePlan": "Save plan",
+        "planSaveFailed": "Could not save plan: {{error}}",
+        "planSaved": "Plan & billing saved",
+        "customAppNameHint": "Shown as the app name in this gym's build. Leave blank to use the gym name. Saved with the Save branding button.",
+        "logoUploaded": "Logo updated",
+        "logoUploadFailed": "Logo upload failed: {{error}}",
+        "uploading": "Uploading…",
+        "uploadLogo": "Upload logo",
+        "logoUploadHint": "PNG, JPEG or WebP, under 5 MB. Compressed to 512px. The app picks it up on next launch."
       },
       "deleteConfirm": {
         "title": "Delete {{type}}?",
@@ -12237,7 +12278,17 @@
         "criteriaLabel": "Criteria (JSON, optional)",
         "criteriaInvalid": "Criteria must be a valid JSON object, e.g. {\"workouts\": 30}",
         "criteriaHint": "Machine-readable unlock condition. Leave empty for manual awards.",
-        "criteriaHintKeys": "Supported keys: workouts (completed workouts), checkins (check-ins), prs (PRs), streak (current streak days), volume (lifetime lbs lifted) — e.g. {\"workouts\": 30, \"streak\": 7}. All listed conditions must be met. Leave empty for manual awards."
+        "criteriaHintKeys": "Supported keys: workouts (completed workouts), checkins (check-ins), prs (PRs), streak (current streak days), volume (lifetime lbs lifted) — e.g. {\"workouts\": 30, \"streak\": 7}. All listed conditions must be met. Leave empty for manual awards.",
+        "editReward": "Edit reward",
+        "newReward": "New reward",
+        "rewardIcon": "Icon",
+        "rewardNamePlaceholder": "Free smoothie",
+        "rewardNameEs": "Name (Spanish, optional)",
+        "rewardType": "Type",
+        "rewardCost": "Cost (pts)",
+        "rewardSort": "Sort",
+        "rewardActive": "Active (visible to members)",
+        "rewardCostInvalid": "Cost must be 0 or more points"
       },
       "memberAction": {
         "changeRole": "Change Role",
@@ -12307,7 +12358,20 @@
           "programs": "programs",
           "achievements": "achievements"
         }
-      }
+      },
+      "rewardType": {
+        "custom": "Custom",
+        "smoothie": "Smoothie",
+        "guest_pass": "Guest pass",
+        "merch": "Merch",
+        "pt_session": "PT session",
+        "free_month": "Free month",
+        "class_pass": "Class pass",
+        "discount": "Discount",
+        "bring_friend": "Bring a friend"
+      },
+      "viewAsAdmin": "View as admin",
+      "impersonateFailed": "Could not open the admin view"
     },
     "support": {
       "title": "Support",
@@ -12377,9 +12441,6 @@
       "resultsCount_plural": "{{count}} results",
       "superAdminBlocked": "Super admin can only be assigned via database",
       "memberDeactivated": "Member deactivated",
-      "inviteResent": "Invite resent successfully",
-      "inviteResentFallback": "Invite flagged for resend (email send pending wiring)",
-      "inviteResendFailed": "Failed to resend invite",
       "deactivateConfirm": "Deactivate {{name}}? They will lose app access until reactivated.",
       "searchFailed": "Search failed — results may be incomplete.",
       "retry": "Retry",
@@ -12392,7 +12453,21 @@
       "generating": "Generating...",
       "inviteNoGym": "This member has no gym — assign a gym first",
       "inviteGenerateFailed": "Could not generate an invite code",
-      "protectedAccount": "Protected account — super admin role and status can only be changed in the database"
+      "protectedAccount": "Protected account — super admin role and status can only be changed in the database",
+      "exportDone": "Member data exported",
+      "exportMember": "Export data",
+      "deleteConfirm": "Permanently delete {{name}} and all their data? This cannot be undone.",
+      "memberDeleted": "Member deleted",
+      "deleteMember": "Delete member",
+      "moveToGym": "Move to gym",
+      "moveDone": "Moved to {{gym}} — {{restamped}} records transferred, {{cleared}} old-gym links reset",
+      "moveSelectTarget": "Select a gym…",
+      "moveSearchPlaceholder": "Search gym by name or slug…",
+      "searching": "Searching…",
+      "moveNoGyms": "No other gyms found",
+      "moveExplainer": "Their workout history, PRs, body data, goals, achievements and points transfer to the new gym. Old-gym program enrollment, challenge entries, class bookings, leaderboard standing, friendships and trainer assignment are reset.",
+      "moving": "Moving…",
+      "moveConfirm": "Move member"
     },
     "customMeals": {
       "title": "Custom Meals",
@@ -12421,7 +12496,10 @@
       "roleSuperAdmin": "Super Admin",
       "roleAdmin": "Admin",
       "roleTrainer": "Trainer",
-      "roleMember": "Member"
+      "roleMember": "Member",
+      "deleteMeal": "Delete meal",
+      "deleteConfirm": "Delete \"{{name}}\"? This permanently removes the user-submitted meal.",
+      "deleteFailed": "Delete failed: {{msg}}"
     },
     "errors": {
       "title": "Errors",
@@ -12573,7 +12651,9 @@
       "maintenanceMessageHint": "Users always see the standard maintenance copy in their own language (EN/ES) — this note is stored for the ops record only.",
       "killAi": "AI photo analysis",
       "killAiDesc": "Food, menu & body photo scanning (OpenAI). Turning this off stops all paid AI calls app-wide.",
-      "killUnknownDesc": "Platform feature flag ({{key}}). No description registered for this switch."
+      "killUnknownDesc": "Platform feature flag ({{key}}). No description registered for this switch.",
+      "incidentsUnavailable": "Could not evaluate incidents",
+      "incidentsUnavailableDesc": "The error feed could not be read, so incident detection is blind this cycle — this is not an all-clear. Retry shortly."
     },
     "gyms": {
       "title": "Gyms",
@@ -12666,7 +12746,34 @@
       "pricingTier": "Pricing Tier",
       "slug": "URL Slug",
       "slugHint": "Auto-derived from name. Lowercase, hyphens only.",
-      "ownerInviteNote": "An invite code will be generated for this email. Promote them to admin after they claim it."
+      "ownerInviteNote": "An invite code will be generated for this email. Promote them to admin after they claim it.",
+      "select": "Select",
+      "selectDone": "Done",
+      "selectAll": "Select all",
+      "bulkSelected": "{{count}} selected",
+      "bulkFeature": "Feature",
+      "bulkPlan": "Plan",
+      "bulkActivate": "Activate",
+      "bulkDeactivate": "Deactivate",
+      "bulkClear": "Clear selection",
+      "bulkFailed": "Bulk action failed: {{error}}",
+      "bulkActivated": "{{count}} gyms activated",
+      "bulkDeactivated": "{{count}} gyms deactivated",
+      "bulkPlanSet": "Plan set for {{count}} gyms",
+      "bulkFeatureSet": "Feature updated for {{count}} gyms",
+      "bulkFeatureTitle": "Set feature for {{count}} gyms",
+      "bulkFeatureLabel": "Feature",
+      "bulkEnable": "Enable",
+      "bulkDisable": "Disable",
+      "bulkFeatureNote": "Global Operations kill switches still override these — off everywhere wins.",
+      "bulkCancel": "Cancel",
+      "bulkApply": "Apply",
+      "bulkApplying": "Applying…",
+      "bulkPlanTitle": "Set plan for {{count}} gyms",
+      "bulkDeactivateTitle": "Deactivate gyms",
+      "bulkDeactivateWarn": "This immediately cuts off app access for all members of {{count}} gyms. It is reversible (Activate restores them), but members are booted right away.",
+      "bulkDeactivateConfirmLabel": "Type {{count}} to confirm",
+      "bulkDeactivateConfirm": "Deactivate"
     },
     "analytics": {
       "title": "Analytics",
@@ -12685,7 +12792,7 @@
       "retentionRate": "Retention Rate",
       "newMembers30d": "New Members (30d)",
       "avgSessionsPerMember": "Avg Sessions / Member",
-      "memberGrowth": "Member Growth (Last 90 Days)",
+      "memberGrowth": "Member Growth (Last 13 Weeks)",
       "noGrowthData": "No growth data available",
       "newMembers": "New Members",
       "monthlyRevenue": "Monthly Revenue (MRR)",
@@ -12750,7 +12857,13 @@
       "exportCsv": "Export CSV",
       "incomeProjectionBadge": "Projection (current prices)",
       "incomeProjectionNote": "Amber months have no snapshot yet — they are projected from today's prices and today's active gyms. Green months are computed from that month's weekly snapshot (frozen member counts, plans, and status).",
-      "srcGrowthChurn": "growth & churn signals"
+      "srcGrowthChurn": "growth & churn signals",
+      "costsTitle": "Costs & margin",
+      "smsSent": "SMS sent (mo)",
+      "smsCost": "SMS cost (est)",
+      "mrrLabel": "MRR",
+      "estMargin": "Est. margin (MRR − SMS)",
+      "costsNote": "SMS is the per-message variable cost shown here; storage / DB / AI spend is not yet aggregated. Display-only estimate."
     },
     "gymHealth": {
       "title": "Gym Health",
@@ -12888,7 +13001,8 @@
       "avgActiveDays": "Admin Active Days/Week",
       "avgDenominatorNote": "Average computed over the {{count}} gyms with any admin activity in the last 30 days. \"Least active\" considers all gyms, including zero activity.",
       "scoreExplanationMax": "Score = distinct admin-days in the last 30 days. Gold = at least 75% of the top gym's score.",
-      "adminDays30d": "admin-days (30d)"
+      "adminDays30d": "admin-days (30d)",
+      "presenceCappedNote": "Based on the most recent 5,000 presence events."
     },
     "settings": {
       "title": "Platform Settings",
@@ -12934,7 +13048,7 @@
     },
     "notifications": {
       "title": "Alerts",
-      "subtitle": "Crashes, platform alerts and notices from your gym.",
+      "subtitle": "Crash reports and platform alerts across all your gyms.",
       "empty": "No alerts",
       "emptyBody": "Crash reports and platform alerts will appear here.",
       "markAllRead": "Mark all read",
@@ -14064,6 +14178,8 @@
     "sub": "Your workouts, classes, progress and coach — all in one app.",
     "comingSoon": "Coming soon to the App Store and Google Play",
     "appStore": "Download for iOS",
-    "playStore": "Download for Android"
+    "playStore": "Download for Android",
+    "haveApp": "Already have the app?",
+    "openIt": "Open it"
   }
 }

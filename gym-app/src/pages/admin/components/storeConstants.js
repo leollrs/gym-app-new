@@ -3,7 +3,7 @@ import { adminKeys } from '../../../lib/adminQueryKeys';
 
 /**
  * Display + query-key constants shared across the AdminStore surfaces
- * (ProductsTab, RedemptionsTab, MemberPurchasesTab, ProductModal,
+ * (ProductsTab, MemberPurchasesTab, ProductModal,
  * ProductCoverBadge).
  *
  * `CATEGORY_OPTS` is the chip-color palette + i18n key map for the

@@ -8,9 +8,11 @@ import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 
 const CHALLENGE_STATUS_STYLES = {
-  active:   'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  upcoming: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  ended:    'bg-white/6 text-[#6B7280] border-white/10',
+  active:    'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  upcoming:  'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  draft:     'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  completed: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+  ended:     'bg-white/6 text-[#6B7280] border-white/10',
 };
 
 export default function GymContentTab({
@@ -26,6 +28,9 @@ export default function GymContentTab({
   toggleProgramPublish,
   setEditingAchievement,
   setShowAchievementModal,
+  setEditingReward,
+  setShowRewardModal,
+  toggleRewardActive,
   setDeleteConfirm,
   initialSubTab,
 }) {
@@ -62,7 +67,7 @@ export default function GymContentTab({
             <button
               onClick={() => { setEditingChallenge(null); setShowChallengeModal(true); }}
               className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
-              style={{ background: '#D4AF37' }}
+              style={{ background: '#D4AF37', color: '#000' }}
             >
               <Plus className="w-3.5 h-3.5" />
               {t('platform.gymDetail.contentTab.addChallenge')}
@@ -137,7 +142,7 @@ export default function GymContentTab({
             <button
               onClick={() => { setEditingProgram(null); setShowProgramModal(true); }}
               className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
-              style={{ background: '#D4AF37' }}
+              style={{ background: '#D4AF37', color: '#000' }}
             >
               <Plus className="w-3.5 h-3.5" />
               {t('platform.gymDetail.contentTab.addProgram')}
@@ -216,7 +221,7 @@ export default function GymContentTab({
             <button
               onClick={() => { setEditingAchievement(null); setShowAchievementModal(true); }}
               className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
-              style={{ background: '#D4AF37' }}
+              style={{ background: '#D4AF37', color: '#000' }}
             >
               <Plus className="w-3.5 h-3.5" />
               {t('platform.gymDetail.contentTab.addAchievement')}
@@ -287,6 +292,17 @@ export default function GymContentTab({
 
       {contentSubTab === 'rewards' && (
         <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[14px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.contentTab.gymRewards', 'Gym rewards')}</h3>
+            <button
+              onClick={() => { setEditingReward(null); setShowRewardModal(true); }}
+              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors"
+              style={{ background: '#D4AF37', color: '#000' }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {t('platform.gymDetail.contentTab.addReward', 'Add reward')}
+            </button>
+          </div>
           {/* gym_rewards catalog (0187) — the old tab read reward_points (per-member
               balances, select_own RLS) and rendered columns that never existed. */}
           {rewardsAvailable === false ? (
@@ -330,6 +346,17 @@ export default function GymContentTab({
                       <span className="text-[12px] font-semibold text-[#D4AF37] bg-[#D4AF37]/10 px-3 py-1 rounded-lg whitespace-nowrap">
                         {(r.cost_points ?? 0).toLocaleString()} {t('platform.gymDetail.contentTab.pointsSuffix')}
                       </span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => toggleRewardActive(r)} title={r.is_active === false ? t('platform.gymDetail.contentTab.activate', 'Activate') : t('platform.gymDetail.contentTab.deactivate', 'Deactivate')} aria-label={r.is_active === false ? t('platform.gymDetail.contentTab.activate', 'Activate') : t('platform.gymDetail.contentTab.deactivate', 'Deactivate')} className="p-1.5 rounded-lg text-[#6B7280] hover:bg-white/[0.04] transition-colors">
+                          {r.is_active === false ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4 text-[#D4AF37]" />}
+                        </button>
+                        <button onClick={() => { setEditingReward(r); setShowRewardModal(true); }} title={t('platform.gymDetail.contentTab.edit', 'Edit')} aria-label={t('platform.gymDetail.contentTab.edit', 'Edit')} className="p-1.5 rounded-lg text-[#6B7280] hover:text-[#E5E7EB] hover:bg-white/[0.04] transition-colors">
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setDeleteConfirm({ type: 'reward', id: r.id, name: r.name })} title={t('platform.gymDetail.contentTab.delete', 'Delete')} aria-label={t('platform.gymDetail.contentTab.delete', 'Delete')} className="p-1.5 rounded-lg text-[#6B7280] hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
