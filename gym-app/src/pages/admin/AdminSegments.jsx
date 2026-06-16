@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import posthogClient from 'posthog-js';
 import {
   Filter, Plus, Pin, PinOff, Pencil, Trash2, Users, Search,
   RefreshCw, Download, MessageSquare, Sparkles,
@@ -814,6 +815,7 @@ function PrebuiltCard({ segment, gymId, adminId, onCreated, t }) {
         icon: segment.icon,
         created_by: adminId,
       });
+      posthogClient?.capture('admin_segment_created', { prebuilt: true });
       setModalOpen(false);
       onCreated();
     } catch (err) {

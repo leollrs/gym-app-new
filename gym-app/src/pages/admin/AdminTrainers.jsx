@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users, UserPlus, X, Search, Plus, Download, Trash2, BarChart3,
@@ -331,6 +332,7 @@ export default function AdminTrainers() {
         if (error) throw error;
       }
       logAdminAction('add_trainer', 'trainer', memberId);
+      posthogClient?.capture('admin_trainer_promoted');
       setShowAddTrainer(false);
       await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
     } catch (err) {
@@ -361,6 +363,7 @@ export default function AdminTrainers() {
         }
       }
       logAdminAction('demote_trainer', 'trainer', trainerId);
+      posthogClient?.capture('admin_trainer_demoted');
       setConfirmDemote(null);
       setView('table');
       setSelectedId(null);

@@ -270,6 +270,7 @@ export default function AdminChallenges() {
     },
     onSuccess: (_, challengeId) => {
       logAdminAction('award_prizes', 'challenge', challengeId);
+      posthog?.capture('admin_prizes_awarded');
       queryClient.invalidateQueries({ queryKey: adminKeys.challenges(gymId) });
       showToast(t('admin.challenges.prizesAwarded', 'Prizes awarded!'), 'success');
       setAwardingId(null);

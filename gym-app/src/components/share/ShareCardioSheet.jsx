@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Image as ImageIcon, Camera as CameraIcon, Layers as LayersIcon } from 'lucide-react';
 import { Share } from '@capacitor/share';
+import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
 import { supabase } from '../../lib/supabase';
 import { PROD_WEB_URL } from '../../lib/appUrls';
@@ -499,6 +500,8 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
           });
         } catch {}
       }
+      // Reached only when the destination dispatch above didn't throw.
+      try { posthogClient?.capture('content_shared', { type: 'cardio', dest }); } catch { /* noop */ }
     } catch (err) {
       console.error('[ShareCardioSheet] share failed:', err?.message || err);
       try {

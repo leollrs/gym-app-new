@@ -5,7 +5,6 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:app.tugympr.com</string>
-		<string>applinks:app.tugympr.com?mode=developer</string>
 	</array>
 	<key>com.apple.developer.healthkit</key>
 	<true/>

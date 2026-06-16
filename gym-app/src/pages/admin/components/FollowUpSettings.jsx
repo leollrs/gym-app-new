@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import posthogClient from 'posthog-js';
 import {
   ToggleLeft, ToggleRight, Save, CheckCircle, ChevronDown, Plus, X, Activity,
   Award, Mail, AlertTriangle, Bell, Smartphone,
@@ -154,6 +155,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
       }
     }
     setSavingFup(false);
+    posthogClient?.capture('admin_followup_config_saved', { enabled: fupDraft.enabled, steps: steps.length });
     setFupSaved(true);
     setTimeout(() => setFupSaved(false), 2500);
   };

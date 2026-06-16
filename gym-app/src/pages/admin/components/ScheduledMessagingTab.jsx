@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import posthogClient from 'posthog-js';
 import { Calendar, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Zap } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabase';
@@ -298,6 +299,7 @@ function ScheduledMessageModal({ isOpen, onClose, gymId, editingStep, t }) {
       }
     },
     onSuccess: () => {
+      if (!editingStep) posthogClient?.capture('admin_scheduled_message_created');
       queryClient.invalidateQueries({ queryKey: adminKeys.messaging.scheduled(gymId) });
       showToast(editingStep ? t('admin.messaging.triggerUpdated') : t('admin.messaging.triggerCreated'), 'success');
       onClose();

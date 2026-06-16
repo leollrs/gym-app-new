@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -92,6 +93,7 @@ export default function ReportsTab({ gymId }) {
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'reports'], (old) =>
       (old || []).map(r => r.id === report.id ? { ...r, status: newStatus, reviewed_at: new Date().toISOString() } : r)
     );
+    posthogClient?.capture('admin_content_moderated', { action: newStatus === 'actioned' ? 'report_actioned' : newStatus, type: 'report' });
     setActing(null);
     setSelectedReport(null);
   };

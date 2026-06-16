@@ -599,6 +599,7 @@ function BookingsTab({ classes, t, dateLocale }) {
       logger.error('TrainerClasses: mark attended error', error);
       showToast(t('trainerClasses.errorMarkAttended', 'Could not mark attendance'), 'error');
     } else {
+      posthog?.capture('trainer_class_attendance_marked');
       queryClient.invalidateQueries({ queryKey: ['trainer', 'all-class-bookings'] });
     }
   };
@@ -627,6 +628,7 @@ function BookingsTab({ classes, t, dateLocale }) {
       logger.error('TrainerClasses: promote waitlist error', error);
       showToast(t('trainerClasses.errorPromote', 'Could not confirm this member'), 'error');
     } else {
+      posthog?.capture('trainer_class_waitlist_promoted');
       showToast(t('trainerClasses.promoted', 'Member confirmed'), 'success');
       queryClient.invalidateQueries({ queryKey: ['trainer', 'all-class-bookings'] });
     }

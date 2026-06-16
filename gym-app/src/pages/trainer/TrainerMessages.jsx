@@ -9,6 +9,7 @@ import {
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
+import posthogClient from 'posthog-js';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
@@ -884,6 +885,7 @@ export default function TrainerMessages() {
         .select()
         .single();
       if (error) throw error;
+      posthogClient?.capture('trainer_message_sent');
 
       // Replace temp row with real one (decrypted body kept)
       setMessages(prev => prev.map(m => m.id === tempId ? { ...inserted, body: plaintext } : m));

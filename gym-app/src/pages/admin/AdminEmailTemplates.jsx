@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import posthogClient from 'posthog-js';
 import { Mail, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -75,6 +76,7 @@ export default function AdminEmailTemplates() {
       }
     },
     onSuccess: () => {
+      posthogClient?.capture('admin_template_saved', { kind: 'email' });
       queryClient.invalidateQueries({ queryKey: adminKeys.emailTemplates(gymId) });
       setEditing(null);
       showToast(t('admin.emailTemplates.templateSaved'), 'success');

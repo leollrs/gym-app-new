@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -50,6 +51,7 @@ export default function CommentsTab({ gymId }) {
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'comments'], (old) =>
       (old || []).map(c => c.id === comment.id ? { ...c, is_deleted: !c.is_deleted } : c)
     );
+    posthogClient?.capture('admin_content_moderated', { action: nextDeleted ? 'delete' : 'restore', type: 'comment' });
     setActing(null);
   };
 

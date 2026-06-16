@@ -8,6 +8,7 @@ import {
   Zap, UtensilsCrossed, ClipboardList, Ruler,
   Loader2, Play, Eye, MessageCircle, Smartphone, Pencil,
 } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { supabase } from '../../lib/supabase';
 import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -1002,6 +1003,7 @@ export default function TrainerClientNotes() {
         .select()
         .single();
       if (error) throw error;
+      posthogClient?.capture('trainer_meal_plan_created');
       dispatch({ type: 'SET', payload: { activeMealPlan: data, showMealPlanForm: false } });
     } catch (err) {
       logger.error('Error saving meal plan:', err);
@@ -1071,6 +1073,7 @@ export default function TrainerClientNotes() {
         start_date: start.toISOString().split('T')[0], end_date: end.toISOString().split('T')[0],
       }).select().single();
       if (error) throw error;
+      posthogClient?.capture('trainer_meal_plan_created');
       dispatch({ type: 'SET', payload: { activeMealPlan: data, showMealPlanForm: false } });
       setPlanPicker(false);
       showToast(t('trainerNotes.nutrition.planCopied', 'Plan assigned'), 'success');
@@ -1094,6 +1097,7 @@ export default function TrainerClientNotes() {
         notes: serialized,
       }, { onConflict: 'trainer_id,client_id' });
       if (error) throw error; // don't flash "Saved ✓" on a failed write
+      posthogClient?.capture('trainer_client_notes_saved');
       // Refresh the load-time snapshot so a later reload (assign program,
       // language switch) re-derives THESE notes instead of reverting.
       assignmentNotesRef.current = serialized;
@@ -1124,6 +1128,7 @@ export default function TrainerClientNotes() {
         outcome: fuOutcome,
       }).select().single();
       if (error) throw error;
+      posthogClient?.capture('trainer_followup_logged', { method: fuMethod });
       dispatch({ type: 'PREPEND_FOLLOWUP', followup: data });
       dispatch({
         type: 'SET',
@@ -1284,6 +1289,7 @@ export default function TrainerClientNotes() {
               gym_id: profile.gym_id,
             }, { onConflict: 'program_id,profile_id', ignoreDuplicates: true });
         }
+        posthogClient?.capture('trainer_program_assigned', { client_count: 1, source: 'client_detail' });
       } else if (client?.assigned_program_id) {
         // "Remove program": never upsert program_id NULL (NOT NULL → 23502).
         // Delete the now-stale enrollment instead. The trainer DELETE policy

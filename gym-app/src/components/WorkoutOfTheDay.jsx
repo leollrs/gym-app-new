@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, Clock, RefreshCw, Dumbbell, ChevronRight } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { generateAdaptiveWorkout } from '../lib/adaptiveWorkout';
@@ -100,6 +101,7 @@ export default function WorkoutOfTheDay() {
 
       if (exErr) throw exErr;
 
+      try { posthogClient?.capture('wod_started'); } catch { /* noop */ }
       navigate(`/session/${routine.id}`);
     } catch (err) {
       // Never render raw error messages to members — log for diagnosis.

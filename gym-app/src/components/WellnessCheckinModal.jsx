@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -97,6 +98,7 @@ export default function WellnessCheckinModal({ open, onClose, onSaved }) {
     try {
       localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({ date: dateKey, soreness: score }));
     } catch {}
+    try { posthogClient?.capture('wellness_checkin_logged'); } catch { /* noop */ }
     setSavedFlash(true);
     onSaved?.(row);
     setTimeout(() => onClose?.(), 900);

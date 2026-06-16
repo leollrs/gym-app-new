@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, Check, Edit3, StickyNote } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
@@ -356,6 +357,11 @@ export default function TrainerLiveSession() {
         showToast(t('trainerLive.cueFailed', 'Could not send cue'), 'error');
         return false;
       }
+      // One analytics event, distinguished by kind: a typed note, a logged set,
+      // or any of the quick coach cues (drop set / rest / weight adjust).
+      posthogClient?.capture('trainer_live_cue_sent', {
+        cue_type: cueType === 'note' ? 'note' : cueType === 'set_log' ? 'set' : 'cue',
+      });
       showToast(t('trainerLive.cueSent', 'Cue sent to client') + ` · ${label}`, 'success');
       if (cueId) {
         setSentCues(prev => [...prev.slice(-3), { id: cueId, label, acknowledged: false }]);

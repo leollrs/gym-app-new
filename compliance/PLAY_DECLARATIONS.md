@@ -17,23 +17,24 @@ TuGymPR is a B2B fitness retention platform. Two member-facing features require 
 
 We use Capacitor Camera with the system Photo Picker on Android 13+. We declare **only** `READ_MEDIA_VISUAL_USER_SELECTED` so partial-photo selection (Android 14+) is treated as granted. We do **not** declare `READ_MEDIA_IMAGES` or `READ_MEDIA_VIDEO` — full-gallery access is not required because every upload flows through the system Photo Picker, which returns user-selected items only. No background or full-gallery enumeration occurs. Legacy `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` are scoped to API ≤32 and ≤29 respectively.
 
-### 1.2 `ACTIVITY_RECOGNITION`
+### 1.2 `ACTIVITY_RECOGNITION` — NOT declared (removed)
 
-**Declared use:** Step counting via Health Connect for the Dashboard activity ring.
-
-**Feature description:**
-The app reads daily step data from Google Health Connect (via `@capgo/capacitor-health`) to populate the activity ring on the member Dashboard. `ACTIVITY_RECOGNITION` is required by the Health Connect SDK to access step records. Steps are not used for advertising, are not shared with third parties, and are not used by the AI features. The data is read-only (we do not write step counts).
+The app does **not** declare `ACTIVITY_RECOGNITION`. Daily step data is read from Google Health Connect (`health.READ_STEPS`), which does **not** require the `ACTIVITY_RECOGNITION` runtime permission, and the app performs no on-device activity recognition. The permission was removed from the manifest to avoid declaring an unused sensitive permission.
 
 ### 1.3 Health Connect Permissions (per-type justification)
 
 | Permission | Justification |
 |---|---|
 | `health.READ_STEPS` | Daily activity ring on Dashboard. Aggregates daily step totals only. |
-| `health.READ_HEART_RATE` | Workout intensity tracking and heart-rate zone visualization during active sessions. Read only during a workout session. |
+| `health.READ_HEART_RATE` | Workout intensity tracking and heart-rate zone visualization during active sessions. |
 | `health.READ_TOTAL_CALORIES_BURNED` | Daily calorie expenditure for the energy-balance display in Nutrition (calories in vs calories out). |
-| `health.READ_WEIGHT` | Populates the member's weight history chart in Body Metrics. Last 30 days read. |
-| `health.WRITE_EXERCISE` | After a member completes a workout, the session (start/end time, exercise type, duration) is written to Health Connect so it appears in their unified fitness history. |
-| `health.WRITE_TOTAL_CALORIES_BURNED` | Estimated calories for completed workouts are written to Health Connect alongside the exercise record. |
+| `health.READ_WEIGHT` | Populates the member's weight history chart in Body Metrics. |
+| `health.READ_HEIGHT` | Read once during onboarding to seed the BMI / macro calculator. |
+| `health.READ_SLEEP` | Recovery / readiness score (ReadinessModal): sleep duration informs training-readiness guidance. |
+| `health.READ_HEART_RATE_VARIABILITY` | Recovery / readiness score: HRV is a recovery input. |
+| `health.READ_RESTING_HEART_RATE` | Recovery / readiness score: resting heart rate is a recovery input. |
+| `health.READ_EXERCISE` | Imports cardio/exercise sessions logged in other apps so the member's history and Dashboard stay unified. |
+| `health.WRITE_TOTAL_CALORIES_BURNED` | Estimated calories for completed workouts are written to Health Connect. |
 | `health.WRITE_WEIGHT` | When the member logs a manual weigh-in inside TuGymPR, the value is written to Health Connect so it propagates to other apps the user has connected. |
 
 **Declared at signup:** Health Connect access is requested only after the member explicitly enables "Health Sync" during onboarding (step 8 of 9) or in Settings → Health Sync. Users can revoke at any time in Health Connect's permission manager.
@@ -175,8 +176,8 @@ The camera is never invoked in the background. No video recording, no streaming,
 
 We declare integration with **Google Health Connect** via the `@capgo/capacitor-health` plugin. The app:
 
-- Reads: steps, heart rate, total calories burned, body weight
-- Writes: exercise sessions, total calories burned (per workout), body weight
+- Reads: steps, heart rate, total calories burned, body weight, height, sleep, heart-rate variability, resting heart rate, exercise sessions
+- Writes: body weight, total calories burned (per workout)
 
 The full per-type justification is in section 1.3 above.
 
@@ -210,7 +211,6 @@ Required disclosures included in the privacy policy:
 |---|---|---|---|
 | `CAMERA` | Tap camera button in Check-In, Body Metrics, or Nutrition | No | QR check-in, progress photos, food/barcode scanning |
 | `READ_MEDIA_VISUAL_USER_SELECTED` | Tap "Choose from gallery" in Body Metrics or Nutrition (system Photo Picker, partial-access only) | No | Upload existing photos |
-| `ACTIVITY_RECOGNITION` | After member enables Health Sync in onboarding/settings | No | Display daily step count |
 | `ACCESS_FINE_LOCATION` | Tap "Check-In" or start outdoor cardio routine | No (foreground only) | Auto check-in, route mapping |
 | `POST_NOTIFICATIONS` | First app launch (Android 13+ system prompt) | N/A | Workout reminders, social activity, gym news |
 | Health Connect permissions | Health Sync screen in onboarding/settings | No | Bidirectional sync with unified Health Connect store |

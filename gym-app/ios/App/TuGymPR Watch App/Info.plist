@@ -24,8 +24,6 @@
 	<string>TuGymPR reads your heart rate during workouts to track exercise intensity.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>TuGymPR records your strength training workouts to Apple Health.</string>
-	<key>NSMotionUsageDescription</key>
-	<string>TuGymPR uses motion sensors to automatically count your exercise repetitions during workouts.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TuGymPR uses your location to measure distance, pace, and route during outdoor cardio sessions (run, walk, bike, hike) tracked from your wrist.</string>
 	<key>WKApplication</key>

@@ -128,15 +128,19 @@ function buildPalette(primary, secondary) {
 // read by every component/template below at call time, then restored.
 let E = BASE_E;
 
+// Web fonts can't be loaded reliably in email — most clients (Gmail, Outlook,
+// Yahoo) strip @font-face / external <link>. We deliberately ship NO Google
+// Fonts <link> here: it would fetch from Google on every open, leaking each
+// recipient's IP + open event to a third party (a GDPR concern), and only Apple
+// Mail honored it anyway. Instead these stacks degrade to high-quality system
+// fonts — Apple Mail → SF Pro + Georgia + SF Mono, Gmail/Android → Roboto,
+// Outlook → Arial (forced via the MSO override in emailDoc).
 const F = {
-  display: '"Archivo", system-ui, sans-serif',
-  serif: '"Newsreader", "Times New Roman", serif',
-  body: '"Archivo", -apple-system, system-ui, sans-serif',
-  mono: '"JetBrains Mono", ui-monospace, monospace',
+  display: '"Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif',
+  serif: '"Newsreader", Georgia, Cambria, "Times New Roman", Times, serif',
+  body: '"Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
-
-const FONTS_LINK =
-  '<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700;800;900&family=Newsreader:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>';
 
 // ── Tiny hyperscript → HTML string ─────────────────────────────────
 const UNITLESS = new Set([
@@ -449,9 +453,10 @@ function emailDoc({ preview, bodyBg = E.paper, content, gymName, logoUrl, lang }
     '<meta name="supported-color-schemes" content="light"/>',
     // Tell Outlook to render at 96dpi and use its own table metrics.
     '<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->',
-    FONTS_LINK,
+    // No web-font <link> by design — see the F stacks above (privacy + email
+    // clients strip @font-face anyway). Everything renders in system fonts.
     `<style>body{margin:0;padding:0;background:${E.cream};}*{box-sizing:border-box;}a{color:inherit;}img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;}table,td{mso-table-lspace:0;mso-table-rspace:0;}@keyframes epulse{0%,100%{opacity:1}50%{opacity:0.3}}@media only screen and (max-width:640px){.dz-pad{padding-left:22px!important;padding-right:22px!important;}}</style>`,
-    // Outlook can't load web fonts — force a clean sans fallback there.
+    // Outlook's Word engine renders system-ui poorly — pin a clean sans there.
     '<!--[if mso]><style>*{font-family:Arial,Helvetica,sans-serif!important;}</style><![endif]-->',
     '</head>',
     `<body style='margin:0;padding:0;background:${E.cream};font-family:${F.body};color:${E.ink};'>`,

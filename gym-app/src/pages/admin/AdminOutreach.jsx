@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import posthogClient from 'posthog-js';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -401,6 +402,13 @@ export default function AdminOutreach() {
         + (results.push?.sent || 0) + (results.inApp?.sent || 0);
       const failed = (results.email?.failed || 0) + (results.sms?.failed || 0)
         + (results.push?.failed || 0) + (results.inApp?.failed || 0);
+      if (sent > 0) {
+        posthogClient?.capture('admin_outreach_email_sent', {
+          sent,
+          failed,
+          channels: Object.entries(channels).filter(([, v]) => v).map(([k]) => k),
+        });
+      }
       if (sent === 0 && failed > 0) {
         showToast(t('admin.outreach.allFailed', { count: failed, defaultValue: 'All {{count}} send(s) failed — nothing was delivered' }), 'error');
       } else if (failed > 0) {

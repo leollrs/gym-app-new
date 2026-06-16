@@ -13,6 +13,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, ChevronDown, Calendar, Save, Plus, Minus, Trash2, Check, Search, Pencil } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useExerciseLibrary } from '../hooks/useSupabaseQuery';
@@ -399,6 +400,13 @@ export default function BackdatedWorkoutModal({ open, onClose, onSaved, routines
 
       const { data, error } = await supabase.rpc('log_backdated_workout', { p_payload: payload });
       if (error) throw error;
+      try {
+        posthogClient?.capture('workout_logged_backdated', {
+          is_edit: isEditing,
+          sets: totalSets,
+          exercises: exercisesPayload.length,
+        });
+      } catch { /* noop */ }
       onSaved?.(data);
       try { window.dispatchEvent(new CustomEvent('tugympr:workouts-changed')); } catch { /* noop */ }
       onClose?.();

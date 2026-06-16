@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { supabase } from '../../../lib/supabase';
@@ -160,6 +161,7 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
       return data;
     },
     onSuccess: (data) => {
+      posthogClient?.capture('admin_purchase_logged', { quantity, free_earned: !!data?.free_earned });
       queryClient.invalidateQueries({ queryKey: storeKeys.all(gymId) });
       const totalPointsAwarded = (selectedProduct.points_per_purchase ?? 0) * quantity;
       let msg = t('admin.store.purchaseRecorded', 'Purchase recorded! {{points}} points earned.', { points: totalPointsAwarded });

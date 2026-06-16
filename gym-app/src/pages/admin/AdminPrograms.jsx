@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -201,8 +202,12 @@ export default function AdminPrograms() {
       if (res.error) throw res.error;
       if (programId) logAdminAction('update_program', 'program', programId);
       else logAdminAction('create_program', 'program', res.data.id, { name: payload.name });
+      return { created: !programId, published: !!payload.is_published };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result?.created) {
+        posthogClient?.capture('admin_program_created', { published: !!result.published });
+      }
       queryClient.invalidateQueries({ queryKey: adminKeys.programs(gymId) });
       queryClient.invalidateQueries({ queryKey: ['program-suggestion', gymId] });
       setShowCreate(false);
@@ -233,8 +238,12 @@ export default function AdminPrograms() {
       const { error } = await supabase.from('gym_programs').update({ is_published: next }).eq('id', id).eq('gym_id', gymId);
       if (error) throw error;
       logAdminAction(next ? 'publish_program' : 'unpublish_program', 'program', id);
+      return { published: next };
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: adminKeys.programs(gymId) }); },
+    onSuccess: (result) => {
+      if (result?.published) posthogClient?.capture('admin_program_published');
+      queryClient.invalidateQueries({ queryKey: adminKeys.programs(gymId) });
+    },
     onError: (err) => { showToast(err?.message || t('admin.programs.saveFailed', { defaultValue: 'Could not save program' }), 'error'); },
   });
 

@@ -2131,6 +2131,7 @@ export default function TrainerPlans() {
       showToast(t('trainerPlans.errorSavingMealPlan', 'Failed to save meal plan'), 'error');
       return;
     }
+    posthog?.capture('trainer_meal_plan_created');
     setMealSaving(false);
     setShowMealModal(false);
     setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4, start_date: '' });
@@ -2233,6 +2234,7 @@ export default function TrainerPlans() {
       showToast(t('trainerPlans.errorDuplicatePlan', 'Failed to duplicate plan'), 'error');
       return;
     }
+    posthog?.capture('trainer_plan_duplicated');
     setDuplicateTarget(null);
     setDuplicateClientId('');
     loadData();

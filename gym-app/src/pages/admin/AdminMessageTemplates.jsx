@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import posthogClient from 'posthog-js';
 import { MessageSquare } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -244,6 +245,7 @@ export default function AdminMessageTemplates() {
         'message_template',
         res.id,
       );
+      posthogClient?.capture('admin_template_saved', { kind: 'message' });
       queryClient.invalidateQueries({ queryKey: adminKeys.messageTemplates(gymId) });
       setEditing(null);
       showToast(t('admin.messageTemplates.saved', 'Template saved'), 'success');

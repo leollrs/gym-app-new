@@ -441,6 +441,7 @@ export default function AdminChurn() {
     try {
       const { error } = await supabase.from('profiles').update({ churn_pause_until: until }).eq('id', member.id).eq('gym_id', gymId);
       if (error) throw error;
+      if (!pausedByHold) posthog?.capture('admin_churn_paused');
       showToast(pausedByHold ? t('admin.churn.alertsResumed', 'Alerts resumed') : t('admin.churn.alertsPaused', 'Paused 30 days (vacation)'), 'success');
       refetch();
     } catch {
@@ -477,6 +478,7 @@ export default function AdminChurn() {
         logger.error('Bulk add to challenge failed', error);
         showToast(t('admin.churn.bulkChallengeError', { defaultValue: 'Failed to add members to challenge. Please try again.' }), 'error');
       } else {
+        posthog?.capture('admin_atrisk_enrolled', { count: selectedMembers.length });
         showToast(t('admin.churn.bulkChallengeSuccess', { count: selectedMembers.length, defaultValue: '{{count}} members added to challenge' }), 'success');
         clearSelection();
       }
@@ -495,6 +497,7 @@ export default function AdminChurn() {
         logger.error('Bulk mark contacted failed', error);
         showToast(t('admin.churn.bulkContactError', { defaultValue: 'Failed to mark members as contacted' }), 'error');
       } else {
+        posthog?.capture('admin_member_contacted', { bulk: true, count: selectedMembers.length });
         showToast(t('admin.churn.bulkContactSuccess', { count: selectedMembers.length, defaultValue: '{{count}} members marked as contacted' }), 'success');
         clearSelection();
         refetch();
@@ -514,6 +517,7 @@ export default function AdminChurn() {
         showToast(t('admin.churn.markContactedError', { defaultValue: 'Failed to mark as contacted' }), 'error');
         return;
       }
+      posthog?.capture('admin_member_contacted', { bulk: false });
       refetch();
     } catch (err) {
       logger.error('Failed to log contact', err);

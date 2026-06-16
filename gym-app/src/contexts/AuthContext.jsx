@@ -1011,6 +1011,12 @@ export const AuthProvider = ({ children }) => {
         // already called fetchProfile, but it ran before the profile row was
         // inserted, so it returned null. This second call picks up the real row.
         await fetchProfile(data.user.id);
+
+        // Signup-conversion event. Fired only after the auth user + profile row
+        // are both created (success path). No PII — just booleans. `invite` is
+        // derivable because invite validation resolves gymId upstream and passes
+        // it here; we don't receive a referral code in this flow, so omit it.
+        try { posthog?.capture('sign_up_completed', { invite: !!gymId }); } catch { /* noop */ }
       } catch (err) {
         await supabase.auth.signOut();
         throw new Error('Account created but profile setup failed. Please try signing up again.');
