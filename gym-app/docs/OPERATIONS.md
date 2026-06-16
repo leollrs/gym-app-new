@@ -79,15 +79,29 @@ database is unreachable (was always 200). Body: `{ ok, db, time }`.
 2. Health probe — `https://<project-ref>.supabase.co/functions/v1/health-check` —
    expect HTTP 200 and body containing `"db":"up"`.
 
-Options:
-- **UptimeRobot** (free, 5-min checks) — add two HTTP(s) monitors, alert to email/SMS.
-- **healthchecks.io / Better Stack** — also free; healthchecks.io additionally
-  offers a *dead-man's-switch* (alert if a heartbeat **stops**), which is worth
-  pointing the `check-error-alerts` cron at so you also learn if the cron itself
-  dies.
+**Two ways to run the external check:**
 
-No code ships the monitor — it's an account + two URLs. Record which service you
-chose here once set up.
+1. **GitHub Actions monitor (in-repo, shipped)** — `.github/workflows/uptime.yml`.
+   Runs on GitHub's servers (external to Vercel + Supabase), pings the site +
+   health-check every ~10 min, fails the run when down. Setup in
+   Repo → Settings → Secrets and variables → Actions:
+   - **Variable** `HEALTHCHECK_URL` = `https://<ref>.supabase.co/functions/v1/health-check`
+     (the `<ref>` is your `.env` `VITE_SUPABASE_URL`). Optional vars: `SITE_URL`
+     (defaults to tugympr.com), `OPS_ALERT_RECIPIENT`.
+   - Optional **Secret** `RESEND_API_KEY` for a dedicated alert email; otherwise
+     GitHub emails you on the failed run.
+   - ⚠️ `schedule:` runs only from the **default branch (main)** — it starts
+     ticking once merged to main; use "Run workflow" to test from a branch.
+     GitHub crons can also be delayed under load.
+
+2. **UptimeRobot / healthchecks.io / Better Stack** (hosted, more reliable) —
+   free tiers, sub-5-min checks, SMS, public status pages. Point two HTTP monitors
+   at the site + the health-check URL (expect 200 + `"db":"up"`). healthchecks.io
+   also offers a *dead-man's-switch* worth pointing the `check-error-alerts` cron
+   at, so you learn if the cron itself dies.
+
+The GitHub Action is good enough for launch; reach for a hosted monitor when you
+want faster cadence or SMS. Record which you rely on here.
 
 ---
 

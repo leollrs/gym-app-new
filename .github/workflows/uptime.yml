@@ -1,0 +1,79 @@
+name: Uptime
+
+# External uptime monitor. Runs on GitHub's servers — independent of Vercel and
+# Supabase — so it can still detect (and alert on) those being down. Pings the
+# public site + the Supabase health-check; the job FAILS when something is down.
+#
+# Alerts: GitHub emails you on a failed run by default. For a dedicated alert
+# email, add a `RESEND_API_KEY` repo secret (reuses your existing Resend setup).
+#
+# ⚠️ GitHub runs `schedule:` ONLY from the DEFAULT branch (main). On a feature
+# branch this won't tick yet — use "Run workflow" (workflow_dispatch) to test it,
+# and it begins running every ~10 min once this file is on main. GitHub may also
+# delay scheduled runs under load, and disables schedules after 60 days of repo
+# inactivity — fine for active projects, but UptimeRobot is more reliable if you
+# later want sub-5-min checks or SMS.
+#
+# Setup (Repo → Settings → Secrets and variables → Actions):
+#   • Variable HEALTHCHECK_URL = https://<your-ref>.supabase.co/functions/v1/health-check
+#     (the <ref> is in your .env as VITE_SUPABASE_URL). Omit to monitor the site only.
+#   • Variable SITE_URL (optional) — defaults to https://tugympr.com
+#   • Variable OPS_ALERT_RECIPIENT (optional) — defaults to support@tugympr.com
+#   • Secret   RESEND_API_KEY (optional) — enables the dedicated alert email
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# A new run supersedes an in-flight one rather than queuing.
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: ${{ vars.SITE_URL || 'https://tugympr.com' }}
+      HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+    steps:
+      - name: Website is up
+        run: |
+          for i in 1 2 3; do
+            if curl -fsSL --max-time 20 -o /dev/null "$SITE_URL"; then
+              echo "OK: $SITE_URL"; exit 0
+            fi
+            echo "attempt $i failed; retrying in 10s…"; sleep 10
+          done
+          echo "DOWN: $SITE_URL"; exit 1
+
+      - name: Health probe is up (DB reachable)
+        if: ${{ env.HEALTHCHECK_URL != '' }}
+        run: |
+          for i in 1 2 3; do
+            if body=$(curl -fsSL --max-time 20 "$HEALTHCHECK_URL" 2>/dev/null) \
+               && echo "$body" | grep -q '"db":"up"'; then
+              echo "OK: $body"; exit 0
+            fi
+            echo "attempt $i failed; retrying in 10s…"; sleep 10
+          done
+          echo "DOWN: $HEALTHCHECK_URL"; exit 1
+
+      - name: Email alert on failure (optional — needs RESEND_API_KEY secret)
+        if: ${{ failure() && env.RESEND_API_KEY != '' }}
+        env:
+          ALERT_TO: ${{ vars.OPS_ALERT_RECIPIENT || 'support@tugympr.com' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload=$(jq -n --arg to "$ALERT_TO" --arg run "$RUN_URL" '{
+            from: "TuGymPR Alerts <noreply@tugympr.com>",
+            to: [$to],
+            subject: "TuGymPR DOWN — uptime check failed",
+            html: ("<p>The scheduled uptime check failed — the site and/or Supabase health probe is unreachable.</p><p><a href=\"" + $run + "\">View the run</a></p>")
+          }')
+          curl -sS -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
