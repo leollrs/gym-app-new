@@ -161,7 +161,7 @@ export default function AdminRevenue() {
     queryFn: async () => {
       let q = supabase
         .from('member_purchases')
-        .select('id, points_earned, total_price, is_free_reward, created_at, quantity, product_id, member_id, gym_products(name, category, emoji_icon, punch_card_target, price), profiles:member_id(full_name)')
+        .select('id, points_earned, total_price, is_free_reward, status, created_at, quantity, product_id, member_id, gym_products(name, category, emoji_icon, punch_card_target, price), profiles:member_id(full_name)')
         .eq('gym_id', gymId)
         .order('created_at', { ascending: false });
       if (cutoffDate) q = q.gte('created_at', cutoffDate);
@@ -187,11 +187,16 @@ export default function AdminRevenue() {
   const kpis = useMemo(() => {
     const issued = pointsData ? pointsData.issued.reduce((s, r) => s + r.points, 0) : 0;
     const redeemed = pointsData ? Math.abs(pointsData.spent.reduce((s, r) => s + r.points, 0)) : 0;
-    const paid = (purchases || []).filter(p => !p.is_free_reward);
+    // Only count GRANTED purchases toward revenue. Purchases now go through an
+    // admin approval queue (migration 0602): pending/rejected rows must not
+    // inflate sales. `granted` treats a missing status (pre-migration rows) as
+    // counted, so figures stay correct before and after the migration applies.
+    const granted = (p) => p.status !== 'pending' && p.status !== 'rejected';
+    const paid = (purchases || []).filter(p => !p.is_free_reward && granted(p));
     const totalSales = paid.reduce((s, p) => s + (parseFloat(p.total_price) || 0), 0);
     const paidCount = paid.length;
     const avgTransaction = paidCount > 0 ? totalSales / paidCount : 0;
-    const freeRewards = (purchases || []).filter(p => p.is_free_reward);
+    const freeRewards = (purchases || []).filter(p => p.is_free_reward && granted(p));
     const freeRewardCost = freeRewards.reduce((s, p) => s + (parseFloat(p.gym_products?.price) || 0), 0);
     return {
       issued, redeemed, net: issued - redeemed, redemptions: purchases?.length || 0,
@@ -267,7 +272,7 @@ export default function AdminRevenue() {
     const punchProducts = products.filter(p => p.punch_card_enabled && p.punch_card_target > 0);
     if (punchProducts.length === 0) return [];
     return punchProducts.map(product => {
-      const productPurchases = purchases.filter(p => p.product_id === product.id && !p.is_free_reward);
+      const productPurchases = purchases.filter(p => p.product_id === product.id && !p.is_free_reward && p.status !== 'pending' && p.status !== 'rejected');
       const totalStamps = productPurchases.reduce((sum, p) => sum + (p.quantity || 1), 0);
       const completions = Math.floor(totalStamps / product.punch_card_target);
       const inProgress = totalStamps % product.punch_card_target;

@@ -3,7 +3,7 @@ import SimpleShareSheet from './SimpleShareSheet';
 import ShareTplSticker from './ShareTplSticker';
 import ShareTplBodyComp from './ShareTplBodyComp';
 import { useTranslation } from 'react-i18next';
-import { PROD_WEB_URL } from '../../lib/appUrls';
+import { appShareUrl } from '../../lib/appUrls';
 
 // Thin wrappers around SimpleShareSheet + ShareTplSticker for the share
 // surfaces that aren't full workout sessions. Each one assembles its own
@@ -39,7 +39,7 @@ export function SharePRSheet({ open, onClose, pr, user, gym, gymLogo }) {
       onClose={onClose}
       gymName={gym}
       title={t('share.titlePR', 'Share PR')}
-      shareLink={`${PROD_WEB_URL}/pr/${pr.id || ''}`}
+      shareLink={appShareUrl('pr', pr.id)}
       shareText={caption}
       accent="#D4AF37"
       renderCard={({ w, h, transparent, accent }) => (
@@ -76,7 +76,7 @@ export function ShareStreakSheet({ open, onClose, streakDays, milestone, user, g
       onClose={onClose}
       gymName={gym}
       title={t('share.titleStreak', 'Share streak')}
-      shareLink={`${PROD_WEB_URL}/streak`}
+      shareLink={appShareUrl('streak')}
       shareText={caption}
       accent="#FF5A2E"
       renderCard={({ w, h, transparent, accent }) => (
@@ -124,7 +124,7 @@ export function ShareBodyCompSheet({ open, onClose, comp, user, gym, gymLogo }) 
       onClose={onClose}
       gymName={gym}
       title={t('share.titleBodyComp', 'Share progress')}
-      shareLink={`${PROD_WEB_URL}/progress`}
+      shareLink={appShareUrl('progress')}
       shareText={caption}
       accent="#2EC4C4"
       allowSticker={false}
@@ -163,7 +163,7 @@ export function ShareMonthlySheet({ open, onClose, recap, user, gym, gymLogo }) 
       onClose={onClose}
       gymName={gym}
       title={t('share.titleMonthly', 'Share month')}
-      shareLink={`${PROD_WEB_URL}/recap`}
+      shareLink={appShareUrl('recap')}
       shareText={caption}
       accent="#2EC4C4"
       renderCard={({ w, h, transparent, accent }) => (

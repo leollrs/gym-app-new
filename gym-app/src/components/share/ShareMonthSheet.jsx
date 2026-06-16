@@ -21,6 +21,7 @@ import { rasterizeNode, urlToDataUrl } from './ShareSheet';
 import { ShareExportSizes } from './ShareFormats';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
 import { shareToInstagramFeed, isInstagramInstalled, shareToWhatsApp, shareToMessages, isWhatsAppInstalled, canShareViaMessages } from '../../lib/socialShare';
+import { appShareUrl } from '../../lib/appUrls';
 import { ShareMonthCard, SM_CARD_IDS, buildShareMonthData, smVol } from './ShareMonthCard';
 
 // dark sheet chrome (only the CARDS go vivid — the app sheet stays dark,
@@ -43,6 +44,11 @@ function previewDims(maxW, maxH) {
 
 export default function ShareMonthSheet({ open, onClose, recap, monthSessions = [], monthPRs = [], user, gym, gymLogoUrl, shareLink }) {
   const { t, i18n } = useTranslation('pages');
+  // Download-oriented link: a non-user who taps it lands on the app's "Get the
+  // app" page (/get), not the bare web app. Honor an explicit /get link from the
+  // caller if it already passes one; otherwise upgrade the legacy webapp prop
+  // (e.g. app.tugympr.com/recap) to the download URL.
+  const link = (shareLink && /\/get(\?|$)/.test(shareLink)) ? shareLink : appShareUrl('recap');
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [styleId, setStyleId] = useState('volume');
@@ -98,7 +104,7 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         month: data.monthLabel, year: data.year, n: data.workouts, gym: gym || 'TuGymPR',
       })
     : (gym || 'TuGymPR');
-  const fullText = shareLink ? `${caption}\n${shareLink}` : caption;
+  const fullText = link ? `${caption}\n${link}` : caption;
 
   // ── share to the chosen destination (not IG-only — everyone can share) ──
   // ig-story → straight to IG Stories; wa/im → native share sheet (pick any
@@ -116,8 +122,8 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         let landed = false;
         if (blob && await isInstagramStoriesAvailable()) {
           const ig = await shareToInstagramStory(
-            sticker ? { stickerBlob: blob, contentURL: shareLink }
-                    : { backgroundBlob: blob, contentURL: shareLink }
+            sticker ? { stickerBlob: blob, contentURL: link }
+                    : { backgroundBlob: blob, contentURL: link }
           );
           landed = ig.ok;
         }
@@ -146,8 +152,10 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
       } else {
         // fb / other → OS share sheet (image-first; Facebook has no clean
         // image deep-link without the FB SDK, so you tap Facebook there).
+        // No `url` field: the link lives in fullText so targets can't prefer it
+        // over the image.
         if (blob) await shareBlob(blob, 'tugympr-month.png', fullText);
-        else await Share.share({ title: gym || 'TuGymPR', text: fullText, url: shareLink });
+        else await Share.share({ title: gym || 'TuGymPR', text: fullText });
       }
       // Reached only when the destination dispatch above didn't throw.
       try { posthogClient?.capture('content_shared', { type: 'month', dest }); } catch { /* noop */ }
@@ -157,7 +165,7 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
       setBusy(false);
       onClose?.();
     }
-  }, [busy, buildBlob, sticker, shareLink, fullText, gym, onClose]);
+  }, [busy, buildBlob, sticker, link, fullText, gym, onClose]);
 
   if (!mounted || !data) return null;
 

@@ -107,13 +107,14 @@ serve(async (req: Request) => {
       });
     }
 
-    // Branding and gym data both depend on gym_id but are independent of each other
-    const [{ data: branding }, { data: gymData }] = await Promise.all([
-      supabase.from('gym_branding').select('primary_color, logo_url').eq('gym_id', profile?.gym_id).single(),
-      supabase.from('gyms').select('qr_display_format').eq('id', profile?.gym_id).single(),
-    ]);
-
-    const displayFormat = gymData?.qr_display_format || 'qr_code';
+    // Only the gym LOGO is used for the pass. Pass colors are left to Google
+    // Wallet's default styling (the gym primary color is intentionally not used),
+    // and the barcode is always a QR code, so qr_display_format isn't fetched.
+    const { data: branding } = await supabase
+      .from('gym_branding')
+      .select('logo_url')
+      .eq('gym_id', profile?.gym_id)
+      .single();
 
     // ── Resolve logo URL for pass ──
     let logoUrl = '';
@@ -140,13 +141,10 @@ serve(async (req: Request) => {
     // ── Parse service account key ──
     const serviceAccountKey = JSON.parse(atob(SERVICE_ACCOUNT_KEY_B64));
 
-    // ── Map display format to Google Wallet barcode type ──
-    const barcodeMapping: Record<string, string> = {
-      qr_code: 'QR_CODE',
-      barcode_128: 'CODE_128',
-      barcode_39: 'CODE_39',
-    };
-    const barcodeType = barcodeMapping[displayFormat] || 'QR_CODE';
+    // ── Barcode type ──
+    // ALWAYS render a QR code. The barcode option was removed product-wide, so
+    // the gym's qr_display_format setting is intentionally ignored here.
+    const barcodeType = 'QR_CODE';
 
     // ── Build pass class + object ──
     const classId = `${ISSUER_ID}.gym_membership_${profile?.gym_id?.replace(/-/g, '_')}`;

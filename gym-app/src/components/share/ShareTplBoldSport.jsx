@@ -9,15 +9,41 @@ function BoldStat({ label, value, mid, s }) {
   return (
     <div
       style={{
+        minWidth: 0,
+        overflow: 'hidden',
         padding: `0 ${10 * s}px`,
         borderLeft: mid ? '1px solid rgba(255,255,255,0.12)' : 'none',
         borderRight: mid ? '1px solid rgba(255,255,255,0.12)' : 'none',
       }}
     >
-      <div style={{ fontSize: 8.5 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+      <div
+        style={{
+          fontSize: 8.5 * s,
+          fontWeight: 800,
+          letterSpacing: 1.4 * s,
+          color: 'rgba(255,255,255,0.5)',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
         {label}
       </div>
-      <div style={{ fontFamily: TuFont.display, fontSize: 22 * s, fontWeight: 800, color: '#fff', letterSpacing: -0.6 * s, marginTop: 2 * s, lineHeight: 1 }}>
+      <div
+        style={{
+          fontFamily: TuFont.display,
+          fontSize: 22 * s,
+          fontWeight: 800,
+          color: '#fff',
+          letterSpacing: -0.6 * s,
+          marginTop: 2 * s,
+          lineHeight: 1,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
         {value}
       </div>
     </div>
@@ -104,7 +130,7 @@ export default function ShareTplBoldSport({
       >
         {/* Top */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: '1 1 auto' }}>
             <div
               style={{
                 display: 'flex',
@@ -117,7 +143,7 @@ export default function ShareTplBoldSport({
                 textTransform: 'uppercase',
               }}
             >
-              <div style={{ width: 6 * s, height: 6 * s, borderRadius: 3 * s, background: accent }} />
+              <div style={{ width: 6 * s, height: 6 * s, borderRadius: 3 * s, background: accent, flexShrink: 0 }} />
               Session complete
             </div>
             <div
@@ -129,14 +155,27 @@ export default function ShareTplBoldSport({
                 letterSpacing: -1.2 * s,
                 lineHeight: 0.95,
                 marginTop: 8 * s,
-                maxWidth: w * 0.72,
+                maxWidth: w * 0.86,
+                whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}
             >
               {(data.name || '').toUpperCase()}
             </div>
-            <div style={{ fontSize: 10 * s, color: 'rgba(255,255,255,0.55)', fontWeight: 600, marginTop: 6 * s, letterSpacing: 0.4 * s }}>
+            <div
+              style={{
+                fontSize: 10 * s,
+                color: 'rgba(255,255,255,0.55)',
+                fontWeight: 600,
+                marginTop: 6 * s,
+                letterSpacing: 0.4 * s,
+                maxWidth: w * 0.86,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {data.date} · {data.user}
             </div>
           </div>
@@ -149,7 +188,7 @@ export default function ShareTplBoldSport({
           <div style={{ fontSize: 9 * s, fontWeight: 800, letterSpacing: 1.6 * s, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
             Total volume
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 * s, marginTop: 2 * s }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 * s, marginTop: 2 * s, maxWidth: '100%', overflow: 'hidden' }}>
             <span
               style={{
                 fontFamily: TuFont.display,
@@ -158,11 +197,16 @@ export default function ShareTplBoldSport({
                 color: '#fff',
                 letterSpacing: -3 * s,
                 lineHeight: 0.9,
+                minWidth: 0,
+                flexShrink: 1,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
               {showExactWeights ? (data.volume || 0).toLocaleString() : `${Math.round((data.volume || 0) / 1000)}k+`}
             </span>
-            <span style={{ fontSize: 14 * s, fontWeight: 700, color: accent }}>lbs</span>
+            <span style={{ fontSize: 14 * s, fontWeight: 700, color: accent, flexShrink: 0 }}>lbs</span>
           </div>
         </div>
 
@@ -170,7 +214,7 @@ export default function ShareTplBoldSport({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
+            gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)',
             gap: 1,
             padding: `${10 * s}px 0`,
             borderTop: '1px solid rgba(255,255,255,0.12)',
@@ -204,8 +248,13 @@ export default function ShareTplBoldSport({
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 9 * s, fontWeight: 800, letterSpacing: 1.4 * s, color: accent, textTransform: 'uppercase' }}>New PR</div>
+              {/* Name truncates; the weight holds a fixed column so a long lift
+                  name can never clip the number off the end. */}
               <div
                 style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 6 * s,
                   fontFamily: TuFont.display,
                   fontSize: 14 * s,
                   fontWeight: 800,
@@ -213,13 +262,16 @@ export default function ShareTplBoldSport({
                   letterSpacing: -0.3 * s,
                   lineHeight: 1.1,
                   marginTop: 2 * s,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
                 }}
               >
-                {data.prs[0].lift}
-                {showExactWeights ? ` · ${data.prs[0].weight} lbs` : ''}
+                <span style={{ minWidth: 0, flexShrink: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {data.prs[0].lift}
+                </span>
+                {showExactWeights ? (
+                  <span style={{ flexShrink: 0, whiteSpace: 'nowrap', color: accent }}>
+                    {data.prs[0].weight} lbs
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -231,16 +283,32 @@ export default function ShareTplBoldSport({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            gap: 10 * s,
             paddingTop: pad * 0.6,
             borderTop: '1px solid rgba(255,255,255,0.12)',
           }}
         >
-          {showGym && data.gym ? (
-            <GymLockup s={s} gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
-          ) : (
-            <div />
-          )}
-          <div style={{ fontFamily: TuFont.display, fontSize: 11 * s, fontWeight: 800, color: '#fff', letterSpacing: -0.3 * s }}>
+          <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
+            {showGym && data.gym ? (
+              <GymLockup s={s} gym={data.gym} logoUrl={data.gymLogoUrl} size="sm" tone="light" />
+            ) : (
+              <div />
+            )}
+          </div>
+          <div
+            style={{
+              flexShrink: 0,
+              maxWidth: w * 0.45,
+              fontFamily: TuFont.display,
+              fontSize: 11 * s,
+              fontWeight: 800,
+              color: '#fff',
+              letterSpacing: -0.3 * s,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
             {gymLabel}
           </div>
         </div>

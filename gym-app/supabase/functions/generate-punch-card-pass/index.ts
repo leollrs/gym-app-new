@@ -75,31 +75,16 @@ function getProductColor(productName: string, categoryHint?: string): ProductCol
   return null as any;
 }
 
-function getDefaultColors(primaryColorHex: string): ProductColors {
-  const hex = primaryColorHex.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16) || 212;
-  const g = parseInt(hex.substring(2, 4), 16) || 175;
-  const b = parseInt(hex.substring(4, 6), 16) || 55;
-
-  // Auto-contrast: compute luminance to decide fg color
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  const fg = luminance > 0.5 ? 'rgb(0, 0, 0)' : 'rgb(255, 255, 255)';
-
-  // Darken bg significantly
-  const bgR = Math.round(r * 0.25);
-  const bgG = Math.round(g * 0.25);
-  const bgB = Math.round(b * 0.25);
-
-  // Lighter label
-  const lR = Math.min(255, Math.round(r * 0.6 + 100));
-  const lG = Math.min(255, Math.round(g * 0.6 + 100));
-  const lB = Math.min(255, Math.round(b * 0.6 + 100));
-
+// Fixed brand-default fallback used when a card doesn't match a known product
+// category. The gym's custom primary color is intentionally NOT used — it broke
+// the look — so this returns a fixed dark + gold scheme regardless of gym.
+// (The per-category schemes above are kept; only this fallback is fixed.)
+function getDefaultColors(_primaryColorHex: string): ProductColors {
   return {
-    bg: `rgb(${bgR}, ${bgG}, ${bgB})`,
-    fg,
-    label: `rgb(${lR}, ${lG}, ${lB})`,
-    accent: primaryColorHex,
+    bg: 'rgb(10, 14, 18)',       // #0A0E12 — dark near-black
+    fg: 'rgb(255, 255, 255)',    // white
+    label: 'rgb(212, 168, 53)',  // #D4A835 — muted gold
+    accent: '#D4A835',
   };
 }
 

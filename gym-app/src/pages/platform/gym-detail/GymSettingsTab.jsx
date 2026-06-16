@@ -16,6 +16,14 @@ import RoleBadge from './RoleBadge';
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const asValidHex = (v) => (typeof v === 'string' && HEX_RE.test(v.trim()) ? v.trim() : '');
 
+// A gym owner administers the gym, so the owner picker offers ADMINS only
+// (admin / super_admin, by primary role OR additional_roles) — not every member.
+// This also keeps the picked id a real auth user, which the
+// gyms.owner_user_id → auth.users FK requires (a ghost/imported profile fails).
+const isAdminish = (m) =>
+  m.role === 'admin' || m.role === 'super_admin' ||
+  (m.additional_roles ?? []).some(r => r === 'admin' || r === 'super_admin');
+
 // Per-gym feature entitlements (0586). classes + qr keep their dedicated cards
 // (they're gym-row flags), so the Features card manages the rest. A missing row
 // means enabled (default on); only an explicit `false` disables for this gym,
@@ -65,13 +73,12 @@ export default function GymSettingsTab({
   onBrandingSaved,
   t,
 }) {
-  // Owner candidates: ANY non-archived member of this gym (not just admins) —
-  // a gym's owner may be a plain member, so restricting to admins meant the
-  // select was often empty and the owner could never be set. Each option shows
-  // the person's role so the operator can pick the right one.
+  // Owner candidates: the gym's ADMINS only (see isAdminish), non-archived.
+  // Each option still shows the person's role for clarity. If the owner needs to
+  // be someone who isn't an admin yet, promote them on the Members tab first.
   const ownerCandidates = useMemo(
     () => members
-      .filter(m => m.imported_archived !== true)
+      .filter(m => m.imported_archived !== true && isAdminish(m))
       .slice()
       .sort((a, b) => (a.full_name || a.username || '').localeCompare(b.full_name || b.username || '')),
     [members]
@@ -275,9 +282,9 @@ export default function GymSettingsTab({
             <Crown className="w-3 h-3 text-[#D4AF37]" />
             {t('platform.gymDetail.settings.ownerLabel')}
           </label>
-          {ownerCandidates.length === 0 ? (
+          {ownerCandidates.length === 0 && !gym.owner_user_id ? (
             <p className="text-[12px] text-[#6B7280]">
-              {currentOwner?.full_name ?? (gym.owner_user_id ? gym.owner_user_id : t('platform.gymDetail.settings.noOwnerCandidatesAny', 'No members yet — add a member first, then set them as owner.'))}
+              {t('platform.gymDetail.settings.noAdminCandidates', 'No admins yet — set a member’s role to Admin on the Members tab first, then choose them here.')}
             </p>
           ) : (
             <div className="flex items-center gap-2">

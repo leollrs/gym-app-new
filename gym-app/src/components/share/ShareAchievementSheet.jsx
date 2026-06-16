@@ -33,7 +33,7 @@ import { Share } from '@capacitor/share';
 import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
 import { supabase } from '../../lib/supabase';
-import { PROD_WEB_URL } from '../../lib/appUrls';
+import { appShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import { rasterizeNode, urlToDataUrl } from './ShareSheet';
@@ -421,7 +421,9 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
       let blob = null;
       try {
         try { blob = await buildCard(); } catch (e) { console.error('[ShareAchievementSheet] buildCard failed', e); }
-        const link = `${PROD_WEB_URL}/share/achievement/${achievement.key || ''}`;
+        // Download-oriented link so a non-user lands on the app's "Get the
+        // app" page (/get) instead of the bare web app.
+        const link = appShareUrl('achievement', achievement.key);
         const text = `${achievement.label}${gym?.name ? ` — ${gym.name}` : ''}`;
         const full = `${text}\n${link}`;
 

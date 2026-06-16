@@ -486,5 +486,21 @@
   "impersonation": {
     "banner": "Viewing {{gym}} as admin (super-admin) — some edits may be restricted",
     "exit": "Exit"
+  },
+  "watch": {
+    "notifStartWorkout": "Tap to start your workout",
+    "notifShowQR": "Tap to show your QR code",
+    "notifShowCheckInQR": "Tap to show your check-in QR"
+  },
+  "watchCardio": {
+    "live": "Live",
+    "paused": "Paused",
+    "fromWatch": "Tracking on your Apple Watch",
+    "waiting": "Waiting for your watch…",
+    "saved": "Session saved",
+    "viewSummary": "View summary",
+    "distance": "Distance",
+    "pace": "Pace",
+    "bpm": "BPM"
   }
 }

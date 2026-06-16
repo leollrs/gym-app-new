@@ -35,7 +35,11 @@ export async function fetchOverviewData(gymId) {
     supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).limit(1000),
     supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
     supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).eq('imported_archived', false).gte('created_at', fortyEightHoursAgo).limit(500),
-    supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).limit(1000),
+    // Left-join the member's name/avatar (no !inner) so a check-in still renders
+    // in the activity feed even when its profile is outside the members query's
+    // filters (e.g. archived imports) or otherwise not in memberMap. The weekly
+    // pulse uses this same array and just ignores the extra columns.
+    supabase.from('check_ins').select('profile_id, checked_in_at, profiles(full_name, avatar_url)').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).limit(1000),
   ]), 15_000, 'fetchOverviewData:primary');
 
   const { data: todayCheckins, error: todayCheckinsErr } = await withQueryTimeout(
@@ -216,10 +220,18 @@ export async function fetchOverviewData(gymId) {
     : 0;
 
   const todayCheckinsData = todayCheckins || [];
-  const recentCheckins = todayCheckinsData.slice(0, 10).map(c => ({
+  // Recent-activity check-ins come from the 30-day `checkIns` array (same source
+  // as the weekly pulse), NOT the today-only query — otherwise they vanish from
+  // the feed any time nobody happened to check in *today* (early morning, sparse
+  // gyms), even though there are plenty of recent ones. `checkIns` is already
+  // ordered checked_in_at desc, so slice(0, 10) is the 10 most recent. This now
+  // matches the wide-window pattern used by recentWorkouts (28d) / recentSignups (7d).
+  const recentCheckins = checkIns.slice(0, 10).map(c => ({
     type: 'checkin', profile_id: c.profile_id, timestamp: c.checked_in_at,
-    memberName: memberMap[c.profile_id]?.full_name || null,
-    avatarUrl: memberMap[c.profile_id]?.avatar_url || null,
+    // Prefer the joined profile, fall back to memberMap (covers either source
+    // returning the name) so the row never shows a blank/Unknown member.
+    memberName: c.profiles?.full_name || memberMap[c.profile_id]?.full_name || null,
+    avatarUrl: c.profiles?.avatar_url || memberMap[c.profile_id]?.avatar_url || null,
   }));
   const recentWorkouts = sessions.slice(0, 10).map(s => ({
     type: 'workout', profile_id: s.profile_id, timestamp: s.started_at,

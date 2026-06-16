@@ -2,7 +2,46 @@
  * Scan Router — shared payload parsing for both camera and physical scanners.
  * Extracted from QRScannerModal.jsx so both input methods use the same pipeline.
  */
-import { verifyQRPayload } from './qrSecurity';
+import { supabase } from './supabase';
+
+/**
+ * Verify a signed `payload:timestamp|signature` string against verify-qr.
+ *
+ * Mirrors qrSecurity.verifyQRPayload but ALSO surfaces the `alreadyUsed` flag
+ * the edge function returns on a benign double-scan (the single-use nonce was
+ * already consumed → Postgres 23505). qrSecurity.verifyQRPayload collapses the
+ * whole response to `{ valid, payload }` and drops that flag, so without this
+ * a replay is indistinguishable from a forged/expired QR and gets the wrong,
+ * scary "invalid QR — ask member to refresh" message. Keeping the wrapper here
+ * lets the scan pipeline tell "already scanned" apart from "bad signature".
+ *
+ * Fails SOFT: any thrown error / network failure resolves to
+ * `{ valid: false, alreadyUsed: false }` so the scanner never crashes.
+ */
+async function verifySignedPayload(signedPayload) {
+  const lastPipe = signedPayload.lastIndexOf('|');
+  if (lastPipe === -1) return { valid: false, alreadyUsed: false, payload: null };
+
+  const payload = signedPayload.substring(0, lastPipe);
+  const signature = signedPayload.substring(lastPipe + 1);
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { valid: false, alreadyUsed: false, payload };
+
+    const { data, error } = await supabase.functions.invoke('verify-qr', {
+      body: { payload, signature },
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+
+    if (error) return { valid: false, alreadyUsed: false, payload };
+    return { valid: !!data?.valid, alreadyUsed: !!data?.alreadyUsed, payload };
+  } catch {
+    // Edge function unreachable / threw — degrade to "not valid" without
+    // bubbling. The caller shows a soft error; nothing reaches the boundary.
+    return { valid: false, alreadyUsed: false, payload };
+  }
+}
 
 /**
  * Verify signature (if present) and parse the scanned text into a typed action.
@@ -27,8 +66,19 @@ export async function handleScannedValue(rawText, setError) {
   // Signed payloads: payload:timestamp|signature
   const lastPipe = trimmed.lastIndexOf('|');
   if (lastPipe !== -1) {
-    const { valid, payload } = await verifyQRPayload(trimmed);
+    const { valid, alreadyUsed, payload } = await verifySignedPayload(trimmed);
     if (!valid) {
+      // BENIGN double-scan: the signature was valid + unexpired, this exact
+      // code was just scanned a moment ago (single-use nonce already consumed).
+      // Surface it as a duplicate so ScanFeedback can show "already checked in /
+      // already scanned" — NOT the scary invalid-QR path. We still parse the
+      // payload (even though it won't re-verify) so the duplicate result can
+      // carry the member's qrPayload for a friendly, name-aware message.
+      if (alreadyUsed) {
+        const withoutTimestamp = payload?.replace(/:\d+$/, '') || '';
+        const dup = parseQRContent(withoutTimestamp);
+        return { type: 'already_scanned', original: dup || null };
+      }
       setError?.('QR code signature invalid or expired. Ask member to refresh their QR.');
       return null;
     }

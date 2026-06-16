@@ -869,14 +869,29 @@ export default function GymDetail() {
   // gyms.owner_user_id was written by NO code path before — the Owner column
   // on GymsOverview was permanently "—". 0040's update-any policy covers this.
   const setGymOwner = async (ownerId) => {
-    const { error } = await supabase.from('gyms').update({ owner_user_id: ownerId || null }).eq('id', gymId);
+    // .select() the updated row back so a silent 0-row write (RLS filtering the
+    // UPDATE raises NO error) is caught instead of reported as success — that
+    // was a way "Set owner" could appear to do nothing. A bad ownerId (e.g. a
+    // ghost/imported profile that isn't a real auth user) instead surfaces as a
+    // foreign-key error here; the picker now only offers real admins.
+    const { data, error } = await supabase
+      .from('gyms')
+      .update({ owner_user_id: ownerId || null })
+      .eq('id', gymId)
+      .select('owner_user_id')
+      .maybeSingle();
     if (error) {
       notify(t('platform.gymDetail.toasts.ownerFailed', 'Could not set the owner: {{error}}', { error: error.message }), 'error');
       return;
     }
+    if (!data) {
+      notify(t('platform.gymDetail.toasts.ownerFailed', 'Could not set the owner: {{error}}', { error: t('platform.gymDetail.toasts.ownerNoRow', 'no permission or the gym was not found') }), 'error');
+      return;
+    }
     logAdminAction('set_gym_owner', 'gym', gymId, { gym_name: gym?.name, owner_user_id: ownerId || null }, gymId);
-    // Re-read the gym from the DB so the owner name re-renders from the source
-    // of truth (the GymSettingsTab owner label derives from gym.owner_user_id).
+    // Reflect the authoritative saved value immediately, then re-read the gym so
+    // the rest of the page (and the owner label) tracks the source of truth.
+    setGym(prev => ({ ...prev, owner_user_id: data.owner_user_id }));
     await fetchGym();
     notify(t('platform.gymDetail.toasts.ownerSet', 'Owner updated'));
   };

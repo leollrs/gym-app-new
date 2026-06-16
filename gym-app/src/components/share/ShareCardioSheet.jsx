@@ -15,7 +15,7 @@ import { Share } from '@capacitor/share';
 import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
 import { supabase } from '../../lib/supabase';
-import { PROD_WEB_URL } from '../../lib/appUrls';
+import { appShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import ShareTplCardio from './ShareTplCardio';
@@ -391,7 +391,10 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         // Fall through — some destinations (link, tu, native share text-only)
         // don't require the blob, so we keep going instead of aborting.
       }
-      const link = `${PROD_WEB_URL}/share/cardio/${data?.sessionId || 'run'}`;
+      // Smart share link — opens the native app when installed, otherwise the
+      // app-download landing (never the bare webapp). appShareUrl owns the URL
+      // shape (rides the CDN-propagated /invite/* applink).
+      const link = appShareUrl('cardio', data?.sessionId || 'run');
       const text = caption?.trim() || profile?.gym_name || 'TuGymPR';
       const full = `${text}\n${link}`;
 

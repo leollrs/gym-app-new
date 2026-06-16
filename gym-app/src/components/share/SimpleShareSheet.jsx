@@ -3,12 +3,20 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { Share } from '@capacitor/share';
-import { Filesystem, Directory } from '@capacitor/filesystem';
 import posthogClient from 'posthog-js';
+import { saveBlob } from '../../lib/saveBlob';
 import { shareBlob } from '../ShareCardRenderer';
 import { rasterizeNode } from './ShareSheet';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
+import {
+  shareToMessages,
+  shareToWhatsApp,
+  shareToInstagramFeed,
+  canShareViaMessages,
+  isWhatsAppInstalled,
+  isInstagramInstalled,
+} from '../../lib/socialShare';
 
 // Single-template share sheet for the lighter share surfaces (PR, streak
 // milestone, monthly recap, body composition). It mirrors the workout
@@ -164,22 +172,11 @@ export default function SimpleShareSheet({
       const full = shareLink ? `${text}\n${shareLink}` : text;
 
       if (dest === 'save') {
-        if (blob) {
-          const reader = new FileReader();
-          const b64 = await new Promise((res) => {
-            reader.onloadend = () => res(String(reader.result).split(',')[1]);
-            reader.readAsDataURL(blob);
-          });
-          try {
-            await Filesystem.writeFile({
-              path: `tugympr-share-${Date.now()}.png`,
-              data: b64,
-              directory: Directory.Documents,
-            });
-          } catch {
-            await shareBlob(blob, 'tugympr-share.png', full);
-          }
-        }
+        // saveBlob → Directory.Cache + native share sheet ("Save Image") on
+        // iOS/Android, real <a download> on web. The old code wrote to
+        // Directory.Documents (the app's private sandbox), so the PNG silently
+        // vanished where the user could never reach it.
+        if (blob) await saveBlob(`tugympr-share-${Date.now()}.png`, blob);
       } else if (dest === 'ig-story') {
         let landedInIG = false;
         if (blob && await isInstagramStoriesAvailable()) {
@@ -191,11 +188,30 @@ export default function SimpleShareSheet({
           landedInIG = ig.ok;
         }
         if (!landedInIG && blob) await shareBlob(blob, 'tugympr-share.png', full);
-      } else if (dest === 'wa' || dest === 'im' || dest === 'ig-feed' || dest === 'more') {
+      } else if (dest === 'wa') {
+        // WhatsApp: attach the IMAGE via the native helper (image staged on the
+        // pasteboard + caption pre-filled). Falls back to the OS share sheet,
+        // which is still image-first via shareBlob — never text/link only.
+        let landed = false;
+        if (blob && await isWhatsAppInstalled()) { const r = await shareToWhatsApp({ blob, text: full }); landed = r.ok; }
+        if (!landed && blob) await shareBlob(blob, 'tugympr-share.png', full);
+      } else if (dest === 'im') {
+        // Messages: attach the IMAGE via the native iMessage composer. Falls
+        // back to the image-first OS share sheet when Messages can't send.
+        let landed = false;
+        if (blob && await canShareViaMessages()) { const r = await shareToMessages({ blob, text: full }); landed = r.ok; }
+        if (!landed && blob) await shareBlob(blob, 'tugympr-share.png', full);
+      } else if (dest === 'ig-feed') {
+        // IG Feed: save to Photos + open IG's library picker with our image
+        // pre-selected; fall back to the image-first OS share sheet.
+        let landed = false;
+        if (blob && await isInstagramInstalled()) { const r = await shareToInstagramFeed({ blob }); landed = r.ok; }
+        if (!landed && blob) await shareBlob(blob, 'tugympr-share.png', full);
+      } else if (dest === 'more') {
         if (blob) {
           await shareBlob(blob, 'tugympr-share.png', full);
         } else {
-          try { await Share.share({ title: gymName || 'TuGymPR', text: full, url: shareLink }); } catch {}
+          try { await Share.share({ title: gymName || 'TuGymPR', text: full }); } catch {}
         }
       }
       // Reached only when the destination dispatch above didn't throw.
@@ -206,7 +222,7 @@ export default function SimpleShareSheet({
       setBusy(false);
       onClose?.();
     }
-  }, [buildCard, caption, shareLink, shareText, onClose, busy, sticker]);
+  }, [buildCard, caption, shareLink, shareText, onClose, busy, sticker, gymName]);
 
   if (!mounted) return null;
 

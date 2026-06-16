@@ -2,7 +2,6 @@ import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Wallet, Share2, Info, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import Barcode from 'react-barcode';
 import { Capacitor } from '@capacitor/core';
 import { useTranslation } from 'react-i18next';
 import { WalletPass } from '../lib/walletPass';
@@ -195,7 +194,11 @@ function PassFields({ fields }) {
  *
  * @param {string} payload       - The string to encode
  * @param {string} memberName    - Member's display name
- * @param {string} displayFormat - 'qr_code' | 'barcode_128' | 'barcode_39'
+ * @param {string} displayFormat - DEPRECATED / ignored. Check-in codes are
+ *   always rendered as a QR code now (the barcode_128 / barcode_39 formats were
+ *   removed product-wide — see GymSettingsTab). The prop is kept so existing
+ *   call sites don't break, and so a stale gyms.qr_display_format value left in
+ *   the DB from before the removal can never resurface a barcode here.
  * @param {string} gymName       - Gym name for wallet pass
  * @param {function} onClose     - Close handler
  * @param {boolean} skipSigning  - If true, display payload as-is without HMAC signing
@@ -274,14 +277,23 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
   useEffect(() => {
     if (isSpecial || !profile?.id) return undefined;
     let cancelled = false;
-    supabase
-      .from('check_ins')
-      .select('checked_in_at')
-      .eq('profile_id', profile.id)
-      .order('checked_in_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => { if (!cancelled) setLastCheckinAt(data?.checked_in_at ?? null); });
+    // The Supabase query builder is a thenable, not a real Promise — a rejection
+    // here with no handler becomes an unhandled rejection that can crash the
+    // Capacitor WebView (the "had to close and reopen the app" failure mode).
+    // Wrap in Promise.resolve(...).catch so a failed/last-check-in read just
+    // leaves the (optional) QuickStats line hidden instead of taking down the
+    // whole pass while the member is holding it at the desk.
+    Promise.resolve(
+      supabase
+        .from('check_ins')
+        .select('checked_in_at')
+        .eq('profile_id', profile.id)
+        .order('checked_in_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    )
+      .then(({ data }) => { if (!cancelled) setLastCheckinAt(data?.checked_in_at ?? null); })
+      .catch(() => { /* non-fatal: just don't show the last-check-in line */ });
     return () => { cancelled = true; };
   }, [isSpecial, profile?.id]);
 
@@ -310,9 +322,6 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, []);
-
-  const isBarcode = displayFormat === 'barcode_128' || displayFormat === 'barcode_39';
-  const barcodeFormat = displayFormat === 'barcode_39' ? 'CODE39' : 'CODE128';
 
   // Derive member ID (short hash from qr payload or profile id)
   const memberId = useMemo(() => {
@@ -516,7 +525,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
             />
           )}
 
-          {/* QR / Barcode — on white tile centered */}
+          {/* QR — on white tile centered */}
           <div
             className="px-[18px] pt-1 pb-6 text-center relative"
             style={{
@@ -532,7 +541,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
               {signPending ? (
                 <div
                   className="flex items-center justify-center"
-                  style={{ width: 176, height: isBarcode ? 80 : 176 }}
+                  style={{ width: 176, height: 176 }}
                   role="status"
                   aria-label={t('common.loading', 'Loading')}
                 >
@@ -541,16 +550,6 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
                     style={{ border: '3px solid #E5E7EB', borderTopColor: '#111827' }}
                   />
                 </div>
-              ) : isBarcode ? (
-                <Barcode
-                  value={rawSource || signedPayload || payload}
-                  format={barcodeFormat}
-                  width={2}
-                  height={80}
-                  displayValue={false}
-                  background="#FFFFFF"
-                  lineColor="#000000"
-                />
               ) : (
                 <QRCodeSVG
                   value={rawSource || signedPayload || payload}

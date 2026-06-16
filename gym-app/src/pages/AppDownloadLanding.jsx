@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, useLocation, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { Download } from 'lucide-react';
@@ -7,27 +7,42 @@ import { supabase } from '../lib/supabase';
 import { APP_STORE_URL, PLAY_STORE_URL } from '../lib/appUrls';
 import logger from '../lib/logger';
 
-// Public landing for the `/t/:id` share link, shown when someone opens a
-// trainer's share link WITHOUT the app installed. With the app installed the
-// universal link opens the app instead (see appUrlOpen in main.jsx), so this
-// page is the "download the app" fallback — never the bare website profile.
+// Public "download the app" landing. Two variants share the same chrome:
+//
+//   variant="trainer" (default) — the `/t/:id` + `/invite/t/:id` trainer share
+//     link. Personalizes the headline ("Train with <name>") and, with the app
+//     installed, the universal link opens the app instead (see appUrlOpen in
+//     main.jsx) — this page is the no-app fallback, never the bare web profile.
+//
+//   variant="get" — the `/get?c=<kind>&id=<id>` link baked into every shared
+//     poster's caption (appShareUrl). A non-user who taps a shared workout / PR /
+//     achievement / streak / recap / cardio image lands here and is pushed to
+//     download (or, if they already have the app, to open it via the scheme).
 //
 // Fixed dark/brand look on purpose (it's a first impression for non-users), not
 // the theme-aware app palette. Pre-launch shows a "coming soon" state; set
 // APP_STORE_URL / PLAY_STORE_URL in lib/appUrls.js to flip on real buttons.
 const ACCENT = '#2DD4BF';
 
-export default function AppDownloadLanding() {
+export default function AppDownloadLanding({ variant = 'trainer' }) {
   const { id } = useParams();
+  const location = useLocation();
   const { t } = useTranslation('pages');
   const [name, setName] = useState('');
 
   const native = Capacitor.isNativePlatform();
+  const isGet = variant === 'get';
+
+  // `/get` carries the share context in the query string (c=kind, id=record id).
+  const params = new URLSearchParams(location.search || '');
+  const shareKind = (params.get('c') || '').trim();
+  const shareId = (params.get('id') || '').trim();
 
   useEffect(() => {
     // Personalize ("Train with <name>") when we can read the public profile.
     // Anonymous visitors may be blocked by RLS — fall back to the generic copy.
-    if (native || !id) return undefined;
+    // Only the trainer variant has a profile to fetch.
+    if (isGet || native || !id) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -40,11 +55,13 @@ export default function AppDownloadLanding() {
       }
     })();
     return () => { cancelled = true; };
-  }, [id, native]);
+  }, [id, native, isGet]);
 
-  // Belt-and-suspenders: if this ever renders inside the native app, send the
-  // user to the real in-app profile rather than a download page.
-  if (native) return <Navigate to={`/trainers/${id}`} replace />;
+  // Belt-and-suspenders: if this ever renders inside the native app, route to a
+  // real in-app destination instead of a download page. The trainer variant
+  // goes to the profile; the generic /get variant just lands on home (the share
+  // context isn't a routable in-app screen on its own).
+  if (native) return <Navigate to={isGet ? '/' : `/trainers/${id}`} replace />;
 
   const stores = [
     APP_STORE_URL && { url: APP_STORE_URL, label: t('appDownload.appStore', 'Download for iOS') },
@@ -57,7 +74,15 @@ export default function AppDownloadLanding() {
     // serving a stale copy) — the OS routes the scheme straight to the app, no
     // CDN involved. If the app isn't installed nothing happens (page stays), so
     // it's safe to show to everyone.
-    if (id) window.location.href = `tugympr://t/${id}`;
+    if (isGet) {
+      // Forward the share context so the app can (later) route on it; even with
+      // no handler the OS still foregrounds the installed app.
+      const qs = [shareKind && `c=${encodeURIComponent(shareKind)}`, shareId && `id=${encodeURIComponent(shareId)}`]
+        .filter(Boolean).join('&');
+      window.location.href = `tugympr://get${qs ? `?${qs}` : ''}`;
+    } else if (id) {
+      window.location.href = `tugympr://t/${id}`;
+    }
   };
 
   return (

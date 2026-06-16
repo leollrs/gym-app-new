@@ -18,13 +18,13 @@ import Toast from './components/Toast.jsx';
 import StuckLoadingRecovery from './components/StuckLoadingRecovery.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
-import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContextToWatch, syncQRToWatch } from './lib/watchBridge';
+import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContextToWatch, syncQRToWatch, syncWorkoutEnded } from './lib/watchBridge';
 import { getCached } from './lib/queryCache';
 import { applyCachedBranding } from './lib/branding';
 import { supabase } from './lib/supabase';
 import { installAppResume, notifyBackground, notifyForeground } from './lib/appResume';
 import { hydrateFromDurable, flushToDurable, whenHydrated } from './lib/durableStorage';
-import { i18nPrimaryReady } from './i18n/i18n';
+import i18n, { i18nPrimaryReady } from './i18n/i18n';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -366,7 +366,7 @@ onWatchMessage(async (msg) => {
           notifications: [{
             id: 99901,
             title: 'TuGymPR',
-            body: 'Tap to show your QR code',
+            body: i18n.t('watch.notifShowQR', { defaultValue: 'Tap to show your QR code' }),
             sound: 'default',
             extra: { action: 'open_qr' },
           }]
@@ -386,7 +386,7 @@ onWatchMessage(async (msg) => {
           notifications: [{
             id: 99903,
             title: 'TuGymPR',
-            body: 'Tap to show your check-in QR',
+            body: i18n.t('watch.notifShowCheckInQR', { defaultValue: 'Tap to show your check-in QR' }),
             sound: 'default',
             extra: { action: 'open_qr' },
           }]
@@ -411,7 +411,7 @@ onWatchMessage(async (msg) => {
           notifications: [{
             id: 99902,
             title: 'TuGymPR',
-            body: 'Tap to start your workout',
+            body: i18n.t('watch.notifStartWorkout', { defaultValue: 'Tap to start your workout' }),
             sound: 'default',
             extra: { action: 'start_workout', routineId: msg.routineId, skipWarmUp },
           }]
@@ -426,6 +426,18 @@ onWatchMessage(async (msg) => {
   // action that the iPhone interprets and routes to the matching surface.
   if (action === 'start_cardio_free') {
     const path = '/cardio-live';
+    window.__watchPendingNav = path;
+    window.dispatchEvent(new CustomEvent('watch-navigate', { detail: path }));
+  }
+
+  // ── Watch-tracked cardio just STARTED — open the live mirror ──────────
+  // The watch owns the GPS session but streams live stats (watch_cardio_progress)
+  // so the phone can show the run in real time (timer / distance / HR / route
+  // map) instead of only the saved version. Navigate to the mirror screen; it
+  // subscribes to the live ticks itself via onWatchMessage.
+  if (action === 'watch_cardio_started') {
+    const type = encodeURIComponent(String(msg.cardio_type || 'other'));
+    const path = `/cardio-watch?type=${type}`;
     window.__watchPendingNav = path;
     window.dispatchEvent(new CustomEvent('watch-navigate', { detail: path }));
   }
@@ -468,6 +480,18 @@ onWatchMessage(async (msg) => {
           return;
         }
 
+        // Once the watch hands the session over, the phone must (a) clear the
+        // watch's persisted "workout_active" application context so the watch
+        // stops showing the run as live, and (b) tear down any empty-mode
+        // ActiveSession the phone opened for `start_free_lift` so it doesn't
+        // leave a ghost session + draft behind. Without this the watch
+        // "doesn't really finish" and the phone shows the workout still
+        // running after you exit.
+        const finishWatchWorkoutOnPhone = ({ duration = 0, volume = 0, sets = 0 } = {}) => {
+          try { syncWorkoutEnded({ duration, totalVolume: volume, prsHit: 0, setsCompleted: sets }); } catch {}
+          try { window.dispatchEvent(new CustomEvent('tugympr:watch-workout-saved')); } catch {}
+        };
+
         // Normalise into the multi-exercise shape regardless of payload form.
         let entries;
         if (Array.isArray(msg.exercises) && msg.exercises.length > 0) {
@@ -508,6 +532,9 @@ onWatchMessage(async (msg) => {
 
         if (phoneExercises.length === 0) {
           console.log('[watch] free-lift save skipped — no logged sets');
+          // Nothing to save, but the watch still ended — clear the watch
+          // context + tear down the phone ghost session.
+          finishWatchWorkoutOnPhone({ duration: Math.max(0, Number(msg.duration_seconds) || 0) });
           return;
         }
 
@@ -532,6 +559,14 @@ onWatchMessage(async (msg) => {
         } else {
           console.log(`[watch] free-lift session saved — ${phoneExercises.length} exercise(s), ${totalCompleted} set(s)`);
         }
+        // Whether or not the save succeeded, the watch already reset itself —
+        // so end the live workout state on the watch (with the real summary
+        // numbers) and tear down the phone's ghost session.
+        finishWatchWorkoutOnPhone({
+          duration: Math.max(1, Number(msg.duration_seconds) || 0),
+          volume: totalVolume,
+          sets: totalCompleted,
+        });
       } catch (e) {
         console.warn('[watch] watch_workout_complete failed:', e?.message || e);
       }
@@ -553,10 +588,22 @@ onWatchMessage(async (msg) => {
           calories_burned:    Number(msg.calories_burned) || null,
           avg_heart_rate:     Number(msg.avg_heart_rate)  || null,
           distance_km:        msg.distance_km != null ? Number(msg.distance_km) : null,
+          // GPS route captured on the wrist ([{lat,lng,t}]) so the saved
+          // session shows a route map just like a phone-tracked run. Only
+          // forwarded when it arrived intact as an array (the offline-queue
+          // fallback can stringify it — drop it rather than store garbage).
+          route:              Array.isArray(msg.route) ? msg.route : undefined,
           source:             'watch',
         };
-        const { error } = await supabase.rpc('log_cardio_session', { p_payload: payload });
+        const { data: saved, error } = await supabase.rpc('log_cardio_session', { p_payload: payload });
         if (error) console.warn('[watch] log_cardio_session RPC failed:', error.message);
+        // Tell the live mirror the run ended + hand it the saved session id so
+        // it can offer "view summary" → /cardio/:id.
+        try {
+          window.dispatchEvent(new CustomEvent('tugympr:watch-cardio-saved', {
+            detail: { id: saved?.session_id || saved?.id || null },
+          }));
+        } catch {}
       } catch (e) {
         console.warn('[watch] watch_cardio_session save failed:', e?.message || e);
       }

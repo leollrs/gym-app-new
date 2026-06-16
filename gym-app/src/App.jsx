@@ -83,6 +83,7 @@ const Workouts = lazy(workoutsImport);
 const SocialFeed       = lazy(socialFeedImport);
 const ActiveSession    = lazy(activeSessionImport);
 const LiveCardio       = lazy(() => import('./pages/LiveCardio'));
+const WatchCardioMirror = lazy(() => import('./pages/WatchCardioMirror'));
 const CardioSessionDetail = lazy(() => import('./pages/CardioSessionDetail'));
 const Profile          = lazy(profileImport);
 const MemberSettings   = lazy(() => import('./pages/MemberSettings'));
@@ -1047,6 +1048,7 @@ const MemberRoutes = () => {
           <Route path="/session/:id"       element={<ActiveSession />} />
           <Route path="/session-summary"   element={<SessionSummary />} />
           <Route path="/cardio-live"       element={<LiveCardio />} />
+          <Route path="/cardio-watch"      element={<WatchCardioMirror />} />
           <Route path="/cardio/:id"        element={<CardioSessionDetail />} />
           {/* /legal/privacy + /legal/terms moved to top-level AuthenticatedRoute
               registrations — inside this member-gated group, trainer-view users
@@ -1684,6 +1686,22 @@ function App() {
           <ErrorBoundary>
             <Suspense fallback={<Skeleton variant="page" />}>
               <AppDownloadLanding />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
+      {/* /get?c=<kind>&id=<id> — the download-oriented link baked into every
+          shared poster's caption (appShareUrl). A NON-user who taps a shared
+          workout / PR / achievement / streak / recap / cardio image lands here
+          and is pushed to download the app (or open it via the tugympr:// scheme
+          if already installed). Bare route (no auth) so logged-out recipients
+          see it instead of bouncing to login. */}
+      <Route
+        path="/get"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton variant="page" />}>
+              <AppDownloadLanding variant="get" />
             </Suspense>
           </ErrorBoundary>
         }

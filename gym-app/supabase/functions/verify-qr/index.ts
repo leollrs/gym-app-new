@@ -212,8 +212,13 @@ serve(async (req) => {
 
     if (nonceErr) {
       // 23505 = unique_violation → this payload was already consumed.
+      // `alreadyUsed: true` is a distinguishable BENIGN-duplicate flag: the
+      // signature was valid and unexpired, this exact code was simply scanned
+      // a moment ago (double-scan at the desk). The client surfaces this as
+      // "already checked in / already scanned", NOT a generic invalid-QR
+      // error — the integrity guard fired as designed, nothing is wrong.
       if (nonceErr.code === '23505') {
-        return jsonResp({ valid: false, error: 'QR code already used' });
+        return jsonResp({ valid: false, alreadyUsed: true, error: 'QR code already used' });
       }
       // Any other DB error: fail CLOSED. We could not prove the QR is
       // unused, so we must not allow the verify to succeed (a double scan

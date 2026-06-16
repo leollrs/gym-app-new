@@ -30,6 +30,38 @@ async function fetchCardsForMemberCheckin(supabase, gymId, memberId) {
   };
 }
 
+// Surface whether the member being checked in is a still-pending referee —
+// i.e. someone referred them and the referral hasn't completed yet. Shown on
+// the scan toast so the front desk sees it at the same moment-of-truth as
+// points/cards (and can approve it on the Referrals page). Admin RLS ("Admins
+// can see gym referrals", 0117) allows this read; non-fatal on any failure.
+async function fetchPendingReferral(supabase, gymId, memberId) {
+  try {
+    const { data: ref } = await supabase
+      .from('referrals')
+      .select('id, referrer_id')
+      .eq('gym_id', gymId)
+      .eq('referred_id', memberId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!ref) return null;
+    let referrerName = null;
+    if (ref.referrer_id) {
+      const { data: referrer } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', ref.referrer_id)
+        .maybeSingle();
+      referrerName = referrer?.full_name || null;
+    }
+    return { id: ref.id, referrerName };
+  } catch {
+    return null;
+  }
+}
+
 // Fallback for gyms configured with qr_payload_type = external_id /
 // custom_template: those members' passes display their RAW gym door code
 // (profiles.qr_external_id), which never matches qr_code_payload. Route the
@@ -53,6 +85,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
     if (error || !data || data.success !== true || !data.profile_id) return null;
 
     const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, data.profile_id);
+    const pendingReferral = await fetchPendingReferral(supabase, gymId, data.profile_id);
     if (data.duplicate) {
       return {
         success: true,
@@ -60,7 +93,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
         memberName: data.member_name,
         memberId: data.profile_id,
         avatarUrl: data.avatar_url,
-        data: { duplicate: true, cardsToDeliver, cardsPending },
+        data: { duplicate: true, cardsToDeliver, cardsPending, pendingReferral },
       };
     }
 
@@ -77,7 +110,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
       memberName: data.member_name,
       memberId: data.profile_id,
       avatarUrl: data.avatar_url,
-      data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending },
+      data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending, pendingReferral },
       externalPayload: { action: 'checkin', memberId: data.profile_id, memberExternalId: data.external_id, memberName: data.member_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
     };
   } catch (err) {
@@ -122,13 +155,14 @@ export async function handleCheckinScan(parsed, ctx) {
     // might be back at the desk for another reason and we shouldn't lose
     // the chance to hand off what's in inventory.
     const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
+    const pendingReferral = await fetchPendingReferral(supabase, gymId, member.id);
     return {
       success: true,
       message: t('admin.scan.alreadyCheckedIn', '{{name}} already checked in today', { name: member.full_name }),
       memberName: member.full_name,
       memberId: member.id,
       avatarUrl: member.avatar_url,
-      data: { duplicate: true, cardsToDeliver, cardsPending },
+      data: { duplicate: true, cardsToDeliver, cardsPending, pendingReferral },
     };
   }
 
@@ -182,6 +216,7 @@ export async function handleCheckinScan(parsed, ctx) {
   // so the toast can surface them. Awaited AFTER points so the check-in feels
   // fast — adds ~1 round trip but only on the success path.
   const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
+  const pendingReferral = await fetchPendingReferral(supabase, gymId, member.id);
 
   const msg = pointsAwarded > 0
     ? t('admin.scan.checkinSuccess', '{{name}} checked in! +{{pts}}pts', { name: member.full_name, pts: pointsAwarded })
@@ -193,7 +228,7 @@ export async function handleCheckinScan(parsed, ctx) {
     memberName: member.full_name,
     memberId: member.id,
     avatarUrl: member.avatar_url,
-    data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending },
+    data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending, pendingReferral },
     externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
   };
 }
@@ -218,8 +253,11 @@ export async function handlePurchaseScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.memberNotFound', 'Member not found') };
   }
 
-  // Record purchase via RPC
-  const { data, error } = await supabase.rpc('record_gym_purchase', {
+  // Record purchase via RPC — it now logs the row as PENDING and grants
+  // NOTHING (no points, no punch increment, no free reward, no wallet push).
+  // Points/punch/free reward are only applied once an owner/admin approves
+  // it from the Store → "Pending approvals" queue (approve_gym_purchase).
+  const { error } = await supabase.rpc('record_gym_purchase', {
     p_gym_id: gymId,
     p_member_id: member.id,
     p_product_id: parsed.productId,
@@ -234,24 +272,16 @@ export async function handlePurchaseScan(parsed, ctx) {
 
   logAdminAction('purchase_scan', 'member', member.id, { product: parsed.productId });
 
-  // Trigger wallet update for punch cards
-  supabase.functions.invoke('push-wallet-update', {
-    body: { profileId: member.id, reason: 'punch_card_update' },
-  }).catch(() => {});
-
-  const pointsEarned = data?.points_earned ?? 0;
-  const freeReward = data?.free_reward_earned;
-  let msg = t('admin.scan.purchaseSuccess', '{{name}} — purchase recorded! +{{pts}}pts', { name: member.full_name, pts: pointsEarned });
-  if (freeReward) msg += ` ${t('admin.scan.freeItemEarned', 'Free item earned!')}`;
-
+  // No wallet push and no points reported here — nothing has been granted
+  // yet. The purchase is queued for an owner/admin to approve.
   return {
     success: true,
-    message: msg,
+    message: t('admin.scan.purchaseQueued', '{{name}} — purchase queued for approval', { name: member.full_name }),
     memberName: member.full_name,
     memberId: member.id,
     avatarUrl: member.avatar_url,
-    data: { pointsEarned, freeReward, punchCard: data?.punch_card_progress },
-    externalPayload: { action: 'purchase', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { productId: parsed.productId, pointsEarned } },
+    data: { queued: true },
+    externalPayload: { action: 'purchase', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { productId: parsed.productId, queued: true } },
   };
 }
 

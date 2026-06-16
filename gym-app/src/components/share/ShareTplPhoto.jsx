@@ -10,7 +10,7 @@ import { TuFont } from './ShareFormats';
  */
 function Stat({ label, value, size, align = 'left' }) {
   return (
-    <div style={{ textAlign: align, minWidth: 0 }}>
+    <div style={{ textAlign: align, minWidth: 0, overflow: 'hidden' }}>
       <div
         style={{
           fontFamily: TuFont.body,
@@ -21,6 +21,8 @@ function Stat({ label, value, size, align = 'left' }) {
           lineHeight: 1,
           fontVariantNumeric: 'tabular-nums',
           whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
       >
         {value}
@@ -33,6 +35,9 @@ function Stat({ label, value, size, align = 'left' }) {
           letterSpacing: 1.6,
           textTransform: 'uppercase',
           marginTop: 4,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
       >
         {label}
@@ -171,6 +176,9 @@ export default function ShareTplPhoto({
             letterSpacing: 2,
             textTransform: 'uppercase',
             color: 'rgba(255,255,255,0.7)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
           {data.date || ''}
@@ -184,6 +192,9 @@ export default function ShareTplPhoto({
             lineHeight: 0.95,
             marginTop: 6,
             textShadow: '0 2px 20px rgba(0,0,0,0.4)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
           {data.name || 'Workout'}
@@ -207,7 +218,9 @@ export default function ShareTplPhoto({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1px 1fr 1px 1fr',
+            // minmax(0,1fr) lets each cell shrink below its content width so the
+            // Stat values truncate (ellipsis) instead of overflowing the strip.
+            gridTemplateColumns: 'minmax(0,1fr) 1px minmax(0,1fr) 1px minmax(0,1fr)',
             alignItems: 'center',
             gap: Math.round(pad * 0.4),
             paddingTop: Math.round(pad * 0.5),

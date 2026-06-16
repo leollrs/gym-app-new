@@ -866,11 +866,15 @@ export async function shareBlob(blob, fileName = 'share.png', shareText = '') {
     // any other native failure → fall through to the web path below
   }
 
-  // WEB fallback (PWA / desktop browser).
+  // WEB fallback (PWA / desktop browser). Attempt navigator.share({ files })
+  // FIRST so the IMAGE is what gets attached, and carry the caption in the same
+  // call — only degrade to text-only when canShare({files}) is false (i.e. the
+  // browser can't share files at all). Like the native path, no `url` field: the
+  // link lives inside shareText so targets can't prefer it over the image.
   const file = new File([blob], fileName, { type: 'image/png' });
   try {
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file] });
+      await navigator.share({ files: [file], ...(shareText ? { text: shareText } : {}) });
       return;
     }
   } catch (e) { if (e.name === 'AbortError') return; }

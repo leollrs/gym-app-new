@@ -103,12 +103,15 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
   const { data: punchCount = 0 } = useQuery({
     queryKey: ['admin', 'store', gymId, 'punchCount', selectedMember?.id, selectedProduct?.id],
     queryFn: async () => {
+      // Count only APPROVED purchases as punches — punch-card stamps are granted
+      // on approval (migration 0602), so pending/rejected rows aren't punches yet.
       const { count } = await supabase
         .from('member_purchases')
         .select('id', { count: 'exact', head: true })
         .eq('member_id', selectedMember.id)
         .eq('product_id', selectedProduct.id)
-        .eq('is_free_reward', false);
+        .eq('is_free_reward', false)
+        .eq('status', 'approved');
       return count ?? 0;
     },
     enabled: !!selectedMember && !!selectedProduct?.punch_card_enabled,
@@ -160,22 +163,14 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
-      posthogClient?.capture('admin_purchase_logged', { quantity, free_earned: !!data?.free_earned });
+    onSuccess: () => {
+      posthogClient?.capture('admin_purchase_logged', { quantity, queued: true });
       queryClient.invalidateQueries({ queryKey: storeKeys.all(gymId) });
-      const totalPointsAwarded = (selectedProduct.points_per_purchase ?? 0) * quantity;
-      let msg = t('admin.store.purchaseRecorded', 'Purchase recorded! {{points}} points earned.', { points: totalPointsAwarded });
-      if (data?.free_earned) {
-        msg += ` ${t('admin.store.freeItemEarned', 'Free {{name}} earned!', { name: selectedProduct.name })}`;
-      }
-      showToast(msg, 'success');
-
-      // Trigger wallet pass push update if punch card product
-      if (selectedProduct.punch_card_enabled && selectedMember) {
-        supabase.functions.invoke('push-wallet-update', {
-          body: { profileId: selectedMember.id, reason: 'punch_card_update' },
-        }).catch(() => {});
-      }
+      // Purchases now enter the approval queue (migration 0602): nothing is
+      // granted — no points, punch-card stamps, free items or wallet update —
+      // until an admin approves it on the Pending approvals tab. So we no longer
+      // claim points were earned or push a wallet update here.
+      showToast(t('admin.store.purchaseQueued', 'Purchase queued for approval.'), 'success');
 
       setSelectedMember(null);
       setSelectedProduct(null);

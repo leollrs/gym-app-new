@@ -1130,6 +1130,28 @@ const ActiveSession = () => {
     return unsub;
   }, [exercises, currentExerciseIndex, loggedSets, adjustedRestSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Watch finished a free-lift it already saved itself ──────────────────────
+  // The watch's "Save & End" on a free lift ships the whole session to the
+  // phone (main.jsx → complete_workout) and resets its own UI. If the phone had
+  // opened THIS empty-mode session for the watch (`start_free_lift`), tear it
+  // down WITHOUT re-saving so we don't leave a ghost "still running" session +
+  // draft behind. Routine workouts use the `save_and_end` → handleFinish path
+  // and are unaffected.
+  useEffect(() => {
+    const onWatchSaved = () => {
+      if (!IS_EMPTY_SESSION(id)) return;     // routine path finishes itself
+      if (sessionEndedRef.current) return;    // already finished / discarded
+      sessionEndedRef.current = true;
+      draftSaveRef.current = null;
+      try { localStorage.removeItem(sessionKey); } catch { /* noop */ }
+      try { cancelWorkoutNotification(); } catch { /* noop */ }
+      try { endLiveActivity(); } catch { /* noop */ }
+      navigate('/workouts', { replace: true });
+    };
+    window.addEventListener('tugympr:watch-workout-saved', onWatchSaved);
+    return () => window.removeEventListener('tugympr:watch-workout-saved', onWatchSaved);
+  }, [id, sessionKey, navigate]);
+
   // ── State for empty workout mode (add exercise picker) ────────────────────
   const isEmptyMode = IS_EMPTY_SESSION(id);
   const [showAddExercise, setShowAddExercise] = useState(false);

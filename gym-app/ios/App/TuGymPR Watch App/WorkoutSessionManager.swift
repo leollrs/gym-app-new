@@ -54,6 +54,12 @@ class WorkoutSessionManager: NSObject, ObservableObject, HKWorkoutSessionDelegat
     /// LiveCardioWatchView shows the distance tile only when this is true.
     @Published var gpsEnabled: Bool = false
 
+    /// Captured GPS fixes for the current cardio session. Drives the live
+    /// route map on LiveCardioWatchView and is shipped to the iPhone on End
+    /// (as `[{lat,lng,t}]`) so the saved `cardio_sessions` row has a route the
+    /// app can draw — matching a phone-tracked run.
+    @Published var routeLocations: [CLLocation] = []
+
     private let healthStore = HKHealthStore()
     private var workoutSession: HKWorkoutSession?
     private var builder: HKLiveWorkoutBuilder?
@@ -134,6 +140,7 @@ class WorkoutSessionManager: NSObject, ObservableObject, HKWorkoutSessionDelegat
             heartRateSamples = []
             caloriesBurned = 0
             distanceMeters = 0
+            routeLocations = []
             gpsEnabled = isOutdoor
 
             // For outdoor cardio, kick off CoreLocation. HealthKit's data
@@ -159,15 +166,29 @@ class WorkoutSessionManager: NSObject, ObservableObject, HKWorkoutSessionDelegat
         }
     }
 
-    /// End a watch-only cardio session and return the summary numbers.
+    /// Serialize the captured fixes into the `[{lat,lng,t}]` shape the iPhone
+    /// stores in `cardio_sessions.route` (identical to gpsTracker.js), so the
+    /// app's route map renders a watch-tracked run the same as a phone one.
+    private func routePayload() -> [[String: Any]] {
+        routeLocations.map { loc in
+            [
+                "lat": loc.coordinate.latitude,
+                "lng": loc.coordinate.longitude,
+                "t": Int(loc.timestamp.timeIntervalSince1970 * 1000),
+            ]
+        }
+    }
+
+    /// End a watch-only cardio session and return the summary numbers + route.
     /// Caller is expected to forward the summary to the iPhone via
     /// WatchSessionManager.shared.saveWatchCardio(...).
-    func stopCardioSession() -> (durationSeconds: Int, avgHR: Int, calories: Int, distanceKm: Double?) {
+    func stopCardioSession() -> (durationSeconds: Int, avgHR: Int, calories: Int, distanceKm: Double?, route: [[String: Any]]) {
         let start = builder?.startDate ?? Date()
         let duration = max(0, Int(Date().timeIntervalSince(start)))
         let avg = Int(averageHeartRate)
         let cal = caloriesBurned
         let dist: Double? = distanceMeters > 0 ? distanceMeters / 1000.0 : nil
+        let route = routePayload()
         // Stop CL updates first so no late fixes write into a finalized route.
         if gpsEnabled {
             locationManager.stopUpdatingLocation()
@@ -183,7 +204,7 @@ class WorkoutSessionManager: NSObject, ObservableObject, HKWorkoutSessionDelegat
         }
         isSessionActive = false
         gpsEnabled = false
-        return (duration, avg, cal, dist)
+        return (duration, avg, cal, dist, route)
     }
 
     // MARK: - CLLocationManagerDelegate
@@ -203,6 +224,9 @@ class WorkoutSessionManager: NSObject, ObservableObject, HKWorkoutSessionDelegat
                     if delta < 100 { self.distanceMeters += delta } // reject teleports
                 }
                 self._lastFix = last
+                // Append to the live route so the wrist map draws the path as
+                // it's run (and so we can ship the full route to the iPhone).
+                self.routeLocations.append(contentsOf: good)
             }
         }
     }

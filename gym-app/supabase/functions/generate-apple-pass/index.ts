@@ -40,7 +40,13 @@ const PLACEHOLDER_PNG = new Uint8Array([
   68, 174, 66, 96, 130,
 ]);
 
-// ── Contrast color helper ────────────────────────────────────
+// ── Fixed brand color scheme ──────────────────────────────────
+// The pass uses a FIXED brand-default dark scheme regardless of the gym's
+// custom colors — gym primary colors broke the look (poor contrast / clashing
+// strips). Only the gym LOGO is still pulled from branding.
+const PASS_BACKGROUND_COLOR = 'rgb(10, 14, 18)';     // #0A0E12 — dark near-black
+const PASS_FOREGROUND_COLOR = 'rgb(255, 255, 255)';  // white
+const PASS_LABEL_COLOR = 'rgb(212, 168, 53)';        // #D4A835 — muted gold
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const h = hex.replace('#', '');
@@ -49,32 +55,6 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
     g: parseInt(h.substring(2, 4), 16) || 0,
     b: parseInt(h.substring(4, 6), 16) || 0,
   };
-}
-
-function hexToRgbString(hex: string): string {
-  const { r, g, b } = hexToRgb(hex);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-/**
- * Returns contrast-appropriate foreground, label colors and darkness flag.
- * Uses relative luminance (sRGB) to decide light vs dark background.
- */
-function getContrastColors(hexColor: string): { fg: string; label: string; isDark: boolean } {
-  const { r, g, b } = hexToRgb(hexColor);
-  // sRGB relative luminance
-  const toLinear = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
-  const isDark = luminance <= 0.5;
-
-  if (isDark) {
-    return { fg: 'rgb(255, 255, 255)', label: 'rgb(180, 180, 190)', isDark: true };
-  } else {
-    return { fg: 'rgb(20, 20, 30)', label: 'rgb(80, 80, 90)', isDark: false };
-  }
 }
 
 serve(async (req: Request) => {
@@ -126,8 +106,11 @@ serve(async (req: Request) => {
     // conceptually wrong: it trusted client-supplied barcode content.) This now
     // mirrors generate-google-pass, the correct reference implementation.
     // Referral passes encode the caller's own referralCode, not an identity payload.
-    const { memberName, gymName, punchCards, kind, referralCode, referralReward } = await req.json();
+    const { memberName, gymName, punchCards, kind, referralCode, referralReward, lang } = await req.json();
     const isReferral = kind === 'referral';
+    // Label language for localizable field labels (defaults to EN). The in-app
+    // pass calls this field "Member since" / "Miembro desde".
+    const isEs = String(lang || '').toLowerCase().startsWith('es');
 
     // ── Fetch profile (including stable wallet pass serial + created_at for "member since") ──
     const { data: profile } = await supabase
@@ -169,11 +152,8 @@ serve(async (req: Request) => {
       .eq('gym_id', profile?.gym_id)
       .single();
 
-    const { data: gymData } = await supabase
-      .from('gyms')
-      .select('qr_display_format')
-      .eq('id', profile?.gym_id)
-      .single();
+    // NOTE: gyms.qr_display_format is no longer read — the pass always renders a
+    // QR code now (the barcode option was removed product-wide).
 
     // ── Fetch gym hours for back fields ──
     const { data: gymHours } = await supabase
@@ -194,34 +174,23 @@ serve(async (req: Request) => {
       .limit(1)
       .maybeSingle();
 
-    // ── Visits this month — replaces the punch-card stat that was wrongly
-    //    bleeding into the membership pass. This is data the membership pass
-    //    actually represents (gym attendance), not loyalty card progress.
-    let visitsThisMonth = 0;
-    try {
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
-      const { count: vCount } = await supabase
-        .from('check_ins')
-        .select('id', { count: 'exact', head: true })
-        .eq('profile_id', user.id)
-        .eq('gym_id', profile?.gym_id)
-        .gte('checked_in_at', monthStart.toISOString());
-      visitsThisMonth = vCount ?? 0;
-    } catch (err) {
-      console.error('visitsThisMonth threw:', err);
-    }
+    // NOTE: "visits this month" was deliberately removed. A static wallet pass
+    // is a SNAPSHOT that does NOT auto-update after it's added, so any visit
+    // count freezes at add-time and quickly reads as stale/incorrect data. The
+    // membership pass now shows only stable facts (member since, plan, ID).
 
-    const displayFormat = gymData?.qr_display_format || 'qr_code';
+    // Gym primary color is intentionally NOT used for pass colors — see the
+    // fixed PASS_* constants above. We still use the gym logo (resolved below).
     const primaryColor = branding?.primary_color || '#D4AF37';
-    const { fg, label, isDark } = getContrastColors(primaryColor);
 
-    // ── Format "Member Since" from profile.created_at ──
+    // ── Format "Member Since" from profile.created_at (month + year, stable) ──
+    const memberSinceLabel = isEs ? 'MIEMBRO DESDE' : 'MEMBER SINCE';
     let memberSinceStr = 'N/A';
     if (profile?.created_at) {
       const d = new Date(profile.created_at);
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthsEs = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      const months = isEs ? monthsEs : monthsEn;
       memberSinceStr = `${months[d.getMonth()]} ${d.getFullYear()}`;
     }
 
@@ -259,8 +228,9 @@ serve(async (req: Request) => {
       barcode_39:  { format: 'PKBarcodeFormatCode39', messageEncoding: 'iso-8859-1' },
     };
 
-    // Use the gym's configured display format, fallback to QR if not found
-    const barcodeConfig = barcodeMapping[displayFormat] || barcodeMapping.qr_code;
+    // ALWAYS render a QR code. The barcode option was removed product-wide, so
+    // the gym's qr_display_format setting is intentionally ignored here.
+    const barcodeConfig = barcodeMapping.qr_code;
 
     // ── Build back fields ──
     const backFields: any[] = [];
@@ -304,7 +274,10 @@ serve(async (req: Request) => {
 
     // ── Build secondary fields ──
     // Membership pass should NOT show punch-card progress — that belongs to
-    // the dedicated punch-card pass. Show this-month visits instead.
+    // the dedicated punch-card pass. It also must NOT show a "visits this month"
+    // count: a wallet pass is a static snapshot that doesn't auto-update once
+    // added, so the number would freeze and read as stale. We show only stable
+    // facts: a short readable MEMBER ID + the member's join month/year.
     // MEMBER ID is shortened to an 8-char readable code (last hex chunk of
     // the payload) instead of dumping the whole signed payload, which was
     // what looked like a "weird sticker" in the name area.
@@ -312,18 +285,18 @@ serve(async (req: Request) => {
       .replace(/[^A-Za-z0-9]/g, '')
       .slice(-8)
       .toUpperCase() || 'MEMBER';
-    const visitsLabel = visitsThisMonth === 1 ? 'VISIT THIS MONTH' : 'VISITS THIS MONTH';
     const secondaryFields: any[] = [
-      { key: 'memberId', label: 'MEMBER ID', value: shortMemberId },
-      { key: 'visits', label: visitsLabel, value: String(visitsThisMonth ?? 0) },
+      { key: 'memberId', label: isEs ? 'ID DE MIEMBRO' : 'MEMBER ID', value: shortMemberId },
+      { key: 'memberSince', label: memberSinceLabel, value: memberSinceStr },
     ];
 
     // ── Build auxiliary fields ──
     // Removed the GYM auxiliary — it was redundant with the gym name shown
-    // as the label above the member name in primaryFields.
-    const auxiliaryFields: any[] = [
-      { key: 'status', label: 'STATUS', value: 'Active' },
-    ];
+    // as the label above the member name in primaryFields. STATUS now lives in
+    // the header row (the secondary row carries MEMBER ID + MEMBER SINCE).
+    const statusLabel = isEs ? 'ESTADO' : 'STATUS';
+    const statusValue = isEs ? 'Activo' : 'Active';
+    const auxiliaryFields: any[] = [];
 
     // ── Locations (for lock screen relevance near the gym) ──
     const locations: any[] = [];
@@ -377,9 +350,9 @@ serve(async (req: Request) => {
       description: isReferral
         ? `${gymName || 'TuGymPR'} Referral Code`
         : `${gymName || 'TuGymPR'} Membership`,
-      foregroundColor: fg,
-      backgroundColor: hexToRgbString(primaryColor),
-      labelColor: label,
+      foregroundColor: PASS_FOREGROUND_COLOR,
+      backgroundColor: PASS_BACKGROUND_COLOR,
+      labelColor: PASS_LABEL_COLOR,
       relevantDate: new Date().toISOString(),
       barcodes: [{
         message: referralBarcodeMessage,
@@ -417,9 +390,9 @@ serve(async (req: Request) => {
         backFields: referralBackFields,
       } : {
         headerFields: [{
-          key: 'memberSince',
-          label: 'MEMBER SINCE',
-          value: memberSinceStr,
+          key: 'status',
+          label: statusLabel,
+          value: statusValue,
         }],
         primaryFields: [{
           key: 'name',

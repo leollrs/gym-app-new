@@ -68,7 +68,7 @@ export default function GymLockup({ gym = {}, size = 'md', tone = 'light', logoU
           </span>
         )}
       </div>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
         <div
           style={{
             fontFamily: TuFont.display,
@@ -80,7 +80,10 @@ export default function GymLockup({ gym = {}, size = 'md', tone = 'light', logoU
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            maxWidth: 180 * s,
+            // Cap to the parent block (which is minWidth:0 inside the card's
+            // footer) rather than a fixed px, so long gym names truncate to the
+            // space actually available at any card size instead of overflowing.
+            maxWidth: Math.min(180 * s, 1000),
           }}
         >
           {gym.name || 'TuGymPR'}
@@ -97,7 +100,7 @@ export default function GymLockup({ gym = {}, size = 'md', tone = 'light', logoU
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              maxWidth: 180 * s,
+              maxWidth: Math.min(180 * s, 1000),
             }}
           >
             {gym.location}

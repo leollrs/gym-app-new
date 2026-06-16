@@ -136,17 +136,22 @@ export default function ShareTplSticker({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 * s }}>
           <div
             style={{
+              minWidth: 0,
+              flexShrink: 1,
               fontSize: 10 * s,
               fontWeight: 800,
               letterSpacing: 2 * s,
               color: accent,
               textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
           >
             {label}
           </div>
           {showGym && gymObj && (
-            <div style={{ transform: `scale(${s * 0.9})`, transformOrigin: 'right center', opacity: 0.9 }}>
+            <div style={{ flexShrink: 0, transform: `scale(${s * 0.9})`, transformOrigin: 'right center', opacity: 0.9 }}>
               <GymLockup
                 gym={gymObj}
                 logoUrl={data.gymLogoUrl}
@@ -165,6 +170,8 @@ export default function ShareTplSticker({
             display: 'flex',
             alignItems: 'baseline',
             gap: 6 * s,
+            maxWidth: '100%',
+            overflow: 'hidden',
           }}
         >
           <span
@@ -175,6 +182,11 @@ export default function ShareTplSticker({
               letterSpacing: -2 * s,
               lineHeight: 0.95,
               fontVariantNumeric: 'tabular-nums',
+              minWidth: 0,
+              flexShrink: 1,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
           >
             {bigValue}
@@ -186,6 +198,8 @@ export default function ShareTplSticker({
                 fontWeight: 700,
                 color: 'rgba(255,255,255,0.6)',
                 letterSpacing: -0.2,
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
               }}
             >
               {bigUnit}
@@ -219,7 +233,9 @@ export default function ShareTplSticker({
               paddingTop: 14 * s,
               borderTop: '1px solid rgba(255,255,255,0.08)',
               display: 'grid',
-              gridTemplateColumns: `repeat(${stats.length}, 1fr)`,
+              // minmax(0,1fr) lets cells shrink so wide values truncate instead
+              // of overflowing the sticker card.
+              gridTemplateColumns: `repeat(${stats.length}, minmax(0,1fr))`,
               gap: 8 * s,
             }}
           >
@@ -232,11 +248,14 @@ export default function ShareTplSticker({
                     letterSpacing: 1.4 * s,
                     color: 'rgba(255,255,255,0.5)',
                     textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                   }}
                 >
                   {stat.label}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 * s, marginTop: 3 * s }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 * s, marginTop: 3 * s, maxWidth: '100%', overflow: 'hidden' }}>
                   <span
                     style={{
                       fontFamily: TuFont.display,
@@ -245,12 +264,17 @@ export default function ShareTplSticker({
                       letterSpacing: -0.5 * s,
                       lineHeight: 1,
                       fontVariantNumeric: 'tabular-nums',
+                      minWidth: 0,
+                      flexShrink: 1,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}
                   >
                     {stat.value}
                   </span>
                   {stat.unit && (
-                    <span style={{ fontSize: 10 * s, fontWeight: 700, color: 'rgba(255,255,255,0.55)' }}>
+                    <span style={{ fontSize: 10 * s, fontWeight: 700, color: 'rgba(255,255,255,0.55)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                       {stat.unit}
                     </span>
                   )}
@@ -295,6 +319,8 @@ export default function ShareTplSticker({
               >
                 <span
                   style={{
+                    minWidth: 0,
+                    flexShrink: 1,
                     fontSize: 11 * s,
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
@@ -306,6 +332,7 @@ export default function ShareTplSticker({
                 </span>
                 <span
                   style={{
+                    flexShrink: 0,
                     fontSize: 11 * s,
                     fontWeight: 800,
                     color: accent,

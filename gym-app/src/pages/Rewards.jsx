@@ -1,6 +1,6 @@
 // ── Rewards & Points Page ────────────────────────────────────────────────────
 // Design: Rewards A hero/layout + Rewards B punch card style
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import {
@@ -17,6 +17,7 @@ import useSignedQR from '../hooks/useSignedQR';
 import logger from '../lib/logger';
 import { RewardSymbol } from '../lib/rewardSymbols';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import ProductQRModal from '../components/ProductQRModal';
@@ -1012,7 +1013,7 @@ const PunchCardQR = ({ payload, caption }) => (
 );
 
 // ── Punch Pass Hero — large dark gradient punch card with QR at bottom ────────
-const PunchPassHero = ({ card, payload, caption, t, onAddToWallet, walletLoading }) => {
+const PunchPassHero = ({ card, payload, caption, t, onAddToWallet, walletLoading, onShowQr }) => {
   const total = card.punch_card_target;
   const punches = card.current_punches;
   const remaining = Math.max(0, total - punches);
@@ -1183,41 +1184,69 @@ const PunchPassHero = ({ card, payload, caption, t, onAddToWallet, walletLoading
           style={{ fontSize: 10, fontWeight: 700, letterSpacing: '1.4px', color: 'rgba(255,255,255,0.72)' }}
         >{t('rewards.scanAtBar', 'SCAN AT THE BAR TO PUNCH')}</div>
         {payload ? (
-          <PunchCardQR payload={payload} caption={caption} />
+          // Tappable inline QR — opens the full-screen QR so the member can
+          // present it like on the check-in screen (highlighted, max size).
+          <button
+            type="button"
+            onClick={() => onShowQr?.(card)}
+            aria-label={t('rewards.showQr', 'Show QR')}
+            className="inline-block active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-[#2EC4C4] rounded-[10px]"
+          >
+            <PunchCardQR payload={payload} caption={caption} />
+          </button>
         ) : (
           <div className="inline-block bg-white rounded-[10px] p-2.5 text-black/50 text-[11px]">
             {t('rewards.qrUnavailable', 'QR unavailable')}
           </div>
         )}
 
-        {/* Wallet button below QR */}
-        <div className="mt-4 flex items-center justify-center">
-          <button
-            onClick={() => onAddToWallet(card)}
-            disabled={walletLoading}
-            aria-label={t('rewards.addToWallet', 'Add to wallet')}
-            className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-extrabold transition active:scale-95 disabled:opacity-40"
-            style={{
-              background: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.14)',
-              color: '#fff',
-              fontFamily: FONT_DISPLAY,
-              letterSpacing: '0.2px',
-            }}
-          >
-            {walletLoading ? (
-              <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/80 rounded-full animate-spin" />
-            ) : (
-              <CreditCard size={13} />
-            )}
-            {walletLoading
-              ? t('rewards.adding')
-              : platform === 'ios'
-                ? t('rewards.appleWallet')
-                : platform === 'android'
-                  ? t('rewards.googleWallet')
-                  : t('rewards.addToWallet', 'Add to wallet')}
-          </button>
+        {/* Action buttons below QR */}
+        <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+          {/* Show QR — opens the full-screen QR for staff to scan (parity with
+              the check-in screen's big "Show QR" affordance). Always shown. */}
+          {payload && (
+            <button
+              onClick={() => onShowQr?.(card)}
+              aria-label={t('rewards.showQr', 'Show QR')}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-extrabold transition active:scale-95"
+              style={{
+                background: PUNCH_TEAL_GRADIENT,
+                color: '#001512',
+                fontFamily: FONT_DISPLAY,
+                letterSpacing: '0.2px',
+                boxShadow: '0 4px 12px rgba(46,196,196,0.25)',
+              }}
+            >
+              <QrCode size={13} strokeWidth={2.6} />
+              {t('rewards.showQr', 'Show QR')}
+            </button>
+          )}
+
+          {/* Wallet button — punch-card passes are Apple .pkpass ONLY
+              (generate-punch-card-pass produces no Google pass), so only
+              offer it on iOS. On Android/web the member uses Show QR instead. */}
+          {platform === 'ios' && (
+            <button
+              onClick={() => onAddToWallet(card)}
+              disabled={walletLoading}
+              aria-label={t('rewards.appleWallet', 'Apple Wallet')}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-extrabold transition active:scale-95 disabled:opacity-40"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.14)',
+                color: '#fff',
+                fontFamily: FONT_DISPLAY,
+                letterSpacing: '0.2px',
+              }}
+            >
+              {walletLoading ? (
+                <div className="w-3 h-3 border-[1.5px] border-white/20 border-t-white/80 rounded-full animate-spin" />
+              ) : (
+                <CreditCard size={13} />
+              )}
+              {walletLoading ? t('rewards.adding') : t('rewards.appleWallet')}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1515,6 +1544,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
                     t={t}
                     onAddToWallet={handleAddToWallet}
                     walletLoading={walletLoadingId === heroCard.id}
+                    onShowQr={(c) => setQrProduct(c)}
                   />
                 );
               })()}
@@ -1608,6 +1638,7 @@ export default function Rewards() {
   const { t, i18n } = useTranslation('pages');
   const { user, profile, lifetimePoints: ctxLifetimePoints } = useAuth();
   const posthog = usePostHog();
+  const { showToast } = useToast();
   const rewardsCacheKey = `rewards-${user?.id}`;
   const hasCached = hasCachedState(`${rewardsCacheKey}-pts`);
   const [tab, setTab] = useState('rewards');
@@ -1628,6 +1659,17 @@ export default function Rewards() {
   const [earnedRewards, setEarnedRewards] = useCachedState(`${rewardsCacheKey}-earned`, []);
   const [earnedQrTarget, setEarnedQrTarget] = useState(null);
   const [claimingEarnedId, setClaimingEarnedId] = useState(null);
+
+  // Mirror the currently-open QR-modal targets into refs so the realtime
+  // subscription (kept stable, never re-subscribed per modal open/close) can
+  // read the latest open-modal state without a stale closure or dropping
+  // events during a resubscribe.
+  const successRewardRef = useRef(null);
+  const earnedQrTargetRef = useRef(null);
+  const prizeQrTargetRef = useRef(null);
+  useEffect(() => { successRewardRef.current = successReward; }, [successReward]);
+  useEffect(() => { earnedQrTargetRef.current = earnedQrTarget; }, [earnedQrTarget]);
+  useEffect(() => { prizeQrTargetRef.current = prizeQrTarget; }, [prizeQrTarget]);
 
   const tier = getRewardTier(pointsData.lifetime_points);
   const heldPoints = pendingRedemptions.reduce((sum, r) => sum + (r.points_spent || 0), 0);
@@ -1706,14 +1748,19 @@ export default function Rewards() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Realtime: when an admin approves a reward at the front desk, the
-  // corresponding row flips from status='pending' to status='claimed'.
+  // Realtime: when an admin scans + honors a reward at the front desk, the
+  // corresponding row flips out of status='pending' (→ 'claimed' for
+  // reward_redemptions, → 'redeemed' for earned_rewards / challenge_prizes).
   // Subscribe to those UPDATEs so the member's pending list disappears
   // immediately — no need to pull-to-refresh. Three tables matter here
   // (points-funded reward_redemptions, free earned_rewards, and challenge
   // challenge_prizes); each gets a filter on profile_id so we never see
   // someone else's claims, and RLS on the underlying tables enforces that
-  // at the publication layer too.
+  // at the publication layer too. (Publication set up in migration 0428.)
+  //
+  // If the member is *holding up* that reward's QR modal when the scan lands,
+  // the on-screen QR is now stale — auto-close the modal and confirm with a
+  // success toast so they aren't left presenting a dead code.
   //
   // We do a full `loadData()` on any matching event rather than splicing
   // the local arrays — the side effects of a claim (points refunded if
@@ -1721,6 +1768,23 @@ export default function Rewards() {
   // get right via one query batch than incrementally.
   useEffect(() => {
     if (!user?.id) return;
+
+    // A status the front desk sets when they actually scan + honor the QR.
+    // `cancelled` is the member's own cancel and must NOT pop a "claimed"
+    // toast (it's a different intent).
+    const CLAIMED_STATUSES = new Set(['claimed', 'redeemed', 'approved', 'completed', 'fulfilled']);
+    const isClaimed = (status) => CLAIMED_STATUSES.has(String(status || '').toLowerCase());
+
+    // If the row that just got claimed is the one whose QR modal is open on
+    // screen, the QR is now stale (already honored) — close the modal and
+    // confirm with a toast. `loadData()` then refreshes the underlying card.
+    const closeIfShowing = (matches, closeFn) => {
+      if (matches) {
+        closeFn();
+        showToast(t('rewards.rewardClaimedToast', 'Reward claimed!'), 'success');
+      }
+    };
+
     const channel = supabase
       .channel(`member-reward-claims-${user.id}`)
       .on(
@@ -1731,7 +1795,17 @@ export default function Rewards() {
           table: 'reward_redemptions',
           filter: `profile_id=eq.${user.id}`,
         },
-        () => loadData(),
+        (payload) => {
+          const row = payload?.new;
+          if (row && isClaimed(row.status)) {
+            const open = successRewardRef.current;
+            closeIfShowing(
+              open && String(open.redemptionId) === String(row.id),
+              () => setSuccessReward(null),
+            );
+          }
+          loadData();
+        },
       )
       .on(
         'postgres_changes',
@@ -1741,7 +1815,17 @@ export default function Rewards() {
           table: 'earned_rewards',
           filter: `profile_id=eq.${user.id}`,
         },
-        () => loadData(),
+        (payload) => {
+          const row = payload?.new;
+          if (row && isClaimed(row.status)) {
+            const open = earnedQrTargetRef.current;
+            closeIfShowing(
+              open && String(open.id) === String(row.id),
+              () => setEarnedQrTarget(null),
+            );
+          }
+          loadData();
+        },
       )
       .on(
         'postgres_changes',
@@ -1751,14 +1835,24 @@ export default function Rewards() {
           table: 'challenge_prizes',
           filter: `profile_id=eq.${user.id}`,
         },
-        () => loadData(),
+        (payload) => {
+          const row = payload?.new;
+          if (row && isClaimed(row.status)) {
+            const open = prizeQrTargetRef.current;
+            closeIfShowing(
+              open && String(open.id) === String(row.id),
+              () => setPrizeQrTarget(null),
+            );
+          }
+          loadData();
+        },
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, loadData]);
+  }, [user?.id, loadData, showToast, t]);
 
   const [redeemError, setRedeemError] = useState(null);
 

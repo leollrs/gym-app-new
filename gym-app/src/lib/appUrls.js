@@ -29,6 +29,23 @@ export function trainerShareUrl(id) {
   return `${PROD_WEB_URL}/invite/t/${id || ''}`;
 }
 
+// Download-oriented share link. When a member shares a poster (workout, PR,
+// achievement, streak, monthly recap, cardio…) the link in the caption should
+// point a NON-user at downloading the app — not at the bare web app. This lands
+// on the public `/get` page (App.jsx), which shows the store buttons (or a
+// "coming soon" state pre-launch) plus an "Open in app" deep link.
+//
+//   appShareUrl('workout')        → https://app.tugympr.com/get?c=workout
+//   appShareUrl('pr', 'abc123')   → https://app.tugympr.com/get?c=pr&id=abc123
+//
+// `kind` is a short slug describing what was shared; `id` is the optional record
+// id (PR id, achievement key, session id…). Both are carried as query params so
+// the /get page can forward them into the app via the tugympr:// scheme.
+export function appShareUrl(kind, id) {
+  const c = encodeURIComponent(kind || 'app');
+  return `${PROD_WEB_URL}/get?c=${c}${id ? `&id=${encodeURIComponent(id)}` : ''}`;
+}
+
 // ── Email / marketing deep links ────────────────────────────────────────────
 // Section key → in-app route. Keys are stable, human-readable slugs used in the
 // deep-link URL (e.g. /invite/go/workout); the route is what the app navigates

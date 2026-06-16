@@ -18,6 +18,7 @@ import { formatStatNumber } from '../lib/formatStatValue';
 import { analyzeAndAdapt, saveAdaptationSuggestions } from '../lib/programAdaptation';
 import { updateGoalsAfterWorkout } from '../lib/goalUpdater';
 import { updateWorkoutSchedulePattern } from '../lib/workoutScheduleTracker';
+import { useDerivedStreak } from '../hooks/useDerivedStreak';
 
 import { useTranslation } from 'react-i18next';
 
@@ -100,7 +101,9 @@ const SessionSummary = () => {
     completedAt    = new Date().toISOString(),
     xpEarned       = 0,
     heartRate      = null,
-    streak: initialStreak = 0,
+    // NOTE: location.state may carry a `streak` (sometimes a check-in count),
+    // but we deliberately ignore it — the displayed streak comes from
+    // useDerivedStreak (the authoritative calendar-derived value).
     workedMuscleGroups = [],
     sessionId      = null,
   } = location.state ?? {};
@@ -111,7 +114,11 @@ const SessionSummary = () => {
   const [totalExercises, setTotalExercises] = useState(initialTotalExercises);
   const [exerciseBreakdown, setExerciseBreakdown] = useState([]); // [{name, vol}]
   const [volumeDeltaPct, setVolumeDeltaPct] = useState(null); // vs last session of same routine
-  const [streak, setStreak] = useState(initialStreak || 0);
+  // Authoritative calendar-derived streak — the same value shown on the nav
+  // flame pill and the check-in page. Reading streak_cache.current_streak_days
+  // (or the caller's initialStreak, which can be a check-in count) produced a
+  // wrong "made up" number here, so we render this hook's value instead.
+  const { streak } = useDerivedStreak();
   const [streakWeek, setStreakWeek] = useState([0, 0, 0, 0, 0, 0, 0]); // past 7 days: 1 if trained
   const fetchedRef = useRef(false);
 
@@ -167,16 +174,10 @@ const SessionSummary = () => {
         } catch {}
       }
 
-      // Streak + 7-day dot row
+      // 7-day dot row (the streak number itself comes from useDerivedStreak —
+      // this only powers the trained-days viz, which is a separate thing).
       if (user?.id) {
         try {
-          const { data: sc } = await supabase
-            .from('streak_cache')
-            .select('current_streak_days')
-            .eq('profile_id', user.id)
-            .maybeSingle();
-          if (sc?.current_streak_days != null) setStreak(sc.current_streak_days);
-
           // Look at the last 7 calendar days, mark ones with a completed session
           const since = new Date();
           since.setDate(since.getDate() - 6);

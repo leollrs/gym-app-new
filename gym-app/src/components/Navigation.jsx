@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { selectInBatches } from '../lib/churn/batchedSelect';
+import { syncStreakToWatch } from '../lib/watchBridge';
+import { buildStreakCalendar } from '../lib/streakCalendar';
 import UserAvatar from './UserAvatar';
 import { useCachedState } from '../hooks/useCachedState';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
@@ -110,6 +112,9 @@ const Navigation = () => {
   const setStreak = setStreakRaw; // so existing setters still feed the raw value
   const [showStreakModal, setShowStreakModal] = useState(false);
   const streakOpenedAtRef = useRef(0);
+  // Last streak value pushed to the Apple Watch — dedupes WCSession traffic
+  // so we only sync when the derived streak actually changes.
+  const lastWatchStreakRef = useRef(null);
   const [unreadMessages, setUnreadMessages] = useState(0);
   // Scroll locking for streak modal
   useEffect(() => {
@@ -252,201 +257,35 @@ const Navigation = () => {
       supabase.from('streak_freezes').select('month, used_count, max_allowed, frozen_dates').eq('profile_id', user.id),
     ]);
 
-    // Helper: date → 'YYYY-MM-DD'
-    const toKey = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-
-    // Set of all dates with a completed workout OR cardio session
-    const workoutDates = new Set(
-      (sessionsRes.data || []).map(s => toKey(new Date(s.completed_at)))
-    );
-    for (const c of (cardioRes.data || [])) {
-      const ts = c.completed_at || c.started_at;
-      if (ts) workoutDates.add(toKey(new Date(ts)));
-    }
-    // Sorted ascending — used by the "fallback rest window" logic below to
-    // find the nearest training day for any given gap day.
-    const sortedWorkoutKeys = [...workoutDates].sort();
-
-    // Account creation date — nothing before this counts
-    const createdAt = profileRes.data?.created_at ? new Date(profileRes.data.created_at) : new Date();
-    const createdAtKey = toKey(createdAt);
-
-    // Rest days: days the user is NOT scheduled to train
-    const DAY_MAP = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
-    const prefDays = profileRes.data?.preferred_training_days || [];
-    const restDowSet = new Set(
-      prefDays.length > 0 ? [0,1,2,3,4,5,6].filter(d => !prefDays.some(name => DAY_MAP[name] === d)) : []
-    );
-
-    // Gym closed days (recurring day-of-week)
-    const gymClosedSet = new Set(
-      (gymHoursRes.data || []).filter(h => h.is_closed).map(h => h.day_of_week)
-    );
-
-    // Specific closure dates (gym_closures + gym_holidays)
-    const closureDateSet = new Set([
-      ...(closuresRes.data || []).map(c => c.closure_date),
-      ...(holidaysRes.data || []).filter(h => h.is_closed).map(h => h.date),
-    ]);
-
-    // Frozen dates from DB (keyed by date string)
-    const frozenDateSet = new Set();
-    const freezesByMonth = {};
-    for (const f of (freezesRes.data || [])) {
-      freezesByMonth[f.month] = f;
-      for (const d of (f.frozen_dates || [])) {
-        frozenDateSet.add(typeof d === 'string' ? d : toKey(new Date(d)));
-      }
-    }
-
-    const today = new Date();
-    const todayKey = toKey(today);
-
-    // ── CALENDAR GENERATION ────────────────────────────────────
-    // Streak count comes from streak_cache (already in `streak` state).
-    // Calendar only determines visual status per day.
-    // Show ALL days in each month (including future days, styled differently).
-    const startDate = new Date(createdAt.getFullYear(), createdAt.getMonth(), 1);
-    const months = [];
-    let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    while (cursor >= startDate) {
-      const year = cursor.getFullYear();
-      const month = cursor.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const monthDays = [];
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const d = new Date(year, month, day);
-        const key = toKey(d);
-        const dow = d.getDay();
-        const isToday = key === todayKey;
-        const isFuture = d > today;
-        const hasWorkout = workoutDates.has(key);
-        const beforeAccount = key < createdAtKey;
-        const isFrozen = frozenDateSet.has(key);
-        const isClosureDate = closureDateSet.has(key);
-
-        let status;
-        if (isFuture) {
-          status = 'future';
-        } else if (beforeAccount) {
-          status = 'before-account';
-        } else if (isToday && !hasWorkout) {
-          status = 'today';
-        } else if (hasWorkout) {
-          status = 'done';
-        } else if (isFrozen) {
-          status = 'frozen';
-        } else if (isClosureDate || gymClosedSet.has(dow)) {
-          status = 'rest';
-        } else if (prefDays.length > 0 && restDowSet.has(dow)) {
-          status = 'rest';
-        } else if (prefDays.length === 0) {
-          // Fallback when the user hasn't set preferred_training_days:
-          // mirror the server-side _streak_gap_day_protected logic — if the
-          // gap is within 7 days of a real training day (in either
-          // direction), treat as a rest day. Otherwise it's a real miss.
-          // This matches migration 0352's semantics.
-          const gapMs = 7 * 24 * 60 * 60 * 1000;
-          const dayMs = d.getTime();
-          let nearestKey = null;
-          let nearestDiff = Infinity;
-          for (let i = 0; i < sortedWorkoutKeys.length; i += 1) {
-            const wk = sortedWorkoutKeys[i];
-            const wkDate = new Date(wk + 'T00:00:00');
-            const diff = Math.abs(dayMs - wkDate.getTime());
-            if (diff < nearestDiff) {
-              nearestDiff = diff;
-              nearestKey = wk;
-            }
-            if (wkDate.getTime() > dayMs && diff > gapMs) break; // sorted, can stop
-          }
-          status = nearestKey && nearestDiff <= gapMs ? 'rest' : 'missed';
-        } else {
-          status = 'missed';
-        }
-
-        // Persist `dayNum` (1-31) only. useCachedState round-trips this
-        // payload through JSON, which would silently downgrade a Date
-        // object to an ISO string and crash any consumer that called
-        // `day.date.getDate()`. We dropped the `date` field entirely — if
-        // a future consumer needs the full Date, derive it from
-        // `new Date(day.key + 'T00:00:00')` at the call site.
-        monthDays.push({ dayNum: day, key, dow, status, isToday });
-      }
-
-      const label = cursor.toLocaleDateString(i18n.language === 'es' ? 'es-ES' : 'en-US', { month: 'long', year: 'numeric' });
-      const isCurrent = year === today.getFullYear() && month === today.getMonth();
-      months.push({ label, days: monthDays, year, month, isCurrent });
-      cursor = new Date(year, month - 1, 1);
-    }
-
-    // Set freeze status for current month
-    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-    const currentFreeze = freezesByMonth[currentMonthKey];
-    setFreezeStatus({
-      used: currentFreeze?.used_count || 0,
-      max: currentFreeze?.max_allowed || 1,
+    // Build the calendar + derive current/longest streak via the shared pure
+    // helper (src/lib/streakCalendar.js). The CheckIn page derives from the
+    // exact same function so the two surfaces can never disagree again.
+    const { months, currentStreak, longestStreak, freezeStatus } = buildStreakCalendar({
+      sessions: sessionsRes.data,
+      cardio: cardioRes.data,
+      profile: profileRes.data,
+      gymHours: gymHoursRes.data,
+      closures: closuresRes.data,
+      holidays: holidaysRes.data,
+      freezes: freezesRes.data,
+      lang: i18n.language,
+      now: new Date(),
     });
 
+    setFreezeStatus(freezeStatus);
     setStreakMonths(months);
     setViewedMonthIndex(0); // Reset to current month when data loads
 
-    // ── DERIVE STREAK FROM CALENDAR ────────────────────────────
-    // streak_cache.current_streak_days can drift from reality (backend cron
-    // edge cases, deleted sessions, stale data). The calendar is the source
-    // of truth — compute the current streak by walking back from today.
-    //
-    // RULE (per product spec): every day counts toward the streak — trained,
-    // rest, frozen, and gym-closed days all add +1. Today (no workout yet)
-    // is not counted but doesn't break. The streak ends only at a `missed`
-    // day or when we reach the account creation date. The chain must contain
-    // at least one trained day.
-    {
-      const STATUS_BY_KEY = new Map();
-      for (const m of months) for (const d of m.days) STATUS_BY_KEY.set(d.key, d.status);
-      let derived = 0;
-      let sawDone = false;
-      let walk = new Date(today);
-      // Safety cap: don't walk further than user creation or 1000 days.
-      for (let i = 0; i < 1000; i++) {
-        const k = toKey(walk);
-        if (k < createdAtKey) break;
-        const s = STATUS_BY_KEY.get(k);
-        if (s === 'missed') break;
-        if (s === 'done') { derived += 1; sawDone = true; }
-        else if (s === 'today') { /* today, no workout yet — neither count nor break */ }
-        else if (s === 'rest' || s === 'frozen') { derived += 1; }
-        else if (s === 'future' || s === 'before-account' || !s) { /* skip */ }
-        walk.setDate(walk.getDate() - 1);
-      }
-      const finalStreak = sawDone ? derived : 0;
-      setStreakDerived((prev) => (prev === finalStreak ? prev : finalStreak));
+    // Calendar-derived current streak is the source of truth (streak_cache
+    // drifts). Push it to the Apple Watch on change so the watch stops showing
+    // the drifted streak_cache value it reads at auth time.
+    setStreakDerived((prev) => (prev === currentStreak ? prev : currentStreak));
+    if (lastWatchStreakRef.current !== currentStreak) {
+      lastWatchStreakRef.current = currentStreak;
+      syncStreakToWatch(currentStreak);
     }
 
-    // ── DERIVE LONGEST STREAK FROM CALENDAR ────────────────────
-    try {
-      const allDays = (months || []).slice().reverse().flatMap((m) => (m && m.days) || []);
-      let maxRun = 0;
-      let curRun = 0;
-      let sawDoneInRun = false;
-      const commit = () => {
-        if (sawDoneInRun && curRun > maxRun) maxRun = curRun;
-        curRun = 0;
-        sawDoneInRun = false;
-      };
-      for (const d of allDays) {
-        const s = d && d.status;
-        if (s === 'missed') { commit(); }
-        else if (s === 'done') { curRun += 1; sawDoneInRun = true; }
-        else if (s === 'rest' || s === 'frozen') { curRun += 1; }
-      }
-      commit();
-      setLongestDerived((prev) => (prev === maxRun ? prev : maxRun));
-    } catch (err) {
-      console.error('[streak] longest derivation failed', err);
-    }
+    setLongestDerived((prev) => (prev === longestStreak ? prev : longestStreak));
   }, [user?.id, profile?.gym_id, streakData, i18n.language]);
 
   // Listen for external requests to open the streak modal (e.g. from CheckIn page)

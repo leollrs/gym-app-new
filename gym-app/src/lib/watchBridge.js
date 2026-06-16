@@ -161,6 +161,30 @@ export async function syncUserContextToWatch({ qrPayload, userName, streak, last
 }
 
 /**
+ * Correct the streak the Watch shows WITHOUT touching the rest of the
+ * user context. The full `user_context` payload pushed at auth time reads
+ * `streak_cache.current_streak_days`, which can drift from reality. The
+ * app's own UI shows a calendar-derived streak (Navigation.jsx) that
+ * defends against that drift — this pushes that authoritative value so the
+ * Watch + its complication match what the phone shows.
+ *
+ * Sent as its own message type so the Watch handler only overwrites the
+ * streak (a partial `user_context` would wipe qrPayload / userName).
+ */
+export async function syncStreakToWatch(streak) {
+  if (!isNative()) return;
+  const payload = { type: 'streak_update', currentStreak: Number(streak) || 0 };
+  // Application context = latest-wins + persisted, so a cold Watch launch
+  // reads the corrected value even if it wasn't reachable at push time.
+  try { await Watch.updateApplicationContext({ context: payload }); } catch {}
+  try {
+    await Watch.sendMessage({ data: payload });
+  } catch {
+    try { await Watch.transferUserInfo({ userInfo: payload }); } catch {}
+  }
+}
+
+/**
  * Push the user's exercise library (or a slim subset) so the Watch's
  * Free Lift picker can show real exercise names without a round trip
  * per tap. Slim shape: `[{ id, name, category }]`.

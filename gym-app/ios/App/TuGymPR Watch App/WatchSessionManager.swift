@@ -404,7 +404,8 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
         durationSeconds: Int,
         averageHeartRate: Int,
         caloriesBurned: Int,
-        distanceKm: Double?
+        distanceKm: Double?,
+        route: [[String: Any]] = []
     ) {
         var msg: [String: Any] = [
             "action": "watch_cardio_session",
@@ -415,7 +416,48 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
             "source": "watch",
         ]
         if let km = distanceKm { msg["distance_km"] = km }
+        // Ship the captured GPS route so the iPhone's cardio_sessions row can
+        // draw the same route map a phone-tracked run gets. Shape: [{lat,lng,t}].
+        if !route.isEmpty { msg["route"] = route }
         sendOrQueue(msg)
+    }
+
+    /// Tell the iPhone a watch cardio session just started, so it can open a
+    /// live mirror screen (/cardio-watch) that reflects the run in real time.
+    /// Reliable delivery (sendOrQueue) so the phone still opens the mirror if
+    /// it was momentarily unreachable at tap time.
+    func startWatchCardioMirror(activityType: String) {
+        sendOrQueue([
+            "action": "watch_cardio_started",
+            "cardio_type": activityType,
+        ])
+    }
+
+    /// Stream live cardio stats (+ any newly-captured route points) to the
+    /// iPhone mirror, ~every 2s while the session runs. Best-effort: sent only
+    /// when the phone is reachable — live stats are ephemeral, so there's
+    /// nothing to gain from queueing stale ones (and the offline queue would
+    /// stringify the route array anyway).
+    func updateWatchCardioMirror(
+        elapsed: Int,
+        distanceMeters: Double,
+        heartRate: Int,
+        calories: Int,
+        paused: Bool,
+        routeTail: [[String: Any]]
+    ) {
+        guard WCSession.default.activationState == .activated,
+              WCSession.default.isReachable else { return }
+        var msg: [String: Any] = [
+            "action": "watch_cardio_progress",
+            "elapsed_seconds": elapsed,
+            "distance_m": distanceMeters,
+            "heart_rate": heartRate,
+            "calories": calories,
+            "paused": paused,
+        ]
+        if !routeTail.isEmpty { msg["route_tail"] = routeTail }
+        WCSession.default.sendMessage(msg, replyHandler: nil, errorHandler: nil)
     }
 
     func completeSet(actualReps: Int, actualWeight: Double) {
@@ -706,6 +748,18 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
                 lastWorkoutDate: lastWorkoutDate,
                 weeklyCount: weeklyWorkoutCount
             )
+
+        case "streak_update":
+            // Authoritative (calendar-derived) streak from the iPhone — corrects
+            // the drifted streak_cache value pushed in `user_context` at auth
+            // time. Only the streak changes; qr / name / weekly count are left
+            // untouched so a partial update never wipes them.
+            let newStreak = ctx["currentStreak"] as? Int ?? currentStreak
+            currentStreak = newStreak
+            OfflineCacheManager.shared.saveUserContext(qr: qrPayload, name: userName, streak: newStreak)
+            sharedDefaults?.set(newStreak, forKey: "streak")
+            sharedDefaults?.synchronize()
+            WidgetCenter.shared.reloadAllTimelines()
 
         case "pr_hit":
             prJustHit = true

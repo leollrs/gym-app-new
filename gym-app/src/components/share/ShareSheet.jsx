@@ -9,7 +9,7 @@ import { Share } from '@capacitor/share';
 import { saveBlob } from '../../lib/saveBlob';
 import posthogClient from 'posthog-js';
 import { supabase } from '../../lib/supabase';
-import { PROD_WEB_URL } from '../../lib/appUrls';
+import { appShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { shareBlob } from '../ShareCardRenderer';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
@@ -668,7 +668,9 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
     setBusy(true);
     try {
       const blob = await buildCard();
-      const link = `${PROD_WEB_URL}/share/${data?.sessionId || 'workout'}`;
+      // Download-oriented link: a non-user who taps it lands on the app's
+      // "Get the app" page (/get), not the bare web app.
+      const link = appShareUrl('workout', data?.sessionId);
       const text = caption?.trim() || data?.name || profile?.gym_name || 'TuGymPR';
       const full = `${text}\n${link}`;
 

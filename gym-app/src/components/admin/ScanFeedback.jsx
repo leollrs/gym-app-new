@@ -87,6 +87,47 @@ async function lookupMemberForScan(parsed, gymId) {
   return null;
 }
 
+/**
+ * Build the toast for a benign double-scan (same signed QR re-scanned before
+ * its single-use nonce aged out). Renders as a SUCCESS-style check-in toast
+ * with the "already checked in today" copy — the same friendly outcome a
+ * within-3h re-scan produces — instead of a red invalid-QR error.
+ *
+ * Best-effort member lookup: a check-in payload lets us name the member; any
+ * lookup failure (or a non-check-in original) just falls back to a generic
+ * "already scanned" line. Never throws — the caller is on the no-freeze path.
+ */
+async function buildAlreadyScannedToast(original, gymId, t) {
+  // Default: generic, no name.
+  const generic = {
+    success: true,
+    actionType: original?.type === 'checkin' ? 'checkin' : undefined,
+    message: t('admin.scan.alreadyScanned', 'Already scanned — this code was just used'),
+    data: { duplicate: true },
+  };
+  try {
+    if (original?.type === 'checkin' && original.qrPayload && gymId) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('gym_id', gymId)
+        .eq('qr_code_payload', original.qrPayload)
+        .maybeSingle();
+      if (data?.full_name) {
+        return {
+          success: true,
+          actionType: 'checkin',
+          memberName: data.full_name,
+          avatarUrl: data.avatar_url || null,
+          message: t('admin.scan.alreadyCheckedIn', '{{name}} already checked in today', { name: data.full_name }),
+          data: { duplicate: true },
+        };
+      }
+    }
+  } catch { /* fall through to generic */ }
+  return generic;
+}
+
 export default function ScanFeedback() {
   const { profile } = useAuth();
   const { t } = useTranslation('pages');
@@ -146,12 +187,26 @@ export default function ScanFeedback() {
 
   // ── Handle incoming scan ──────────────────────────────
   const handleScan = useCallback(async (rawText) => {
-    if (scanClaim?.tryClaim(rawText)) return;
+    // tryClaim is the only thing that runs before the busy-guard, so wrap it:
+    // a throw here would escape to the ErrorBoundary and force an app restart.
+    try { if (scanClaim?.tryClaim(rawText)) return; } catch { /* ignore claim errors */ }
     if (!gymId || !adminId || processing || pending) return;
 
     try {
       let errorMsg = null;
       const parsed = await handleScannedValue(rawText, (err) => { errorMsg = err; });
+
+      // Benign double-scan: same signed QR scanned again before its single-use
+      // nonce aged out. NOT an error — show the same "already checked in"
+      // message a within-3h re-scan gets, and (critically) DO NOT freeze the
+      // scanner. We fall through the busy-guard cleanly because we never set
+      // `pending`/`processing` on this path.
+      if (parsed?.type === 'already_scanned') {
+        playAlert();
+        const friendly = await buildAlreadyScannedToast(parsed.original, gymId, t);
+        setToast(friendly);
+        return;
+      }
 
       if (errorMsg && !parsed) {
         playError();
@@ -185,8 +240,14 @@ export default function ScanFeedback() {
       handleResult(parsed, result);
     } catch (err) {
       playError();
-      setToast({ success: false, message: err.message || 'Scan processing failed' });
+      setToast({ success: false, message: err?.message || t('admin.scan.scanFailed', 'Scan processing failed') });
     } finally {
+      // Always release the scanner. Both `processing` and `pending` are reset
+      // so NO error/early-exit path can leave the busy-guard latched (which is
+      // what forced the "close and reopen the app" recovery). `pending` is only
+      // set on the approval path, which returns before this runs — but resetting
+      // it here too is a cheap, defensive belt-and-suspenders against any future
+      // path that throws after setPending.
       setProcessing(false);
     }
   }, [gymId, adminId, processing, pending, t, scanClaim]);
@@ -198,6 +259,11 @@ export default function ScanFeedback() {
     // Carry the already-signed reference photo into the success toast so the
     // confirmed check-in keeps showing the same face (no second sign round-trip).
     const photoOverride = pending.member?._checkinPhotoUrl || null;
+    // Clear the approval modal FIRST. This is what un-latches the scanner's
+    // busy-guard (`if (... || pending) return`); doing it before any await
+    // guarantees the scanner is never stuck waiting on a network round-trip,
+    // and that a throw below can't strand `pending` set forever (the bug that
+    // forced an app restart).
     setPending(null);
     setProcessing(true);
 
@@ -206,8 +272,10 @@ export default function ScanFeedback() {
       const result = await dispatchScanAction(parsed, ctx);
       handleResult(parsed, result, photoOverride);
     } catch (err) {
-      playError();
-      setToast({ success: false, message: err.message || 'Action failed' });
+      try {
+        playError();
+        setToast({ success: false, message: err?.message || t('admin.scan.actionFailed', 'Action failed') });
+      } catch { /* never let toast/beep failure escape to the ErrorBoundary */ }
     } finally {
       setProcessing(false);
     }
@@ -220,6 +288,15 @@ export default function ScanFeedback() {
 
   // ── Process result (shared by immediate + approved) ───
   const handleResult = useCallback((parsed, result, photoOverride = null) => {
+    // Defensive: dispatchScanAction always returns an object, but a null/undefined
+    // result here would throw a TypeError on `result.success` and — depending on
+    // the caller's try boundary — could bubble to the ErrorBoundary and restart
+    // the app. Treat a missing result as a soft failure instead.
+    if (!result) {
+      try { playError(); } catch { /* no-op */ }
+      setToast({ success: false, message: t('admin.scan.scanFailed', 'Scan processing failed') });
+      return;
+    }
     if (result.success) {
       playSuccess();
       queryClient.invalidateQueries({ queryKey: adminKeys.overview(gymId) });
@@ -242,19 +319,24 @@ export default function ScanFeedback() {
     });
 
     if (result.success && result.externalPayload) {
-      // Cloud integrations (Mindbody, ClubReady, etc.) via gym_integrations
-      // table — server-to-server webhook from a Supabase edge function.
-      dispatchToIntegration(gymId, parsed.type, result.externalPayload);
-      // Local sidecar on the same machine — bridges to whatever legacy
-      // gym software is running alongside TuGymPR. Fire-and-forget,
-      // graceful no-op if the sidecar isn't running.
-      dispatchToLocalBridge({
-        gymId,
-        action: parsed.type,
-        payload: result.externalPayload,
-      });
+      // Wrapped so a synchronous throw from either bridge can't escape this
+      // result handler (and thus the surrounding try) into the ErrorBoundary.
+      // Both are fire-and-forget side effects — the check-in already succeeded.
+      try {
+        // Cloud integrations (Mindbody, ClubReady, etc.) via gym_integrations
+        // table — server-to-server webhook from a Supabase edge function.
+        dispatchToIntegration(gymId, parsed.type, result.externalPayload);
+        // Local sidecar on the same machine — bridges to whatever legacy
+        // gym software is running alongside TuGymPR. Fire-and-forget,
+        // graceful no-op if the sidecar isn't running.
+        dispatchToLocalBridge({
+          gymId,
+          action: parsed.type,
+          payload: result.externalPayload,
+        });
+      } catch { /* integration delivery is best-effort; never block the scan */ }
     }
-  }, [gymId, queryClient]);
+  }, [gymId, queryClient, t]);
 
   const { isConnected } = useBarcodeScanner({
     onScan: handleScan,
@@ -464,27 +546,61 @@ export default function ScanFeedback() {
                   </p>
                   {toast.success && toast.data && (
                     <div className="flex items-center gap-3 mt-2">
-                      {toast.data.pointsEarned > 0 && (
-                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-lg"
-                          style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' }}>
-                          +{toast.data.pointsEarned} pts
-                        </span>
+                      {/* Purchases are now queued for approval — they grant
+                          nothing at scan time, so never show a points/punch/free
+                          chip here. The cashier sees a "queued" flag instead and
+                          the owner approves it from the Store queue. */}
+                      {toast.actionType === 'purchase' ? (
+                        toast.data.queued && (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-lg"
+                            style={{ background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', color: 'var(--color-warning)' }}>
+                            {t('admin.scan.purchaseQueuedChip', 'Queued for approval')}
+                          </span>
+                        )
+                      ) : (
+                        <>
+                          {toast.data.pointsEarned > 0 && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-lg"
+                              style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-accent)' }}>
+                              +{toast.data.pointsEarned} pts
+                            </span>
+                          )}
+                          {toast.data.punchCard && (
+                            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>
+                              Punch {toast.data.punchCard.current}/{toast.data.punchCard.target}
+                            </span>
+                          )}
+                          {toast.data.freeReward && (
+                            <span className="text-[11px] font-bold" style={{ color: 'var(--color-success)' }}>
+                              {t('admin.scan.freeItemEarned', 'Free item earned!')}
+                            </span>
+                          )}
+                          {toast.data.duplicate && (
+                            <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>
+                              {t('admin.scan.duplicateNote', 'Already in today')}
+                            </span>
+                          )}
+                        </>
                       )}
-                      {toast.data.punchCard && (
-                        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>
-                          Punch {toast.data.punchCard.current}/{toast.data.punchCard.target}
-                        </span>
-                      )}
-                      {toast.data.freeReward && (
-                        <span className="text-[11px] font-bold" style={{ color: 'var(--color-success)' }}>
-                          {t('admin.scan.freeItemEarned', 'Free item earned!')}
-                        </span>
-                      )}
-                      {toast.data.duplicate && (
-                        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>
-                          {t('admin.scan.duplicateNote', 'Already in today')}
-                        </span>
-                      )}
+                    </div>
+                  )}
+                  {/* Pending-referee flag — this member was referred by someone and
+                      the referral hasn't completed yet. Surfaced here so the desk
+                      can approve it on the Referrals page. */}
+                  {toast.success && toast.data?.pendingReferral && (
+                    <div
+                      className="mt-2 flex items-center gap-1.5 px-2 py-1 rounded-lg"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--color-warning) 22%, transparent)',
+                      }}
+                    >
+                      <Gift size={12} style={{ color: 'var(--color-warning)', flexShrink: 0 }} />
+                      <span className="text-[11px] font-semibold leading-tight" style={{ color: 'var(--color-warning)' }}>
+                        {toast.data.pendingReferral.referrerName
+                          ? t('admin.scan.pendingReferralBy', { name: toast.data.pendingReferral.referrerName, defaultValue: 'Pending referral — referred by {{name}}' })
+                          : t('admin.scan.pendingReferral', 'Pending referral — approve on the Referrals page')}
+                      </span>
                     </div>
                   )}
                 </div>

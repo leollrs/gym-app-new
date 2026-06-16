@@ -486,5 +486,21 @@
   "impersonation": {
     "banner": "Viendo {{gym}} como admin (super-admin) — algunas ediciones pueden estar restringidas",
     "exit": "Salir"
+  },
+  "watch": {
+    "notifStartWorkout": "Toca para empezar tu entrenamiento",
+    "notifShowQR": "Toca para mostrar tu código QR",
+    "notifShowCheckInQR": "Toca para mostrar tu QR de registro"
+  },
+  "watchCardio": {
+    "live": "En vivo",
+    "paused": "En pausa",
+    "fromWatch": "Registrando en tu Apple Watch",
+    "waiting": "Esperando a tu reloj…",
+    "saved": "Sesión guardada",
+    "viewSummary": "Ver resumen",
+    "distance": "Distancia",
+    "pace": "Ritmo",
+    "bpm": "PPM"
   }
 }

@@ -14,6 +14,7 @@ import QRCodeModal from '../components/QRCodeModal';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
+import { useDerivedStreak } from '../hooks/useDerivedStreak';
 
 // GPS check-in is intentionally omitted: GPS is reserved for cardio tracking.
 // Members check in via QR (admin scan) or manual entry only. Legacy rows with
@@ -35,7 +36,6 @@ export default function CheckIn() {
   const qrEnabled = useFeatureEnabled('qr');
 
   const checkinsCacheKey = `checkin-list-${user?.id || 'anon'}`;
-  const streakCacheKey   = `checkin-streak-${user?.id || 'anon'}`;
   const [checkins,  setCheckins]  = useCachedState(checkinsCacheKey, []);
   // Only show skeleton on a genuine first-ever visit. If we have any cached
   // history, paint from cache instantly and revalidate silently.
@@ -65,21 +65,12 @@ export default function CheckIn() {
   // Already checked in today?
   const todayCheckIn = checkins.find(c => isToday(new Date(c.checked_in_at)));
 
-  // ── Streak (from streak_cache — same source as Navigation) ──────────────────
-  // Cached so the streak number paints instantly on remount / app cold start.
-  const [streak, setStreak] = useCachedState(streakCacheKey, 0);
-  const loadStreak = useCallback(() => {
-    if (!user) return;
-    supabase
-      .from('streak_cache')
-      .select('current_streak_days')
-      .eq('profile_id', user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setStreak(data.current_streak_days || 0);
-      });
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { loadStreak(); }, [loadStreak]);
+  // ── Streak ──────────────────────────────────────────────────────────────────
+  // Calendar-derived (same source as Navigation's flame pill / streak modal),
+  // NOT the raw streak_cache.current_streak_days — that cached value drifts and
+  // was showing a "made up" number here. useDerivedStreak fetches + derives and
+  // caches the result so it paints instantly on remount / app cold start.
+  const { streak, reload: loadStreak } = useDerivedStreak();
 
   // Keep-alive refresh: /checkin is a core tab that stays mounted, and its
   // whole job is showing data written from OUTSIDE the app — the admin scanner

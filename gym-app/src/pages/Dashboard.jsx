@@ -1898,10 +1898,10 @@ const Dashboard = () => {
                     <div className="flex gap-2">
                       <Link
                         to={`/session/${selectedRoutine.id}`}
-                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-full text-[12px] font-bold text-[var(--color-text-on-accent,#fff)] active:scale-[0.98] transition-all min-w-0 overflow-hidden"
-                        style={{ background: 'var(--color-accent, #2EC4C4)' }}
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-full text-[12px] font-bold text-[var(--color-text-on-accent,#000)] active:scale-[0.98] transition-all min-w-0 overflow-hidden"
+                        style={{ background: 'var(--color-accent, #2EC4C4)', color: 'var(--color-text-on-accent, #000)' }}
                       >
-                        <Play size={14} fill="var(--color-text-on-accent, white)" className="flex-shrink-0" /> <span className="truncate">{t('dashboard.finishWorkout', { workout: workoutType })}</span>
+                        <Play size={14} fill="currentColor" strokeWidth={0} className="flex-shrink-0" /> <span className="truncate">{t('dashboard.finishWorkout', { workout: workoutType })}</span>
                       </Link>
                       <button
                         onClick={handleSkipSuggestion}
@@ -2250,9 +2250,9 @@ const Dashboard = () => {
                     </p>
                     <Link
                       to="/workouts"
-                      className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-[#10B981] text-[var(--color-text-on-secondary,#fff)] font-bold text-[13px]"
+                      className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-[#10B981] text-white font-bold text-[13px]"
                     >
-                      <Play size={14} fill="var(--color-text-on-secondary, white)" />
+                      <Play size={14} fill="currentColor" strokeWidth={0} />
                       {t('dashboard.goToWorkouts')}
                     </Link>
                   </div>
@@ -2340,7 +2340,7 @@ const Dashboard = () => {
                         background: todayCardioSessions.length > 0
                           ? 'rgba(16,185,129,0.15)'
                           : 'var(--color-accent)',
-                        color: todayCardioSessions.length > 0 ? '#10B981' : 'var(--color-text-on-accent, #fff)',
+                        color: todayCardioSessions.length > 0 ? '#10B981' : 'var(--color-text-on-accent, #000)',
                         fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
                       }}
                     >
@@ -2764,7 +2764,7 @@ const Dashboard = () => {
               <div className="shrink-0 px-6 pt-3 pb-5 flex gap-3 bg-gradient-to-t from-[var(--color-bg-card)] via-[var(--color-bg-card)] to-transparent">
                 <button
                   onClick={() => { setShowPlanInfo(false); navigate('/workouts'); }}
-                  className="flex-1 py-3.5 rounded-2xl font-bold text-[13px] text-[var(--color-text-on-secondary,#fff)] bg-[#10B981] hover:bg-[#0EA572] transition-colors"
+                  className="flex-1 py-3.5 rounded-2xl font-bold text-[13px] text-white bg-[#10B981] hover:bg-[#0EA572] transition-colors"
                 >
                   {prog ? t('dashboard.managePrograms') : t('dashboard.browsePrograms')}
                 </button>

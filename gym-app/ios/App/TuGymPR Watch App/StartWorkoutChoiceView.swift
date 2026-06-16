@@ -1,5 +1,7 @@
 import SwiftUI
 import WatchKit
+import MapKit
+import CoreLocation
 
 struct StartWorkoutPage: View {
     @EnvironmentObject var session: WatchSessionManager
@@ -254,6 +256,9 @@ struct LiveCardioWatchView: View {
     @State private var elapsed: Int = 0
     @State private var timer: Timer?
     @State private var paused: Bool = false
+    /// How many captured fixes we've already streamed to the phone mirror, so
+    /// each update only ships the NEW route points.
+    @State private var lastSentRouteCount: Int = 0
 
     /// Summary state — when set, swap the body for the post-run summary screen.
     /// Keeps everything in one struct so the user can dismiss back to the
@@ -309,6 +314,16 @@ struct LiveCardioWatchView: View {
                         )
                     }
                     .padding(.horizontal, 8)
+
+                    // Live route map — draws the path on the wrist as it's
+                    // tracked. Non-interactive so it never fights the ScrollView.
+                    CardioRouteMap(
+                        coordinates: workoutSession.routeLocations.map { $0.coordinate },
+                        color: activity.color
+                    )
+                    .frame(height: 118)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 8)
                 }
 
                 // Pause / End controls
@@ -347,6 +362,8 @@ struct LiveCardioWatchView: View {
         .background(Color.black)
         .onAppear {
             workoutSession.startCardioSession(activityType: activity.id)
+            // Open the live mirror on the iPhone so the run shows up there too.
+            session.startWatchCardioMirror(activityType: activity.id)
             startTicker()
         }
         .onDisappear {
@@ -377,12 +394,42 @@ struct LiveCardioWatchView: View {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             if !paused { elapsed += 1 }
+            // Stream stats to the iPhone mirror ~every 2s (also while paused,
+            // so the phone reflects the paused state).
+            if elapsed % 2 == 0 { sendMirrorUpdate() }
         }
+    }
+
+    /// Push the latest stats + any newly-captured route points to the phone
+    /// mirror. Incremental — only fixes beyond `lastSentRouteCount` are sent.
+    private func sendMirrorUpdate() {
+        let all = workoutSession.routeLocations
+        var tail: [[String: Any]] = []
+        if lastSentRouteCount < all.count {
+            tail = all[lastSentRouteCount..<all.count].map { loc in
+                [
+                    "lat": loc.coordinate.latitude,
+                    "lng": loc.coordinate.longitude,
+                    "t": Int(loc.timestamp.timeIntervalSince1970 * 1000),
+                ]
+            }
+            lastSentRouteCount = all.count
+        }
+        session.updateWatchCardioMirror(
+            elapsed: elapsed,
+            distanceMeters: workoutSession.distanceMeters,
+            heartRate: Int(workoutSession.currentHeartRate),
+            calories: workoutSession.caloriesBurned,
+            paused: paused,
+            routeTail: tail
+        )
     }
 
     private func endAndSave() {
         timer?.invalidate()
         timer = nil
+        // Snapshot the route for the summary map before tearing down the session.
+        let coords = workoutSession.routeLocations.map { $0.coordinate }
         let s = workoutSession.stopCardioSession()
         WKInterfaceDevice.current().play(.success)
         session.saveWatchCardio(
@@ -390,14 +437,16 @@ struct LiveCardioWatchView: View {
             durationSeconds: s.durationSeconds,
             averageHeartRate: s.avgHR,
             caloriesBurned: s.calories,
-            distanceKm: s.distanceKm
+            distanceKm: s.distanceKm,
+            route: s.route
         )
         // Show the summary screen instead of dismissing immediately.
         summary = WatchCardioSummary(
             durationSeconds: s.durationSeconds,
             avgHR: s.avgHR,
             calories: s.calories,
-            distanceKm: s.distanceKm
+            distanceKm: s.distanceKm,
+            routeCoordinates: coords
         )
     }
 
@@ -423,6 +472,8 @@ struct WatchCardioSummary {
     let avgHR: Int
     let calories: Int
     let distanceKm: Double?
+    /// Captured GPS route for the summary map (empty for indoor activities).
+    var routeCoordinates: [CLLocationCoordinate2D] = []
 }
 
 struct WatchCardioSummaryView: View {
@@ -450,6 +501,14 @@ struct WatchCardioSummaryView: View {
                 Text(session.tr(activity.labelKeyEN, activity.labelKeyES))
                     .font(.system(.subheadline, design: .rounded).weight(.heavy))
                     .foregroundColor(.white)
+
+                // Route map of the run that was just finished (outdoor only).
+                if summary.routeCoordinates.count >= 2 {
+                    CardioRouteMap(coordinates: summary.routeCoordinates, color: activity.color)
+                        .frame(height: 110)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 8)
+                }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                     summaryTile(value: formatTime(summary.durationSeconds),
@@ -574,5 +633,50 @@ struct FreeLiftExercisePickerView: View {
         }
         .background(Color.black)
         .navigationTitle(session.tr("Free lift", "Libre"))
+    }
+}
+
+// MARK: - Cardio route map (shared by live + summary)
+//
+// Non-interactive MapKit map that draws the captured GPS route as a polyline
+// with a dot on the latest fix. `.constant(.automatic)` keeps the camera
+// framed to the route — so the live map follows the run as it grows and the
+// summary map fits the whole path. Falls back to a "GPS…" placeholder until
+// the first fix arrives.
+
+private struct CardioRouteMap: View {
+    let coordinates: [CLLocationCoordinate2D]
+    let color: Color
+
+    var body: some View {
+        Map(position: .constant(.automatic), interactionModes: []) {
+            if coordinates.count >= 2 {
+                MapPolyline(coordinates: coordinates)
+                    .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            }
+            if let last = coordinates.last {
+                Annotation("", coordinate: last) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 12, height: 12)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                }
+            }
+        }
+        .overlay {
+            if coordinates.isEmpty {
+                ZStack {
+                    Color.black.opacity(0.45)
+                    VStack(spacing: 3) {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(color)
+                        Text("GPS…")
+                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+        }
     }
 }
