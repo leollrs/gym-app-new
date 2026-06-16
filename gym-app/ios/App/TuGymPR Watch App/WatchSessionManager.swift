@@ -2,6 +2,7 @@ import Foundation
 import WatchConnectivity
 import Combine
 import WidgetKit
+import SwiftUI
 
 class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = WatchSessionManager()
@@ -17,6 +18,14 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var isResting = false
     @Published var elapsedSeconds = 0
     @Published var exerciseCategory = ""
+
+    // MARK: - Live cardio state
+    // Hoisted to the ContentView root (like isWorkoutActive) so the live
+    // cardio screen survives leaving + re-entering the app, instead of being
+    // a transient NavigationLink push that's lost on exit (and that orphaned
+    // the HKWorkoutSession on swipe-back). Set when the user picks an activity
+    // in CardioPickerView; cleared when they finish.
+    @Published var activeCardio: CardioActivity? = nil
 
     // MARK: - Workout ended
     @Published var workoutJustEnded = false

@@ -253,7 +253,7 @@ export default function ShareTplCardio({
                 : <StatRow s={s} light={light} label="CAL" value={`${calories}`} />}
             </div>
             <div style={{ fontSize: 10 * s, fontWeight: 700, color: subFg, letterSpacing: 1.4 * s, marginTop: 10 * s, textTransform: 'uppercase', flexShrink: 0 }}>
-              {gymName || 'TuGymPR'}
+              {showGym ? (gymName || 'TuGymPR') : 'TuGymPR'}
             </div>
           </div>
         </div>
@@ -364,7 +364,7 @@ export default function ShareTplCardio({
             flexShrink: 0,
           }}
         >
-          {gymName || 'TuGymPR'}
+          {showGym ? (gymName || 'TuGymPR') : 'TuGymPR'}
         </div>
       </div>
     );
@@ -455,7 +455,7 @@ export default function ShareTplCardio({
             flexShrink: 0,
           }}
         >
-          {gymName || 'TuGymPR'}
+          {showGym ? (gymName || 'TuGymPR') : 'TuGymPR'}
         </div>
       </div>
     );
@@ -554,7 +554,7 @@ export default function ShareTplCardio({
             flexShrink: 0,
           }}
         >
-          {gymName || 'TuGymPR'}
+          {showGym ? (gymName || 'TuGymPR') : 'TuGymPR'}
         </div>
       </div>
     );
@@ -631,7 +631,7 @@ export default function ShareTplCardio({
           <div style={{ marginTop: 12 * s, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {showGym ? <GymLockup s={s} gymName={gymName} gymLogoUrl={gymLogoUrl} light /> : <span />}
             <div style={{ fontSize: 12 * s, fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: 1.6 * s, textTransform: 'uppercase' }}>
-              {gymName || 'TuGymPR'}
+              {showGym ? (gymName || 'TuGymPR') : 'TuGymPR'}
             </div>
           </div>
         </div>

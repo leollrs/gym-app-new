@@ -1,7 +1,5 @@
 import SwiftUI
 import WatchKit
-import MapKit
-import CoreLocation
 
 struct StartWorkoutPage: View {
     @EnvironmentObject var session: WatchSessionManager
@@ -213,7 +211,10 @@ struct CardioPickerView: View {
             VStack(spacing: 5) {
                 WatchStatusBar(title: session.tr("CARDIO", "CARDIO"), color: DS.streakOrange)
                 ForEach(activities) { a in
-                    NavigationLink(destination: LiveCardioWatchView(activity: a)) {
+                    Button {
+                        session.activeCardio = a
+                        WKInterfaceDevice.current().play(.click)
+                    } label: {
                         HStack(spacing: 8) {
                             Image(systemName: a.icon)
                                 .font(.system(size: 13, weight: .bold))
@@ -251,7 +252,6 @@ struct LiveCardioWatchView: View {
 
     @EnvironmentObject var session: WatchSessionManager
     @StateObject private var workoutSession = WorkoutSessionManager()
-    @Environment(\.dismiss) private var dismiss
 
     @State private var elapsed: Int = 0
     @State private var timer: Timer?
@@ -268,7 +268,7 @@ struct LiveCardioWatchView: View {
     var body: some View {
         if let summary {
             WatchCardioSummaryView(summary: summary, activity: activity) {
-                dismiss()
+                session.activeCardio = nil
             }
         } else {
             liveBody
@@ -313,16 +313,6 @@ struct LiveCardioWatchView: View {
                             color: DS.amber
                         )
                     }
-                    .padding(.horizontal, 8)
-
-                    // Live route map — draws the path on the wrist as it's
-                    // tracked. Non-interactive so it never fights the ScrollView.
-                    CardioRouteMap(
-                        coordinates: workoutSession.routeLocations.map { $0.coordinate },
-                        color: activity.color
-                    )
-                    .frame(height: 118)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.horizontal, 8)
                 }
 
@@ -428,8 +418,6 @@ struct LiveCardioWatchView: View {
     private func endAndSave() {
         timer?.invalidate()
         timer = nil
-        // Snapshot the route for the summary map before tearing down the session.
-        let coords = workoutSession.routeLocations.map { $0.coordinate }
         let s = workoutSession.stopCardioSession()
         WKInterfaceDevice.current().play(.success)
         session.saveWatchCardio(
@@ -445,8 +433,7 @@ struct LiveCardioWatchView: View {
             durationSeconds: s.durationSeconds,
             avgHR: s.avgHR,
             calories: s.calories,
-            distanceKm: s.distanceKm,
-            routeCoordinates: coords
+            distanceKm: s.distanceKm
         )
     }
 
@@ -472,8 +459,6 @@ struct WatchCardioSummary {
     let avgHR: Int
     let calories: Int
     let distanceKm: Double?
-    /// Captured GPS route for the summary map (empty for indoor activities).
-    var routeCoordinates: [CLLocationCoordinate2D] = []
 }
 
 struct WatchCardioSummaryView: View {
@@ -501,14 +486,6 @@ struct WatchCardioSummaryView: View {
                 Text(session.tr(activity.labelKeyEN, activity.labelKeyES))
                     .font(.system(.subheadline, design: .rounded).weight(.heavy))
                     .foregroundColor(.white)
-
-                // Route map of the run that was just finished (outdoor only).
-                if summary.routeCoordinates.count >= 2 {
-                    CardioRouteMap(coordinates: summary.routeCoordinates, color: activity.color)
-                        .frame(height: 110)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .padding(.horizontal, 8)
-                }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                     summaryTile(value: formatTime(summary.durationSeconds),
@@ -636,47 +613,11 @@ struct FreeLiftExercisePickerView: View {
     }
 }
 
-// MARK: - Cardio route map (shared by live + summary)
+// MARK: - Cardio route map
 //
-// Non-interactive MapKit map that draws the captured GPS route as a polyline
-// with a dot on the latest fix. `.constant(.automatic)` keeps the camera
-// framed to the route — so the live map follows the run as it grows and the
-// summary map fits the whole path. Falls back to a "GPS…" placeholder until
-// the first fix arrives.
-
-private struct CardioRouteMap: View {
-    let coordinates: [CLLocationCoordinate2D]
-    let color: Color
-
-    var body: some View {
-        Map(position: .constant(.automatic), interactionModes: []) {
-            if coordinates.count >= 2 {
-                MapPolyline(coordinates: coordinates)
-                    .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-            }
-            if let last = coordinates.last {
-                Annotation("", coordinate: last) {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 12, height: 12)
-                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                }
-            }
-        }
-        .overlay {
-            if coordinates.isEmpty {
-                ZStack {
-                    Color.black.opacity(0.45)
-                    VStack(spacing: 3) {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(color)
-                        Text("GPS…")
-                            .font(.system(size: 10, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white)
-                    }
-                }
-            }
-        }
-    }
-}
+// The route is no longer drawn on the wrist — a live, continuously
+// re-rendered MapKit `Map` under an active HKWorkoutSession is a watchOS
+// memory (jetsam) hazard that was crashing the app mid-run. The full GPS
+// route is still captured, streamed to the iPhone mirror (/cardio-watch),
+// and saved to cardio_sessions.route, so the map is shown on the phone and
+// in the saved session detail instead.

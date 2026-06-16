@@ -171,8 +171,16 @@ function normalizeCardioData(raw) {
 
 export default function ShareCardioSheet({ open, onClose, data: rawData, accent = '#2EC4C4' }) {
   const { t } = useTranslation('pages');
-  const { user, profile } = useAuth();
-  const data = React.useMemo(() => normalizeCardioData(rawData), [rawData]);
+  const { user, profile, gymLogoUrl: authGymLogoUrl } = useAuth();
+  const data = React.useMemo(() => {
+    const d = normalizeCardioData(rawData);
+    if (!d) return null;
+    // Callers historically passed only gymName — fall back to the signed gym
+    // logo + name from auth so the logo always renders next to the gym name.
+    if (!d.gymLogoUrl && authGymLogoUrl) d.gymLogoUrl = authGymLogoUrl;
+    if (!d.gymName && profile?.gym_name) d.gymName = profile.gym_name;
+    return d;
+  }, [rawData, authGymLogoUrl, profile?.gym_name]);
   const [variant, setVariant] = useState('editorial');
   const [format, setFormat] = useState('story');
   const [showGym, setShowGym] = useState(true);

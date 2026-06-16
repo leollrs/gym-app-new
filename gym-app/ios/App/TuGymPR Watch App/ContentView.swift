@@ -43,6 +43,11 @@ struct ContentView: View {
                 .onAppear {
                     workoutSession.startSession()
                 }
+            } else if let cardio = session.activeCardio {
+                // Live cardio is hoisted to the root so it survives leaving and
+                // re-entering the app (the HKWorkoutSession keeps the watch app
+                // alive in the background). End / Done clears session.activeCardio.
+                LiveCardioWatchView(activity: cardio)
             } else {
                 NavigationStack {
                     TabView {
