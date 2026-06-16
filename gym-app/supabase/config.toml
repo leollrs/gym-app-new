@@ -399,6 +399,14 @@ s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
 
+# ── Public health probe ──────────────────────────────────────────────────────
+# health-check returns only { ok, db, time } and is pinged by external uptime
+# monitors with NO auth header, so JWT verification MUST be off — otherwise the
+# Supabase gateway 401s the probe before the function runs. Apply on deploy:
+#   supabase functions deploy health-check --no-verify-jwt
+[functions.health-check]
+verify_jwt = false
+
 # [experimental.pgdelta]
 # When enabled, pg-delta becomes the active engine for supported schema flows.
 # enabled = false

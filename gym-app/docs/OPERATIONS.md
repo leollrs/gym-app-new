@@ -146,7 +146,8 @@ crashes later.
 ## Deploy checklist for this change
 
 - [ ] `supabase functions deploy check-error-alerts`
-- [ ] `supabase functions deploy health-check` (redeploy — now does a DB probe)
+- [ ] `supabase functions deploy health-check --no-verify-jwt` (redeploy — now does a DB probe; MUST be public or external monitors get 401'd)
+- [ ] Verify public: `curl -s https://erdhnixjnjullhjzmvpm.supabase.co/functions/v1/health-check` → expect `{"ok":true,"db":"up",...}` (not a 401)
 - [ ] Apply migration `0600_error_alert_cron.sql`
 - [ ] Confirm `RESEND_API_KEY` is set; optionally set `OPS_ALERT_RECIPIENT`
 - [ ] Smoke-test `check-error-alerts` (curl above) — expect `reason: below_threshold`
