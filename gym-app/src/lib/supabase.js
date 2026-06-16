@@ -152,25 +152,56 @@ export async function ensureFreshSession() {
     session = data?.session ?? null;
   } catch { /* treat as no session below */ }
 
-  if (!session) {
-    const e = new Error('SESSION_EXPIRED');
-    e.code = 'SESSION_EXPIRED';
-    throw e;
-  }
-
-  // Refresh if the access token expires within the next 60s so the edge
-  // function never sees a token that lapses mid-flight.
-  const expMs = (session.expires_at || 0) * 1000;
-  if (expMs && expMs - Date.now() < 60_000) {
+  // Refresh when there's no in-memory session OR the access token expires within
+  // the next 60s, so the edge function never sees a missing/lapsing token. A
+  // transiently-null getSession() (async native storage read, or an already-
+  // expired access token) is usually salvageable via the still-valid refresh
+  // token — so we attempt refreshSession() before giving up rather than throwing
+  // immediately. Only a truly dead session (no refresh token) surfaces as
+  // SESSION_EXPIRED.
+  const expMs = (session?.expires_at || 0) * 1000;
+  const needsRefresh = !session || (expMs && expMs - Date.now() < 60_000);
+  if (needsRefresh) {
     try {
       const { data, error } = await supabase.auth.refreshSession();
       if (error || !data?.session) throw error || new Error('refresh failed');
+      session = data.session;
     } catch {
       const e = new Error('SESSION_EXPIRED');
       e.code = 'SESSION_EXPIRED';
       throw e;
     }
   }
+
+  return session;
+}
+
+// Build an `Authorization` header carrying a guaranteed-fresh access token, for
+// edge functions deployed with verify_jwt=on (e.g. send-admin-email, send-sms).
+// The Supabase gateway rejects a header-less request with an opaque
+// `UNAUTHORIZED_NO_AUTH_HEADER` 401 *before* the function runs, so callers must
+// never fall back to an empty `{}` header set. Throws SESSION_EXPIRED (see
+// isSessionError) when there is no usable session, so the caller can prompt a
+// re-login instead of firing a request the gateway will bounce.
+export async function authHeader() {
+  const session = await ensureFreshSession();
+  return { Authorization: `Bearer ${session.access_token}` };
+}
+
+// supabase.functions.invoke throws a FunctionsHttpError on a non-2xx response
+// but does not read the body — `.context` is the raw Response. Pull the edge
+// function's `{ error }` / `{ message }` out of it so call sites can show the
+// real reason (e.g. "testMode can only send to your own email address") instead
+// of a generic failure. Returns null when there's no readable JSON body.
+export async function readFunctionError(err) {
+  try {
+    const ctx = err?.context;
+    if (ctx && typeof ctx.json === 'function') {
+      const body = await ctx.json();
+      return body?.error || body?.message || null;
+    }
+  } catch { /* body absent, already consumed, or not JSON */ }
+  return null;
 }
 
 // True when an error is an auth/session failure — either our typed

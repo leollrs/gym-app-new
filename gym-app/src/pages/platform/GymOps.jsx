@@ -8,7 +8,6 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { saveBlob } from '../../lib/saveBlob';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -32,13 +31,15 @@ import FadeIn from '../../components/platform/FadeIn';
 export default function GymOps() {
   const { gymId } = useParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
   const [scheduleDays, setScheduleDays] = useState(90);
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [scheduleConfirmSlug, setScheduleConfirmSlug] = useState('');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
 
   // ── Gym row ───────────────────────────────────────────────────
   const { data: gym, isLoading: gymLoading } = useQuery({
@@ -126,6 +127,8 @@ export default function GymOps() {
       return data;
     },
     onSuccess: (data) => {
+      setShowScheduleModal(false);
+      setScheduleConfirmSlug('');
       logAdminAction('super_admin_schedule_deletion', 'gym', gymId, {
         scheduled_at: data.scheduled_deletion_at,
         days_grace: data.days_grace,
@@ -147,12 +150,13 @@ export default function GymOps() {
       return data;
     },
     onSuccess: () => {
+      setCancelError(null);
       logAdminAction('super_admin_cancel_deletion', 'gym', gymId);
       showToast('Deletion cancelled — gym restored to active', 'success');
       queryClient.invalidateQueries({ queryKey: ['platform-gym-ops', gymId] });
       queryClient.invalidateQueries({ queryKey: ['platform-gym-lifecycle-events', gymId] });
     },
-    onError: (err) => showToast(`Cancel failed: ${err.message}`, 'error'),
+    onError: (err) => { setCancelError(err.message); showToast(`Cancel failed: ${err.message}`, 'error'); },
   });
 
   // ── Hard delete now ──────────────────────────────────────────
@@ -242,6 +246,11 @@ export default function GymOps() {
                 <RotateCcw size={13} />
                 {cancelMutation.isPending ? 'Cancelling…' : 'Cancel deletion / restore'}
               </button>
+              {cancelError && (
+                <p className="mt-2 text-[11px] text-red-400 leading-relaxed">
+                  Couldn't cancel: {cancelError}. The gym may have already been purged by the scheduled sweep — refresh to see its current state.
+                </p>
+              )}
             </div>
           </div>
         </FadeIn>
@@ -254,7 +263,7 @@ export default function GymOps() {
           <OpsCard
             icon={Download}
             title="Export gym data"
-            sub="Download a single JSON file with every gym-scoped table (profiles, sessions, check-ins, PRs, body metrics, invites, challenges)."
+            sub="Download a single JSON file with every gym-scoped table (profiles, sessions, check-ins, PRs, body metrics, invites, challenges). Note: storage objects (progress photos, exercise videos) are NOT included — download those separately before a hard delete."
             actionLabel={exportMutation.isPending ? 'Exporting…' : 'Export now'}
             actionLoading={exportMutation.isPending}
             actionIcon={Download}
@@ -272,7 +281,7 @@ export default function GymOps() {
               actionLoading={scheduleMutation.isPending}
               actionIcon={Clock}
               actionTone="warning"
-              onClick={() => scheduleMutation.mutate()}
+              onClick={() => setShowScheduleModal(true)}
               extra={
                 <div className="flex items-center gap-2 mt-2">
                   <label htmlFor="grace-days" className="text-[11px] text-[#9CA3AF]">Grace days:</label>
@@ -390,6 +399,18 @@ export default function GymOps() {
           onConfirm={() => deleteNowMutation.mutate()}
         />
       )}
+
+      {showScheduleModal && (
+        <ScheduleConfirmModal
+          gym={gym}
+          scheduleDays={scheduleDays}
+          confirmSlug={scheduleConfirmSlug}
+          onChangeConfirmSlug={setScheduleConfirmSlug}
+          isPending={scheduleMutation.isPending}
+          onCancel={() => { setShowScheduleModal(false); setScheduleConfirmSlug(''); }}
+          onConfirm={() => scheduleMutation.mutate()}
+        />
+      )}
     </div>
   );
 }
@@ -496,6 +517,66 @@ function DeleteConfirmModal({ gym, confirmSlug, onChangeConfirmSlug, isPending, 
           >
             {isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
             {isPending ? 'Deleting…' : 'Delete forever'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleConfirmModal({ gym, scheduleDays, confirmSlug, onChangeConfirmSlug, isPending, onCancel, onConfirm }) {
+  const slugMatches = confirmSlug === gym.slug;
+  const purgeDate = new Date(Date.now() + scheduleDays * 86400000);
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)' }}>
+      <div className="max-w-md w-full rounded-2xl p-6 bg-[#0F172A] border border-amber-500/30">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-500/15">
+            <Clock size={18} className="text-amber-400" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[15px] font-bold text-white">Schedule deletion of <span className="font-mono">{gym.slug}</span>?</p>
+            <p className="text-[12.5px] mt-1 leading-relaxed text-[#9CA3AF]">
+              <span className="text-amber-400 font-semibold">Every member loses access immediately.</span>{' '}
+              Data is preserved for restore until{' '}
+              <span className="font-semibold text-[#E5E7EB]">{format(purgeDate, 'PPP')}</span>{' '}
+              ({scheduleDays} {scheduleDays === 1 ? 'day' : 'days'}), then a daily automated sweep permanently deletes the gym.
+              Reversible until then via “Cancel deletion / restore”.
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label htmlFor="schedule-slug-confirm" className="block text-[11px] uppercase tracking-wider text-[#6B7280] mb-1.5">
+            Type <code className="font-mono text-[#E5E7EB]">{gym.slug}</code> to confirm
+          </label>
+          <input
+            id="schedule-slug-confirm"
+            type="text"
+            value={confirmSlug}
+            onChange={(e) => onChangeConfirmSlug(e.target.value)}
+            placeholder={gym.slug}
+            className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-[13px] font-mono text-white focus:border-amber-500/40 focus:outline-none"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={isPending}
+            className="px-4 py-2 rounded-xl text-[12.5px] font-semibold bg-white/5 text-[#9CA3AF] hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!slugMatches || isPending}
+            style={{ background: '#f59e0b', color: '#000' }}
+            className="px-4 py-2 rounded-xl text-[12.5px] font-bold inline-flex items-center gap-2 disabled:opacity-30"
+          >
+            {isPending ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+            {isPending ? 'Scheduling…' : 'Schedule deletion'}
           </button>
         </div>
       </div>

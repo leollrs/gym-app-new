@@ -2,6 +2,7 @@ import { useState, useEffect, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Flame, Clock, Dumbbell, ChevronRight, RefreshCw, Sparkles, Zap, Play } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { generateGymWOD } from '../lib/wodGenerator';
@@ -258,6 +259,7 @@ function GymWOD() {
 
       if (existing?.id) {
         // Reuse existing routine
+        try { posthogClient?.capture('wod_started', { reused: true }); } catch { /* noop */ }
         navigate(`/session/${existing.id}`);
         return;
       }
@@ -291,6 +293,7 @@ function GymWOD() {
 
       if (exErr) throw exErr;
 
+      try { posthogClient?.capture('wod_started', { reused: false }); } catch { /* noop */ }
       navigate(`/session/${routine.id}`);
     } catch (err) {
       // Never render raw error messages to members — log for diagnosis.

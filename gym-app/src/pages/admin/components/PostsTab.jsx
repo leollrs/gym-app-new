@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -51,6 +52,7 @@ export default function PostsTab({ gymId }) {
     queryClient.setQueryData([...adminKeys.moderation(gymId), 'posts'], (old) =>
       (old || []).map(p => p.id === post.id ? { ...p, is_deleted: !p.is_deleted } : p)
     );
+    posthogClient?.capture('admin_content_moderated', { action: nextDeleted ? 'delete' : 'restore', type: 'post' });
     setActing(null);
   };
 
@@ -101,14 +103,22 @@ export default function PostsTab({ gymId }) {
                 <div key={row.id} style={{ borderTop: i > 0 ? `1px solid ${TK.divider}` : 'none' }}>
                   <div
                     onClick={() => setExpandedRow(isExpanded ? null : row.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 22px', cursor: 'pointer' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer' }}
                   >
-                    <TypeBadge tone={vis.tone} icon={vis.icon} label={label} />
-                    {row.is_deleted && <TypeBadge tone="hot" label={t('admin.moderation.deleted', { defaultValue: 'Deleted' })} />}
                     <Av name={name} sm />
-                    <span style={{ flex: 1, minWidth: 0, fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-                    <span style={{ fontFamily: FK.mono, fontSize: 12.5, color: TK.textFaint, whiteSpace: 'nowrap' }}>{relativeTime(row.created_at, dateFnsOpts)}</span>
-                    <span style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    {/* Flexible middle column — shrinks/wraps so the chevron + trash
+                        button on the right are NEVER pushed off-screen on mobile. */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <span style={{ flex: 1, minWidth: 0, fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                        <span style={{ flexShrink: 0, fontFamily: FK.mono, fontSize: 12, color: TK.textFaint, whiteSpace: 'nowrap' }}>{relativeTime(row.created_at, dateFnsOpts)}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                        <TypeBadge tone={vis.tone} icon={vis.icon} label={label} />
+                        {row.is_deleted && <TypeBadge tone="hot" label={t('admin.moderation.deleted', { defaultValue: 'Deleted' })} />}
+                      </div>
+                    </div>
+                    <span style={{ width: 26, height: 26, borderRadius: 8, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       <Ico ch={MIC.chevR} size={16} color={TK.textFaint} stroke={2.2} style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
                     </span>
                     <span onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
@@ -123,7 +133,7 @@ export default function PostsTab({ gymId }) {
                     </span>
                   </div>
                   {isExpanded && (
-                    <div style={{ padding: '0 22px 14px 78px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ padding: '0 16px 14px 58px', display: 'flex', flexDirection: 'column', gap: 5 }}>
                       <span style={{ fontFamily: FK.mono, fontSize: 11.5, color: TK.textFaint }}>@{profile?.username ?? '—'}</span>
                       {preview && <span style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute }}>{preview}</span>}
                       <span style={{ fontFamily: FK.body, fontSize: 12, color: TK.textFaint }}>

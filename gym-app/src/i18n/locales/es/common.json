@@ -482,5 +482,9 @@
   "inviteForNewAccounts": "Los códigos de invitación son para cuentas nuevas",
   "referralForNewSignups": "Los códigos de referido son para nuevos registros",
   "previous": "Anterior",
-  "next": "Siguiente"
+  "next": "Siguiente",
+  "impersonation": {
+    "banner": "Viendo {{gym}} como admin (super-admin) — algunas ediciones pueden estar restringidas",
+    "exit": "Salir"
+  }
 }

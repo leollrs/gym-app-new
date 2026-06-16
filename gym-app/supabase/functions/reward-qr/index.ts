@@ -3,7 +3,6 @@ import QRCode from 'https://esm.sh/qrcode@1.5.4';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const QR_SIGNING_SECRET = Deno.env.get('QR_SIGNING_SECRET');
 
 // CORS — mirrors the pattern used by analyze-body-photo / send-push.
@@ -56,11 +55,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  const { data: userData, error: userErr } = await createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).auth.getUser(token);
   if (userErr || !userData?.user) {
     return new Response(renderError('Invalid or expired session'), {
       status: 401,

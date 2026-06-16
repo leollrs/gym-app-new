@@ -759,7 +759,7 @@ export default function CardsToPrintPanel({ gymId }) {
             <p className="text-[11.5px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>
               {tab === 'delivered'
                 ? t('admin.printCards.emptyDeliveredHint', 'Cards you hand to members show up here as a retention archive.')
-                : t('admin.printCards.emptyHint', 'The daily cron generates cards for milestones and returning members.')}
+                : t('admin.printCards.emptyHint', 'New cards are created automatically each day for milestones and returning members.')}
             </p>
           </div>
         ) : (

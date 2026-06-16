@@ -72,7 +72,7 @@ function SlotCard({ slot, onEditClass, onDeleteSlot, t }) {
       <span className="inline-flex items-center gap-1.5 flex-shrink-0" style={{ fontFamily: MONO_FONT, fontSize: 13, color: 'var(--color-admin-text-muted)' }}>
         <Users size={14} strokeWidth={2} /> {slot.class.max_capacity}
       </span>
-      <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-1.5 flex-shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         <button onClick={() => onEditClass(slot.class)} aria-label={t('admin.classes.editClass', 'Edit class')}
           className="grid place-items-center hover:bg-[var(--color-bg-hover)] transition-colors"
           style={{ width: 30, height: 30, borderRadius: 9, border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-muted)' }}>

@@ -158,7 +158,7 @@ export default function RetentionEffectivenessPanel({ gymId }) {
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {data.lifecycle_by_step.map((row) => (
-                <HBarRow key={row.step_key} label={row.step_key.replace('_', ' ')} value={row.sent} denominator={max} color={TK.accent} />
+                <HBarRow key={row.step_key} label={row.step_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} value={row.sent} denominator={max} color={TK.accent} />
               ))}
             </div>
           );

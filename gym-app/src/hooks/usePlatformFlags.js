@@ -27,7 +27,12 @@ export function usePlatformFlags() {
     queryKey: ['platform-flags'],
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.rpc('get_platform_flags');
+        // Per-gym effective flags (0586) = global master kill AND the caller
+        // gym's entitlement override. Fall back to the global-only RPC if the
+        // merged one isn't deployed yet (e.g. OTA bundle ahead of the migration).
+        let resp = await supabase.rpc('get_effective_feature_flags');
+        if (resp.error) resp = await supabase.rpc('get_platform_flags');
+        const { data, error } = resp;
         if (error || !data || typeof data !== 'object') return ALL_ENABLED;
         // Only an explicit false disables; unknown/missing keys stay enabled.
         const flags = { ...ALL_ENABLED };

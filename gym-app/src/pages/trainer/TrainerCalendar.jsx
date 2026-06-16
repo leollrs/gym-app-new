@@ -354,6 +354,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     } else {
       showToast(isEdit ? t('pages:trainerCalendar.sessionUpdated') : t('pages:trainerCalendar.sessionScheduled'), 'success');
       if (!isEdit) posthog?.capture('trainer_session_created', { recurring: false });
+      else posthog?.capture('trainer_session_status_changed', { status });
     }
     onSaved();
   };

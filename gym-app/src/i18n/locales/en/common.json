@@ -482,5 +482,9 @@
   "inviteForNewAccounts": "Invite codes are for new accounts",
   "referralForNewSignups": "Referral codes are for new signups",
   "previous": "Previous",
-  "next": "Next"
+  "next": "Next",
+  "impersonation": {
+    "banner": "Viewing {{gym}} as admin (super-admin) — some edits may be restricted",
+    "exit": "Exit"
+  }
 }

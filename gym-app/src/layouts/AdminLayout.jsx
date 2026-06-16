@@ -2,7 +2,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
-  BarChart3, Megaphone, Settings, LogOut, ChevronRight,
+  BarChart3, Megaphone, Settings, LogOut, ChevronRight, Eye,
   TrendingUp, ShieldAlert, AlertTriangle, UserCheck, MoreHorizontal, X, MessageSquare, ShoppingBag, CalendarDays, DollarSign, ClipboardList, Download, Filter, Gift, MessageCircle, Palette, FlaskConical, Award, Wrench, UserCog, Bell, Send, Printer, Tv,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -121,7 +121,7 @@ const linkClass = (active) =>
   }`;
 
 export default function AdminLayout({ children }) {
-  const { profile, gymName, gymLogoUrl, signOut, gymConfig, availableRoles, unreadAdminNotifs } = useAuth();
+  const { profile, gymName, gymLogoUrl, signOut, gymConfig, availableRoles, unreadAdminNotifs, isImpersonating, impersonatedGymName, impersonatedGymId, stopImpersonating } = useAuth();
   const { t } = useTranslation('common');
   const navigate = useNavigate();
   const location = useLocation();
@@ -304,6 +304,18 @@ export default function AdminLayout({ children }) {
   return (
     <ScanClaimProvider>
     <InsightsRangeProvider>
+    {isImpersonating && (
+      <div className="w-full px-4 py-2 flex items-center justify-center gap-3 text-[12px] font-semibold sticky top-0 z-[120]" style={{ background: '#D4AF37', color: '#000' }}>
+        <Eye className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="text-center">{t('impersonation.banner', { gym: impersonatedGymName, defaultValue: 'Viewing {{gym}} as admin (super-admin) — some edits may be restricted' })}</span>
+        <button
+          onClick={() => { const gid = impersonatedGymId; stopImpersonating(); navigate(gid ? `/platform/gym/${gid}` : '/platform/attention'); }}
+          className="ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-black/15 hover:bg-black/25 transition-colors flex-shrink-0"
+        >
+          <X className="w-3 h-3" />{t('impersonation.exit', 'Exit')}
+        </button>
+      </div>
+    )}
     <div className="min-h-screen admin-shell flex">
       {/* Admin onboarding wizard for first-time gym setup */}
       {showOnboardingWizard && (

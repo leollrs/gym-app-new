@@ -3258,6 +3258,7 @@
       "pulseSparkCaption": "Check-ins por día · últimos 14 días",
       "pulseSparkWorkoutsCaption": "Entrenamientos por día · 14 días (esta semana resaltada)",
       "pulseSparkTooltip": "{{date}}: {{count}} check-ins",
+      "pulseSparkUnit": "registros",
       "dowNarrow": "D,L,M,X,J,V,S",
       "glanceActiveRate": "Tasa de actividad",
       "activeOfTotal": "{{active}} de {{total}} entrenaron esta semana",
@@ -3517,6 +3518,13 @@
       "segmentChurned": "perdido"
     },
     "scan": {
+      "cardsToDeliverTitle": "Entregar tarjeta",
+      "cardsToDeliverTitle_plural": "Entregar tarjetas",
+      "cardsPendingTitle": "Tarjeta por imprimir",
+      "cardsPendingTitle_plural": "Tarjetas por imprimir",
+      "cardsPendingHint": "Aún sin imprimir — toca para abrir la página de Tarjetas e imprimirla.",
+      "cardDeliver": "Entregada",
+      "cardDismissLater": "Cerrar (entregar después)",
       "memberNotFound": "Miembro no encontrado",
       "alreadyCheckedIn": "{{name}} ya hizo check-in hoy",
       "checkinFailed": "Error al registrar check-in",
@@ -3684,6 +3692,7 @@
       "verified": "Verificado",
       "change": "Cambiar",
       "cancel": "Cancelar",
+      "currentPassword": "Contraseña actual",
       "newPassword": "Nueva contraseña",
       "confirmPassword": "Confirmar contraseña",
       "updatePassword": "Actualizar Contraseña",
@@ -3942,7 +3951,7 @@
       "subtitleDirectory": "{{total}} miembros totales",
       "filterActive": "Activos",
       "filterFrozen": "Congelados",
-      "filterUnonboarded": "Sin onboarding",
+      "filterUnonboarded": "Sin registrarse",
       "churnMovedHint": "El flujo de miembros en riesgo se movió a Inteligencia de Churn.",
       "openChurn": "Abrir Inteligencia de Churn"
     },
@@ -4187,6 +4196,18 @@
     "classes": {
       "title": "Clases",
       "subtitle": "Gestiona las clases y horarios del gimnasio",
+      "roleAdmin": "Admin",
+      "roleTrainer": "Entrenador",
+      "slot": "horario",
+      "noSchedules": "Esta clase no tiene horarios configurados.",
+      "noSlotsThatDay": "Esta clase no se imparte ese día.",
+      "prevNav": "Anterior",
+      "nextNav": "Siguiente",
+      "confirmCancel": "¿Cancelar la reserva de {{name}}?",
+      "cancelFailed": "No se pudo cancelar la reserva",
+      "cancelled": "Reserva cancelada",
+      "waitlistPill": "Lista",
+      "cancelAttendee": "Cancelar reserva",
       "addClass": "Agregar Clase",
       "routines": "Rutinas",
       "routinesTitle": "Rutinas de Clase",
@@ -4491,7 +4512,8 @@
           "class_pass": "Pase de clase gratis",
           "free_days": "Días gratis",
           "custom": "Personalizada"
-        }
+        },
+        "createError": "No se pudo crear la campaña. Inténtalo de nuevo."
       },
       "messageFromGym": "Mensaje de tu gimnasio",
       "signal": "Señal",
@@ -4557,6 +4579,17 @@
       "contactMethods": "Métodos de Contacto",
       "contactMessage": "Mensaje",
       "contactManual": "Marcado como contactado",
+      "contactWhatsapp": "WhatsApp",
+      "composeWhatsapp": "Enviar por WhatsApp",
+      "whatsappTo": "Destinatario de WhatsApp",
+      "whatsappBodyPlaceholder": "Hola {{name}}, te extrañamos en el gym...",
+      "whatsappNote": "Abre WhatsApp con tu mensaje listo — se envía desde tu propio número.",
+      "openWhatsapp": "Abrir WhatsApp",
+      "whatsappOpened": "Abriendo WhatsApp…",
+      "whatsappOpenedShort": "¡Abierto!",
+      "openMessages": "Abrir Mensajes",
+      "smsOpened": "Abriendo Mensajes…",
+      "smsNativeNote": "Abre la app de Mensajes de tu teléfono — se envía desde tu propio número, sin gastar créditos SMS.",
       "pushFailed": "Mensaje enviado, pero no se pudo entregar la notificación push",
       "pushNotDelivered": "Mensaje enviado — push no entregado ({{reason}})",
       "contactInApp": "Mensaje en la app",
@@ -4726,7 +4759,27 @@
       "noRewardsConfigured": "No hay recompensas configuradas. Agrega recompensas en la página de Recompensas.",
       "noOffer": "Sin recompensa",
       "rewardAttached": "La recompensa se le regalará al miembro",
-      "rewardClaimNote": "El miembro verá un QR en su página de Recompensas para canjearlo en el gimnasio"
+      "rewardClaimNote": "El miembro verá un QR en su página de Recompensas para canjearlo en el gimnasio",
+      "contactSms": "SMS",
+      "noPhone": "Sin teléfono",
+      "composeSms": "Enviar SMS",
+      "smsTo": "Destinatario del SMS",
+      "invalidPhone": "Ingresa un número válido",
+      "smsBodyPlaceholder": "Hola {{name}}, te extrañamos en el gym...",
+      "smsOneSegment": "1 segmento",
+      "smsTwoSegments": "2 segmentos",
+      "smsUsage": "{{used}}/{{limit}} SMS este mes",
+      "sendSms": "Enviar SMS",
+      "smsSent": "¡SMS enviado!",
+      "smsSendFailed": "No se pudo enviar el SMS. Inténtalo de nuevo.",
+      "emailTo": "Destinatario del correo",
+      "emailSubject": "Asunto del correo",
+      "quickMessage": "Enviar mensaje",
+      "msgPlaceholder": "Hola {{name}}, ¡te extrañamos!",
+      "msgNote": "Aparece en la página de Mensajes del miembro + envía una notificación push",
+      "messageSent": "¡Mensaje enviado!",
+      "messageFailed": "No se pudo enviar el mensaje",
+      "contactInAppPush": "En la app + push"
     },
     "revenue": {
       "pageTitle": "Admin - Ingresos | TuGymPR",
@@ -4961,6 +5014,13 @@
         "owner_queue_item": "Elemento de cola",
         "invite": "Invitación",
         "gym_card_settings": "Ajustes de tarjeta"
+      },
+      "csv": {
+        "date": "Fecha",
+        "actor": "Miembro / Personal",
+        "action": "Acción",
+        "entity": "Elemento afectado",
+        "details": "Detalles"
       }
     },
     "settings": {
@@ -4992,6 +5052,13 @@
       "videoSaved": "Video de inicio guardado",
       "videoRemoved": "Video de inicio eliminado",
       "videoUploadFailed": "Error al subir el video",
+      "launchLogo": "Logo de Inicio",
+      "launchLogoHelp": "Opcional. Un logo transparente (sin fondo) para la animación de inicio cuando no hay video — se ve más limpio sobre el fondo oscuro que tu logo con fondo. PNG transparente, máximo 2 MB.",
+      "uploadLaunchLogo": "Subir logo de inicio",
+      "removeLaunchLogo": "Quitar",
+      "launchLogoSaved": "Logo de inicio guardado",
+      "launchLogoRemoved": "Logo de inicio eliminado",
+      "launchLogoFailed": "Error al subir el logo de inicio",
       "primaryColor": "Color Primario",
       "accentColor": "Color de Acento",
       "themeColors": "Tema y Colores",
@@ -5228,7 +5295,7 @@
       "commentMissing": "El comentario ya no existe.",
       "reportedMessage": "Mensaje reportado",
       "messagePrivate": "Mensaje directo — contenido privado (cifrado).",
-      "messageGuidance": "Los mensajes directos están cifrados de extremo a extremo y no se pueden revisar aquí. Usa el reportero y la razón a continuación para decidir si suspender al remitente o bloquearlo desde la gestión de miembros.",
+      "messageGuidance": "Los mensajes directos están cifrados en reposo y no se muestran aquí. Usa el reportero y la razón a continuación para decidir si suspender al remitente o bloquearlo desde la gestión de miembros.",
       "reportedProfile": "Perfil reportado",
       "profileGuidance": "Revisa al miembro en la página de Miembros para suspender, enviar mensaje o quitar su acceso.",
       "profileMissing": "El perfil ya no existe."
@@ -5570,11 +5637,18 @@
       "saved": "Plantilla guardada",
       "saveFailed": "No se pudo guardar la plantilla",
       "resetDone": "Restaurado al predeterminado",
-      "resetFailed": "No se pudo restaurar"
+      "resetFailed": "No se pudo restaurar",
+      "categories": {
+        "financial": "Costo",
+        "time": "Tiempo",
+        "no_results": "Sin resultados",
+        "experience": "Experiencia",
+        "other": "Otro"
+      }
     },
     "upcomingCards": {
       "title": "Próximas tarjetas",
-      "subtitle": "Tarjetas que el cron diario pondrá en cola pronto — imprime y firma con anticipación",
+      "subtitle": "Tarjetas próximas — imprímelas y fírmalas con anticipación para que estén listas en la próxima visita del miembro",
       "countBadge": "{{count}} en camino",
       "countBadge_plural": "{{count}} en camino",
       "empty": "Sin hitos ni cumpleaños en los próximos 7 días.",
@@ -5592,7 +5666,8 @@
       "toastFailed": "No se pudo poner la tarjeta en cola",
       "statusQueued": "En cola",
       "statusPrinted": "Impresa",
-      "viewBtn": "Ver"
+      "viewBtn": "Ver",
+      "rewardBtn": "Premio"
     },
     "printCards": {
       "pageTitle": "Tarjetas Impresas",
@@ -5652,7 +5727,7 @@
       "printedTimeAgo": "Impreso {{when}}",
       "emptyPending": "No hay tarjetas esperando imprimirse.",
       "emptyPrinted": "No hay tarjetas impresas esperando entrega.",
-      "emptyHint": "El cron diario genera tarjetas para hitos y miembros que regresan.",
+      "emptyHint": "Cada día se crean tarjetas nuevas automáticamente para hitos y miembros que regresan.",
       "toastPrinted": "Marcado impreso",
       "toastPrinted_plural": "Marcadas {{count}} impresas",
       "toastDelivered": "Marcado entregado",
@@ -5820,9 +5895,9 @@
       "countLabel_plural": "{{count}} miembros te necesitan",
       "whatIsThis": "¿Qué es esto?",
       "explainerTitle": "¿Qué es esto?",
-      "explainerBody": "Esta cola lista los miembros más probables de cancelar esta semana, ordenados por urgencia. Cada fila te sugiere qué decir según el patrón (no han venido, racha rota, etc.). Tu trabajo del día es escribirles — un mensaje personal, no un broadcast. Esa rutina diaria es la diferencia entre 70% y 85% retención anual.",
+      "explainerBody": "Esta cola lista los miembros más probables de cancelar esta semana, ordenados por urgencia. Cada fila te sugiere qué decir según el patrón (no han venido, racha rota, etc.). Tu trabajo del día es escribirles — un mensaje personal, no un mensaje masivo. Esa rutina diaria es la diferencia entre 70% y 85% retención anual.",
       "emptyTitle": "Bandeja vacía. Nadie te necesita ahora mismo.",
-      "emptyDesc": "El orquestador revisa cada mañana a las 5am. Las nuevas conversaciones aparecerán aquí.",
+      "emptyDesc": "Revisamos a tus miembros cada mañana a las 5am. Las nuevas conversaciones aparecerán aquí.",
       "unknownMember": "Miembro desconocido",
       "markDone": "Marcar hecho",
       "snooze24h": "Posponer 24h",
@@ -6023,14 +6098,14 @@
       "membership": "Membresía",
       "status": "Estado",
       "qrTitle": "Código QR / ID Externo",
-      "externalId": "ID Externo",
-      "externalIdSaved": "ID externo guardado",
-      "externalIdSaveFailed": "No se pudo guardar el ID externo.",
+      "externalId": "Código del sistema existente",
+      "externalIdSaved": "Código guardado",
+      "externalIdSaveFailed": "No se pudo guardar el código.",
       "externalIdDesc": "El código del sistema existente de tu gym (ej. código de teclado, número de código de barras)",
       "externalIdPlaceholder": "ej. 4821 o MBR-0042",
       "saving": "Guardando…",
       "save": "Guardar",
-      "currentQrPayload": "Payload QR actual",
+      "currentQrPayload": "Código de check-in",
       "passwordReset": "Restablecimiento de Contraseña",
       "showCode": "Muestra este código al miembro:",
       "codeExpires": "El código expira en 30 minutos",
@@ -6271,7 +6346,7 @@
       "messagePlaceholder": "Tu mensaje para los miembros...",
       "titlePlaceholder": "ej. Nuevo equipo llega el viernes!",
       "typeLabel": "Tipo",
-      "scheduleLabel": "Programar (opcional -- dejar vacío para publicar ahora)",
+      "scheduleLabel": "Programar (opcional — dejar vacío para publicar ahora)",
       "recurring": "Recurrente",
       "frequency": "Frecuencia",
       "dayOfWeek": "Día de la semana",
@@ -6319,6 +6394,7 @@
     "messaging": {
       "title": "Mensajes",
       "subtitle": "Mensajes directos con miembros",
+      "membersLoadFailed": "No se pudo cargar la lista.",
       "unarchive": "Desarchivar",
       "archive": "Archivar",
       "deleteConversation": "Eliminar conversación",
@@ -7331,6 +7407,8 @@
       "feedbackHighlights": "Comentarios Destacados",
       "sendNpsSurvey": "Enviar Encuesta NPS",
       "sending": "Enviando...",
+      "sendingToAll": "Enviando encuesta a todos los miembros…",
+      "sendingWait": "Esto puede tardar unos segundos — mantén la app abierta.",
       "sendToAll": "Enviar a Todos los Miembros",
       "npsSurveyLabel": "Encuesta NPS",
       "surveyQuestion": "¿Qué tan probable es que nos recomiendes?",
@@ -7393,6 +7471,7 @@
       "churnRate": "Tasa de Abandono",
       "title": "Analíticas",
       "subtitle": "Métricas de retención, crecimiento y engagement",
+      "trainerUnnamed": "Entrenador sin nombre",
       "kpiTargets": "Objetivos KPI",
       "targetSaved": "Objetivo guardado",
       "targetSaveFailed": "Error al guardar objetivo",
@@ -7597,8 +7676,11 @@
       "sendTest": "Enviarme una prueba",
       "sendTestSuccess": "Prueba enviada a {{email}}",
       "sendTestFailed": "No se pudo enviar la prueba",
+      "sendTestFailedReason": "No se pudo enviar la prueba: {{reason}}",
       "sendTestNoEmail": "Tu cuenta no tiene correo",
       "sendTestSub": "Envía el diseño completo al correo que elijas.",
+      "sendTestSelfSub": "Te enviaremos el diseño completo a tu propia bandeja.",
+      "sendTestSelfNote": "Las pruebas solo se pueden enviar a tu propio correo.",
       "sendTestTo": "Enviar a",
       "sendTestConfirm": "Enviar prueba",
       "sendTestInvalidEmail": "Escribe un correo válido",
@@ -7761,6 +7843,8 @@
     "abTesting": {
       "title": "Pruebas A/B",
       "subtitle": "Crea y gestiona experimentos para optimizar la interacción",
+      "atRisk": "Miembros en riesgo",
+      "reactivateConfirm": "Reactivar reinicia la hora de inicio de la prueba a ahora. Los intentos anteriores se conservan, pero la ventana de tiempo se reinicia. ¿Continuar?",
       "newExperiment": "Nuevo Experimento",
       "tabActive": "Activos",
       "tabCompleted": "Completados",
@@ -7873,6 +7957,10 @@
     },
     "outreach": {
       "pageTitle": "Mensajería",
+      "channelPushShort": "Push",
+      "channelInAppShort": "En la app",
+      "channelEmailShort": "Correo",
+      "channelSmsShort": "SMS",
       "title": "Enviar mensaje",
       "subtitle": "Llega a los miembros correctos por el canal correcto — un solo lugar, sin copiar y pegar",
       "audience": "Audiencia",
@@ -7944,6 +8032,8 @@
       "emptyAudience": "Ningún miembro coincide con esta audiencia",
       "sentToast": "Enviado a {{count}} miembro",
       "sentToast_plural": "Enviado a {{count}} miembros",
+      "allFailed": "Fallaron los {{count}} envío(s) — no se entregó nada",
+      "partialSent": "Enviados {{sent}}, {{failed}} fallaron",
       "tier": {
         "critical": "Riesgo crítico de baja",
         "high": "En riesgo",
@@ -10354,7 +10444,25 @@
     "criteriaInvalid": "Los criterios tienen que ser JSON válido (ej. {\"workouts\": 50}).",
     "storageProbe": "Buckets de almacenamiento",
     "storageReachable": "{{count}} buckets accesibles",
-    "video": "Video"
+    "video": "Video",
+    "videoTooLarge": "El video debe pesar menos de 100MB",
+    "videoTypeInvalid": "Solo se permiten videos MP4, WebM y MOV",
+    "saveFailed": "Error al guardar: {{msg}}",
+    "bulkAddCsv": "Agregar en lote (CSV)",
+    "bulkAddTitle": "Agregar ejercicios en lote",
+    "bulkAddDesc": "Pega filas CSV o sube un archivo .csv. Columnas obligatorias: name, muscle_group, equipment. Las filas con valores no válidos se omiten.",
+    "bulkDownloadTemplate": "Descargar plantilla",
+    "bulkUploadFile": "Subir .csv",
+    "bulkPasteLabel": "Datos CSV",
+    "bulkPreview": "Vista previa",
+    "bulkErrEmpty": "El CSV está vacío o no se pudo leer.",
+    "bulkErrMissingCols": "Faltan columnas obligatorias: {{cols}}",
+    "bulkErrNoRows": "No se importó nada: las filas pueden estar bloqueadas por permisos.",
+    "bulkReadyCount": "{{count}} listas",
+    "bulkSkippedCount": "{{count}} omitidas",
+    "bulkRowLabel": "Fila {{n}}",
+    "bulkInserted": "Se importaron {{count}} ejercicios",
+    "bulkImportN": "Importar {{count}}"
   },
   "trainerPlans": {
     "title": "Planes de Entrenamiento",
@@ -12034,7 +12142,12 @@
       "cancel": "Cancelar",
       "fulfillmentSaved": "Modo de entrega actualizado",
       "returnToPending": "Devolver a pendiente",
-      "toastReturned": "Tarjeta devuelta a pendiente"
+      "toastReturned": "Tarjeta devuelta a pendiente",
+      "filterByGym": "Filtrar por gimnasio",
+      "allGymsOption": "Todos los gimnasios",
+      "previewCard": "Vista previa de la tarjeta",
+      "attachReward": "Agregar recompensa",
+      "manageReward": "Gestionar recompensa"
     },
     "gymWellness": {
       "healthScore": "Puntuación de salud compuesta",
@@ -12138,7 +12251,10 @@
         "managePeople": "Gestionar Personas",
         "manageContent": "Gestionar Contenido",
         "viewActivity": "Ver Actividad",
-        "gymSettings": "Ajustes del Gimnasio"
+        "gymSettings": "Ajustes del Gimnasio",
+        "ownerContact": "Contacto del dueño",
+        "whatsapp": "WhatsApp",
+        "noOwnerContact": "Sin información de contacto"
       },
       "people": {
         "membersTab": "Miembros ({{count}})",
@@ -12147,7 +12263,7 @@
         "searchPlaceholder": "Buscar miembros...",
         "addMember": "Agregar Miembro",
         "noMembersFound": "No se encontraron miembros.",
-        "showingOf": "Mostrando {{filtered}} de {{total}} miembros",
+        "showingOf": "Mostrando {{start}}–{{end}} de {{total}} miembros",
         "noStaff": "Sin personal",
         "noInvites": "Sin invitaciones",
         "inviteRole": "Rol: {{role}}",
@@ -12161,7 +12277,8 @@
         "deleteMemberAria": "Eliminar miembro",
         "memberRoleAria": "Rol del miembro",
         "memberStatusAria": "Estatus del miembro",
-        "searchAria": "Buscar miembros"
+        "searchAria": "Buscar miembros",
+        "viewMemberAria": "Ver {{name}}"
       },
       "columns": {
         "name": "Nombre",
@@ -12249,7 +12366,13 @@
         "rewardFallback": "Recompensa",
         "rewardsLoadFailed": "No se pudo cargar el catálogo de recompensas",
         "rewardsLoadFailedDesc": "Recarga la página para intentar de nuevo. Si sigue pasando, puede que la política de lectura de gym_rewards (migración 0542) no esté aplicada todavía.",
-        "rewardInactive": "Inactivo"
+        "rewardInactive": "Inactivo",
+        "gymRewards": "Recompensas del gimnasio",
+        "addReward": "Agregar recompensa",
+        "activate": "Activar",
+        "deactivate": "Desactivar",
+        "edit": "Editar",
+        "delete": "Eliminar"
       },
       "settings": {
         "gymInfo": "Info del Gimnasio",
@@ -12314,7 +12437,34 @@
         "brandingSaved": "Marca guardada",
         "brandingSaveFailed": "No se pudo guardar la marca: {{error}}",
         "brandingApplyNote": "La app del gimnasio aplica los nuevos colores en su próximo inicio.",
-        "brandingStoredInvalid": "Un color guardado no es un hex válido — elige un color y guarda para repararlo."
+        "brandingStoredInvalid": "Un color guardado no es un hex válido — elige un color y guarda para repararlo.",
+        "featureSaveFailed": "No se pudo actualizar la función: {{error}}",
+        "features": "Funciones",
+        "featuresDesc": "Activa o desactiva funciones para este gimnasio. Los interruptores globales en Operaciones tienen prioridad (apagado en todos lados gana).",
+        "feature_referrals": "Referidos",
+        "feature_social": "Feed social",
+        "feature_messaging": "Mensajería",
+        "feature_challenges": "Retos",
+        "feature_nutrition": "Nutrición",
+        "feature_ai": "Análisis de fotos con IA",
+        "planBilling": "Plan y facturación",
+        "planBillingDesc": "Alimenta el MRR/ARR en Analíticas y el panel de Atención. No se cobra nada — solo registros del operador. El nivel del plan se define desde el encabezado del gimnasio.",
+        "monthlyPrice": "Precio mensual",
+        "currency": "Moneda",
+        "memberSeatLimit": "Límite de miembros",
+        "noLimit": "Sin límite",
+        "trialEnds": "Fin de prueba",
+        "renewsAt": "Renueva / vence",
+        "savePlan": "Guardar plan",
+        "planSaveFailed": "No se pudo guardar el plan: {{error}}",
+        "planSaved": "Plan y facturación guardados",
+        "customAppNameHint": "Se muestra como el nombre de la app en el build de este gimnasio. Déjalo en blanco para usar el nombre del gimnasio. Se guarda con el botón Guardar marca.",
+        "logoUploaded": "Logo actualizado",
+        "logoUploadFailed": "No se pudo subir el logo: {{error}}",
+        "uploading": "Subiendo…",
+        "uploadLogo": "Subir logo",
+        "logoUploadHint": "PNG, JPEG o WebP, menos de 5 MB. Se comprime a 512px. La app lo toma en el próximo inicio.",
+        "noOwnerCandidatesAny": "Aún no hay miembros — agrega un miembro primero y luego asígnalo como propietario."
       },
       "deleteConfirm": {
         "title": "Eliminar {{type}}?",
@@ -12382,7 +12532,17 @@
         "criteriaLabel": "Criterios (JSON, opcional)",
         "criteriaInvalid": "Los criterios deben ser un objeto JSON válido, ej. {\"workouts\": 30}",
         "criteriaHint": "Condición de desbloqueo legible por máquina. Déjalo vacío para otorgar manualmente.",
-        "criteriaHintKeys": "Claves soportadas: workouts (entrenamientos completados), checkins (check-ins), prs (PRs), streak (días de racha actual), volume (lbs levantadas en total) — ej. {\"workouts\": 30, \"streak\": 7}. Deben cumplirse todas las condiciones. Déjalo vacío para otorgarlo manualmente."
+        "criteriaHintKeys": "Claves soportadas: workouts (entrenamientos completados), checkins (check-ins), prs (PRs), streak (días de racha actual), volume (lbs levantadas en total) — ej. {\"workouts\": 30, \"streak\": 7}. Deben cumplirse todas las condiciones. Déjalo vacío para otorgarlo manualmente.",
+        "editReward": "Editar recompensa",
+        "newReward": "Nueva recompensa",
+        "rewardIcon": "Ícono",
+        "rewardNamePlaceholder": "Batido gratis",
+        "rewardNameEs": "Nombre (español, opcional)",
+        "rewardType": "Tipo",
+        "rewardCost": "Costo (pts)",
+        "rewardSort": "Orden",
+        "rewardActive": "Activa (visible para miembros)",
+        "rewardCostInvalid": "El costo debe ser 0 o más puntos"
       },
       "memberAction": {
         "changeRole": "Cambiar Rol",
@@ -12463,7 +12623,20 @@
           "programs": "programas",
           "achievements": "logros"
         }
-      }
+      },
+      "rewardType": {
+        "custom": "Personalizada",
+        "smoothie": "Batido",
+        "guest_pass": "Pase de invitado",
+        "merch": "Merch",
+        "pt_session": "Sesión PT",
+        "free_month": "Mes gratis",
+        "class_pass": "Pase de clase",
+        "discount": "Descuento",
+        "bring_friend": "Trae un amigo"
+      },
+      "viewAsAdmin": "Ver como admin",
+      "impersonateFailed": "No se pudo abrir la vista de admin"
     },
     "support": {
       "title": "Soporte",
@@ -12545,7 +12718,21 @@
       "generating": "Generando...",
       "inviteNoGym": "Este miembro no tiene gimnasio — asígnale uno primero",
       "inviteGenerateFailed": "No se pudo generar el código de invitación",
-      "protectedAccount": "Cuenta protegida — el rol y estado de super admin solo pueden cambiarse en la base de datos"
+      "protectedAccount": "Cuenta protegida — el rol y estado de super admin solo pueden cambiarse en la base de datos",
+      "exportDone": "Datos del miembro exportados",
+      "exportMember": "Exportar datos",
+      "deleteConfirm": "¿Eliminar permanentemente a {{name}} y todos sus datos? Esto no se puede deshacer.",
+      "memberDeleted": "Miembro eliminado",
+      "deleteMember": "Eliminar miembro",
+      "moveToGym": "Mover a gimnasio",
+      "moveDone": "Movido a {{gym}} — {{restamped}} registros transferidos, {{cleared}} vínculos del gimnasio anterior restablecidos",
+      "moveSelectTarget": "Selecciona un gimnasio…",
+      "moveSearchPlaceholder": "Buscar gimnasio por nombre o slug…",
+      "searching": "Buscando…",
+      "moveNoGyms": "No se encontraron otros gimnasios",
+      "moveExplainer": "Su historial de entrenamientos, récords, datos corporales, metas, logros y puntos se transfieren al nuevo gimnasio. La inscripción a programas, los retos, las reservas de clases, la posición en la tabla, las amistades y la asignación de entrenador del gimnasio anterior se restablecen.",
+      "moving": "Moviendo…",
+      "moveConfirm": "Mover miembro"
     },
     "customMeals": {
       "title": "Comidas personalizadas",
@@ -12574,7 +12761,10 @@
       "roleSuperAdmin": "Super Admin",
       "roleAdmin": "Admin",
       "roleTrainer": "Entrenador",
-      "roleMember": "Miembro"
+      "roleMember": "Miembro",
+      "deleteMeal": "Eliminar comida",
+      "deleteConfirm": "¿Eliminar \"{{name}}\"? Esto elimina permanentemente la comida enviada por el usuario.",
+      "deleteFailed": "No se pudo eliminar: {{msg}}"
     },
     "errors": {
       "title": "Errores",
@@ -12726,7 +12916,9 @@
       "maintenanceMessageHint": "Los usuarios siempre ven el mensaje estándar de mantenimiento en su idioma (EN/ES) — esta nota queda solo para el registro de operaciones.",
       "killAi": "Análisis de fotos con IA",
       "killAiDesc": "Escaneo de fotos de comida, menús y cuerpo (OpenAI). Apagarlo detiene todas las llamadas pagadas de IA en toda la app.",
-      "killUnknownDesc": "Bandera de función de la plataforma ({{key}}). Este interruptor no tiene descripción registrada."
+      "killUnknownDesc": "Bandera de función de la plataforma ({{key}}). Este interruptor no tiene descripción registrada.",
+      "incidentsUnavailable": "No se pudieron evaluar los incidentes",
+      "incidentsUnavailableDesc": "No se pudo leer el registro de errores, así que la detección de incidentes está a ciegas este ciclo — esto no es un visto bueno. Reintenta en un momento."
     },
     "gyms": {
       "title": "Gyms",
@@ -12817,7 +13009,34 @@
       "pricingTier": "Plan de precios",
       "slug": "Slug de URL",
       "slugHint": "Se deriva del nombre. Minúsculas y guiones solamente.",
-      "ownerInviteNote": "Se generará un código de invitación para este email. Promuévelo a admin después de que lo reclame."
+      "ownerInviteNote": "Se generará un código de invitación para este email. Promuévelo a admin después de que lo reclame.",
+      "select": "Seleccionar",
+      "selectDone": "Listo",
+      "selectAll": "Seleccionar todo",
+      "bulkSelected": "{{count}} seleccionados",
+      "bulkFeature": "Función",
+      "bulkPlan": "Plan",
+      "bulkActivate": "Activar",
+      "bulkDeactivate": "Desactivar",
+      "bulkClear": "Limpiar selección",
+      "bulkFailed": "Acción masiva fallida: {{error}}",
+      "bulkActivated": "{{count}} gimnasios activados",
+      "bulkDeactivated": "{{count}} gimnasios desactivados",
+      "bulkPlanSet": "Plan establecido para {{count}} gimnasios",
+      "bulkFeatureSet": "Función actualizada para {{count}} gimnasios",
+      "bulkFeatureTitle": "Establecer función para {{count}} gimnasios",
+      "bulkFeatureLabel": "Función",
+      "bulkEnable": "Activar",
+      "bulkDisable": "Desactivar",
+      "bulkFeatureNote": "Los interruptores globales de Operaciones siguen teniendo prioridad — apagado en todas partes gana.",
+      "bulkCancel": "Cancelar",
+      "bulkApply": "Aplicar",
+      "bulkApplying": "Aplicando…",
+      "bulkPlanTitle": "Establecer plan para {{count}} gimnasios",
+      "bulkDeactivateTitle": "Desactivar gimnasios",
+      "bulkDeactivateWarn": "Esto corta de inmediato el acceso a la app para todos los miembros de {{count}} gimnasios. Es reversible (Activar los restaura), pero los miembros son expulsados al instante.",
+      "bulkDeactivateConfirmLabel": "Escribe {{count}} para confirmar",
+      "bulkDeactivateConfirm": "Desactivar"
     },
     "analytics": {
       "title": "Analiticas",
@@ -12836,7 +13055,7 @@
       "retentionRate": "Tasa de Retencion",
       "newMembers30d": "Nuevos Miembros (30d)",
       "avgSessionsPerMember": "Sesiones Prom / Miembro",
-      "memberGrowth": "Crecimiento de Miembros (Ultimos 90 Dias)",
+      "memberGrowth": "Crecimiento de Miembros (Últimas 13 Semanas)",
       "noGrowthData": "Sin datos de crecimiento disponibles",
       "newMembers": "Nuevos Miembros",
       "monthlyRevenue": "Ingresos Mensuales (MRR)",
@@ -12901,7 +13120,13 @@
       "exportCsv": "Exportar CSV",
       "incomeProjectionBadge": "Proyección (precios actuales)",
       "incomeProjectionNote": "Los meses en ámbar no tienen captura todavía — se proyectan con los precios y gyms activos de hoy. Los meses en verde se calculan con la captura semanal de ese mes (miembros, planes y estado congelados).",
-      "srcGrowthChurn": "crecimiento y señales de churn"
+      "srcGrowthChurn": "crecimiento y señales de churn",
+      "costsTitle": "Costos y margen",
+      "smsSent": "SMS enviados (mes)",
+      "smsCost": "Costo SMS (est)",
+      "mrrLabel": "MRR",
+      "estMargin": "Margen est. (MRR − SMS)",
+      "costsNote": "El SMS es el costo variable por mensaje que se muestra aquí; el gasto de almacenamiento / DB / IA aún no se agrega. Estimado solo para visualización."
     },
     "gymHealth": {
       "title": "Salud del Gym",
@@ -13039,7 +13264,8 @@
       "avgActiveDays": "Días activos de admin/semana",
       "avgDenominatorNote": "Promedio calculado sobre los {{count}} gyms con actividad de admin en los últimos 30 días. \"Menos activo\" considera todos los gyms, incluso con cero actividad.",
       "scoreExplanationMax": "Puntuación = días-admin distintos en los últimos 30 días. Dorado = al menos 75% de la puntuación del gym líder.",
-      "adminDays30d": "días-admin (30d)"
+      "adminDays30d": "días-admin (30d)",
+      "presenceCappedNote": "Basado en los 5,000 eventos de presencia más recientes."
     },
     "settings": {
       "title": "Configuracion de Plataforma",
@@ -13085,7 +13311,7 @@
     },
     "notifications": {
       "title": "Alertas",
-      "subtitle": "Crashes, alertas y avisos de tu gimnasio.",
+      "subtitle": "Reportes de crashes y alertas de la plataforma en todos tus gimnasios.",
       "empty": "Sin alertas",
       "emptyBody": "Los reportes de fallos y alertas de plataforma aparecerán aquí.",
       "markAllRead": "Marcar todo leído",
@@ -13140,7 +13366,10 @@
       "bucket1_3": "1–3 meses",
       "bucket3_6": "3–6 meses",
       "bucket6_12": "6–12 meses",
-      "bucket12plus": "12+ meses"
+      "bucket12plus": "12+ meses",
+      "kpiNoDate": "{{count}} sin fecha registrada",
+      "datelessExcluded": "{{count}} cancelación(es) sin fecha registrada quedan excluidas de esta gráfica.",
+      "cancellationsNoDates": "Hay cancelaciones, pero sin fechas registradas — importa las fechas de cancelación para ver esta gráfica."
     },
     "audit": {
       "title": "Registro de Acciones",
@@ -14215,6 +14444,8 @@
     "sub": "Tus entrenos, clases, progreso y coach — todo en una app.",
     "comingSoon": "Muy pronto en App Store y Google Play",
     "appStore": "Descargar para iOS",
-    "playStore": "Descargar para Android"
+    "playStore": "Descargar para Android",
+    "haveApp": "¿Ya tienes la app?",
+    "openIt": "Ábrela"
   }
 }

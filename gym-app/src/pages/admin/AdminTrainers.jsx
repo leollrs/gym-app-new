@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users, UserPlus, X, Search, Plus, Download, Trash2, BarChart3,
@@ -331,6 +332,7 @@ export default function AdminTrainers() {
         if (error) throw error;
       }
       logAdminAction('add_trainer', 'trainer', memberId);
+      posthogClient?.capture('admin_trainer_promoted');
       setShowAddTrainer(false);
       await queryClient.invalidateQueries({ queryKey: adminKeys.trainers(gymId) });
     } catch (err) {
@@ -361,6 +363,7 @@ export default function AdminTrainers() {
         }
       }
       logAdminAction('demote_trainer', 'trainer', trainerId);
+      posthogClient?.capture('admin_trainer_demoted');
       setConfirmDemote(null);
       setView('table');
       setSelectedId(null);
@@ -775,13 +778,56 @@ export default function AdminTrainers() {
               </button>
             </AdminCard>
           ) : (
-            <AdminTable
-              columns={columns}
-              data={filteredTrainers}
-              keyField="id"
-              onRowClick={(tr) => openDetail(tr.id)}
-              emptyState={<p className="text-[13px] text-center py-8" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.trainers.noMatchingTrainers', 'No trainers found')}</p>}
-            />
+            <>
+              {/* Desktop roster table */}
+              <div className="hidden md:block">
+                <AdminTable
+                  columns={columns}
+                  data={filteredTrainers}
+                  keyField="id"
+                  onRowClick={(tr) => openDetail(tr.id)}
+                  emptyState={<p className="text-[13px] text-center py-8" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.trainers.noMatchingTrainers', 'No trainers found')}</p>}
+                />
+              </div>
+
+              {/* Mobile roster cards */}
+              <div className="md:hidden flex flex-col gap-2.5">
+                {filteredTrainers.length === 0 ? (
+                  <AdminCard className="p-8 text-center">
+                    <p className="text-[13px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.trainers.noMatchingTrainers', 'No trainers found')}</p>
+                  </AdminCard>
+                ) : filteredTrainers.map(tr => {
+                  const risk = (clientMap[tr.id] || []).filter(c => c.churnTier === 'critical' || c.churnTier === 'high').length;
+                  return (
+                    <AdminCard key={tr.id} padding="p-3.5" onClick={() => openDetail(tr.id)} className="cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={tr.name} size="md" variant="accent" src={tr.checkinPhotoUrl} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[14px] font-bold truncate" style={{ color: 'var(--color-admin-text)' }}>{tr.name}</div>
+                          {tr.username && <div className="text-[11.5px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>@{tr.username}</div>}
+                        </div>
+                        <ChevronRight size={16} className="flex-shrink-0" style={{ color: 'var(--color-admin-text-faint)' }} />
+                      </div>
+
+                      <div className="flex items-center gap-2.5 mt-3">
+                        <span className="admin-mono text-[15px] font-bold tabular-nums flex-shrink-0" style={{ color: 'var(--color-admin-text)', minWidth: 18 }}>{tr.clientCount}</span>
+                        <span className="text-[11px] flex-shrink-0" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.trainers.clients', 'Clients')}</span>
+                        <AvatarStack clients={clientMap[tr.id] || []} max={4} />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 mt-3 pt-3" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
+                        {tr.clientCount === 0
+                          ? <span className="text-[12px]" style={{ color: 'var(--color-admin-text-faint)' }}>{t('admin.trainers.noClientsAssigned')}</span>
+                          : <RetentionBar value={tr.retention} width={72} />}
+                        {risk > 0
+                          ? <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap flex-shrink-0" style={{ background: 'var(--color-danger-soft)', color: 'var(--color-danger)' }}>{t('admin.trainers.nAtRisk', { count: risk, defaultValue: '{{count}} at risk' })}</span>
+                          : tr.clientCount > 0 && <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold whitespace-nowrap flex-shrink-0" style={{ color: 'var(--color-success)' }}><StatusDot status="activo" /> {t('admin.trainers.allGood', 'On track')}</span>}
+                      </div>
+                    </AdminCard>
+                  );
+                })}
+              </div>
+            </>
           )}
         </>
       )}

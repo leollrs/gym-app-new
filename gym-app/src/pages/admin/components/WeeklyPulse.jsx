@@ -69,7 +69,7 @@ function Sparkline({ data, t, dateFnsLocale }) {
                 role="tooltip"
                 style={{
                   position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: tx,
-                  zIndex: 30, minWidth: 110, background: '#fff', whiteSpace: 'nowrap',
+                  zIndex: 30, minWidth: 110, background: 'var(--color-bg-card)', whiteSpace: 'nowrap',
                   border: '1px solid var(--color-admin-border)', borderRadius: 10,
                   boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '9px 11px', pointerEvents: 'none',
                 }}

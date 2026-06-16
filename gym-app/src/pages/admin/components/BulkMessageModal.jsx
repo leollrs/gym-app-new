@@ -58,6 +58,7 @@ export default function BulkMessageModal({ members, gymId, adminId, onClose, onS
 
       if (failures.length === 0) {
         posthog?.capture('admin_winback_sent', { method: 'bulk_message', count: members.length });
+        showToast(t('admin.churn.bulkMessageSent', { count: members.length, defaultValue: 'Message sent to {{count}} members' }), 'success');
         setSent(true);
         setTimeout(() => { onSent?.(); onClose(); }, 1200);
       } else if (failures.includes('notifications')) {

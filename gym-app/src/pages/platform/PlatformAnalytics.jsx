@@ -51,6 +51,48 @@ const DeltaTag = ({ delta, suffix = '' }) => {
 };
 
 // ── Main Component ───────────────────────────────────────────
+// Approx Twilio cost per SMS send — mirrors SmsUsageCard's display estimate.
+const SMS_COST_PER_SEND = 0.054;
+
+// Fleet-wide costs vs revenue (audit completeness-6). Self-contained: fetches
+// platform_cost_summary (0590) on mount and hides itself if unavailable
+// (pre-migration) so it never blocks the page.
+function FleetCostPanel({ t }) {
+  const [data, setData] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: d, error } = await supabase.rpc('platform_cost_summary');
+      if (cancelled) return;
+      if (error || !d) { setFailed(true); return; }
+      setData(d);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  if (failed || !data) return null;
+  const smsCost = (Number(data.sms_sent) || 0) * SMS_COST_PER_SEND;
+  const mrr = Number(data.mrr) || 0;
+  const margin = mrr - smsCost;
+  return (
+    <FadeIn delay={75}>
+      <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.analytics.costsTitle', 'Costs & margin')}</h2>
+          <span className="text-[10px] uppercase tracking-wider text-[#6B7280]">{data.month}</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div><p className="text-[18px] font-bold text-[#E5E7EB] tabular-nums">{(Number(data.sms_sent) || 0).toLocaleString()}</p><p className="text-[11px] text-[#6B7280]">{t('platform.analytics.smsSent', 'SMS sent (mo)')}</p></div>
+          <div><p className="text-[18px] font-bold text-red-400 tabular-nums">${smsCost.toFixed(2)}</p><p className="text-[11px] text-[#6B7280]">{t('platform.analytics.smsCost', 'SMS cost (est)')}</p></div>
+          <div><p className="text-[18px] font-bold text-emerald-400 tabular-nums">${mrr.toLocaleString()}</p><p className="text-[11px] text-[#6B7280]">{t('platform.analytics.mrrLabel', 'MRR')}</p></div>
+          <div><p className="text-[18px] font-bold tabular-nums" style={{ color: margin >= 0 ? '#10B981' : '#EF4444' }}>${margin.toFixed(2)}</p><p className="text-[11px] text-[#6B7280]">{t('platform.analytics.estMargin', 'Est. margin (MRR − SMS)')}</p></div>
+        </div>
+        <p className="text-[10px] text-[#6B7280] mt-2.5">{t('platform.analytics.costsNote', 'SMS is the per-message variable cost shown here; storage / DB / AI spend is not yet aggregated. Display-only estimate.')}</p>
+      </div>
+    </FadeIn>
+  );
+}
+
 export default function PlatformAnalytics() {
   const { t } = useTranslation('pages');
   const navigate = useNavigate();
@@ -156,9 +198,16 @@ export default function PlatformAnalytics() {
   // ── Week-over-week deltas from the latest snapshot (hidden without one) ──
   const prevWeek = useMemo(() => {
     if (!snapshots.length) return null;
-    const latestDate = snapshots.reduce((max, r) => (String(r.snapshot_date) > max ? String(r.snapshot_date) : max), '');
+    // Snapshots are captured weekly; the most recent one is "this week". To get
+    // a true week-over-week move we compare the LIVE values against the PREVIOUS
+    // week's snapshot, not the latest capture (which would make the delta a
+    // current-week-to-date drift that reads ~0 right after capture). Fall back to
+    // the only snapshot when just one exists.
+    const dates = [...new Set(snapshots.map(r => String(r.snapshot_date)))].sort().reverse();
+    const baselineDate = dates[1] || dates[0];
+    if (!baselineDate) return null;
     const rows = snapshots.filter(r =>
-      String(r.snapshot_date) === latestDate && r.data && (!scopeId || r.gym_id === scopeId));
+      String(r.snapshot_date) === baselineDate && r.data && (!scopeId || r.gym_id === scopeId));
     if (!rows.length) return null;
     const sum = (k) => rows.reduce((s, r) => s + (Number(r.data[k]) || 0), 0);
     const members = sum('member_count');
@@ -511,10 +560,12 @@ export default function PlatformAnalytics() {
         <StatCard value={avgSessionsPerMember} label={t('platform.analytics.avgSessionsPerMember', 'Avg Sessions / Member')} icon={Activity} color="#F59E0B" delay={250} />
       </div>
 
+      <FleetCostPanel t={t} />
+
       {/* ── Growth Chart ────────────────────────────────────── */}
       <FadeIn delay={100}>
         <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4 mb-6">
-          <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.memberGrowth', 'Member Growth (Last 90 Days)')}</h2>
+          <h2 className="text-[15px] font-semibold text-[#E5E7EB] mb-4">{t('platform.analytics.memberGrowth', 'Member Growth (Last 13 Weeks)')}</h2>
           {growthData.length === 0 ? (
             <p className="text-[13px] text-[#6B7280] py-12 text-center">{t('platform.analytics.noGrowthData', 'No growth data available')}</p>
           ) : (
@@ -937,7 +988,8 @@ export default function PlatformAnalytics() {
                       <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.signal', 'Signal')}</th>
                       <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.occurrences', 'Occurrences')}</th>
                       <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.pctAtRisk', '% of At-Risk')}</th>
-                      <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.mostAffectedGym', 'Most Affected Gym')}</th>
+                      {/* In single-gym scope this column is trivially the scoped gym — hide it. */}
+                      {!scopeId && <th className="text-left text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider px-3 py-2.5">{t('platform.analytics.mostAffectedGym', 'Most Affected Gym')}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -961,9 +1013,11 @@ export default function PlatformAnalytics() {
                             {sig.pct}%
                           </span>
                         </td>
-                        <td className="px-3 py-2.5">
-                          <span className="text-[13px] text-[#9CA3AF]">{sig.mostAffectedGym}</span>
-                        </td>
+                        {!scopeId && (
+                          <td className="px-3 py-2.5">
+                            <span className="text-[13px] text-[#9CA3AF]">{sig.mostAffectedGym}</span>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

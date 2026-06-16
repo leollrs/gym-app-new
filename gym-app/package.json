@@ -9,6 +9,8 @@
     "build": "vite build",
     "build:native": "CAPACITOR_BUILD=true vite build",
     "lint": "eslint .",
+    "test": "vitest",
+    "test:run": "vitest run",
     "preview": "vite preview",
     "sync": "CAPACITOR_BUILD=true vite build && npx cap sync",
     "deploy": "vite build && npx @capgo/cli bundle upload --channel production",
@@ -94,6 +96,8 @@
     "postcss": "^8.5.6",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^3.2.4",
+    "source-map-js": "^1.2.1"
   }
 }

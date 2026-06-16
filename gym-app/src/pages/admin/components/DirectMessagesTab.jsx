@@ -628,7 +628,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
       p_other_user: member.id,
     });
 
-    if (error) { logger.error('AdminMessaging: create convo:', error); return; }
+    if (error) {
+      logger.error('AdminMessaging: create convo:', error);
+      showToast(t('admin.messaging.sendFailed', { defaultValue: "Couldn't send — try again" }), 'error');
+      return;
+    }
 
     // Fetch the encryption seed for the new/existing conversation so it's
     // available before messages are loaded or sent.
@@ -988,8 +992,7 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
             {!membersLoading && membersError && (
               <div className="py-4 text-center">
                 <p className="text-[12px] text-red-400 mb-2">
-                  {t('admin.messaging.membersLoadFailed', 'No se pudo cargar la lista. ')}
-                  <span className="opacity-70">{membersError}</span>
+                  {t('admin.messaging.membersLoadFailed', "Couldn't load the member list.")}
                 </p>
                 <button
                   onClick={() => fetchMembers(newMsgSearch)}
@@ -1010,7 +1013,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
                 {m.role && m.role !== 'member' && (
                   <span className="text-[9.5px] uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0"
                     style={{ background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', fontWeight: 700 }}>
-                    {m.role}
+                    {m.role === 'super_admin'
+                      ? t('admin.messaging.roleSuperAdmin', 'Super Admin')
+                      : m.role === 'admin'
+                        ? t('admin.messaging.roleAdmin', 'Admin')
+                        : t('admin.messaging.roleTrainer', 'Trainer')}
                   </span>
                 )}
               </button>

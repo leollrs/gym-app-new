@@ -36,7 +36,7 @@ export default function GymImport() {
   const [phase, setPhase] = useState('upload'); // 'upload' | 'preview' | 'result'
   const [filename, setFilename] = useState('');
   const [label, setLabel] = useState('');
-  const [parseResult, setParseResult] = useState(null); // { headers, rows, errors }
+  const [, setParseResult] = useState(null); // { headers, rows, errors }
   const [bucketed, setBucketed] = useState(null);
   const [parseError, setParseError] = useState(null);
   const [importResult, setImportResult] = useState(null);
@@ -351,6 +351,8 @@ export default function GymImport() {
               Drag a .csv file here or click to browse. Encoding must be UTF-8.
               Required columns: <span className="font-mono text-[#E5E7EB]">{REQUIRED_COLUMNS.join(', ')}</span>.
               Optional: <span className="font-mono text-[#6B7280]">{CANONICAL_COLUMNS.filter(c => !REQUIRED_COLUMNS.includes(c)).join(', ')}</span>.
+              <br />
+              Name can be a single <span className="font-mono text-[#9CA3AF]">full_name</span> column, or split into <span className="font-mono text-[#9CA3AF]">first_name</span> + <span className="font-mono text-[#9CA3AF]">last_name</span> (plus optional <span className="font-mono text-[#6B7280]">middle_name</span>, <span className="font-mono text-[#6B7280]">second_last_name</span>).
             </p>
 
             <input
@@ -486,6 +488,11 @@ export default function GymImport() {
             </div>
           )}
 
+          <p className="mt-4 text-[11px] text-[#9CA3AF] leading-relaxed">
+            Heads up: the final import skips any row whose phone or email already belongs to a live member of this gym
+            (deduplication runs server-side), so the number actually imported may be lower than the {bucketed.ready.length} previewed here.
+            Any skipped duplicates are itemized on the result screen.
+          </p>
           <div className="mt-5 flex items-center gap-3 justify-end">
             <button
               onClick={handleReset}

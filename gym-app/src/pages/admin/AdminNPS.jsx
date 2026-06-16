@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -294,6 +295,7 @@ export default function AdminNPS() {
       }
     },
     onSuccess: () => {
+      posthogClient?.capture('admin_nps_sent');
       showToast(t('admin.nps.surveySent', 'Survey sent to all members'), 'success');
       setSurveyOpen(false);
       setPickedSurveyId(null); // jump back to the (newly active) survey's view

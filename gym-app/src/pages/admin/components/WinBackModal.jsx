@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RotateCcw, CheckCircle, FlaskConical, Bell, Mail, Smartphone, Gift } from 'lucide-react';
-import { supabase } from '../../../lib/supabase';
+import { supabase, authHeader } from '../../../lib/supabase';
 import { encryptMessage } from '../../../lib/messageEncryption';
 import { RewardSymbol } from '../../../lib/rewardSymbols';
 import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
+import { useToast } from '../../../contexts/ToastContext';
 import { logAdminAction } from '../../../lib/adminAudit';
 import posthog from 'posthog-js';
 
 export default function WinBackModal({ member, gymId, adminId, activeCampaign, onClose, onSent, memberEmail: emailProp, memberPhone }) {
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
   const defaultMsg = t('admin.churn.winBackDefaultMsg', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}! We miss you at the gym. We'd love to have you back \u2014 come in this week and let's pick up where you left off. Your spot is waiting!` });
 
@@ -94,6 +96,12 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reward-qr?id=${redemptionId}&format=png`
         : null;
 
+      // One fresh auth header for whichever edge function this channel hits —
+      // send-push-user / send-admin-email / send-sms are all verify_jwt=on, so a
+      // header-less request is bounced by the gateway before the function runs.
+      // Throws SESSION_EXPIRED (caught below) when the session can't be refreshed.
+      const reqHeaders = await authHeader();
+
       // Send via selected channel
       if (channel === 'push') {
         // Send as DM so it shows in Messages page
@@ -113,7 +121,6 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
 
         // Send push notification so phone buzzes
         const pushTitle = t('admin.churn.weWantYouBack', 'We want you back!');
-        const { data: { session: pushSession } } = await supabase.auth.getSession();
         supabase.functions.invoke('send-push-user', {
           body: {
             profile_id: member.id,
@@ -122,10 +129,11 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
             body: fullMsg.substring(0, 150),
             data: { type: 'direct_message', conversation_id: convoId },
           },
-          headers: pushSession?.access_token ? { Authorization: `Bearer ${pushSession.access_token}` } : {},
+          headers: reqHeaders,
         }).catch(err => logger.warn('WinBack: push failed:', err));
       } else if (channel === 'email') {
         const { error: emailErr } = await supabase.functions.invoke('send-admin-email', {
+          headers: reqHeaders,
           body: {
             memberId: member.id,
             subject: t('admin.churn.weWantYouBack', 'We want you back!'),
@@ -135,14 +143,12 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         });
         if (emailErr) throw emailErr;
       } else if (channel === 'sms') {
-        const smsText = fullMsg.length > 600 ? fullMsg.slice(0, 597) + '...' : fullMsg;
-        const { data: { session: smsSession } } = await supabase.auth.getSession();
-        if (!smsSession?.access_token) throw new Error('No active session');
+        const smsText = fullMsg.length > 320 ? fullMsg.slice(0, 317) + '...' : fullMsg;
         const smsPayload = { memberId: member.id, body: smsText, source: 'win_back' };
         if (qrImageUrl) smsPayload.mediaUrl = qrImageUrl;
         const { data: smsData, error: smsErr } = await supabase.functions.invoke('send-sms', {
           body: smsPayload,
-          headers: { Authorization: `Bearer ${smsSession.access_token}` },
+          headers: reqHeaders,
         });
         if (smsErr) throw smsErr;
         if (smsData?.error) throw new Error(smsData.error);
@@ -177,9 +183,11 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
       logAdminAction('send_winback', 'member', member.id, { channel, offer: rewardName });
       posthog?.capture('admin_winback_sent', { method: channel });
       setSent(true);
+      showToast(t('admin.churn.winBackSentToast', { defaultValue: 'Win-back message sent' }), 'success');
       setTimeout(() => { onSent?.(); onClose(); }, 1200);
     } catch (err) {
       logger.error('Failed to send win-back', err);
+      showToast(err?.message || t('admin.churn.winBackSendFailed', { defaultValue: "Couldn't send — try again" }), 'error');
     } finally {
       setSending(false);
     }
@@ -190,7 +198,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
       footer={
         <>
           <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors whitespace-nowrap">
+            className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-muted)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors whitespace-nowrap">
             {t('admin.members.cancel')}
           </button>
           <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
@@ -254,14 +262,14 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           ) : (
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setSelectedRewardId(null)}
-                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${!selectedRewardId ? 'bg-white/8 text-[#E5E7EB] border-white/15' : 'bg-white/4 text-[#6B7280] border-white/6 hover:text-[#9CA3AF]'}`}>
+                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${!selectedRewardId ? 'bg-[var(--color-bg-hover)] text-[var(--color-admin-text)] border-[var(--color-admin-border)]' : 'bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-muted)] border-[var(--color-admin-border)] hover:text-[var(--color-admin-text-sub)]'}`}>
                 {t('admin.churn.noOffer', 'No reward')}
               </button>
               {gymRewards.map(r => {
                 const name = lang === 'es' && r.name_es ? r.name_es : r.name;
                 return (
                   <button key={r.id} onClick={() => setSelectedRewardId(r.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${selectedRewardId === r.id ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30' : 'bg-white/4 text-[#9CA3AF] border-white/6 hover:text-[#E5E7EB]'}`}>
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${selectedRewardId === r.id ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30' : 'bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-muted)] border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)]'}`}>
                     <span style={{ display: 'inline-flex' }}><RewardSymbol value={r.emoji_icon} size={15} /></span>
                     {name}
                   </button>
@@ -291,7 +299,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
             <span className="text-[20px]" style={{ color: 'var(--color-accent)' }}><RewardSymbol value={selectedReward.emoji_icon} size={20} color="var(--color-accent)" /></span>
             <div>
               <p className="text-[11px] text-[#D4AF37] font-semibold">{t('admin.churn.rewardAttached', 'Reward will be gifted to member')}</p>
-              <p className="text-[12px] text-[#E5E7EB]">{rewardName}</p>
+              <p className="text-[12px] text-[var(--color-admin-text)]">{rewardName}</p>
               <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.churn.rewardClaimNote', 'Member will see a QR in their Rewards page to claim at the gym')}</p>
             </div>
           </div>

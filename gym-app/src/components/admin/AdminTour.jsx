@@ -9,6 +9,7 @@ import {
   X, Check,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 /**
  * AdminTour — a guided, page-by-page SPOTLIGHT walkthrough of the whole admin
@@ -96,18 +97,47 @@ export default function AdminTour() {
   // Waits for the setup wizard: while gyms.setup_completed === false the
   // wizard owns the screen, so the auto-start bails and this effect re-runs
   // (setupPending in deps) to fire on the /admin visit after setup completes.
+  //
+  // Two-layer "seen" persistence, mirroring the member AppTour:
+  //   1. localStorage (fast, per-device)
+  //   2. profiles.has_seen_admin_tour (DB backstop — survives a localStorage
+  //      wipe from a Capgo bundle swap, reinstall, or a different device).
+  // localStorage-only was the bug: the welcome guide re-nagged on every launch
+  // whenever the WebView store got cleared.
   useEffect(() => {
     if (!gymId || !pid || setupPending) return;
-    let done = false;
-    try { done = localStorage.getItem(flagKey(gymId, pid)) === '1'; } catch { /* ignore */ }
-    if (done) return;
-    const id = setTimeout(() => {
-      if (window.location.pathname.replace(/\/$/, '') === '/admin') {
-        setStep(0);
-        setActive(true);
-      }
-    }, 1200);
-    return () => clearTimeout(id);
+    let doneLocal = false;
+    try { doneLocal = localStorage.getItem(flagKey(gymId, pid)) === '1'; } catch { /* ignore */ }
+    if (doneLocal) return;
+
+    let cancelled = false;
+    let timerId = null;
+    const scheduleAutoShow = () => {
+      timerId = setTimeout(() => {
+        if (window.location.pathname.replace(/\/$/, '') === '/admin') {
+          setStep(0);
+          setActive(true);
+        }
+      }, 1200);
+    };
+
+    // supabase's builder is a thenable without .catch — wrap in Promise.resolve.
+    // A missing column (pre-migration) returns an error object (not a throw),
+    // so data is null and we fall through to localStorage-only behavior.
+    Promise.resolve(
+      supabase.from('profiles').select('has_seen_admin_tour').eq('id', pid).single()
+    )
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data?.has_seen_admin_tour) {
+          try { localStorage.setItem(flagKey(gymId, pid), '1'); } catch { /* ignore */ }
+          return;
+        }
+        scheduleAutoShow();
+      })
+      .catch(() => { if (!cancelled) scheduleAutoShow(); });
+
+    return () => { cancelled = true; if (timerId) clearTimeout(timerId); };
   }, [gymId, pid, setupPending]);
 
   // ── Manual launch (Admin Profile button) ──
@@ -190,6 +220,14 @@ export default function AdminTour() {
     setRect(null);
     elRef.current = null;
     try { localStorage.setItem(flagKey(gymId, pid), '1'); } catch { /* ignore */ }
+    // Durable backstop so "seen" survives a localStorage wipe (reinstall /
+    // Capgo / new device). Fire-and-forget; pre-migration this no-ops on the
+    // missing column and localStorage still gates the tour.
+    if (pid) {
+      Promise.resolve(
+        supabase.from('profiles').update({ has_seen_admin_tour: true }).eq('id', pid)
+      ).catch(() => { /* ignore — localStorage already set above */ });
+    }
   }, [gymId, pid]);
 
   const next = useCallback(() => {

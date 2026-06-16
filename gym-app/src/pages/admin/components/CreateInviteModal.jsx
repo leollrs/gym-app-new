@@ -3,7 +3,7 @@ import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Mail, Smartphone }
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-import { supabase } from '../../../lib/supabase';
+import { supabase, authHeader } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import PhoneInput from '../../../components/admin/PhoneInput';
 import NameFields from './NameFields';
@@ -148,10 +148,13 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     const succeeded = [];
     setDelivering(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const authHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
       for (const ch of channels) {
         try {
+          // send-admin-email / send-sms are verify_jwt=on — a header-less request
+          // is bounced by the gateway. authHeader() attaches a freshly-refreshed
+          // token; a dead session throws SESSION_EXPIRED, caught per-channel below
+          // so the UI falls back to the "share the code manually" path.
+          const authHeaders = await authHeader();
           if (ch === 'email') {
             const subject = k('accessEmailSubject') || 'Your gym access code';
             const body = [
@@ -260,6 +263,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     } catch (err) {
       logger.error('CreateInviteModal: create failed:', err);
       setError(err.message || k('somethingWentWrong'));
+      showToast(t('admin.createInvite.createFailed', { error: err.message, defaultValue: "Couldn't add member — {{error}}" }), 'error');
     } finally {
       setLoading(false);
     }

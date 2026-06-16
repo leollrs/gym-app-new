@@ -7,7 +7,11 @@ import StatusBadge from './StatusBadge';
 import UserAvatar from '../../../components/UserAvatar';
 
 const ROLE_OPTIONS = ['member', 'trainer', 'admin'];
-const STATUS_ACTIONS = ['active', 'deactivated', 'banned'];
+// All real membership_status values (enum: active/frozen/deactivated/cancelled/
+// banned). The dropdown must list every one so a frozen/cancelled member's
+// status renders correctly instead of falling back to the first option ("Active")
+// — and so the operator can actually set those states.
+const STATUS_ACTIONS = ['active', 'frozen', 'deactivated', 'cancelled', 'banned'];
 const PAGE_SIZE = 50;
 
 // Rows holding super_admin (primary OR additional_roles) are read-only here —
@@ -30,6 +34,7 @@ export default function GymPeopleTab({
   createInvite,
   revokeInvite,
   copyInviteCode,
+  onSelectMember,
 }) {
   const { t } = useTranslation('pages');
   const [peopleSubTab, setPeopleSubTab] = useState('members');
@@ -142,11 +147,18 @@ export default function GymPeopleTab({
                   key={m.id}
                   className="grid grid-cols-1 md:grid-cols-[1fr_120px_100px_120px_120px_100px_100px_40px] gap-2 md:gap-3 px-4 py-3 border-b border-white/6 last:border-0 hover:bg-white/[0.02] transition-colors"
                 >
-                  {/* Name */}
-                  <div className="flex items-center gap-2 min-w-0">
+                  {/* Name — clickable opens the member detail. The role/status
+                      selects + delete live in their own cells, so they keep
+                      working independently of this click target. */}
+                  <button
+                    type="button"
+                    onClick={() => onSelectMember?.(m)}
+                    className="flex items-center gap-2 min-w-0 text-left rounded-lg -mx-1 px-1 py-0.5 hover:bg-white/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37]/40 transition-colors"
+                    aria-label={t('platform.gymDetail.people.viewMemberAria', { name: m.full_name ?? m.username ?? '', defaultValue: 'View {{name}}' })}
+                  >
                     <UserAvatar user={m} size={28} />
-                    <span className="text-[13px] text-[#E5E7EB] truncate">{m.full_name ?? t('platform.gymDetail.people.unknown')}</span>
-                  </div>
+                    <span className="text-[13px] text-[#E5E7EB] truncate hover:text-white transition-colors">{m.full_name ?? t('platform.gymDetail.people.unknown')}</span>
+                  </button>
 
                   {/* Username */}
                   <div className="flex items-center">
@@ -226,7 +238,11 @@ export default function GymPeopleTab({
 
           <div className="flex items-center justify-between mt-2">
             <p className="text-[11px] text-[#6B7280]">
-              {t('platform.gymDetail.people.showingOf', { filtered: pagedMembers.length, total: filteredMembers.length })}
+              {t('platform.gymDetail.people.showingOf', {
+                start: filteredMembers.length === 0 ? 0 : safePage * PAGE_SIZE + 1,
+                end: safePage * PAGE_SIZE + pagedMembers.length,
+                total: filteredMembers.length,
+              })}
             </p>
             {pageCount > 1 && (
               <div className="flex items-center gap-2">

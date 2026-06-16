@@ -19,21 +19,28 @@ export function GymMark({ gymName, gymLogoUrl, size = 'md', color }) {
     lg: { fs: 14, tracking: '0.14em', logoH: 24 },
   };
   const s = sizes[size];
+  const wordmarkStyle = {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: s.fs,
+    lineHeight: 1,
+    letterSpacing: s.tracking,
+    textTransform: 'uppercase',
+    fontWeight: 600,
+    color: color || '#111',
+  };
+  // With a logo, show the gym NAME right next to it (not the logo alone) so the
+  // printed card is unmistakably the gym's. Falls back to the wordmark when
+  // there's no logo.
   if (gymLogoUrl) {
-    return <img src={gymLogoUrl} alt={gymName} style={{ height: s.logoH, width: 'auto', display: 'block' }} />;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: Math.round(s.logoH * 0.42) }}>
+        <img src={gymLogoUrl} alt={gymName} style={{ height: s.logoH, width: 'auto', display: 'block' }} />
+        {gymName ? <span style={{ ...wordmarkStyle, whiteSpace: 'nowrap' }}>{gymName}</span> : null}
+      </div>
+    );
   }
   return (
-    <div
-      style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        fontSize: s.fs,
-        lineHeight: 1,
-        letterSpacing: s.tracking,
-        textTransform: 'uppercase',
-        fontWeight: 600,
-        color: color || '#111',
-      }}
-    >
+    <div style={wordmarkStyle}>
       {gymName}
     </div>
   );

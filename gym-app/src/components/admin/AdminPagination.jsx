@@ -53,7 +53,7 @@ export default function AdminPagination({ page, pageSize, total, onPageChange, c
 
   return (
     <div
-      className={`flex items-center justify-between gap-3 flex-wrap mt-4 pt-3 ${className}`}
+      className={`flex flex-col items-center gap-2.5 sm:flex-row sm:justify-between sm:gap-3 mt-4 pt-3 ${className}`}
       style={{ borderTop: `1px solid ${c.border}` }}
     >
       <span className="text-[12px] tabular-nums" style={{ color: c.muted }}>

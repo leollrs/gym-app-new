@@ -94,7 +94,8 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
     onError: (err) => showToast(err.message, 'error'),
   });
 
-  const inputClass = 'w-full bg-white/[0.04] border border-white/8 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 transition-all';
+  const inputClass = 'w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-all';
+  const inputStyle = { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' };
 
   return (
     <AdminModal
@@ -106,8 +107,8 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
         <button
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="w-full py-3 rounded-xl font-bold text-[14px] text-black disabled:opacity-50 transition-colors"
-          style={{ background: '#D4AF37' }}
+          className="w-full py-3 rounded-xl font-bold text-[14px] disabled:opacity-50 transition-colors"
+          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
         >
           {saveMutation.isPending
             ? t('admin.store.saving', 'Saving...')
@@ -120,8 +121,8 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
       <div className="space-y-5">
         {/* Cover preset grid */}
         <div>
-          <label className="block text-[12px] font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
-            {t('admin.store.coverImage', 'Imagen del producto')}
+          <label className="block text-[12px] font-medium mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>
+            {t('admin.store.coverImage', 'Product image')}
           </label>
           <div className="grid grid-cols-4 gap-2 mb-2">
             {PRODUCT_COVERS.map(c => {
@@ -130,8 +131,8 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
               return (
                 <button key={c.key} type="button"
                   onClick={() => set('cover_preset', selected ? '' : c.key)}
-                  className={`rounded-xl p-2.5 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-white scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
-                  style={{ background: c.gradient }}>
+                  className={`rounded-xl p-2.5 flex flex-col items-center gap-1 transition-all ${selected ? 'scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
+                  style={{ background: c.gradient, boxShadow: selected ? '0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-accent)' : 'none' }}>
                   <Icon size={20} className="text-white/90" />
                   <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{t(`admin.store.covers.${c.labelKey}`, c.defaultLabel)}</span>
                 </button>
@@ -142,26 +143,28 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
 
         {/* Name */}
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.store.productName', 'Nombre del Producto')}</label>
+          <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.store.productName', 'Product Name')}</label>
           <input
             value={form.name}
             onChange={e => set('name', e.target.value)}
-            placeholder={t('admin.store.productNamePlaceholder', 'ej. Batido de Proteína')}
+            placeholder={t('admin.store.productNamePlaceholder', 'e.g. Protein Shake')}
             className={inputClass}
+            style={inputStyle}
           />
         </div>
 
         {/* Category */}
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">{t('admin.store.category', 'Category')}</label>
+          <label className="block text-[12px] font-medium mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.store.category', 'Category')}</label>
           <div className="flex gap-2 flex-wrap">
             {CATEGORY_OPTS.map(c => (
               <button
                 key={c.value}
                 onClick={() => set('category', c.value)}
                 className={`flex-1 min-w-[70px] py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                  form.category === c.value ? c.color : 'bg-white/[0.03] border border-white/6 text-[#6B7280]'
+                  form.category === c.value ? c.color : ''
                 }`}
+                style={form.category === c.value ? undefined : { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-muted)' }}
               >
                 {t(c.labelKey)}
               </button>
@@ -172,7 +175,7 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
         {/* Price + Points */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.store.price', 'Price ($)')}</label>
+            <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.store.price', 'Price ($)')}</label>
             <input
               type="number"
               step="0.01"
@@ -182,10 +185,11 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
               onChange={e => set('price', e.target.value)}
               placeholder="0.00"
               className={inputClass}
+              style={inputStyle}
             />
           </div>
           <div>
-            <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.store.pointsPerPurchase', 'Points / Purchase')}</label>
+            <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.store.pointsPerPurchase', 'Points / Purchase')}</label>
             <input
               type="number"
               min="0"
@@ -194,6 +198,7 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
               onChange={e => set('points_per_purchase', e.target.value)}
               placeholder="10"
               className={inputClass}
+              style={inputStyle}
             />
           </div>
         </div>
@@ -205,19 +210,19 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
             className="flex items-center gap-2.5 w-full"
           >
             {form.punch_card_enabled ? (
-              <ToggleRight size={28} className="text-[#D4AF37] flex-shrink-0" />
+              <ToggleRight size={28} className="flex-shrink-0" style={{ color: 'var(--color-accent)' }} />
             ) : (
-              <ToggleLeft size={28} className="text-[#6B7280] flex-shrink-0" />
+              <ToggleLeft size={28} className="flex-shrink-0" style={{ color: 'var(--color-admin-text-muted)' }} />
             )}
             <div className="text-left">
-              <p className="text-[13px] font-medium text-[#E5E7EB]">{t('admin.store.punchCard', 'Punch Card')}</p>
-              <p className="text-[11px] text-[#6B7280]">{t('admin.store.punchCardDesc', 'Free item after X purchases')}</p>
+              <p className="text-[13px] font-medium" style={{ color: 'var(--color-admin-text)' }}>{t('admin.store.punchCard', 'Punch Card')}</p>
+              <p className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.store.punchCardDesc', 'Free item after X purchases')}</p>
             </div>
           </button>
 
           {form.punch_card_enabled && (
             <div className="mt-3 ml-10">
-              <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">
+              <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>
                 {t('admin.store.punchCardTarget', 'Purchases needed for free item')}
               </label>
               <input
@@ -226,6 +231,7 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
                 value={form.punch_card_target}
                 onChange={e => set('punch_card_target', e.target.value)}
                 className={inputClass}
+                style={inputStyle}
               />
             </div>
           )}

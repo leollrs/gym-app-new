@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, User, BookOpen, Dumbbell, Megaphone, Filter as FilterIcon, ArrowRight, X, Compass } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 /**
  * Cmd-K global search palette for admin. Opens with Cmd/Ctrl-K from anywhere
@@ -63,6 +64,7 @@ export default function GlobalSearch({ open, onClose, onToggle, pageIndex = [] }
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef(null);
 
+  useScrollLock(open);
   useGlobalSearchHotkey({ open, onToggle, onClose });
 
   // Reset state whenever the palette opens fresh.

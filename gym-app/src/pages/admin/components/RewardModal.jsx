@@ -6,7 +6,7 @@ import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAutoTranslate } from '../../../hooks/useAutoTranslate';
 import { AdminModal } from '../../../components/admin';
-import { REWARD_TYPES, rewardKeys, REWARD_INPUT_CLASS as inputClass } from './rewardConstants';
+import { REWARD_TYPES, rewardKeys } from './rewardConstants';
 import { REWARD_SYMBOLS, RewardSymbol, isRewardSymbol } from '../../../lib/rewardSymbols';
 
 /**
@@ -176,6 +176,21 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
     onError: (err) => showToast(err.message, 'error'),
   });
 
+  // Theme-aware input styling. The shared REWARD_INPUT_CLASS is hardcoded
+  // dark/gold, so we use a local layout-only class + inline color styles
+  // (kept theme- and white-label-correct) instead.
+  const inputBase = 'w-full rounded-xl px-4 py-2.5 text-[13px] outline-none transition-colors';
+  const inputStyle = {
+    background: 'var(--color-admin-panel)',
+    border: '1px solid var(--color-admin-border)',
+    color: 'var(--color-admin-text)',
+  };
+  const inputErrorStyle = {
+    background: 'var(--color-admin-panel)',
+    border: '1px solid color-mix(in srgb, var(--color-danger) 50%, transparent)',
+    color: 'var(--color-admin-text)',
+  };
+
   return (
     <AdminModal
       isOpen={isOpen}
@@ -186,8 +201,8 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
         <button
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="w-full py-3 rounded-xl font-bold text-[14px] text-black disabled:opacity-50 transition-colors"
-          style={{ background: '#D4AF37' }}
+          className="w-full py-3 rounded-xl font-bold text-[14px] disabled:opacity-50 transition-colors"
+          style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
         >
           {saveMutation.isPending
             ? t('admin.rewards.saving', 'Saving...')
@@ -202,20 +217,21 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
 
         {/* Name */}
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardName', 'Reward Name')} <span className="text-red-400">*</span></label>
+          <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.rewards.rewardName', 'Reward Name')} <span style={{ color: 'var(--color-danger)' }}>*</span></label>
           <input
             value={form.name}
             onChange={e => set('name', e.target.value)}
             onBlur={() => handleBlur('name')}
             placeholder={t('admin.rewards.rewardNamePlaceholder', 'e.g. Free Smoothie')}
-            className={errors.name ? `${inputClass} !border-red-500/50 focus:!border-red-500/50 focus:!ring-red-500/30` : inputClass}
+            className={inputBase}
+            style={errors.name ? inputErrorStyle : inputStyle}
           />
-          {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
+          {errors.name && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{errors.name}</p>}
         </div>
 
         {/* Symbol picker (custom icons in place of emoji) */}
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">{t('admin.rewards.symbol', 'Symbol')}</label>
+          <label className="block text-[12px] font-medium mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.rewards.symbol', 'Symbol')}</label>
           <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
             {REWARD_SYMBOLS.map(s => {
               const on = form.emoji_icon === s.key;
@@ -247,31 +263,38 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
 
         {/* Description */}
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardDescription', 'Description')}</label>
+          <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.rewards.rewardDescription', 'Description')}</label>
           <textarea
             value={form.description}
             onChange={e => set('description', e.target.value)}
             rows={2}
             placeholder={t('admin.rewards.descriptionPlaceholder', 'Optional description...')}
-            className={`${inputClass} resize-none`}
+            className={`${inputBase} resize-none placeholder:text-[var(--color-admin-text-faint)]`}
+            style={inputStyle}
           />
         </div>
 
         {/* Type */}
         <div>
-          <label className="block text-[12px] font-medium text-[#9CA3AF] mb-2">{t('admin.rewards.rewardType', 'Reward Type')}</label>
+          <label className="block text-[12px] font-medium mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.rewards.rewardType', 'Reward Type')}</label>
           <div className="flex gap-2 flex-wrap">
-            {REWARD_TYPES.map(rt => (
-              <button
-                key={rt.value}
-                onClick={() => set('reward_type', rt.value)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
-                  form.reward_type === rt.value ? rt.color : 'bg-white/[0.03] border border-white/6 text-[#6B7280]'
-                }`}
-              >
-                {t(`admin.rewards.type_${rt.value}`, rt.value)}
-              </button>
-            ))}
+            {REWARD_TYPES.map(rt => {
+              const on = form.reward_type === rt.value;
+              return (
+                <button
+                  key={rt.value}
+                  onClick={() => set('reward_type', rt.value)}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors"
+                  style={{
+                    background: on ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-admin-panel)',
+                    border: `1px solid ${on ? 'color-mix(in srgb, var(--color-accent) 40%, transparent)' : 'var(--color-admin-border)'}`,
+                    color: on ? 'var(--color-accent)' : 'var(--color-admin-text-muted)',
+                  }}
+                >
+                  {t(`admin.rewards.type_${rt.value}`, rt.value)}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -281,9 +304,9 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
           className="flex items-center gap-2.5 py-2"
         >
           {form.is_active
-            ? <ToggleRight size={22} className="text-emerald-400" />
-            : <ToggleLeft size={22} className="text-[#6B7280]" />}
-          <span className={`text-[13px] font-medium ${form.is_active ? 'text-emerald-400' : 'text-[#6B7280]'}`}>
+            ? <ToggleRight size={22} style={{ color: 'var(--color-success)' }} />
+            : <ToggleLeft size={22} style={{ color: 'var(--color-admin-text-muted)' }} />}
+          <span className="text-[13px] font-medium" style={{ color: form.is_active ? 'var(--color-success)' : 'var(--color-admin-text-muted)' }}>
             {t('admin.rewards.active', 'Active')}
           </span>
         </button>
@@ -294,23 +317,24 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
           className="flex items-center gap-2.5 py-2"
         >
           {form.is_featured
-            ? <ToggleRight size={22} className="text-amber-400" />
-            : <ToggleLeft size={22} className="text-[#6B7280]" />}
-          <span className={`text-[13px] font-medium ${form.is_featured ? 'text-amber-400' : 'text-[#6B7280]'}`}>
+            ? <ToggleRight size={22} style={{ color: 'var(--color-accent)' }} />
+            : <ToggleLeft size={22} style={{ color: 'var(--color-admin-text-muted)' }} />}
+          <span className="text-[13px] font-medium" style={{ color: form.is_featured ? 'var(--color-accent)' : 'var(--color-admin-text-muted)' }}>
             {t('admin.rewards.featured', 'Featured (replaces any current featured reward)')}
           </span>
         </button>
 
         {/* ── Advanced / Translation fields (progressive disclosure) ── */}
-        <div className="border-t border-white/6 pt-3">
+        <div className="pt-3" style={{ borderTop: '1px solid var(--color-admin-border)' }}>
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-2 text-[12px] font-semibold text-[#6B7280] hover:text-[#9CA3AF] transition-colors w-full"
+            className="flex items-center gap-2 text-[12px] font-semibold transition-colors w-full"
+            style={{ color: 'var(--color-admin-text-muted)' }}
           >
             <ChevronRight size={14} className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`} />
             {t('admin.rewards.advancedSettings', 'Translations & Advanced')}
             {(form.name_es || form.description_es) && (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] flex-shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-accent)' }} />
             )}
           </button>
 
@@ -319,11 +343,12 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
               {/* Name ES + Auto-translate */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[12px] font-medium text-[#9CA3AF]">{t('admin.rewards.rewardName', 'Reward Name')} (ES)</label>
+                  <label className="text-[12px] font-medium" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.rewards.rewardName', 'Reward Name')} (ES)</label>
                   <button
                     onClick={handleAutoTranslate}
                     disabled={translating || !form.name.trim()}
-                    className="text-[11px] text-[#D4AF37] hover:text-[#C5A028] disabled:opacity-40 transition-colors"
+                    className="text-[11px] disabled:opacity-40 transition-colors"
+                    style={{ color: 'var(--color-accent)' }}
                   >
                     {translating ? '...' : t('admin.rewards.autoTranslate', 'Auto-translate')}
                   </button>
@@ -332,32 +357,35 @@ export default function RewardModal({ isOpen, onClose, gymId, reward, t }) {
                   value={form.name_es}
                   onChange={e => set('name_es', e.target.value)}
                   placeholder={t('admin.rewards.namePlaceholder', 'e.g. Free Smoothie')}
-                  className={inputClass}
+                  className={inputBase}
+                  style={inputStyle}
                 />
               </div>
 
               {/* Description ES */}
               <div>
-                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.rewardDescription', 'Description')} (ES)</label>
+                <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.rewards.rewardDescription', 'Description')} (ES)</label>
                 <textarea
                   value={form.description_es}
                   onChange={e => set('description_es', e.target.value)}
                   rows={2}
                   placeholder={t('admin.rewards.descriptionPlaceholder', 'Optional description...')}
-                  className={`${inputClass} resize-none`}
+                  className={`${inputBase} resize-none placeholder:text-[var(--color-admin-text-faint)]`}
+                  style={inputStyle}
                 />
               </div>
 
               {/* Sort Order */}
               <div>
-                <label className="block text-[12px] font-medium text-[#9CA3AF] mb-1.5">{t('admin.rewards.sortOrder', 'Sort Order')}</label>
+                <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.rewards.sortOrder', 'Sort Order')}</label>
                 <input
                   type="number"
                   min="0"
                   value={form.sort_order}
                   onChange={e => set('sort_order', e.target.value)}
                   placeholder="0"
-                  className={inputClass}
+                  className={inputBase}
+                  style={inputStyle}
                 />
               </div>
             </div>

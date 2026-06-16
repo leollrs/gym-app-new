@@ -2,7 +2,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import useKeyboardOpen from '../hooks/useKeyboardOpen';
 import { useEffect, useState, useRef } from 'react';
 import {
-  Building2, Users, BarChart3, Search, Settings, LogOut,
+  Building2, BarChart3, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, Bug, Bell,
   Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle, Printer, ListChecks, Repeat,
   UtensilsCrossed,
@@ -60,9 +60,12 @@ const linkClass = (active) =>
 export default function PlatformLayout({ children }) {
   const keyboardOpen = useKeyboardOpen();
   const { t } = useTranslation('common');
-  const { profile, signOut, unreadAdminNotifs, availableRoles } = useAuth();
+  const { profile, signOut, unreadAdminNotifs, availableRoles, isImpersonating, stopImpersonating } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  // Landing on the platform tier means impersonation (if any) has ended — clear
+  // it so a lingering "view as gym admin" can't bleed into the platform view.
+  useEffect(() => { if (isImpersonating) stopImpersonating(); }, [isImpersonating, stopImpersonating]);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   // View switcher (P2-9): the platform tier had no way to flip into the admin

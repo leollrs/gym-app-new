@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import posthogClient from 'posthog-js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -166,6 +167,7 @@ export default function AdminReferrals() {
       if (error) throw error;
     },
     onSuccess: () => {
+      posthogClient?.capture('admin_referral_approved');
       queryClient.invalidateQueries({ queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId] });
       showToast(t('admin.referrals.approvedToast', 'Referral approved'), 'success');
     },
@@ -182,6 +184,7 @@ export default function AdminReferrals() {
       if (error) throw error;
     },
     onSuccess: () => {
+      posthogClient?.capture('admin_referral_rejected');
       queryClient.invalidateQueries({ queryKey: adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId] });
       showToast(t('admin.referrals.rejectedToast', 'Referral rejected'), 'success');
     },

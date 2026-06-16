@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase, authHeader } from '../supabase';
 import { sendNotification } from '../notifications';
 import logger from '../logger';
 import { logAdminAction } from '../adminAudit';
@@ -55,6 +55,15 @@ export async function sendOutreach({
   };
 
   if (!recipients?.length) return results;
+
+  // The email + SMS edge functions are deployed verify_jwt=on: a request that
+  // reaches the gateway without a valid `Authorization` JWT is bounced with an
+  // opaque `UNAUTHORIZED_NO_AUTH_HEADER` 401 before the function runs. Resolve
+  // one fresh token for the whole batch up front (refreshing a lapsed access
+  // token via the still-valid refresh token). If the session is truly dead this
+  // throws SESSION_EXPIRED — fail the batch with a clear "sign in again" rather
+  // than silently tallying every recipient as a failed send.
+  const batchAuthHeader = (channels.email || channels.sms) ? await authHeader() : null;
 
   // Pre-fetch per-recipient stats once for the whole audience, but only for the
   // stat tokens this particular send actually references. Cheap (streak_cache /
@@ -143,14 +152,13 @@ export async function sendOutreach({
         results.skipped.noEmail++;
       } else {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
           // The edge function requires `memberId` (it looks up the member, verifies
           // they belong to the caller's gym, resolves the stored email, audits, and
           // rate-limits). When a designer template is attached we pass the
           // pre-rendered, token-substituted `html`; otherwise we send `body` and the
           // function wraps it in the gym's branded template.
           const { error } = await supabase.functions.invoke('send-admin-email', {
-            headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            headers: batchAuthHeader,
             body: {
               memberId: r.id,
               subject: personalizedSubject || 'Message from your gym',
@@ -172,11 +180,10 @@ export async function sendOutreach({
         results.skipped.noPhone++;
       } else {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
           // send-sms derives the recipient phone + gym from the member record
           // server-side; it requires `{ memberId, body }` (a raw `to` is ignored).
           const { error } = await supabase.functions.invoke('send-sms', {
-            headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            headers: batchAuthHeader,
             body: { memberId: r.id, body: personalizedBody },
           });
           if (error) throw error;

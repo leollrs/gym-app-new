@@ -30,6 +30,7 @@ import {
   Apple,
 } from 'lucide-react';
 import { Share } from '@capacitor/share';
+import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
 import { supabase } from '../../lib/supabase';
 import { PROD_WEB_URL } from '../../lib/appUrls';
@@ -488,6 +489,8 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
         } else {
           try { await Share.share({ title: gym?.name || 'TuGymPR', text: full, url: link }); } catch {}
         }
+        // Reached only when the destination dispatch above didn't throw.
+        try { posthogClient?.capture('content_shared', { type: 'achievement', dest }); } catch { /* noop */ }
       } catch (err) {
         console.warn('[ShareAchievementSheet] share failed', err);
       } finally {

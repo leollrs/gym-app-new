@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import posthogClient from 'posthog-js';
 import { MessageSquare } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -92,12 +93,22 @@ function MetaTag({ children, lang = false }) {
   return <span style={{ fontFamily: FK.mono, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: lang ? TK.accent : TK.textFaint }}>{children}</span>;
 }
 
-function CatTag({ cat }) {
-  const tone = CAT_TONE[cat] || 'neutral';
+// winback cancel-reason category → human-readable label (DB stores lowercase codes).
+function catLabel(cat, t) {
+  const key = String(cat || '').toLowerCase();
+  const fallbacks = {
+    financial: 'Cost', time: 'Time', no_results: 'No results',
+    experience: 'Experience', other: 'Other',
+  };
+  return t(`admin.messageTemplates.categories.${key}`, { defaultValue: fallbacks[key] || (cat || '') });
+}
+
+function CatTag({ cat, t }) {
+  const tone = CAT_TONE[String(cat || '').toUpperCase()] || 'neutral';
   const c = TONE[tone] || TONE.neutral;
   const neutral = tone === 'neutral';
   return (
-    <span style={{ padding: '2px 8px', borderRadius: 6, background: neutral ? TK.surface3 : c.bg, border: `1px solid ${neutral ? TK.borderSolid : c.line}`, fontFamily: FK.mono, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, color: neutral ? TK.textMute : c.ink, whiteSpace: 'nowrap' }}>{cat}</span>
+    <span style={{ padding: '2px 8px', borderRadius: 6, background: neutral ? TK.surface3 : c.bg, border: `1px solid ${neutral ? TK.borderSolid : c.line}`, fontFamily: FK.body, fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color: neutral ? TK.textMute : c.ink, whiteSpace: 'nowrap' }}>{catLabel(cat, t)}</span>
   );
 }
 
@@ -153,7 +164,7 @@ function TemplateCard({ row, t, onEdit, onToggle, shownEnabled, toggleDisabled }
           <MetaTag>{dayLabel(row.step_key, t)}</MetaTag>
           <span style={{ color: TK.textFaint, fontSize: 11 }}>/</span>
           <MetaTag lang>{row.language.toUpperCase()}</MetaTag>
-          {row.category && <><span style={{ color: TK.textFaint, fontSize: 11 }}>/</span><CatTag cat={row.category} /></>}
+          {row.category && <><span style={{ color: TK.textFaint, fontSize: 11 }}>/</span><CatTag cat={row.category} t={t} /></>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <StatusPill status={status} t={t} />
@@ -234,6 +245,7 @@ export default function AdminMessageTemplates() {
         'message_template',
         res.id,
       );
+      posthogClient?.capture('admin_template_saved', { kind: 'message' });
       queryClient.invalidateQueries({ queryKey: adminKeys.messageTemplates(gymId) });
       setEditing(null);
       showToast(t('admin.messageTemplates.saved', 'Template saved'), 'success');
@@ -391,7 +403,7 @@ function EditModal({ editing, setEditing, onSave, onReset, saving, resetting, t 
       onClose={() => setEditing(null)}
       title={t('admin.messageTemplates.editTitle', 'Edit message')}
       titleIcon={MessageSquare}
-      subtitle={`${dayLabel(row.step_key, t)} · ${row.language.toUpperCase()}${row.category ? ` · ${row.category}` : ''}`}
+      subtitle={`${dayLabel(row.step_key, t)} · ${row.language.toUpperCase()}${row.category ? ` · ${catLabel(row.category, t)}` : ''}`}
       size="lg"
       footer={
         <>

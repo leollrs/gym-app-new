@@ -421,12 +421,9 @@ serve(async (req) => {
     let user: { id: string } | null = null;
 
     if (!isServiceRole) {
-      // Auth client — uses anon key + user's JWT
-      const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-      const authClient = createClient(SUPABASE_URL, ANON_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user: authUser }, error: authErr } = await authClient.auth.getUser();
+      // Validate the user's JWT explicitly via a service-role client (ES256
+      // asymmetric signing keys break the no-arg getUser() form).
+      const { data: { user: authUser }, error: authErr } = await createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY).auth.getUser(token);
       if (authErr || !authUser) {
         console.error('Auth failed:', authErr?.message);
         return jsonResp({ error: 'Unauthorized' }, 401);
@@ -476,7 +473,13 @@ serve(async (req) => {
       return jsonResp({ error: 'gym_id is required' }, 400);
     }
 
-    // ── Rate limiting: max 10 broadcast pushes per hour per gym ─
+    // ── Rate limiting: generous per-gym backstop ──
+    // This is a FULL-GYM broadcast (one call → every member), so a loose cap
+    // guards against a runaway loop / push-fatigue spam — but the old limit of 10
+    // was far too low (a gym running a campaign or just testing legitimately
+    // sends more than that). 100/hr is effectively unlimited for real use while
+    // still catching a malfunction.
+    const PER_GYM_BROADCAST_CAP = 100;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count: recentPushCount, error: rlErr } = await supabase
       .from('admin_push_log')
@@ -484,9 +487,9 @@ serve(async (req) => {
       .eq('gym_id', targetGymId)
       .gte('sent_at', oneHourAgo);
 
-    if (!rlErr && (recentPushCount ?? 0) >= 10) {
+    if (!rlErr && (recentPushCount ?? 0) >= PER_GYM_BROADCAST_CAP) {
       return jsonResp(
-        { error: 'Rate limit exceeded — max 10 broadcast pushes per hour per gym' },
+        { error: `Rate limit exceeded — max ${PER_GYM_BROADCAST_CAP} broadcast pushes per hour per gym` },
         429,
       );
     }

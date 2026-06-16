@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import {
-  Users, Activity, Dumbbell, Clock, Building2, Trophy,
-  Settings as SettingsIcon,
+  Users, Activity, Dumbbell, Building2, Trophy,
+  Settings as SettingsIcon, Crown, Mail, Phone, MessageCircle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { supabase } from '../../../lib/supabase';
 import SmsUsageCard from './SmsUsageCard';
 
 export default function GymOverviewTab({
@@ -21,6 +23,19 @@ export default function GymOverviewTab({
   setContentSubTab,
 }) {
   const { t } = useTranslation('pages');
+
+  // Owner contact (email/phone) via the super_admin RPC (0588) — joins
+  // auth.users, which a plain client query can't. Powers manual outreach.
+  const [ownerContact, setOwnerContact] = useState(null);
+  useEffect(() => {
+    if (!gym?.owner_user_id) { setOwnerContact(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.rpc('platform_gym_owner_contact', { p_gym_id: gymId });
+      if (!cancelled) setOwnerContact(Array.isArray(data) ? (data[0] || null) : (data || null));
+    })();
+    return () => { cancelled = true; };
+  }, [gym?.owner_user_id, gymId]);
 
   return (
     <div className="space-y-5">
@@ -61,6 +76,38 @@ export default function GymOverviewTab({
             <p className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.overview.members')}</p>
           </div>
         </div>
+        {gym?.owner_user_id && ownerContact && (
+          <div className="mt-4 pt-3 border-t border-white/6">
+            <p className="text-[11px] text-[#6B7280] mb-1.5 flex items-center gap-1.5">
+              <Crown size={11} className="text-[#D4AF37]" />
+              {t('platform.gymDetail.overview.ownerContact', 'Owner contact')}
+            </p>
+            <p className="text-[13px] font-medium text-[#E5E7EB]">{ownerContact.full_name || '—'}</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {ownerContact.email && (
+                <a href={`mailto:${ownerContact.email}`}
+                  className="inline-flex items-center gap-1.5 text-[11px] text-[#9CA3AF] bg-white/5 hover:bg-white/10 border border-white/6 rounded-lg px-2.5 py-1 transition-colors">
+                  <Mail size={12} className="text-[#D4AF37]" /> {ownerContact.email}
+                </a>
+              )}
+              {ownerContact.phone_number && (
+                <>
+                  <a href={`tel:${ownerContact.phone_number}`}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-[#9CA3AF] bg-white/5 hover:bg-white/10 border border-white/6 rounded-lg px-2.5 py-1 transition-colors">
+                    <Phone size={12} className="text-[#D4AF37]" /> {ownerContact.phone_number}
+                  </a>
+                  <a href={`https://wa.me/${ownerContact.phone_number.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[11px] text-[#9CA3AF] bg-white/5 hover:bg-white/10 border border-white/6 rounded-lg px-2.5 py-1 transition-colors">
+                    <MessageCircle size={12} className="text-emerald-400" /> {t('platform.gymDetail.overview.whatsapp', 'WhatsApp')}
+                  </a>
+                </>
+              )}
+              {!ownerContact.email && !ownerContact.phone_number && (
+                <span className="text-[11px] text-[#6B7280]">{t('platform.gymDetail.overview.noOwnerContact', 'No contact info on file')}</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Activity snapshot */}

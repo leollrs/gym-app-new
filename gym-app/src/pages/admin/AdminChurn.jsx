@@ -23,6 +23,7 @@ import posthog from 'posthog-js';
 
 // Shared components
 import { PageHeader, Avatar, FilterBar, StatCard, SkeletonRow, AdminTable, AdminPageShell, AdminTabs, AdminModal } from '../../components/admin';
+import FollowUpSettings from './components/FollowUpSettings';
 import AdminPagination from '../../components/admin/AdminPagination';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { ScoreBar, RiskBadge } from '../../components/admin/StatusBadge';
@@ -118,6 +119,19 @@ async function fetchChurnData(gymId) {
     if (latestScore?.computed_at) lastComputedAt = latestScore.computed_at;
   } catch (_) {}
 
+  // Automated follow-up (drip) config + steps — feeds the FollowUpSettings panel
+  // on the Campaigns tab. Tables may be unapplied in some envs → resilient.
+  let followupSettings = null;
+  let followupSteps = [];
+  try {
+    const r = await supabase.from('churn_followup_settings').select('*').eq('gym_id', gymId).maybeSingle();
+    if (!r.error && r.data) followupSettings = r.data;
+  } catch (_) {}
+  try {
+    const r = await supabase.from('drip_campaign_steps').select('*').eq('gym_id', gymId).order('step_number');
+    if (!r.error && r.data) followupSteps = r.data;
+  } catch (_) {}
+
   return {
     members: scored,
     challenges,
@@ -125,6 +139,8 @@ async function fetchChurnData(gymId) {
     autoDetectedReturns: autoDetected,
     contactLogs: contactLogRows,
     campaigns: campaignRows,
+    followupSettings,
+    followupSteps,
     lastComputedAt,
   };
 }
@@ -270,6 +286,8 @@ export default function AdminChurn() {
   const contactedIds = useMemo(() => new Set(Object.keys(contactedMap)), [contactedMap]);
 
   const campaigns = data?.campaigns || [];
+  const followupSettings = data?.followupSettings || null;
+  const followupSteps = data?.followupSteps || [];
   const activeCampaign = useMemo(() => campaigns.find(c => c.is_active), [campaigns]);
 
   // Campaign stats: compute per-variant metrics from win_back_attempts
@@ -423,6 +441,7 @@ export default function AdminChurn() {
     try {
       const { error } = await supabase.from('profiles').update({ churn_pause_until: until }).eq('id', member.id).eq('gym_id', gymId);
       if (error) throw error;
+      if (!pausedByHold) posthog?.capture('admin_churn_paused');
       showToast(pausedByHold ? t('admin.churn.alertsResumed', 'Alerts resumed') : t('admin.churn.alertsPaused', 'Paused 30 days (vacation)'), 'success');
       refetch();
     } catch {
@@ -459,6 +478,7 @@ export default function AdminChurn() {
         logger.error('Bulk add to challenge failed', error);
         showToast(t('admin.churn.bulkChallengeError', { defaultValue: 'Failed to add members to challenge. Please try again.' }), 'error');
       } else {
+        posthog?.capture('admin_atrisk_enrolled', { count: selectedMembers.length });
         showToast(t('admin.churn.bulkChallengeSuccess', { count: selectedMembers.length, defaultValue: '{{count}} members added to challenge' }), 'success');
         clearSelection();
       }
@@ -477,6 +497,7 @@ export default function AdminChurn() {
         logger.error('Bulk mark contacted failed', error);
         showToast(t('admin.churn.bulkContactError', { defaultValue: 'Failed to mark members as contacted' }), 'error');
       } else {
+        posthog?.capture('admin_member_contacted', { bulk: true, count: selectedMembers.length });
         showToast(t('admin.churn.bulkContactSuccess', { count: selectedMembers.length, defaultValue: '{{count}} members marked as contacted' }), 'success');
         clearSelection();
         refetch();
@@ -496,6 +517,7 @@ export default function AdminChurn() {
         showToast(t('admin.churn.markContactedError', { defaultValue: 'Failed to mark as contacted' }), 'error');
         return;
       }
+      posthog?.capture('admin_member_contacted', { bulk: false });
       refetch();
     } catch (err) {
       logger.error('Failed to log contact', err);
@@ -634,8 +656,8 @@ export default function AdminChurn() {
       label: '',
       width: '44px',
       render: (m) => (
-        <button onClick={(e) => { e.stopPropagation(); toggleSelected(m.id); }} aria-label={selectedIds.has(m.id) ? t('admin.churn.deselectMember', 'Deselect member') : t('admin.churn.selectMember', 'Select member')} className="text-[#6B7280] hover:text-[#D4AF37] transition-colors">
-          {selectedIds.has(m.id) ? <CheckSquare size={16} className="text-[#D4AF37]" /> : <Square size={16} />}
+        <button onClick={(e) => { e.stopPropagation(); toggleSelected(m.id); }} aria-label={selectedIds.has(m.id) ? t('admin.churn.deselectMember', 'Deselect member') : t('admin.churn.selectMember', 'Select member')} className="text-[var(--color-admin-text-faint)] hover:text-[var(--color-accent)] transition-colors">
+          {selectedIds.has(m.id) ? <CheckSquare size={16} className="text-[var(--color-accent)]" /> : <Square size={16} />}
         </button>
       ),
     },
@@ -647,7 +669,7 @@ export default function AdminChurn() {
       render: (m) => (
         <div className="flex items-center gap-2.5 min-w-0">
           <Avatar name={m.full_name} />
-          <span className="text-[13px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</span>
+          <span className="text-[13px] font-semibold text-[var(--color-admin-text)] truncate">{m.full_name}</span>
         </div>
       ),
     },
@@ -735,7 +757,7 @@ export default function AdminChurn() {
             <button onClick={() => setContactPanel(m)} title={t('admin.churn.contact', 'Contact')}
               aria-label={t('admin.churn.contact', 'Contact')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity hover:opacity-90"
-              style={{ background: 'var(--color-accent)', color: '#fff' }}>
+              style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}>
               <Phone size={13} /> {t('admin.churn.contact', 'Contact')}
             </button>
           </div>
@@ -767,10 +789,15 @@ export default function AdminChurn() {
               title={t('admin.churn.refreshScores', 'Refresh Scores')}>
               <RefreshCw size={13} className={refreshingScores ? 'animate-spin' : ''} /> {t('admin.churn.refreshScores', 'Refresh Scores')}
             </button>
-            <button onClick={handleExport}
-              className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap">
-              <Download size={13} /> {t('admin.churn.export', 'Export')}
-            </button>
+            {/* Export columns are churn-shaped (score/tier/signals) → only valid
+                on the member-list tabs. Win-Back/Campaigns rows would emit blank
+                churn columns, so the button is hidden there. */}
+            {(tab === 'task-board' || tab === 'churned') && (
+              <button onClick={handleExport}
+                className="admin-pill admin-pill--outline flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap">
+                <Download size={13} /> {t('admin.churn.export', 'Export')}
+              </button>
+            )}
           </div>
         }
       />
@@ -877,62 +904,62 @@ export default function AdminChurn() {
               })}
             </div>
             <div className="relative flex-1">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-admin-text-faint)]" />
               <input type="text" placeholder={t('admin.churn.searchMembers', 'Search members…')} aria-label={t('admin.churn.searchMembers', 'Search members')} value={search} onChange={e => setSearch(e.target.value)}
-                className="w-full bg-[#0F172A] border border-white/6 rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" />
+                className="w-full bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-xl pl-9 pr-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder-[var(--color-admin-text-faint)] outline-none focus:border-[var(--color-accent)]" />
             </div>
           </div>
 
           {/* Bulk action bar — only visible when members are selected */}
           {!loading && atRiskMembers.length > 0 && selectedCount > 0 && (
-            <div className="mb-4 px-3 md:px-4 py-3 rounded-xl flex items-center gap-2 md:gap-3 bg-[#D4AF37]/8 border border-[#D4AF37]/20 overflow-x-auto scrollbar-hide">
+            <div className="mb-4 px-3 md:px-4 py-3 rounded-xl flex items-center gap-2 md:gap-3 bg-[var(--color-accent-soft)] border border-[var(--color-accent)] overflow-x-auto scrollbar-hide">
               <button onClick={allVisibleSelected ? clearSelection : selectAllVisible}
-                className="flex items-center gap-1.5 text-[12px] font-semibold text-[#D4AF37] hover:text-[#E5E7EB] transition-colors whitespace-nowrap flex-shrink-0">
+                className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--color-accent)] hover:text-[var(--color-admin-text)] transition-colors whitespace-nowrap flex-shrink-0">
                 {allVisibleSelected ? <CheckSquare size={14} /> : <Square size={14} />}
                 {t('admin.churn.selectAllVisible', 'Select All')}
               </button>
-              <div className="h-4 w-px bg-[#D4AF37]/20 flex-shrink-0" />
-              <span className="text-[12px] font-semibold text-[#D4AF37] whitespace-nowrap flex-shrink-0">
+              <div className="h-4 w-px bg-[var(--color-accent-soft)] flex-shrink-0" />
+              <span className="text-[12px] font-semibold text-[var(--color-accent)] whitespace-nowrap flex-shrink-0">
                 {t('admin.churn.selectedCount', { count: selectedCount, defaultValue: '{{count}} selected' })}
               </span>
-              <div className="h-4 w-px bg-[#D4AF37]/20 flex-shrink-0" />
+              <div className="h-4 w-px bg-[var(--color-accent-soft)] flex-shrink-0" />
               <button onClick={() => {
                   const ids = selectedMembers.map(m => m.id).join(',');
                   navigate(`/admin/outreach?audience=member&ids=${ids}`);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25 hover:bg-[#D4AF37]/20 transition-colors whitespace-nowrap flex-shrink-0">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-accent-soft)] text-[var(--color-accent)] border border-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] transition-colors whitespace-nowrap flex-shrink-0">
                 <MessageSquare size={12} /> {t('admin.churn.messageSelected', 'Message Selected')}
               </button>
               <button onClick={() => { if (selectedCount > 0) { setWinBackModal(selectedMembers[0]); } }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors whitespace-nowrap flex-shrink-0">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-danger-soft)] text-[var(--color-danger)] border border-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] transition-colors whitespace-nowrap flex-shrink-0">
                 <RotateCcw size={12} /> {t('admin.churn.winBackSelected', 'Win-Back Selected')}
               </button>
               {/* Overflow menu for secondary actions */}
               <div className="relative ml-auto flex-shrink-0" ref={overflowMenuRef}>
                 <button onClick={() => setOverflowMenuOpen(prev => !prev)}
                   aria-label={t('admin.churn.moreActions', 'More actions')}
-                  className="p-1.5 rounded-lg text-[#D4AF37] hover:bg-[#D4AF37]/12 transition-colors">
+                  className="p-1.5 rounded-lg text-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] transition-colors">
                   <MoreHorizontal size={16} />
                 </button>
                 {overflowMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-50 w-52 bg-[#1E293B] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                  <div className="absolute right-0 top-full mt-1 z-50 w-52 bg-[var(--color-admin-panel)] border border-[var(--color-admin-border)] rounded-xl shadow-xl overflow-hidden">
                     {challenges.length > 0 && (
-                      <div className="border-b border-white/6">
-                        <p className="px-3 pt-2.5 pb-1 text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.addAllToChallenge', 'Add to Challenge')}</p>
+                      <div className="border-b border-[var(--color-admin-border)]">
+                        <p className="px-3 pt-2.5 pb-1 text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider">{t('admin.churn.addAllToChallenge', 'Add to Challenge')}</p>
                         {challenges.map(c => (
                           <button key={c.id} onClick={() => { handleBulkAddToChallenge(c.id); setOverflowMenuOpen(false); }}
-                            className="w-full text-left px-3 py-2 text-[12px] text-[#E5E7EB] hover:bg-white/6 transition-colors truncate">
+                            className="w-full text-left px-3 py-2 text-[12px] text-[var(--color-admin-text)] hover:bg-[var(--color-bg-hover)] transition-colors truncate">
                             {c.name}
                           </button>
                         ))}
                       </div>
                     )}
                     <button onClick={() => { handleBulkMarkContacted(); setOverflowMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-[#10B981] hover:bg-white/6 transition-colors">
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-[var(--color-success)] hover:bg-[var(--color-bg-hover)] transition-colors">
                       <CheckCircle size={13} /> {t('admin.churn.markAllContacted', 'Mark Contacted')}
                     </button>
                     <button onClick={() => { clearSelection(); setOverflowMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-[#EF4444] hover:bg-white/6 transition-colors">
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] font-medium text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)] transition-colors">
                       <X size={13} /> {t('admin.churn.clearSelection', 'Clear Selection')}
                     </button>
                   </div>
@@ -942,7 +969,7 @@ export default function AdminChurn() {
           )}
 
           {loading ? (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-hidden">
               {[...Array(5)].map((_, i) => <SkeletonRow key={i} />)}
             </div>
           ) : atRiskMembers.length === 0 ? (
@@ -963,7 +990,7 @@ export default function AdminChurn() {
                   <AdminPagination page={churnSafePage} pageSize={CHURN_PAGE_SIZE} total={sortedAtRisk.length} onPageChange={setChurnPage} />
                 </div>
                 <div className="hidden lg:block flex-1 min-w-0 sticky top-4">
-                  <div className="w-full bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
+                  <div className="w-full bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-hidden">
                     <MemberDetailPanel
                       member={selectedMember}
                       contactLogs={contactLogs}
@@ -993,27 +1020,27 @@ export default function AdminChurn() {
                     <div key={m.id} onClick={() => { setSelectedMember(m); setMobileDetailOpen(true); }}
                       role="button" tabIndex={0} aria-label={t('admin.churn.viewMemberDetails', { name: m.full_name, defaultValue: 'View details for {{name}}' })}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedMember(m); setMobileDetailOpen(true); } }}
-                      className={`admin-card p-3 hover:bg-white/[0.03] transition-all cursor-pointer ${isSelected ? 'bg-[#D4AF37]/[0.04]' : ''}`}>
+                      className={`admin-card p-3 hover:bg-[var(--color-bg-hover)] transition-all cursor-pointer ${isSelected ? 'bg-[var(--color-accent-soft)]' : ''}`}>
                       <div className="flex items-start gap-3">
-                        <button onClick={(e) => { e.stopPropagation(); toggleSelected(m.id); }} aria-label={isSelected ? t('admin.churn.deselectMember', 'Deselect member') : t('admin.churn.selectMember', 'Select member')} className="mt-1 flex-shrink-0 text-[#6B7280] hover:text-[#D4AF37] transition-colors">
-                          {isSelected ? <CheckSquare size={16} className="text-[#D4AF37]" /> : <Square size={16} />}
+                        <button onClick={(e) => { e.stopPropagation(); toggleSelected(m.id); }} aria-label={isSelected ? t('admin.churn.deselectMember', 'Deselect member') : t('admin.churn.selectMember', 'Select member')} className="mt-1 flex-shrink-0 text-[var(--color-admin-text-faint)] hover:text-[var(--color-accent)] transition-colors">
+                          {isSelected ? <CheckSquare size={16} className="text-[var(--color-accent)]" /> : <Square size={16} />}
                         </button>
                         <Avatar name={m.full_name} />
                         <div className="flex-1 min-w-0">
                           {/* Row 1: Name + badges */}
                           <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                            <p className="text-[13px] font-semibold text-[#E5E7EB]">{m.full_name}</p>
+                            <p className="text-[13px] font-semibold text-[var(--color-admin-text)]">{m.full_name}</p>
                             {m.username && (
-                              <span className="text-[11px] text-[#6B7280] truncate">@{m.username}</span>
+                              <span className="text-[11px] text-[var(--color-admin-text-faint)] truncate">@{m.username}</span>
                             )}
                             <RiskBadge tier={m.churnScore >= 80 ? 'critical' : m.churnScore >= 55 ? 'high' : 'medium'} />
                             {hasReturned && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/20">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-success-soft)] text-[var(--color-success)] border border-[var(--color-success)]">
                                 {t('admin.churn.returnedBadge', 'Returned')}
                               </span>
                             )}
                             {isContacted && (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20">
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-accent)] border border-[var(--color-accent)]">
                                 {mContactCount > 1 ? t('admin.churn.contactCountBadge', { count: mContactCount, defaultValue: '{{count}} contacts' }) : t('admin.churn.contacted', 'Contacted')}
                               </span>
                             )}
@@ -1023,7 +1050,7 @@ export default function AdminChurn() {
                           {/* Row 3: Top signal pills + days inactive */}
                           <div className="flex items-center gap-1.5 flex-wrap mb-1">
                             {pills.map((p, i) => {
-                              const pillColor = p.pct >= 70 ? 'bg-[#EF4444]/12 text-[#EF4444] border-[#EF4444]/20' : p.pct >= 40 ? 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20' : 'bg-white/5 text-[#9CA3AF] border-white/8';
+                              const pillColor = p.pct >= 70 ? 'bg-[var(--color-danger-soft)] text-[var(--color-danger)] border-[var(--color-danger)]' : p.pct >= 40 ? 'bg-[var(--color-warning-soft)] text-[var(--color-warning)] border-[var(--color-warning)]' : 'bg-[var(--color-bg-hover)] text-[var(--color-admin-text-muted)] border-[var(--color-admin-border)]';
                               return (
                                 <span key={i} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border truncate max-w-[130px] ${pillColor}`}>
                                   {p.name}
@@ -1038,16 +1065,16 @@ export default function AdminChurn() {
                       </div>
                       {/* Action row */}
                       <div className="flex items-center gap-2 mt-2.5 pl-[68px] flex-wrap" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setMsgModal(m)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/18 transition-colors">
+                        <button onClick={() => setMsgModal(m)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-accent-soft)] text-[var(--color-accent)] border border-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] transition-colors">
                           <MessageSquare size={12} /> {t('admin.churn.message', 'Message')}
                         </button>
                         <button onClick={() => setContactPanel(m)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/8 hover:text-[#E5E7EB] transition-colors">
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-bg-hover)] text-[var(--color-admin-text-muted)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors">
                           <Phone size={12} /> {t('admin.churn.contact', 'Contact')}
                         </button>
                         {m.churnScore >= 60 && (
                           <button onClick={() => setWinBackModal(m)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors">
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-danger-soft)] text-[var(--color-danger)] border border-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] transition-colors">
                             <RotateCcw size={12} /> {t('admin.churn.winBack', 'Win Back')}
                           </button>
                         )}
@@ -1066,40 +1093,40 @@ export default function AdminChurn() {
           if (tabKey === 'churned') return (
         <div>
           {loading ? (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">{[...Array(4)].map((_, i) => <SkeletonRow key={i} />)}</div>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-hidden">{[...Array(4)].map((_, i) => <SkeletonRow key={i} />)}</div>
           ) : churnedMembers.length === 0 ? (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-12 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-4"><Users size={22} className="text-[#10B981]" /></div>
-              <p className="text-[15px] font-semibold text-[#E5E7EB] mb-1">{t('admin.churn.noChurned', 'No churned members')}</p>
-              <p className="text-[13px] text-[#6B7280]">{t('admin.churn.allActive', 'All members have been active in the last 30 days.')}</p>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] p-12 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--color-success-soft)] flex items-center justify-center mx-auto mb-4"><Users size={22} className="text-[var(--color-success)]" /></div>
+              <p className="text-[15px] font-semibold text-[var(--color-admin-text)] mb-1">{t('admin.churn.noChurned', 'No churned members')}</p>
+              <p className="text-[13px] text-[var(--color-admin-text-faint)]">{t('admin.churn.allActive', 'All members have been active in the last 30 days.')}</p>
             </div>
           ) : (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
-              <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_auto_auto] items-center gap-3 md:gap-4 px-4 py-2.5 border-b border-white/6">
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.colMember', 'Member')}</p>
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider hidden sm:block">{t('admin.churn.colLastSeen', 'Last Seen')}</p>
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider hidden sm:block">{t('admin.churn.colTenure', 'Tenure')}</p>
-                <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider">{t('admin.churn.colAction', 'Action')}</p>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-hidden">
+              <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_auto_auto] items-center gap-3 md:gap-4 px-4 py-2.5 border-b border-[var(--color-admin-border)]">
+                <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider">{t('admin.churn.colMember', 'Member')}</p>
+                <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider hidden sm:block">{t('admin.churn.colLastSeen', 'Last Seen')}</p>
+                <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider hidden sm:block">{t('admin.churn.colTenure', 'Tenure')}</p>
+                <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider">{t('admin.churn.colAction', 'Action')}</p>
               </div>
-              <div className="divide-y divide-white/4">
+              <div className="divide-y divide-[var(--color-admin-border)]">
                 {churnedMembers.map(m => {
                   const lastSeen = m.lastActivityAt
                     ? formatDistanceToNow(new Date(m.lastActivityAt), { addSuffix: true, ...dateFnsLocaleOpt })
                     : t('admin.churn.noRecentActivity', 'No recent activity');
                   const tenureLabel = m.tenureMonths < 1 ? t('admin.churn.lessThanMonth', 'Less than 1 month') : `${Math.round(m.tenureMonths)} ${t('admin.churn.months', 'months')}`;
                   return (
-                    <div key={m.id} className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_auto_auto] items-center gap-3 md:gap-4 px-4 py-3.5 hover:bg-white/[0.02] transition-colors">
+                    <div key={m.id} className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_auto_auto] items-center gap-3 md:gap-4 px-4 py-3.5 hover:bg-[var(--color-bg-hover)] transition-colors">
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar name={m.full_name} />
                         <div className="min-w-0">
-                          <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{m.full_name}</p>
-                          <p className="text-[11px] text-[#6B7280] sm:hidden">{lastSeen}</p>
+                          <p className="text-[14px] font-semibold text-[var(--color-admin-text)] truncate">{m.full_name}</p>
+                          <p className="text-[11px] text-[var(--color-admin-text-faint)] sm:hidden">{lastSeen}</p>
                         </div>
                       </div>
-                      <div className="hidden sm:block text-right"><p className="text-[12px] text-[#9CA3AF]">{lastSeen}</p></div>
-                      <div className="hidden sm:block text-right"><p className="text-[12px] text-[#9CA3AF]">{tenureLabel}</p></div>
+                      <div className="hidden sm:block text-right"><p className="text-[12px] text-[var(--color-admin-text-muted)]">{lastSeen}</p></div>
+                      <div className="hidden sm:block text-right"><p className="text-[12px] text-[var(--color-admin-text-muted)]">{tenureLabel}</p></div>
                       <button onClick={() => setWinBackModal(m)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors flex-shrink-0">
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-danger-soft)] text-[var(--color-danger)] border border-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] transition-colors flex-shrink-0">
                         <RotateCcw size={12} /> {t('admin.churn.winBack', 'Win Back')}
                       </button>
                     </div>
@@ -1113,8 +1140,8 @@ export default function AdminChurn() {
           if (tabKey === 'win-back') return (
         <div>
           {!loading && winBackAttempts.length > 0 && Object.keys(attributionStats).length > 0 && (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-4 mb-4">
-              <p className="text-[12px] font-semibold text-[#E5E7EB] mb-2">{t('admin.churn.attributionTitle', 'Outreach Attribution')}</p>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] p-4 mb-4">
+              <p className="text-[12px] font-semibold text-[var(--color-admin-text)] mb-2">{t('admin.churn.attributionTitle', 'Outreach Attribution')}</p>
               <div className="flex flex-wrap gap-3">
                 {Object.entries(attributionStats).map(([method, stats]) => {
                   // Coerce to integers — defends against any malformed stats object
@@ -1124,10 +1151,10 @@ export default function AdminChurn() {
                   const returned = Number.isFinite(Number(stats?.returned)) ? Number(stats.returned) : 0;
                   const rate = sent > 0 ? Math.round((returned / sent) * 100) : 0;
                   return (
-                    <span key={method} className="text-[11px] text-[#9CA3AF]">
-                      <span className="font-semibold text-[#E5E7EB]">{METHOD_I18N[method] ? t(METHOD_I18N[method]) : method}:</span>{' '}
+                    <span key={method} className="text-[11px] text-[var(--color-admin-text-muted)]">
+                      <span className="font-semibold text-[var(--color-admin-text)]">{METHOD_I18N[method] ? t(METHOD_I18N[method]) : method}:</span>{' '}
                       {t('admin.churn.sentCount', { count: sent, defaultValue: '{{count}} sent' })},{' '}
-                      <span className={returned > 0 ? 'text-[#10B981]' : ''}>{t('admin.churn.returnedCount', { count: returned, defaultValue: '{{count}} returned' })}</span>{' '}
+                      <span className={returned > 0 ? 'text-[var(--color-success)]' : ''}>{t('admin.churn.returnedCount', { count: returned, defaultValue: '{{count}} returned' })}</span>{' '}
                       ({rate}%)
                     </span>
                   );
@@ -1137,12 +1164,12 @@ export default function AdminChurn() {
           )}
 
           {loading ? (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">{[...Array(3)].map((_, i) => <SkeletonRow key={i} />)}</div>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-hidden">{[...Array(3)].map((_, i) => <SkeletonRow key={i} />)}</div>
           ) : winBackAttempts.length === 0 ? (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-12 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4"><RotateCcw size={22} className="text-[#D4AF37]" /></div>
-              <p className="text-[15px] font-semibold text-[#E5E7EB] mb-1">{t('admin.churn.noWinBacks', 'No win-back attempts yet')}</p>
-              <p className="text-[13px] text-[#6B7280]">{t('admin.churn.useChurnedTab', 'Use the Churned tab to send win-back messages to inactive members.')}</p>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] p-12 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--color-accent-soft)] flex items-center justify-center mx-auto mb-4"><RotateCcw size={22} className="text-[var(--color-accent)]" /></div>
+              <p className="text-[15px] font-semibold text-[var(--color-admin-text)] mb-1">{t('admin.churn.noWinBacks', 'No win-back attempts yet')}</p>
+              <p className="text-[13px] text-[var(--color-admin-text-faint)]">{t('admin.churn.useChurnedTab', 'Use the Churned tab to send win-back messages to inactive members.')}</p>
             </div>
           ) : (() => {
             // Group win-back attempts by member. One row per member, summary stats inline,
@@ -1175,16 +1202,16 @@ export default function AdminChurn() {
             const winBackRows = groupedRows.slice((winBackSafePage - 1) * WINBACK_PAGE_SIZE, (winBackSafePage - 1) * WINBACK_PAGE_SIZE + WINBACK_PAGE_SIZE);
 
             return (
-              <div className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
-                <div className="grid grid-cols-[1fr_auto] items-center gap-2 md:gap-4 px-4 py-2.5 border-b border-white/6">
-                  <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider">
+              <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-hidden">
+                <div className="grid grid-cols-[1fr_auto] items-center gap-2 md:gap-4 px-4 py-2.5 border-b border-[var(--color-admin-border)]">
+                  <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider">
                     {t('admin.churn.colMember', 'Member')}
                   </p>
-                  <p className="text-[10px] font-semibold text-[#4B5563] uppercase tracking-wider">
+                  <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider">
                     {t('admin.churn.colAttempts', 'Attempts')}
                   </p>
                 </div>
-                <div className="divide-y divide-white/4">
+                <div className="divide-y divide-[var(--color-admin-border)]">
                   {winBackRows.map(row => {
                     const m = members.find(mem => mem.id === row.userId);
                     const memberName = m?.full_name ?? t('admin.churn.unknownMember', 'Unknown Member');
@@ -1195,14 +1222,14 @@ export default function AdminChurn() {
                         key={row.userId}
                         type="button"
                         onClick={() => setAttemptsModalUserId(row.userId)}
-                        className="w-full text-left px-4 py-3.5 hover:bg-white/[0.02] transition-colors"
+                        className="w-full text-left px-4 py-3.5 hover:bg-[var(--color-bg-hover)] transition-colors"
                       >
                         <div className="grid grid-cols-[1fr_auto] items-center gap-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <Avatar name={memberName} src={m?.avatar_url} />
                             <div className="min-w-0">
-                              <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">{memberName}</p>
-                              <p className="text-[11px] text-[#6B7280] truncate">
+                              <p className="text-[13px] font-semibold text-[var(--color-admin-text)] truncate">{memberName}</p>
+                              <p className="text-[11px] text-[var(--color-admin-text-faint)] truncate">
                                 {t('admin.churn.lastAttempt', 'Last attempt')}: {formatDistanceToNow(new Date(row.last.created_at), { addSuffix: true, ...dateFnsLocaleOpt })}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -1210,7 +1237,7 @@ export default function AdminChurn() {
                                   {t(lastOutcomeCfg.i18nKey)}
                                 </span>
                                 {row.returned > 0 && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] whitespace-nowrap">
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-success-soft)] text-[var(--color-success)] whitespace-nowrap">
                                     {row.effectiveness}% {t('admin.churn.effective', 'effective')}
                                   </span>
                                 )}
@@ -1219,12 +1246,12 @@ export default function AdminChurn() {
                           </div>
                           <div className="flex items-center gap-3 flex-shrink-0">
                             <div className="text-right">
-                              <p className="text-[15px] font-bold text-[#E5E7EB] tabular-nums leading-none">{row.total}</p>
-                              <p className="text-[10px] text-[#6B7280] uppercase tracking-wider mt-0.5">
+                              <p className="text-[15px] font-bold text-[var(--color-admin-text)] tabular-nums leading-none">{row.total}</p>
+                              <p className="text-[10px] text-[var(--color-admin-text-faint)] uppercase tracking-wider mt-0.5">
                                 {row.total === 1 ? t('admin.churn.attemptSingular', 'attempt') : t('admin.churn.attemptPlural', 'attempts')}
                               </p>
                             </div>
-                            <ChevronDown size={14} className="text-[#6B7280] -rotate-90" />
+                            <ChevronDown size={14} className="text-[var(--color-admin-text-faint)] -rotate-90" />
                           </div>
                         </div>
                       </button>
@@ -1248,25 +1275,33 @@ export default function AdminChurn() {
           );
           if (tabKey === 'campaigns') return (
         <div className="space-y-4">
+          {/* Automated follow-up (drip) — at-risk members get scheduled nudges.
+              Tables/cron already exist; this panel is its control surface. */}
+          <FollowUpSettings
+            gymId={gymId}
+            initialSettings={followupSettings}
+            initialSteps={followupSteps}
+            atRiskCount={atRiskMembers?.length || 0}
+          />
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <FlaskConical size={15} className="text-[#D4AF37]" />
-              <p className="text-[14px] font-semibold text-[#E5E7EB]">{t('admin.churn.ab.title', 'A/B Campaigns')}</p>
+              <FlaskConical size={15} className="text-[var(--color-accent)]" />
+              <p className="text-[14px] font-semibold text-[var(--color-admin-text)]">{t('admin.churn.ab.title', 'A/B Campaigns')}</p>
             </div>
             <button onClick={() => setCreateCampaignModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-white/6 text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors">
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium border border-[var(--color-admin-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-soft)] transition-colors">
               <Plus size={13} /> {t('admin.churn.ab.newCampaign', 'New Campaign')}
             </button>
           </div>
           {campaigns.length === 0 ? (
-            <div className="bg-[#0F172A] border border-white/6 rounded-[14px] p-12 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4"><FlaskConical size={22} className="text-[#D4AF37]" /></div>
-              <p className="text-[15px] font-semibold text-[#E5E7EB] mb-1">{t('admin.churn.noCampaigns', 'No campaigns yet')}</p>
-              <p className="text-[13px] text-[#6B7280] mb-4">{t('admin.churn.createCampaignHint', 'Create an A/B campaign to test different win-back strategies.')}</p>
+            <div className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] p-12 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--color-accent-soft)] flex items-center justify-center mx-auto mb-4"><FlaskConical size={22} className="text-[var(--color-accent)]" /></div>
+              <p className="text-[15px] font-semibold text-[var(--color-admin-text)] mb-1">{t('admin.churn.noCampaigns', 'No campaigns yet')}</p>
+              <p className="text-[13px] text-[var(--color-admin-text-faint)] mb-4">{t('admin.churn.createCampaignHint', 'Create an A/B campaign to test different win-back strategies.')}</p>
               <button
                 onClick={() => setCreateCampaignModal(true)}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-colors hover:brightness-110"
-                style={{ backgroundColor: '#D4AF37', color: '#000' }}
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
               >
                 <Plus size={14} /> {t('admin.churn.createFirstCampaign', 'Create your first campaign')}
               </button>
@@ -1280,25 +1315,25 @@ export default function AdminChurn() {
               const totalSent = stats.a.sent + stats.b.sent;
 
               return (
-                <div key={campaign.id} className="bg-[#0F172A] border border-white/6 rounded-[14px] overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/6">
+                <div key={campaign.id} className="bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-admin-border)]">
                     <div className="flex items-center gap-2.5">
-                      <FlaskConical size={14} className="text-[#D4AF37]" />
+                      <FlaskConical size={14} className="text-[var(--color-accent)]" />
                       <div>
-                        <p className="text-[13px] font-semibold text-[#E5E7EB]">{campaign.name}</p>
-                        <p className="text-[10px] text-[#6B7280]">
+                        <p className="text-[13px] font-semibold text-[var(--color-admin-text)]">{campaign.name}</p>
+                        <p className="text-[10px] text-[var(--color-admin-text-faint)]">
                           {t(`admin.churn.campaign.tier.${campaign.target_tier}`, campaign.target_tier)} {t('admin.churn.ab.tier', 'tier')}
                           {' · '}{totalSent} {t('admin.churn.ab.sent', 'sent')}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${campaign.is_active ? 'bg-[#10B981]/12 text-[#10B981] border border-[#10B981]/20' : 'bg-white/6 text-[#6B7280] border border-white/8'}`}>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${campaign.is_active ? 'bg-[var(--color-success-soft)] text-[var(--color-success)] border border-[var(--color-success)]' : 'bg-[var(--color-bg-hover)] text-[var(--color-admin-text-faint)] border border-[var(--color-admin-border)]'}`}>
                         {campaign.is_active ? t('admin.churn.ab.active', 'Active') : t('admin.churn.ab.ended', 'Ended')}
                       </span>
                       {campaign.is_active && totalSent >= 2 && (
                         <button onClick={() => handleEndCampaign(campaign.id, aWins ? 'A' : 'B')}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors">
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--color-danger-soft)] text-[var(--color-danger)] border border-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] transition-colors">
                           <StopCircle size={11} /> {t('admin.churn.ab.endCampaign', 'End')}
                         </button>
                       )}
@@ -1309,35 +1344,35 @@ export default function AdminChurn() {
                       { key: 'A', label: t('admin.churn.ab.variantA', 'Variant A'), data: campaign.variant_a, stat: stats.a, isWinner: aWins && !tied && totalSent >= 2 },
                       { key: 'B', label: t('admin.churn.ab.variantB', 'Variant B'), data: campaign.variant_b, stat: stats.b, isWinner: bWins && !tied && totalSent >= 2 },
                     ].map(v => (
-                      <div key={v.key} className={`rounded-xl p-3.5 border transition-colors ${v.isWinner ? 'bg-[#10B981]/5 border-[#10B981]/25' : 'bg-[#111827] border-white/6'}`}>
+                      <div key={v.key} className={`rounded-xl p-3.5 border transition-colors ${v.isWinner ? 'bg-[var(--color-success-soft)] border-[var(--color-success)]' : 'bg-[var(--color-admin-panel)] border-[var(--color-admin-border)]'}`}>
                         <div className="flex items-center gap-2 mb-3">
-                          <p className="text-[12px] font-semibold text-[#E5E7EB]">{v.label}</p>
+                          <p className="text-[12px] font-semibold text-[var(--color-admin-text)]">{v.label}</p>
                           {v.isWinner && (
-                            <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981]">
+                            <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[var(--color-success-soft)] text-[var(--color-success)]">
                               <Trophy size={10} /> {t('admin.churn.ab.winner', 'Winner')}
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-[#9CA3AF] mb-0.5 truncate">
+                        <p className="text-[11px] text-[var(--color-admin-text-muted)] mb-0.5 truncate">
                           {v.data.offer_type || t('admin.churn.ab.noOffer', 'No offer')}
                           {v.data.discount_pct ? ` (${v.data.discount_pct}%)` : ''}
                           {v.data.free_days ? ` · ${v.data.free_days}d ${t('admin.churn.ab.free', 'free')}` : ''}
                         </p>
                         {v.data.message && (
-                          <p className="text-[10px] text-[#6B7280] line-clamp-2 mb-3">{v.data.message}</p>
+                          <p className="text-[10px] text-[var(--color-admin-text-faint)] line-clamp-2 mb-3">{v.data.message}</p>
                         )}
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.numSent', 'Sent')}</span>
-                            <span className="text-[12px] font-semibold text-[#E5E7EB]">{v.stat.sent}</span>
+                            <span className="text-[10px] text-[var(--color-admin-text-faint)]">{t('admin.churn.ab.numSent', 'Sent')}</span>
+                            <span className="text-[12px] font-semibold text-[var(--color-admin-text)]">{v.stat.sent}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.responseRate', 'Response Rate')}</span>
-                            <span className={`text-[12px] font-semibold ${v.stat.responseRate > 0 ? 'text-[#D4AF37]' : 'text-[#6B7280]'}`}>{v.stat.responseRate}%</span>
+                            <span className="text-[10px] text-[var(--color-admin-text-faint)]">{t('admin.churn.ab.responseRate', 'Response Rate')}</span>
+                            <span className={`text-[12px] font-semibold ${v.stat.responseRate > 0 ? 'text-[var(--color-accent)]' : 'text-[var(--color-admin-text-faint)]'}`}>{v.stat.responseRate}%</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-[#6B7280]">{t('admin.churn.ab.returnRate', 'Return Rate')}</span>
-                            <span className={`text-[12px] font-bold ${v.stat.returnRate > 0 ? 'text-[#10B981]' : 'text-[#6B7280]'}`}>{v.stat.returnRate}%</span>
+                            <span className="text-[10px] text-[var(--color-admin-text-faint)]">{t('admin.churn.ab.returnRate', 'Return Rate')}</span>
+                            <span className={`text-[12px] font-bold ${v.stat.returnRate > 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-admin-text-faint)]'}`}>{v.stat.returnRate}%</span>
                           </div>
                         </div>
                       </div>
@@ -1356,7 +1391,7 @@ export default function AdminChurn() {
       {/* Mobile detail sheet */}
       {mobileDetailOpen && selectedMember && createPortal(
         <div className="lg:hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setMobileDetailOpen(false)}>
-          <div className="w-full max-w-md max-h-[85vh] bg-[#0F172A] border border-white/8 rounded-[14px] overflow-y-auto"
+          <div className="w-full max-w-md max-h-[85vh] bg-[var(--color-bg-card)] border border-[var(--color-admin-border)] rounded-[14px] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <MemberDetailPanel
               member={selectedMember}
@@ -1454,7 +1489,7 @@ export default function AdminChurn() {
                             {format(new Date(attempt.created_at), 'PPp', dateFnsLocaleOpt)}
                           </p>
                           {contactMethod && (
-                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/6 text-[#9CA3AF]">
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--color-bg-hover)] text-[var(--color-admin-text-muted)]">
                               {METHOD_I18N[contactMethod] ? t(METHOD_I18N[contactMethod]) : contactMethod}
                             </span>
                           )}
@@ -1463,8 +1498,8 @@ export default function AdminChurn() {
                         {attempt.offer && <p className="text-[11px] mt-1" style={{ color: 'var(--color-accent)' }}>{t('admin.churn.offer', 'Offer')}: {attempt.offer}</p>}
                         {attempt._autoDetected && attempt._returnedAt && (
                           <div className="flex items-center gap-1.5 mt-1.5">
-                            <Sparkles size={11} className="text-[#10B981]" />
-                            <span className="text-[10px] font-semibold text-[#10B981]">
+                            <Sparkles size={11} className="text-[var(--color-success)]" />
+                            <span className="text-[10px] font-semibold text-[var(--color-success)]">
                               {t('admin.churn.autoDetected', { date: format(new Date(attempt._returnedAt), 'MMM d, yyyy', dateFnsLocaleOpt), defaultValue: 'Auto-detected: Member returned on {{date}}' })}
                             </span>
                           </div>
@@ -1478,18 +1513,18 @@ export default function AdminChurn() {
                       {outcome !== 'returned' && (
                         <>
                           <button onClick={() => handleMarkOutcome(attempt.id, 'returned')} disabled={isSaving}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 hover:bg-[#10B981]/18 transition-colors disabled:opacity-40">
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--color-success-soft)] text-[var(--color-success)] border border-[var(--color-success)] hover:bg-[var(--color-success-soft)] transition-colors disabled:opacity-40">
                             <CheckCircle size={11} /> {t('admin.churn.markReturned', 'Mark Returned')}
                           </button>
                           {outcome !== 'no_response' && (
                             <button onClick={() => handleMarkOutcome(attempt.id, 'no_response')} disabled={isSaving}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/8 hover:text-[#E5E7EB] transition-colors disabled:opacity-40">
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--color-bg-hover)] text-[var(--color-admin-text-muted)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors disabled:opacity-40">
                               {t('admin.churn.noResponse', 'No Response')}
                             </button>
                           )}
                           {outcome !== 'still_inactive' && (
                             <button onClick={() => handleMarkOutcome(attempt.id, 'still_inactive')} disabled={isSaving}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#F59E0B]/8 text-[#F59E0B] border border-[#F59E0B]/15 hover:bg-[#F59E0B]/15 transition-colors disabled:opacity-40">
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--color-warning-soft)] text-[var(--color-warning)] border border-[var(--color-warning)] hover:bg-[var(--color-warning-soft)] transition-colors disabled:opacity-40">
                               {t('admin.churn.stillInactive', 'Still Inactive')}
                             </button>
                           )}
@@ -1498,17 +1533,17 @@ export default function AdminChurn() {
                       {deletingAttempt === attempt.id ? (
                         <div className="flex gap-1.5 ml-auto">
                           <button onClick={() => handleDeleteAttempt(attempt.id)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 border border-red-400/25 hover:bg-red-500/25 transition-colors">
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[var(--color-danger-soft)] text-[var(--color-danger)] border border-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] transition-colors">
                             <Trash2 size={11} /> {t('admin.churn.confirmDelete', 'Confirm?')}
                           </button>
                           <button onClick={() => setDeletingAttempt(null)}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-[#9CA3AF] border border-white/8 hover:text-[#E5E7EB] transition-colors">
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-[var(--color-admin-text-muted)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors">
                             {t('admin.churn.bulkCancel')}
                           </button>
                         </div>
                       ) : (
                         <button onClick={() => setDeletingAttempt(attempt.id)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-red-400 border border-red-400/20 hover:bg-red-400/10 transition-colors ml-auto">
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-[var(--color-danger)] border border-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] transition-colors ml-auto">
                           <Trash2 size={11} /> {t('admin.churn.deleteAttempt', 'Delete')}
                         </button>
                       )}

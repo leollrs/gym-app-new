@@ -302,25 +302,37 @@ Deno.serve(async (req) => {
   }
 
   // -------------------------------------------------------------------------
-  // Look up user by email via auth.admin.listUsers. There's no direct
-  // "getByEmail" admin API — listUsers + filter is the standard pattern.
-  // We bound it to one page; matched accounts will be on page 1 in nearly
-  // all real-world deployments.
+  // Look up user by email. There's no direct "getByEmail" admin API, so we
+  // page through auth.admin.listUsers until we find a match or run out of
+  // pages. (The old code only checked page 1 / the first 1000 users, so once
+  // the platform crossed 1000 total accounts every later user silently got NO
+  // deletion email — a Google Play "account deletion must work" violation.)
+  // Account deletion is a rare, non-latency-critical request, so paging is
+  // fine. MAX_PAGES bounds the loop so it can never run away; 200 × 1000 =
+  // 200k users, far beyond foreseeable scale. We stop early on the last
+  // (short) page. Not finding a user still returns the generic 200 below.
   // -------------------------------------------------------------------------
   let matchedUserId: string | null = null;
   try {
-    // perPage max is 1000 in supabase-js admin client
-    const { data: list, error: listErr } = await supabase.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000,
-    });
-    if (listErr) {
-      console.error('[request-account-deletion] listUsers failed:', listErr);
-    } else {
-      const match = list?.users?.find(
-        (u) => (u.email ?? '').toLowerCase() === rawEmail,
-      );
-      matchedUserId = match?.id ?? null;
+    const PER_PAGE = 1000;   // supabase-js admin client max
+    const MAX_PAGES = 200;   // safety bound (≤ 200k users)
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const { data: list, error: listErr } = await supabase.auth.admin.listUsers({
+        page,
+        perPage: PER_PAGE,
+      });
+      if (listErr) {
+        console.error(`[request-account-deletion] listUsers failed (page ${page}):`, listErr);
+        break;
+      }
+      const users = list?.users ?? [];
+      const match = users.find((u) => (u.email ?? '').toLowerCase() === rawEmail);
+      if (match) {
+        matchedUserId = match.id;
+        break;
+      }
+      // Fewer than a full page means we've reached the end — stop.
+      if (users.length < PER_PAGE) break;
     }
   } catch (e) {
     console.error('[request-account-deletion] listUsers threw:', e);

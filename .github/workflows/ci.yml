@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'platform/**']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gym-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: gym-app/package-lock.json
+
+      - run: npm ci
+
+      # Non-blocking for now: the repo predates a clean lint baseline. Flip to a
+      # hard gate (remove continue-on-error) once `npm run lint` is green.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Unit tests
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_BUILD_ID: ${{ github.sha }}
+          # If the build ever needs Supabase/PostHog env at compile time, add them
+          # as repo secrets and reference here, e.g.:
+          # VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

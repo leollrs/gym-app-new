@@ -28,6 +28,9 @@ export default function Toggle({
   const onLeft     = isMd ? 'calc(100% - 23px)' : 'calc(100% - 18px)';
 
   return (
+    // Outer button is a ≥44px tap target (a11y) — the visual switch (track) is an
+    // inner span at its original size, so the look is unchanged but the hit area
+    // meets the 44px minimum on touch.
     <button
       type="button"
       role="switch"
@@ -35,13 +38,17 @@ export default function Toggle({
       aria-label={accessibleLabel}
       disabled={disabled}
       onClick={() => !disabled && onChange(!on)}
-      className={`${trackClass} rounded-full relative flex-shrink-0 transition-colors focus:ring-2 focus:ring-[var(--color-accent)]/40 focus:outline-none ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-      style={{ backgroundColor: on ? 'var(--color-accent, #D4AF37)' : 'var(--color-admin-text-sub)' }}
+      className={`min-w-[44px] min-h-[44px] grid place-items-center flex-shrink-0 rounded-full focus:ring-2 focus:ring-[var(--color-accent)]/40 focus:outline-none ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       <span
-        className={`absolute top-0.5 ${knobClass} rounded-full bg-white shadow transition-transform`}
-        style={{ left: on ? onLeft : offLeft }}
-      />
+        className={`${trackClass} block rounded-full relative transition-colors`}
+        style={{ backgroundColor: on ? 'var(--color-accent, #D4AF37)' : 'var(--color-admin-text-sub)' }}
+      >
+        <span
+          className={`absolute top-0.5 ${knobClass} rounded-full bg-white shadow transition-transform`}
+          style={{ left: on ? onLeft : offLeft }}
+        />
+      </span>
     </button>
   );
 }

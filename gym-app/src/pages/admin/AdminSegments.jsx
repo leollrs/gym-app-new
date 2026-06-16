@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import posthogClient from 'posthog-js';
 import {
   Filter, Plus, Pin, PinOff, Pencil, Trash2, Users, Search,
   RefreshCw, Download, MessageSquare, Sparkles,
@@ -689,7 +690,7 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
               maxLength={1000}
               autoFocus
               placeholder={t('admin.segments.messagePlaceholder', 'Write your message…')}
-              className="w-full bg-white/[0.04] border border-white/8 rounded-xl px-4 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 resize-none"
+              className="w-full bg-[var(--color-bg-input)] border border-[var(--color-admin-border)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder-[var(--color-admin-text-faint)] outline-none focus:border-[#D4AF37]/40 focus:ring-1 focus:ring-[#D4AF37]/30 resize-none"
             />
             <div className="flex gap-2">
               <button
@@ -814,6 +815,7 @@ function PrebuiltCard({ segment, gymId, adminId, onCreated, t }) {
         icon: segment.icon,
         created_by: adminId,
       });
+      posthogClient?.capture('admin_segment_created', { prebuilt: true });
       setModalOpen(false);
       onCreated();
     } catch (err) {

@@ -6,6 +6,7 @@ import QRCodeModal from './components/QRCodeModal';
 import UpdateRequiredModal from './components/UpdateRequiredModal';
 import MaintenanceGate from './components/MaintenanceGate';
 import { startVersionCheck } from './lib/appVersionCheck';
+import { resolveAppSection } from './lib/appUrls';
 import './App.css';
 
 import { useAuth } from './contexts/AuthContext';
@@ -1442,7 +1443,7 @@ function App() {
     const cls = p.match(/^\/class\/([^/]+)$/);
     if (!chal && !cls) return;
     const target = chal
-      ? `/challenges?challenge=${chal[1]}`
+      ? `/challenges?challenge=${chal[1]}${location.search ? `&${location.search.slice(1)}` : ''}`
       : `/classes?class=${cls[1]}${location.search ? `&${location.search.slice(1)}` : ''}`;
     if (!user) {
       // Save the TRANSLATED target via the same sessionStorage key PublicRoute
@@ -1485,6 +1486,24 @@ function App() {
 
       const target = siriRoutes[siriAction] || '/';
       navigate(target, { replace: true });
+      return;
+    }
+
+    // ── Handle /invite/go/:section (email / marketing deep links) ──
+    // Resolve the section slug to its in-app route and land there. Checked
+    // before the single-segment /invite/:code handler below; the two-segment
+    // shape means they never overlap. Logged-out → stash the target and bounce
+    // through login (same key PublicRoute consumes), so the click survives auth.
+    const goMatch = path.match(/^\/invite\/go\/([a-z-]+)$/i);
+    if (goMatch) {
+      deepLinkProcessed.current = true;
+      const target = resolveAppSection(goMatch[1].toLowerCase());
+      if (!user) {
+        try { sessionStorage.setItem('postLoginRedirect', target); } catch { /* noop */ }
+        navigate('/login', { replace: true });
+      } else {
+        navigate(target, { replace: true });
+      }
       return;
     }
 
@@ -1647,6 +1666,20 @@ function App() {
           recipients can see it instead of bouncing to login. */}
       <Route
         path="/t/:id"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton variant="page" />}>
+              <AppDownloadLanding />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
+      {/* /invite/t/:id — the actual trainer share path (rides the CDN-propagated
+          /invite/* applink so it opens the app immediately; see trainerShareUrl).
+          Two segments, so it never collides with the /invite/:code route. Same
+          AppDownloadLanding fallback for visitors without the app. */}
+      <Route
+        path="/invite/t/:id"
         element={
           <ErrorBoundary>
             <Suspense fallback={<Skeleton variant="page" />}>

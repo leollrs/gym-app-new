@@ -109,7 +109,13 @@ export default function GymDiagnostic() {
       plan = m.admin_note.replace('Imported plan: ', '').trim();
     }
 
-    const isCancelled = !!cancelDate;
+    // An imported_archived member is a churned ex-member by definition — even
+    // when the legacy CSV carried no cancellation_date (a sparse field) and the
+    // import never sets membership_status_updated_at. Treat them (and any
+    // 'cancelled'-status member) as churned so they stop being counted as
+    // survivors; with no known date they're simply excluded from the date-keyed
+    // charts (cohort timing, tenure, seasonality) below.
+    const isCancelled = m.imported_archived === true || m.membership_status === 'cancelled' || cancelDate != null;
     return { joinDate, cancelDate, plan, isCancelled };
   }).filter((m) => m.joinDate), [members]);
 
@@ -126,6 +132,11 @@ export default function GymDiagnostic() {
     const now = new Date();
 
     normalized.forEach((m) => {
+      // Churned but with no known cancel date (sparse legacy imports): we know
+      // they left, not when, so they can't be placed on the survival timeline.
+      // Exclude them rather than count them as survivors (which overstated
+      // retention) — right-censoring of unknown-timing churn.
+      if (m.isCancelled && !m.cancelDate) return;
       const key = format(m.joinDate, 'yyyy-MM');
       const cohort = grid.get(key) || { size: 0, atMonth: {} };
       cohort.size += 1;
@@ -168,10 +179,16 @@ export default function GymDiagnostic() {
   const avgTenure = useMemo(() => {
     if (normalized.length === 0) return null;
     const now = new Date();
-    const tenures = normalized.map((m) => {
-      const end = m.cancelDate || now;
-      return Math.max(0, differenceInCalendarMonths(end, m.joinDate));
-    });
+    const tenures = normalized
+      .map((m) => {
+        // Churned with unknown date → unknown tenure; exclude rather than let it
+        // accrue to now() (which treated ex-members as still-active forever).
+        if (m.isCancelled && !m.cancelDate) return null;
+        const end = m.cancelDate || now;
+        return Math.max(0, differenceInCalendarMonths(end, m.joinDate));
+      })
+      .filter((v) => v != null);
+    if (tenures.length === 0) return null;
     const sum = tenures.reduce((s, t) => s + t, 0);
     return {
       months: Math.round((sum / tenures.length) * 10) / 10,
@@ -256,6 +273,12 @@ export default function GymDiagnostic() {
   }, [normalized, t]);
 
   const totalCancellations = normalized.filter((m) => m.isCancelled).length;
+  // Of those cancellations, how many carry a real date. The date-keyed charts
+  // (cohort timing, tenure-at-cancellation, seasonality) deliberately exclude
+  // date-less churn — surfacing this count explains why the "Total cancelled"
+  // KPI can be large while those charts look sparse.
+  const cancellationsWithDate = normalized.filter((m) => m.isCancelled && m.cancelDate != null).length;
+  const datelessCancellations = totalCancellations - cancellationsWithDate;
   const totalEver = normalized.length;
 
   // ── Cohort grid CSV (censored cells stay blank) ───────────────
@@ -369,6 +392,9 @@ export default function GymDiagnostic() {
                 label={t('platform.diagnostic.totalCancelled', 'Total cancelled')}
                 value={totalCancellations.toLocaleString()}
                 sub={t('platform.diagnostic.lifetimePct', { pct: Math.round((totalCancellations / totalEver) * 100), defaultValue: '{{pct}}% lifetime' })}
+                note={datelessCancellations > 0
+                  ? t('platform.diagnostic.kpiNoDate', { count: datelessCancellations, defaultValue: '{{count}} have no recorded date' })
+                  : null}
                 icon={TrendingDown}
                 accent="amber"
               />
@@ -404,6 +430,7 @@ export default function GymDiagnostic() {
                 )}
               >
                 <CohortHeatmap data={cohortGrid} t={t} />
+                <DatelessNote count={datelessCancellations} t={t} />
               </ChartCard>
             </FadeIn>
           )}
@@ -435,8 +462,13 @@ export default function GymDiagnostic() {
               >
                 {totalCancellations === 0 ? (
                   <Empty label={t('platform.diagnostic.noCancellations', 'No cancellations on record yet.')} />
+                ) : cancellationsWithDate === 0 ? (
+                  <Empty label={t('platform.diagnostic.cancellationsNoDates', 'Cancellations exist but have no recorded dates — import cancellation dates to see this chart.')} />
                 ) : (
-                  <TenureHistogramChart buckets={tenureHistogram} />
+                  <>
+                    <TenureHistogramChart buckets={tenureHistogram} />
+                    <DatelessNote count={datelessCancellations} t={t} />
+                  </>
                 )}
               </ChartCard>
             </FadeIn>
@@ -450,8 +482,13 @@ export default function GymDiagnostic() {
             >
               {totalCancellations === 0 ? (
                 <Empty label={t('platform.diagnostic.noCancellations', 'No cancellations on record yet.')} />
+              ) : cancellationsWithDate === 0 ? (
+                <Empty label={t('platform.diagnostic.cancellationsNoDates', 'Cancellations exist but have no recorded dates — import cancellation dates to see this chart.')} />
               ) : (
-                <SeasonalityChart bars={seasonality} />
+                <>
+                  <SeasonalityChart bars={seasonality} />
+                  <DatelessNote count={datelessCancellations} t={t} />
+                </>
               )}
             </ChartCard>
           </FadeIn>
@@ -482,7 +519,7 @@ function ChartCard({ title, subtitle, action, children }) {
   );
 }
 
-function BigStat({ label, value, sub, icon: Icon, accent }) {
+function BigStat({ label, value, sub, note, icon: Icon, accent }) {
   const ringColor = accent === 'emerald' ? '#10B981'
                   : accent === 'amber'   ? '#F59E0B'
                   : '#6B7280';
@@ -496,12 +533,28 @@ function BigStat({ label, value, sub, icon: Icon, accent }) {
       </div>
       <p className="text-[24px] font-extrabold tabular-nums text-[#E5E7EB] leading-none">{value}</p>
       {sub && <p className="text-[11px] text-[#9CA3AF] mt-1">{sub}</p>}
+      {note && <p className="text-[10.5px] text-[#6B7280] mt-0.5">{note}</p>}
     </div>
   );
 }
 
 function Empty({ label }) {
   return <p className="text-center py-8 text-[12px] text-[#6B7280]">{label}</p>;
+}
+
+// Muted note shown beneath date-keyed charts when some cancellations carry no
+// date and are therefore excluded from timing analysis — explains sparseness
+// without altering the underlying counts.
+function DatelessNote({ count, t }) {
+  if (!count || count <= 0) return null;
+  return (
+    <p className="text-[10.5px] text-[#6B7280] mt-3 leading-relaxed">
+      {t('platform.diagnostic.datelessExcluded', {
+        count,
+        defaultValue: '{{count}} cancellation(s) have no recorded date and are excluded from this chart.',
+      })}
+    </p>
+  );
 }
 
 // ── Cohort heatmap ─────────────────────────────────────────────

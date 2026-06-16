@@ -59,6 +59,7 @@ export default function FeatureAdoption() {
   const [gyms, setGyms] = useState([]);
   const [featureData, setFeatureData] = useState({});   // { featureKey: { recent: Set<gym_id>, ever: Set<gym_id> } }
   const [adminPresence, setAdminPresence] = useState([]);
+  const [presenceCapped, setPresenceCapped] = useState(false);
   const [admins, setAdmins] = useState([]);
   const [loadError, setLoadError] = useState(null);          // gyms / adoption RPC (page-critical)
   const [degradedSources, setDegradedSources] = useState([]); // presence/admins failures
@@ -89,7 +90,7 @@ export default function FeatureAdoption() {
           .select('gym_id, profile_id, current_page, last_seen_at')
           .gte('last_seen_at', thirtyDaysAgo)
           .order('last_seen_at', { ascending: false })
-          .limit(2000),
+          .limit(5000),
         supabase
           .from('profiles')
           .select('id, full_name, gym_id, role')
@@ -123,7 +124,9 @@ export default function FeatureAdoption() {
       });
       setFeatureData(fData);
 
-      setAdminPresence(presenceRes.data || []);
+      const presenceRows = presenceRes.data || [];
+      setAdminPresence(presenceRows);
+      setPresenceCapped(presenceRows.length >= 5000);
       setAdmins(adminRes.data || []);
       setLoading(false);
     };
@@ -768,6 +771,7 @@ export default function FeatureAdoption() {
           count: adminScoresByGym.length,
           defaultValue: 'Average computed over the {{count}} gyms with any admin activity in the last 30 days. "Least active" considers all gyms, including zero activity.',
         })}
+        {presenceCapped && ` ${t('platform.adoption.presenceCappedNote', 'Based on the most recent 5,000 presence events.')}`}
       </p>
 
       {/* Admin Engagement Bar Chart */}

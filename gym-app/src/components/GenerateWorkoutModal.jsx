@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle, Pencil } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { clearCache } from '../lib/queryCache';
@@ -711,6 +712,21 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
       try { localStorage.removeItem(`qs_cache_v1_${user.id}`); } catch {}
       // Keep the Home tab + QuickStart (/record) in sync — both listen for this.
       try { window.dispatchEvent(new CustomEvent('tugympr:programs-changed')); } catch {}
+      // Program-generation conversion. This in-app builder does NOT route through
+      // personalProgramService (which fires its own program_generated for the
+      // onboarding/regenerate paths), so capture here. Props mirror that event +
+      // a `source` discriminator. No PII.
+      try {
+        posthogClient?.capture('program_generated', {
+          source: 'in_app',
+          split: result.split,
+          goal: onboarding?.primary_goal,
+          program_type: form.program_type,
+          days: form.training_days,
+          routines_count: result.routinesA?.length || 0,
+          duration_weeks: form.program_weeks,
+        });
+      } catch { /* noop */ }
       onGenerated?.();
       onClose();
     } catch (err) {

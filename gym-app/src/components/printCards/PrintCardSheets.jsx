@@ -24,8 +24,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { PostcardRenderer, FoldedSpreadRenderer } from './CardDispatcher.jsx';
 import { getCardPaperType } from './cardPaperType.js';
 
-const FONT_HREF =
-  'https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Caveat:wght@400&display=swap';
+// Self-hosted card typography (public/fonts/print-fonts.css). No runtime Google
+// Fonts call — that would leak the admin's IP to Google, and the app CSP blocks
+// it anyway (style-src 'self'; font-src 'self'), which silently dropped the
+// cards to fallback fonts before this was self-hosted.
+const FONT_HREF = '/fonts/print-fonts.css';
 
 // Sort key for grouping postcards by format. Order matches the printer
 // workflow: 4×6 cardstock first, swap to Letter, swap to Letter (flyer).
@@ -124,9 +127,9 @@ const PrintCardSheets = forwardRef(function PrintCardSheets(
     [overrideGymId, gymName, gymLogoUrl, gymExtras]
   );
 
-  // The card typography (EB Garamond / DM Sans / JetBrains Mono / Caveat) isn't
-  // part of the app's own font set, so inject it whenever these sheets mount —
-  // both on the standalone route and inline in the modal (the app document).
+  // EB Garamond / DM Sans / Caveat aren't in the app's own font set (JetBrains
+  // Mono is), so inject the self-hosted print-fonts stylesheet whenever these
+  // sheets mount — both on the standalone route and inline in the modal.
   useEffect(() => {
     if (document.querySelector(`link[href="${FONT_HREF}"]`)) return undefined;
     const link = document.createElement('link');

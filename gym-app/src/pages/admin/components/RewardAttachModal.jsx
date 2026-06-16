@@ -22,6 +22,7 @@ import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 
 const EMOJI_PRESETS = ['🎁', '☕', '🥤', '🍪', '🏋️', '⭐', '💪', '🎯'];
 
@@ -30,6 +31,9 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
+
+  // This component only mounts while the modal is open, so lock unconditionally.
+  useScrollLock(true);
 
   const hasReward = !!card.reward_qr_code;
 
@@ -137,17 +141,24 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
   // inside a panel instead of the viewport.
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto"
+      style={{
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+        // Clear the mobile admin header (~56px) + bottom nav (~80px) + safe areas
+        // so the dialog is fully on-screen and scrolls under the keyboard.
+        paddingTop: 'calc(56px + env(safe-area-inset-top) + 12px)',
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom) + 12px)',
+        paddingLeft: '16px', paddingRight: '16px',
+      }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl max-h-[min(85vh,100%)] flex flex-col my-auto"
         style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-4 py-3"
+          className="flex items-center justify-between px-4 py-3 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
         >
           <div className="flex items-center gap-2">
@@ -176,7 +187,7 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
         </div>
 
         {/* Body */}
-        <div className="p-4">
+        <div className="p-4 overflow-y-auto flex-1">
           {hasReward ? (
             // Already attached — show summary + detach action
             <div className="space-y-4">
@@ -255,7 +266,7 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>
                   {catalog.length > 0
                     ? t('admin.printCards.rewardLabelOrCustom', { defaultValue: 'Reward name (or type a custom one)' })
-                    : t('admin.printCards.rewardLabelField', { defaultValue: 'What does this reward?' })}
+                    : t('admin.printCards.rewardLabelField', { defaultValue: 'What is this reward?' })}
                 </label>
                 <input
                   type="text"

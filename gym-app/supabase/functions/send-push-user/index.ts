@@ -376,28 +376,12 @@ serve(async (req) => {
       }
     }
 
-    // Rate limiting: max 20 pushes per hour (database-backed), keyed on the
-    // authenticated CALLER (not the target) so a caller can't burn through a
-    // victim's budget. Only applies to user-authenticated callers; service-role
-    // (trusted system/bulk) traffic is exempt. Runs AFTER the authorization
-    // check above so unauthorized attempts never touch the counter.
-    if (!isServiceRole && userId) {
-      const supabaseRL = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { count } = await supabaseRL
-        .from('ai_rate_limits')
-        .select('*', { count: 'exact', head: true })
-        .eq('profile_id', userId)
-        .eq('endpoint', 'send-push-user')
-        .gte('created_at', oneHourAgo);
-      if ((count ?? 0) >= 20) {
-        return jsonResp({ error: 'Rate limit exceeded — too many pushes' }, 429);
-      }
-      // Record this push for rate limiting (keyed on caller)
-      await supabaseRL
-        .from('ai_rate_limits')
-        .insert({ profile_id: userId, endpoint: 'send-push-user' });
-    }
+    // No per-caller push rate limit. Admins legitimately broadcast to the WHOLE
+    // gym (announcements / outreach fan out one send-push-user call per member —
+    // hundreds of calls for a normal 300+ member gym), so a per-caller hourly cap
+    // just bricks the core feature. Abuse is already bounded by: the auth +
+    // same-gym authorization check above (a caller can only push to members of
+    // their own gym), and the admin_audit_log / send records the app keeps.
 
     // Service client to read tokens (bypasses RLS)
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -538,9 +522,29 @@ serve(async (req) => {
 
           let outcome = await sendOnce(token, primaryHost);
           let workingHost = primaryHost;
-          if (outcome === 'wrong-env') {
-            outcome = await sendOnce(token, fallbackHost);
-            workingHost = fallbackHost;
+
+          // Retry the OTHER environment whenever the primary host rejected the
+          // token in a way that could be an env mismatch — 'wrong-env' (400
+          // BadDeviceToken / 403 BadEnvironmentKey) OR 'invalid' (410
+          // "Unregistered"). Apple returns 410 for a LIVE token sent to the
+          // wrong APNs environment too — not only for genuinely dead tokens — so
+          // a first 410 must not be treated as fatal. Without this retry, a valid
+          // production (TestFlight/App Store) token whose row was still tagged
+          // 'sandbox' from an earlier dev build gets a 410 on sandbox and is
+          // deleted, silently killing all push to that device.
+          if (outcome === 'wrong-env' || outcome === 'invalid') {
+            const alt = await sendOnce(token, fallbackHost);
+            if (alt === 'sent') {
+              outcome = 'sent';
+              workingHost = fallbackHost;
+            } else if (alt === 'invalid' && outcome === 'invalid') {
+              // Both environments agree the token is genuinely dead.
+              outcome = 'invalid';
+            } else {
+              // Ambiguous (one transient / env-mismatch on both) — keep the
+              // token and soft-fail rather than risk deleting a live one.
+              outcome = 'failed';
+            }
           }
 
           if (outcome === 'sent') {
@@ -555,10 +559,9 @@ serve(async (req) => {
             return;
           }
 
-          // Only delete tokens Apple says are genuinely DEAD ('invalid' =
-          // 410 Unregistered / ExpiredToken). Do NOT delete on 'wrong-env'
-          // (env mismatch that failed both hosts) or 'failed' (transient /
-          // provider issue) — those tokens may still be valid.
+          // Delete ONLY when BOTH environments confirm the token is dead
+          // ('invalid' = 410 Unregistered / ExpiredToken on both hosts). Never
+          // delete on 'wrong-env' or 'failed' — those tokens may still be live.
           if (outcome === 'invalid') {
             const { error: deleteErr } = await supabase.from('push_tokens').delete().eq('token', token);
             if (deleteErr) console.error(`Failed to remove invalid iOS token ${token.substring(0, 10)}...: ${deleteErr.message}`);

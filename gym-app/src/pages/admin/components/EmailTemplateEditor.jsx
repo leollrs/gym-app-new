@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
-import { supabase } from '../../../lib/supabase';
+import { supabase, ensureFreshSession, isSessionError, readFunctionError } from '../../../lib/supabase';
+import logger from '../../../lib/logger';
 import { rewardLabelText } from '../../../lib/rewardSymbols';
 import { AdminCard, Toggle } from '../../../components/admin';
 import { generateEmailHtml } from '../../../lib/admin/emailTemplateRenderer';
@@ -166,8 +167,9 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
     setSendingTest(true);
     try {
       const html = generateEmailHtml(template, gymName, gymLogoUrl);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('No active session');
+      // Attach a freshly-refreshed token (the fn's gateway is verify_jwt=on, so a
+      // stale/missing session is bounced before the function runs).
+      const session = await ensureFreshSession();
       const { error } = await supabase.functions.invoke('send-admin-email', {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: {
@@ -179,8 +181,17 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
       });
       if (error) throw error;
       showToast(t('admin.emailTemplates.testSent'), 'success');
-    } catch {
-      showToast(t('admin.emailTemplates.testFailed'), 'error');
+    } catch (err) {
+      logger.error('send test template email failed', err);
+      const fnMsg = await readFunctionError(err);
+      showToast(
+        isSessionError(err)
+          ? t('platformLayout.sessionExpiredMsg', 'Your session expired — please sign in again.')
+          : fnMsg
+            ? t('admin.emailTemplates.sendTestFailedReason', { reason: fnMsg, defaultValue: 'Test send failed: {{reason}}' })
+            : t('admin.emailTemplates.testFailed'),
+        'error',
+      );
     } finally {
       setSendingTest(false);
     }

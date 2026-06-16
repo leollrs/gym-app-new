@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import posthogClient from 'posthog-js';
 import { Megaphone, Radio, AlertTriangle, Clock, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -64,6 +65,7 @@ export default function BroadcastTab({ gymId, adminId, gym, t, dateFnsLocale }) 
       if (rpcError) throw rpcError;
     },
     onSuccess: () => {
+      posthogClient?.capture('admin_broadcast_sent');
       queryClient.invalidateQueries({ queryKey: adminKeys.messaging.broadcastHistory(gymId) });
       showToast(t('admin.messaging.broadcastSent'), 'success');
       setTitle('');

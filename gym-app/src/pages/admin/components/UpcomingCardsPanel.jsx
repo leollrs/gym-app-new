@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
-import { Loader2, Eye, Printer, Check } from 'lucide-react';
+import { Loader2, Eye, Printer, Check, Gift } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
@@ -13,6 +13,7 @@ import usePagedVisible from '../../../hooks/usePagedVisible';
 import PaginationFooter from '../../../components/admin/PaginationFooter';
 import PrintPreviewModal from '../../../components/admin/PrintPreviewModal';
 import CardPreview from './CardPreview';
+import RewardAttachModal from './RewardAttachModal';
 import { occasionMeta, toneStyle, CardAvatar, OccasionPill } from './cardOccasions';
 
 const DISPLAY_FONT = "var(--admin-font-display, 'Archivo', 'Barlow', sans-serif)";
@@ -63,6 +64,9 @@ export default function UpcomingCardsPanel({ gymId }) {
   const pager = usePagedVisible({ initial: 3, step: 3 });
   // ids currently open in the print preview modal — null when modal closed
   const [previewIds, setPreviewIds] = useState(null);
+  // reward-attach modal target (a materialized card row) + which cell is busy
+  const [rewardCard, setRewardCard] = useState(null);
+  const [openingReward, setOpeningReward] = useState(null);
 
   const { data: upcoming = [], isLoading, error } = useQuery({
     queryKey: ['upcoming_print_cards', gymId],
@@ -118,6 +122,50 @@ export default function UpcomingCardsPanel({ gymId }) {
     },
   });
 
+  // Attach / modify a reward on an upcoming card. Rewards live on a real
+  // print_cards row, so if the card isn't materialized yet we create it first
+  // (without opening the print preview), then open RewardAttachModal seeded
+  // with any existing reward — so birthdays etc. can have a reward added AND
+  // an attached one changed, which was previously impossible from this panel.
+  const openReward = async (row) => {
+    const rowKey = `${row.profile_id}-${row.occasion}`;
+    setOpeningReward(rowKey);
+    try {
+      let cardId = row.card_id;
+      if (!cardId) {
+        const { data, error: err } = await supabase.rpc('materialize_upcoming_print_card', {
+          p_gym_id: gymId,
+          p_profile_id: row.profile_id,
+          p_occasion: row.occasion,
+          p_headline: row.headline,
+          p_subline: row.subline,
+          p_occasion_data: buildOccasionData(row),
+        });
+        if (err) throw err;
+        cardId = data;
+        logAdminAction('print_card_materialized', 'print_card', cardId, { occasion: row.occasion, profile_id: row.profile_id });
+        queryClient.invalidateQueries({ queryKey: ['upcoming_print_cards', gymId] });
+        queryClient.invalidateQueries({ queryKey: adminKeys.printCards(gymId) });
+      }
+      // Pull current reward state so the modal can show + modify an existing one.
+      let rewardFields = { reward_qr_code: null, reward_label: null };
+      try {
+        const { data } = await supabase.from('print_cards').select('reward_qr_code, reward_label').eq('id', cardId).maybeSingle();
+        if (data) rewardFields = data;
+      } catch { /* attach mode is a safe default */ }
+      setRewardCard({
+        id: cardId,
+        occasion: row.occasion,
+        profiles: { full_name: row.full_name, avatar_url: row.avatar_url },
+        ...rewardFields,
+      });
+    } catch (err) {
+      showToast(err?.message || t('admin.upcomingCards.toastFailed', { defaultValue: 'Could not queue card' }), 'error');
+    } finally {
+      setOpeningReward(null);
+    }
+  };
+
   if (error) {
     // Most likely cause: 0416 migration not yet applied. Don't break the
     // page — just hide the panel and log.
@@ -138,6 +186,18 @@ export default function UpcomingCardsPanel({ gymId }) {
         <PrintPreviewModal ids={previewIds} onClose={() => setPreviewIds(null)} />
       )}
 
+      {/* Reward attach/modify — refresh the panel on close so the card reflects it. */}
+      {rewardCard && (
+        <RewardAttachModal
+          card={rewardCard}
+          gymId={gymId}
+          onClose={() => {
+            setRewardCard(null);
+            queryClient.invalidateQueries({ queryKey: ['upcoming_print_cards', gymId] });
+          }}
+        />
+      )}
+
       {/* Header — eye icon, title, subtitle, "N coming" pill */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -152,7 +212,7 @@ export default function UpcomingCardsPanel({ gymId }) {
               {t('admin.upcomingCards.title', 'Coming up next')}
             </p>
             <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>
-              {t('admin.upcomingCards.subtitle', "Pre-print + pre-sign so the card is waiting on the member's next visit")}
+              {t('admin.upcomingCards.subtitle', 'Cards coming up soon — print and sign them ahead of time so they are ready for the member’s next visit')}
             </p>
           </div>
         </div>
@@ -262,17 +322,47 @@ export default function UpcomingCardsPanel({ gymId }) {
                         <Eye size={12} />
                         {t('admin.upcomingCards.viewBtn', { defaultValue: 'View' })}
                       </button>
+                      {row.occasion !== 'returning' && (
+                        <button
+                          onClick={() => openReward(row)}
+                          disabled={openingReward === rowKey}
+                          title={row.reward_qr_code ? t('admin.printCards.rewardManage', { defaultValue: 'Manage reward' }) : t('admin.printCards.attachReward', { defaultValue: 'Attach reward' })}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11.5px] font-bold transition active:scale-[0.98] disabled:opacity-50 flex-shrink-0"
+                          style={{
+                            background: row.reward_qr_code ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-bg-card)',
+                            color: row.reward_qr_code ? 'var(--color-accent)' : 'var(--color-admin-text)',
+                            border: `1px solid ${row.reward_qr_code ? 'color-mix(in srgb, var(--color-accent) 30%, transparent)' : 'var(--color-admin-border)'}`,
+                          }}
+                        >
+                          {openingReward === rowKey ? <Loader2 size={12} className="animate-spin" /> : <Gift size={12} />}
+                          {t('admin.upcomingCards.rewardBtn', { defaultValue: 'Reward' })}
+                        </button>
+                      )}
                     </div>
                   ) : (
-                    <button
-                      onClick={() => materializeMutation.mutate(row)}
-                      disabled={materializeMutation.isPending}
-                      className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg text-[12px] font-bold transition active:scale-[0.98] disabled:opacity-50"
-                      style={{ background: 'var(--color-coach)', color: '#fff' }}
-                    >
-                      {isPending ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-                      {t('admin.upcomingCards.printNow', { defaultValue: 'Print early' })}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => materializeMutation.mutate(row)}
+                        disabled={materializeMutation.isPending}
+                        className="inline-flex items-center justify-center gap-1.5 flex-1 px-3 py-2 rounded-lg text-[12px] font-bold transition active:scale-[0.98] disabled:opacity-50"
+                        style={{ background: 'var(--color-coach)', color: '#fff' }}
+                      >
+                        {isPending ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
+                        {t('admin.upcomingCards.printNow', { defaultValue: 'Print early' })}
+                      </button>
+                      {row.occasion !== 'returning' && (
+                        <button
+                          onClick={() => openReward(row)}
+                          disabled={openingReward === rowKey}
+                          title={t('admin.printCards.attachReward', { defaultValue: 'Attach reward' })}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-bold transition active:scale-[0.98] disabled:opacity-50 flex-shrink-0"
+                          style={{ background: 'var(--color-bg-card)', color: 'var(--color-admin-text)', border: '1px solid var(--color-admin-border)' }}
+                        >
+                          {openingReward === rowKey ? <Loader2 size={13} className="animate-spin" /> : <Gift size={13} />}
+                          {t('admin.upcomingCards.rewardBtn', { defaultValue: 'Reward' })}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               );

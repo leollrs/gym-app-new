@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import posthogClient from 'posthog-js';
 import { shareBlob } from '../ShareCardRenderer';
 import { rasterizeNode } from './ShareSheet';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
@@ -197,6 +198,8 @@ export default function SimpleShareSheet({
           try { await Share.share({ title: gymName || 'TuGymPR', text: full, url: shareLink }); } catch {}
         }
       }
+      // Reached only when the destination dispatch above didn't throw.
+      try { posthogClient?.capture('content_shared', { type: 'generic', dest }); } catch { /* noop */ }
     } catch (err) {
       console.warn('[SimpleShareSheet] share failed', err);
     } finally {

@@ -38,9 +38,10 @@ This is a structured outline for the public privacy policy. Hand to legal counse
 - Posts shared to the social feed (gym-private)
 
 ### 2.4 Location Data
-- Approximate or precise location, **only when you trigger** GPS check-in or start an outdoor cardio routine
-- Location is foreground-only; we do not track you in the background
-- Location is not retained beyond the check-in event or the cardio session route
+- Precise location (GPS), **only while you are recording an outdoor cardio session** you started (run, walk, bike, hike) — for distance, pace, and route
+- Tracking continues in the background (including when the screen is locked) **only for the duration of that session**, and stops when you end it. We do not track your location at any other time.
+- Gym check-in does **not** use GPS — it uses signed QR codes
+- The session route is saved as part of that workout in your history; deleting the workout deletes its route
 
 ### 2.5 Device Data
 - Device model, OS version (for crash reporting and compatibility)
@@ -89,6 +90,8 @@ We use the following sub-processors. Each is bound by a Data Processing Agreemen
 | **CartoDB, Inc. (Carto)** | Fallback basemap tiles for cardio share cards | Tile-coordinate requests only | European Union (Spain) |
 | **OpenStreetMap Foundation** | Fallback basemap tiles for cardio share cards | Tile-coordinate requests only | European Union (United Kingdom) |
 | **Open Food Facts** | Barcode-to-nutrition lookups for the Nutrition feature | Submitted EAN/UPC barcode only; no account identifier | European Union (France) |
+| **goQR.me (QR Server GmbH)** | Renders reward-voucher QR images embedded in gym-sent emails | The voucher code only; no name or email | European Union (Germany) |
+| **Have I Been Pwned (Cloudflare, Inc.)** | Breached-password check at signup | First 5 chars of the SHA-1 hash of the password (k-anonymity); never the password or any identifier | United States / global CDN |
 
 We do **not** use third-party advertising networks, do **not** participate in adtech RTB, and do **not** sell or share personal information for cross-context behavioral advertising (CCPA/CPRA terminology).
 

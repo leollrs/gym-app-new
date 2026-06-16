@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2 } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -132,6 +133,7 @@ const NPSSurveyModal = () => {
         feedback: feedback.trim() || null,
       });
       localStorage.setItem(`nps_dismissed_${surveyId}`, 'true');
+      try { posthogClient?.capture('nps_submitted', { score }); } catch { /* noop */ }
       setSubmitted(true);
     } catch {
       // Silently fail - non-critical feature

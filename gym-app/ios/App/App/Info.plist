@@ -54,14 +54,10 @@
 	<string>TuGymPR reads your health data to display steps, sync weight measurements, and track workout activity.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>TuGymPR saves your workouts and weight logs to Apple Health so all your fitness data stays in one place.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>TuGymPR keeps tracking your cardio session in the background while your phone is locked, so your distance, pace, and route stay accurate for the entire workout.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TuGymPR uses your location to track your outdoor runs and cardio workouts with distance, pace, and route mapping.</string>
-	<key>NSMotionUsageDescription</key>
-	<string>TuGymPR uses motion data to count steps and estimate calories during your outdoor runs.</string>
+	<string>TuGymPR uses your location to track your outdoor runs and cardio workouts with distance, pace, and route mapping. Tracking continues while the app is in the background during an active session so your route stays accurate when your screen is off.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>TuGymPR saves progress photos and workout summaries to your photo library.</string>
+	<string>TuGymPR saves workout and progress share cards to your photo library when you choose to save or share them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>TuGymPR accesses your photo library to upload profile pictures and progress photos.</string>
 	<key>NSSupportsLiveActivities</key>
@@ -70,7 +66,6 @@
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>remote-notification</string>
 		<string>location</string>
 	</array>
 	<key>UILaunchStoryboardName</key>

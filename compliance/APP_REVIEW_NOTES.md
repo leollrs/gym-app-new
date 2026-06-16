@@ -150,6 +150,14 @@ TuGymPR offers **only email + password sign-in** via Supabase Auth. The app does
 
 ---
 
+## Minimum Age and Minors (Guidelines 1.3 / 5.1.4)
+
+TuGymPR is a B2B retention tool provided to members of a participating gym. The minimum age is **13** (and **16** in EU jurisdictions applying a higher GDPR-K threshold), confirmed by **self-attestation at signup** (the user enters date of birth and confirms eligibility; an `age_verified_at` timestamp is recorded). The app is **not** in the Kids Category, contains **no advertising**, and builds **no advertising profiles** for users of any age.
+
+Because gym membership is granted in the real world, the **gym confirms member eligibility — including age and, for minors, any parental consent — at enrollment**. This B2B/gym-vouching model is why the app does not itself collect verifiable parental consent in-app. All social and user-generated-content surfaces (feed, comments, direct messages, profiles) ship with in-app reporting, blocking, hiding, a pre-publication content filter, and a 24-hour moderation SLA (see the User-Generated Content section above).
+
+---
+
 ## User-Generated Content and Moderation (Guideline 1.2)
 
 **Confirmation:** The app contains user-generated content (social feed posts, comments, direct messages, and member profile fields). The following moderation flow is implemented and active in this build:

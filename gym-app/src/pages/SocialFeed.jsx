@@ -18,6 +18,7 @@ import ProfilePreview from '../components/ProfilePreview';
 import LiveTrainingIndicator from '../components/LiveTrainingIndicator';
 import UserAvatar from '../components/UserAvatar';
 import FriendsPanel from '../components/FriendsPanel';
+import { useScrollLock } from '../hooks/useScrollLock';
 import SwipeableTabView from '../components/SwipeableTabView';
 import UnderlineTabs from '../components/UnderlineTabs';
 import Skeleton from '../components/Skeleton';
@@ -53,6 +54,7 @@ const REPORT_REASONS = ['spam', 'inappropriate', 'harassment', 'other'];
 // ── Block User Confirm Modal (center-aligned) ──────────────────────────────
 const BlockUserModal = ({ open, name, onClose, onConfirm, t }) => {
   const [submitting, setSubmitting] = useState(false);
+  useScrollLock(open);
   if (!open) return null;
   const firstName = name?.split(' ')[0] ?? '';
   const handleConfirm = async () => {
@@ -118,6 +120,8 @@ const BlockUserModal = ({ open, name, onClose, onConfirm, t }) => {
 const ReportModal = ({ open, onClose, onSubmit, t }) => {
   const [selected, setSelected] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useScrollLock(open);
 
   if (!open) return null;
 
@@ -1988,6 +1992,8 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
 
 // ── Create Post Modal ───────────────────────────────────────────────────────
 const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
+  // Only mounts while open (parent gates on showCreatePost), so lock unconditionally.
+  useScrollLock(true);
   const [body, setBody] = useState('');
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);

@@ -51,8 +51,17 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
   // (real per-day activity would require an extra query; punted for v1).
   const sparkFor = (i) => Array.from({ length: 14 }, (_, k) => Math.max(1, 80 - i * 6 + ((k * 17) % 13) - 6));
 
+  // A clean @handle derived from the lifter's first name (accent-stripped,
+  // alphanumeric) for the line under their name — the leaderboard RPC returns no
+  // username, and a raw profile-id fragment ("id_ecb30b0a") read as broken/debug.
+  const handleOf = (name) => {
+    const first = (name || '').trim().split(/\s+/)[0] || 'lifter';
+    const slug = first.normalize('NFD').replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+    return '@' + (slug || 'lifter');
+  };
+
   return (
-    <div className="absolute inset-0 overflow-hidden select-none" style={{
+    <div className="absolute inset-0 overflow-hidden select-none flex flex-col" style={{
       background: t.bg, color: '#FFFFFF',
       fontFamily: 'JetBrains Mono, ui-monospace, monospace',
     }}>
@@ -72,7 +81,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
       ))}
 
       {/* ── Top bar ────────────────────────────────────── */}
-      <div className="absolute top-0 left-0 right-0 h-16 px-10 flex items-center justify-between" style={{ background: t.panel, borderBottom: `1px solid ${t.line}` }}>
+      <div className="h-16 px-10 flex items-center justify-between flex-shrink-0" style={{ background: t.panel, borderBottom: `1px solid ${t.line}` }}>
         <div className="flex items-center gap-5">
           <TVLogoMark src={logoUrl} size={28} color={t.teal} />
           <div className="text-[13px] font-bold tracking-widest" style={{ color: t.teal }}>{gymName?.toUpperCase()} // OPS</div>
@@ -93,7 +102,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
       </div>
 
       {/* ── Category strip ─────────────────────────────── */}
-      <div className="absolute left-0 right-0 h-11 flex items-center px-10" style={{ top: '64px', background: t.panel2, borderBottom: `1px solid ${t.line2}` }}>
+      <div className="h-11 flex items-center px-10 flex-shrink-0" style={{ background: t.panel2, borderBottom: `1px solid ${t.line2}` }}>
         <span className="text-[11px] tracking-widest mr-4" style={{ color: t.dim }}>METRIC ▸</span>
         {localizedMetrics.map((m, i) => {
           const isActive = m.key === metricKey;
@@ -114,8 +123,11 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
         </span>
       </div>
 
+      {/* ── Content (title + table) — flex fills all height between the strips and the footer ── */}
+      <div className="flex-1 min-h-0 flex flex-col px-10 pt-5 pb-5 gap-4">
+
       {/* ── Big title + KPIs ───────────────────────────── */}
-      <div className="absolute left-10 right-10 grid grid-cols-[1.4fr_1fr] gap-5" style={{ top: '130px' }}>
+      <div className="grid grid-cols-[1.4fr_1fr] gap-5 flex-shrink-0">
         <div className="px-7 pt-5 pb-6 relative min-w-0" style={{ border: `1px solid ${t.line}` }}>
           <div className="text-[11px] tracking-widest mb-1" style={{ color: t.dim }}>
             METRIC ▸ {metricKey?.toUpperCase()} / {slide?.period?.replace(' ', '_')} / RANKED_DESC
@@ -151,14 +163,14 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
       </div>
 
       {/* ── Main table ─────────────────────────────────── */}
-      <div className="absolute left-10 right-10" style={{ top: '400px', bottom: '130px' }}>
-        <div className="flex items-center justify-between py-2 px-4" style={{ background: t.panel, border: `1px solid ${t.line}`, borderBottom: 'none' }}>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between py-2 px-4 flex-shrink-0" style={{ background: t.panel, border: `1px solid ${t.line}`, borderBottom: 'none' }}>
           <span className="text-[12px] tracking-widest font-bold" style={{ color: t.teal }}>── rankings.tsv</span>
           <span className="text-[11px] tracking-wide" style={{ color: t.dim }}>cols=5 · sorted_by=score · order=DESC</span>
         </div>
 
         {/* header */}
-        <div className="grid items-center py-2.5 px-4 text-[11px] tracking-widest font-bold" style={{
+        <div className="grid items-center py-2.5 px-4 text-[11px] tracking-widest font-bold flex-shrink-0" style={{
           gridTemplateColumns: '60px 1.4fr 1.2fr 0.8fr 1.2fr',
           color: t.dim,
           background: t.panel2,
@@ -167,8 +179,11 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
           <span>RANK</span><span>LIFTER</span><span>14D · ACTIVITY</span><span>POS</span><span className="text-right">SCORE · {slide?.unit?.toUpperCase()}</span>
         </div>
 
+        {/* Rows fill the remaining height (flex-1) so the table never overflows or
+            leaves a dead gap, whatever the row count or screen height. */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {entries.length === 0 ? (
-          <div className="py-12 text-center" style={{ border: `1px solid ${t.line}`, borderTop: 'none' }}>
+          <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ border: `1px solid ${t.line}`, borderTop: 'none' }}>
             <div className="text-[24px] font-black" style={{ color: t.teal }}>NO_DATA</div>
             <div className="text-[14px] mt-2" style={{ color: t.dim }}>tail -f gym.log · awaiting first entry</div>
           </div>
@@ -178,7 +193,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
             const pct = (Number(r.score) / Number(max)) * 100;
             const rankColor = rank === 1 ? t.hot : rank === 2 ? t.amber : rank === 3 ? t.teal : t.dim;
             return (
-              <div key={r.id || i} className="grid items-center py-3 px-4 tabular-nums" style={{
+              <div key={r.id || i} className="grid items-center content-center py-3 px-4 tabular-nums flex-1 min-h-0" style={{
                 gridTemplateColumns: '60px 1.4fr 1.2fr 0.8fr 1.2fr',
                 borderLeft: `1px solid ${t.line}`,
                 borderRight: `1px solid ${t.line}`,
@@ -192,7 +207,7 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
                   <TVAvatar name={r.name} size={36} />
                   <div className="min-w-0">
                     <div className="text-[16px] lg:text-[18px] font-extrabold truncate leading-none" style={{ fontFamily: 'Barlow, sans-serif', letterSpacing: '-0.2px' }}>{r.name}</div>
-                    <div className="text-[11px] mt-1 tracking-wide" style={{ color: t.dim }}>id_{(r.id || '').toString().slice(0, 8)}</div>
+                    <div className="text-[11px] mt-1 tracking-wide truncate" style={{ color: t.dim }}>{handleOf(r.name)}</div>
                   </div>
                 </span>
                 <span>
@@ -217,18 +232,20 @@ export default function TVStyleTelemetry({ slide, palette, gymName, logoUrl, clo
             );
           })
         )}
+        </div>
 
-        <div className="py-2 px-4 text-[11px] flex justify-between tracking-wide" style={{ background: t.panel, border: `1px solid ${t.line}`, borderTop: 'none', color: t.dim }}>
+        <div className="py-2 px-4 text-[11px] flex justify-between tracking-wide flex-shrink-0" style={{ background: t.panel, border: `1px solid ${t.line}`, borderTop: 'none', color: t.dim }}>
           <span>── end · {entries.length} rows · total = {fmt(sum)} {slide?.unit?.toLowerCase()}</span>
           <span>auto-refresh ▸ on · interval=30s</span>
         </div>
       </div>
+      </div>
 
       {/* ── Footer ─────────────────────────────────────── */}
-      <div className="absolute bottom-0 left-0 right-0 h-[110px] grid grid-cols-[1fr_320px]" style={{ background: t.panel, borderTop: `1px solid ${t.line}` }}>
+      <div className="h-[110px] grid grid-cols-[1fr_320px] flex-shrink-0" style={{ background: t.panel, borderTop: `1px solid ${t.line}` }}>
         <div className="px-5 py-2.5 overflow-hidden" style={{ borderRight: `1px solid ${t.line}` }}>
           <div className="text-[11px] tracking-widest mb-2" style={{ color: t.teal }}>SLIDE QUEUE</div>
-          <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1">
             {localizedMetrics.map((m, i) => {
               const isActive = m.key === metricKey;
               return (

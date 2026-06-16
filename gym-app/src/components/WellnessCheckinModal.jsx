@@ -18,9 +18,11 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import posthogClient from 'posthog-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 // Lower soreness → green (recovered), middle → amber, high → red.
 const toneFor = (score) => {
@@ -48,6 +50,9 @@ export default function WellnessCheckinModal({ open, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [errorState, setErrorState] = useState(false);
+
+  // Lock background page scroll while the check-in is open.
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) {
@@ -93,6 +98,7 @@ export default function WellnessCheckinModal({ open, onClose, onSaved }) {
     try {
       localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({ date: dateKey, soreness: score }));
     } catch {}
+    try { posthogClient?.capture('wellness_checkin_logged'); } catch { /* noop */ }
     setSavedFlash(true);
     onSaved?.(row);
     setTimeout(() => onClose?.(), 900);

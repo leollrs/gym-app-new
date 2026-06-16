@@ -44,6 +44,7 @@ import AIConsentDialog from '../components/AIConsentDialog';
 import TrainerMealPlanSection from '../components/TrainerMealPlanSection';
 import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 // Wrap a promise with a timeout so a hung edge-function call surfaces an error
 // instead of leaving the spinner stuck forever (cold-start, network drop, etc).
@@ -2574,6 +2575,8 @@ const getWeekDates = () => {
 const PLANNER_SLOT_KEYS = ['breakfast', 'lunch', 'dinner'];
 
 const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false, onAddRecipeToGrocery }) => {
+  // Full-screen planner only mounts when showPlanner is true, so lock unconditionally.
+  useScrollLock(true);
   const { t, i18n } = useTranslation('pages');
   const posthogPlanner = usePostHog();
   const lang = i18n.language || 'en';
@@ -3178,6 +3181,8 @@ const fetchSummaryWeekData = async (userId, weeksBack = 0) => {
 };
 
 const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }) => {
+  // Only mounts when showSummary is true, so lock unconditionally.
+  useScrollLock(true);
   // weeksBack: 0 = this week, 1 = last week… Past weeks are fetched on
   // demand and cached for the life of the modal so ‹ › flips are instant.
   const [weeksBack, setWeeksBack] = useState(0);
@@ -4742,6 +4747,7 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
   // opens OR the loaded values change (covers opening the gear before
   // loadPrefs has resolved — otherwise it'd capture empty arrays and stick).
   const initKey = `${initialAllergies.join()}|${initialRestrictions.join()}|${initialAvoid.join()}`;
+  useScrollLock(open);
   useEffect(() => {
     if (open) { setAllergies(initialAllergies); setRestrictions(initialRestrictions); setAvoid(initialAvoid); setSearch(''); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5785,6 +5791,13 @@ export default function Nutrition({ embedded = false }) {
       return () => { document.body.style.overflow = ''; };
     }
   }, [anyModalOpen]);
+
+  // The scan / barcode / menu / logging overlays above aren't part of
+  // anyModalOpen — lock the background for those too (ref-counted hook).
+  useScrollLock(
+    barcodeScanning || barcodeLoading || !!barcodeError || !!barcodeProduct ||
+    loggingFood || menuAnalyzing || !!menuError || !!menuResult || !!scanResult
+  );
 
   // Persist saved recipes
   useEffect(() => {

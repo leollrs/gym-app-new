@@ -44,7 +44,7 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
 
       if (barcodes.length > 0 && barcodes[0].rawValue) {
         const result = await handleScannedValue(barcodes[0].rawValue, onScan, setError);
-        if (!result) setError(`Not a valid purchase QR: "${barcodes[0].rawValue.substring(0, 50)}"`);
+        if (!result) setError("That QR code isn't recognized. Make sure it's the member's purchase code.");
       }
     } catch (err) {
       setScanning(false);
@@ -76,7 +76,7 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
           html5Qrcode.stop().catch(() => {});
           setScanning(false);
           const result = await handleScannedValue(decodedText, onScan, setError);
-          if (!result) setError(`Not a valid purchase QR: "${decodedText.substring(0, 50)}"`);
+          if (!result) setError("That QR code isn't recognized. Make sure it's the member's purchase code.");
         },
         () => {}
       );

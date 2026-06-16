@@ -7,6 +7,7 @@ import PreviewOverlay from './PreviewOverlay';
 import ShareCtaButton from './ShareCtaButton';
 import { Share } from '@capacitor/share';
 import { saveBlob } from '../../lib/saveBlob';
+import posthogClient from 'posthog-js';
 import { supabase } from '../../lib/supabase';
 import { PROD_WEB_URL } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
@@ -803,6 +804,8 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         // SDK, so route through the OS share sheet — the user taps Facebook there.
         if (blob) await shareBlob(blob, 'tugympr-workout.png', full);
       }
+      // Reached only when the destination dispatch above didn't throw.
+      try { posthogClient?.capture('content_shared', { type: kind || 'workout', dest }); } catch { /* noop */ }
     } catch (err) {
       console.warn('[ShareSheet] share failed', err);
     } finally {

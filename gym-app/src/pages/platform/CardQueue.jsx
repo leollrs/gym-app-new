@@ -21,9 +21,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  Printer, Check, Truck, Calendar, Building2, Loader2,
+  Printer, Check, Truck, Calendar, Building2,
   ChevronDown, ChevronRight, PartyPopper, Sparkles, Award, Cake, Gift, ArrowLeftRight,
-  AlertTriangle, RotateCcw, RefreshCw,
+  AlertTriangle, RotateCcw, RefreshCw, Eye,
 } from 'lucide-react';
 import { format, nextSaturday, addDays, isSaturday } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -34,6 +34,7 @@ import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
 import PrintPreviewModal from '../../components/admin/PrintPreviewModal';
+import RewardAttachModal from '../admin/components/RewardAttachModal';
 
 const OCCASION_ICON = {
   welcome: PartyPopper, habit_9in6: Sparkles, tenure_30: Calendar, tenure_90: Calendar,
@@ -58,11 +59,16 @@ export default function CardQueue() {
   const dateLocale = isEs ? { locale: esLocale } : undefined;
 
   const [showAllGyms, setShowAllGyms] = useState(false);
+  // 'all' = every gym in the current fulfillment scope; otherwise a single gym id
+  const [selectedGymId, setSelectedGymId] = useState('all');
   const [expanded, setExpanded] = useState(() => new Set());
   // { gymId, ids } currently open in the print preview, or null
   const [preview, setPreview] = useState(null);
   // Pending confirmation: { kind: 'print', gym, ids } | { kind: 'fulfillment', gym, value }
   const [confirm, setConfirm] = useState(null);
+  // A print_cards row whose reward we're attaching/modifying, or null. Shaped
+  // for RewardAttachModal: { id, occasion, profiles, reward_qr_code, reward_label }.
+  const [rewardCard, setRewardCard] = useState(null);
 
   useEffect(() => {
     document.title = `${t('platform.cardQueue.title', 'Card Queue')} | ${window.__APP_NAME || 'TuGymPR'}`;
@@ -90,6 +96,7 @@ export default function CardQueue() {
         .select(`
           id, gym_id, profile_id, occasion, headline, subline, status,
           created_at, printed_at, expected_delivery_at, delivery_fulfilled_by, print_format,
+          reward_qr_code, reward_label,
           profiles:profile_id(full_name, avatar_url)
         `)
         .in('status', ['pending', 'printed'])
@@ -197,12 +204,18 @@ export default function CardQueue() {
       groups.get(c.gym_id)[c.status === 'pending' ? 'pending' : 'printed'].push(c);
     }
     let list = [...groups.values()];
-    // Unknown-fulfillment (placeholder) gyms stay visible in both scopes.
-    if (!showAllGyms) list = list.filter((row) => row.gym.card_fulfillment === 'platform' || row.gym.missing);
+    if (selectedGymId !== 'all') {
+      // An explicit gym pick wins over the fulfillment scope — selecting a gym
+      // from the dropdown always shows it, even a self-print one under "Mine".
+      list = list.filter((row) => row.gym.id === selectedGymId);
+    } else if (!showAllGyms) {
+      // Unknown-fulfillment (placeholder) gyms stay visible in both scopes.
+      list = list.filter((row) => row.gym.card_fulfillment === 'platform' || row.gym.missing);
+    }
     // Most work first: gyms with the most pending cards on top.
     list.sort((a, b) => b.pending.length - a.pending.length || (a.gym.name || '').localeCompare(b.gym.name || ''));
     return list;
-  }, [cards, gymMap, showAllGyms]);
+  }, [cards, gymMap, showAllGyms, selectedGymId]);
 
   // ── Headline numbers ──
   const stats = useMemo(() => {
@@ -284,8 +297,8 @@ export default function CardQueue() {
         <StatCard label={t('platform.cardQueue.statGyms', 'Gyms to visit')} value={stats.gymsToVisit} icon={Building2} borderColor="#6366F1" />
       </div>
 
-      {/* Scope toggle */}
-      <div className="flex gap-1.5 mb-4">
+      {/* Scope toggle + gym filter */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-4">
         <button
           onClick={() => setShowAllGyms(false)}
           className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
@@ -302,6 +315,18 @@ export default function CardQueue() {
         >
           {t('platform.cardQueue.scopeAll', 'All gyms')}
         </button>
+        {/* Filter to a single gym (works alongside the scope toggle above). */}
+        <select
+          value={selectedGymId}
+          onChange={(e) => setSelectedGymId(e.target.value)}
+          aria-label={t('platform.cardQueue.filterByGym', 'Filter by gym')}
+          className="ml-auto px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/[0.06] text-[#E5E7EB] border border-white/10 focus:outline-none focus:border-[#D4AF37]/40 transition-colors"
+        >
+          <option value="all">{t('platform.cardQueue.allGymsOption', 'All gyms')}</option>
+          {gyms.map((g) => (
+            <option key={g.id} value={g.id}>{g.name || t('platform.cardQueue.unknownGym', 'Unknown gym')}</option>
+          ))}
+        </select>
       </div>
 
       {/* Per-gym panels — on a failed cards query the banner above is the
@@ -409,7 +434,22 @@ export default function CardQueue() {
                             {t('platform.cardQueue.sectionToPrint', 'To print')}
                           </p>
                           <ul className="divide-y divide-white/[0.05]">
-                            {pending.map((c) => <CardRow key={c.id} card={c} t={t} />)}
+                            {pending.map((c) => (
+                              <CardRow
+                                key={c.id}
+                                card={c}
+                                t={t}
+                                onPreview={() => setPreview({ gymId: gym.id, ids: [c.id] })}
+                                onReward={c.occasion === 'returning' ? undefined : () => setRewardCard({
+                                  id: c.id,
+                                  gymId: gym.id,
+                                  occasion: c.occasion,
+                                  profiles: c.profiles,
+                                  reward_qr_code: c.reward_qr_code,
+                                  reward_label: c.reward_label,
+                                })}
+                              />
+                            ))}
                           </ul>
                         </div>
                       )}
@@ -429,6 +469,15 @@ export default function CardQueue() {
                                 deliveryLabel={c.expected_delivery_at
                                   ? t('platform.cardQueue.deliverOn', { date: fmtDate(new Date(c.expected_delivery_at)), defaultValue: 'Deliver {{date}}' })
                                   : null}
+                                onPreview={() => setPreview({ gymId: gym.id, ids: [c.id] })}
+                                onReward={c.occasion === 'returning' ? undefined : () => setRewardCard({
+                                  id: c.id,
+                                  gymId: gym.id,
+                                  occasion: c.occasion,
+                                  profiles: c.profiles,
+                                  reward_qr_code: c.reward_qr_code,
+                                  reward_label: c.reward_label,
+                                })}
                                 onDeliver={() => markDeliveredMutation.mutate(c.id)}
                                 onReturn={() => returnToPendingMutation.mutate(c.id)}
                               />
@@ -453,6 +502,20 @@ export default function CardQueue() {
           gymId={preview.gymId}
           previewBase="/platform/print-cards/preview"
           onClose={() => setPreview(null)}
+        />
+      )}
+
+      {/* Reward attach/modify — same modal the admin side uses. Cards here are
+          already real print_cards rows, so no materialize step. Refresh the
+          queue on close so the row reflects the attached/removed reward. */}
+      {rewardCard && (
+        <RewardAttachModal
+          card={rewardCard}
+          gymId={rewardCard.gymId}
+          onClose={() => {
+            setRewardCard(null);
+            queryClient.invalidateQueries({ queryKey: ['platform', 'card-queue', 'cards'] });
+          }}
         />
       )}
 
@@ -530,9 +593,10 @@ function ConfirmModal({ t, confirm, onCancel, onConfirm }) {
   );
 }
 
-function CardRow({ card, t, deliveryLabel, onDeliver, onReturn }) {
+function CardRow({ card, t, deliveryLabel, onPreview, onReward, onDeliver, onReturn }) {
   const member = card.profiles || {};
   const Icon = OCCASION_ICON[card.occasion] || Gift;
+  const hasReward = !!card.reward_qr_code;
   return (
     <li className="py-2.5 flex items-center gap-3">
       <div className="w-7 h-7 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0">
@@ -548,6 +612,28 @@ function CardRow({ card, t, deliveryLabel, onDeliver, onReturn }) {
       </div>
       {deliveryLabel && (
         <span className="text-[10px] text-[#10B981] whitespace-nowrap">{deliveryLabel}</span>
+      )}
+      {onReward && (
+        <button
+          onClick={onReward}
+          title={hasReward ? t('platform.cardQueue.manageReward', 'Manage reward') : t('platform.cardQueue.attachReward', 'Attach reward')}
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${
+            hasReward
+              ? 'bg-[#D4AF37]/15 text-[#D4AF37] hover:bg-[#D4AF37]/25'
+              : 'bg-white/[0.04] text-[#9CA3AF] hover:bg-white/[0.08] hover:text-[#E5E7EB]'
+          }`}
+        >
+          <Gift size={13} />
+        </button>
+      )}
+      {onPreview && (
+        <button
+          onClick={onPreview}
+          title={t('platform.cardQueue.previewCard', 'Preview card')}
+          className="w-7 h-7 rounded-lg flex items-center justify-center bg-white/[0.04] text-[#9CA3AF] hover:bg-white/[0.08] hover:text-[#E5E7EB] transition-colors flex-shrink-0"
+        >
+          <Eye size={13} />
+        </button>
       )}
       {onReturn && (
         <button

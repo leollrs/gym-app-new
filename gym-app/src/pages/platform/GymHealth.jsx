@@ -13,7 +13,7 @@ import {
 import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
-import { healthScoreFromStatsRow, healthTier } from '../../lib/platform/healthScore';
+import { healthScoreFromStatsRow, healthTier, colorForScore } from '../../lib/platform/healthScore';
 import ChartTooltip from '../../components/ChartTooltip';
 import FadeIn from '../../components/platform/FadeIn';
 import StatCard from '../../components/platform/StatCard';
@@ -33,13 +33,7 @@ const TIER_META = [
 ];
 const TIER_BY_KEY = Object.fromEntries(TIER_META.map(m => [m.key, m]));
 
-const getScoreColor = (score) => {
-  if (score == null) return '#6B7280';
-  if (score >= 75) return '#10B981';
-  if (score >= 55) return '#22C55E';
-  if (score >= 40) return '#F59E0B';
-  return '#EF4444';
-};
+const getScoreColor = colorForScore; // shared canonical bands (lib/platform/healthScore)
 
 // platform_snapshots.snapshot_date is a DATE ('YYYY-MM-DD') — parse as LOCAL
 // so the chart's axis doesn't drift a day back in Puerto Rico (UTC-4).

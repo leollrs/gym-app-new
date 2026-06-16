@@ -1346,7 +1346,7 @@ button {
 .admin-pill--good   { background: var(--color-success-soft); color: var(--color-success-ink); }
 .admin-pill--coach  { background: var(--color-coach-soft);   color: var(--color-coach-ink); }
 .admin-pill--info   { background: var(--color-info-soft);    color: #2A5FCA; }
-.admin-pill--dark   { background: var(--color-admin-text);   color: #fff; }
+.admin-pill--dark   { background: var(--color-admin-text);   color: var(--color-admin-panel); }
 .admin-pill--outline { background: transparent; border-color: var(--color-admin-border); color: var(--color-admin-text-sub); }
 html.dark .admin-pill--info { color: #A0C2FF; }
 

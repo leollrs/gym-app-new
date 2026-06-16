@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import posthogClient from 'posthog-js';
 import { Filter, Pencil, Star, Eye } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
@@ -119,6 +120,7 @@ export default function SegmentEditorModal({ segment, gymId, adminId, onClose, o
           filters,
           created_by: adminId,
         });
+        posthogClient?.capture('admin_segment_created');
       }
       onSaved();
     } catch (err) {

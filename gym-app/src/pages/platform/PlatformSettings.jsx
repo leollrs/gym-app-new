@@ -27,11 +27,20 @@ import {
   Save,
   Smartphone,
   AlertTriangle,
+  Upload,
+  Download,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { logAdminAction } from '../../lib/adminAudit';
 import { useAuth } from '../../contexts/AuthContext';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
+import { exportCSV } from '../../lib/csvExport';
+import {
+  parseCSV,
+  bucketExerciseRows,
+  missingRequiredColumns,
+  EXERCISE_CSV_COLUMNS,
+} from '../../lib/admin/exerciseCsvImport';
 
 // The REAL muscle_group enum: 0001 (Chest…Full Body) + 0044 (Forearms,
 // Traps) + 0247 (Warm-Up). The old list offered Quads/Hamstrings/Cardio —
@@ -174,12 +183,12 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
       const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
       const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
       if (newVideoFile.size > MAX_VIDEO_SIZE) {
-        alert('Video must be under 100MB');
+        alert(t('platformSettings.videoTooLarge', 'Video must be under 100MB'));
         setSaving(false);
         return;
       }
       if (!ALLOWED_VIDEO_TYPES.includes(newVideoFile.type)) {
-        alert('Only MP4, WebM, and MOV videos are allowed');
+        alert(t('platformSettings.videoTypeInvalid', 'Only MP4, WebM, and MOV videos are allowed'));
         setSaving(false);
         return;
       }
@@ -218,7 +227,7 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
     const { error } = await supabase.from('exercises').update(updates).eq('id', ex.id);
     setSaving(false);
     if (error) {
-      alert(`Save failed: ${error.message}`);
+      alert(t('platformSettings.saveFailed', 'Save failed: {{msg}}', { msg: error.message }));
       return;
     }
     onUpdate({ ...ex, ...updates });
@@ -513,6 +522,7 @@ export default function PlatformSettings() {
 
   /* ── modals ── */
   const [showExModal, setShowExModal] = useState(false);
+  const [showExBulkModal, setShowExBulkModal] = useState(false);
   const [showAchModal, setShowAchModal] = useState(false);
   const [showProgModal, setShowProgModal] = useState(false);
 
@@ -699,11 +709,24 @@ export default function PlatformSettings() {
       if (!payload.min_required_version || !payload.latest_version) {
         throw new Error('Both version fields are required.');
       }
-      const { error } = await supabase
+      // UPSERT, not UPDATE: a plain `.update().eq('id',1)` returns
+      // {error:null} even when it touches ZERO rows — the singleton row is
+      // missing (0393's INSERT never ran on this project) or an UPDATE-only
+      // RLS policy filtered it out — which painted a fake "Saved ✓". The
+      // upsert self-heals a missing row (0596 adds the INSERT policy), and
+      // `.select('id')` lets us treat a 0-row response as a real failure,
+      // mirroring the delete handler's guard below.
+      const { data: rows, error } = await supabase
         .from('app_config')
-        .update(payload)
-        .eq('id', 1);
+        .upsert(
+          { id: 1, ...payload, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        )
+        .select('id');
       if (error) throw error;
+      if (!rows?.length) {
+        throw new Error('Nothing was saved — the version row is missing or blocked by permissions.');
+      }
       // Audit row is appended server-side by the app_config_audit trigger
       // (see migration 0393). No client-side logAdminAction call needed.
       setAppVersionSaved(true);
@@ -854,6 +877,12 @@ export default function PlatformSettings() {
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
+              <button
+                onClick={() => setShowExBulkModal(true)}
+                className="text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Upload className="w-3.5 h-3.5" /> {t('platformSettings.bulkAddCsv', 'Bulk add (CSV)')}
+              </button>
               <button
                 onClick={() => setShowExModal(true)}
                 className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
@@ -1307,6 +1336,13 @@ export default function PlatformSettings() {
         />
       )}
 
+      {showExBulkModal && (
+        <ExerciseBulkModal
+          onClose={() => setShowExBulkModal(false)}
+          onSaved={() => { setShowExBulkModal(false); fetchExercises(); }}
+        />
+      )}
+
       {showAchModal && (
         <AchievementModal
           onClose={() => setShowAchModal(false)}
@@ -1495,6 +1531,214 @@ function ExerciseModal({ onClose, onSaved }) {
           style={{ background: '#D4AF37' }}
         >
           {saving ? (videoFile ? tp('uploading') : tp('saving')) : tp('saveExercise')}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ───────────────── Exercise Bulk-CSV Modal ───────────────── */
+// Paste (or upload) a CSV → parseCSV → bucketExerciseRows validates enums +
+// defaults per row → preview ready/skipped → batch INSERT the clean rows into
+// `exercises` (gym_id null = global). The exercises INSERT RLS policy already
+// allows super_admin bulk insert when gym_id is null (0040) — no migration
+// needed. `.select('id')` lets us treat {error:null, data:[]} as an RLS
+// failure rather than a fake success.
+
+function ExerciseBulkModal({ onClose, onSaved }) {
+  const { t } = useTranslation('pages');
+  const tp = (key) => t(`platformSettings.${key}`);
+  const [raw, setRaw] = useState('');
+  const [parsed, setParsed] = useState(null); // { ready, skipped, headerError }
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [insertedCount, setInsertedCount] = useState(0);
+
+  const handleFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      setRaw(text);
+      runParse(text);
+    };
+    reader.readAsText(file);
+  };
+
+  const runParse = (text) => {
+    setError('');
+    setInsertedCount(0);
+    const { headers, rows, errors } = parseCSV(text);
+    if (errors?.some((e) => e.kind === 'empty' || e.kind === 'invalid_input')) {
+      setParsed({ ready: [], skipped: [], headerError: t('platformSettings.bulkErrEmpty', 'The CSV is empty or could not be read.') });
+      return;
+    }
+    const missing = missingRequiredColumns(headers);
+    if (missing.length > 0) {
+      setParsed({
+        ready: [],
+        skipped: [],
+        headerError: t('platformSettings.bulkErrMissingCols', 'Missing required columns: {{cols}}', { cols: missing.join(', ') }),
+      });
+      return;
+    }
+    const { ready, skipped } = bucketExerciseRows(rows);
+    setParsed({ ready, skipped, headerError: null });
+  };
+
+  const handleConfirm = async () => {
+    if (!parsed?.ready?.length) return;
+    setSaving(true);
+    setError('');
+    const ts = Date.now();
+    const toInsert = parsed.ready.map((v, i) => ({
+      id: `global_${ts}_${i}_${Math.random().toString(36).slice(2)}`,
+      gym_id: null,
+      name: v.name,
+      muscle_group: v.muscle_group,
+      equipment: v.equipment,
+      category: v.category || 'Strength',
+      default_sets: Number(v.default_sets) || 3,
+      default_reps: String(v.default_reps ?? '10') || '10',
+      instructions: v.instructions || null,
+      is_active: true,
+    }));
+
+    const { data, error: insertError } = await supabase
+      .from('exercises')
+      .insert(toInsert)
+      .select('id');
+    setSaving(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+    // {error:null, data:[]} = RLS silently dropped the insert. Don't pretend.
+    if (!data || data.length === 0) {
+      setError(t('platformSettings.bulkErrNoRows', 'Nothing was imported — the rows may be blocked by permissions.'));
+      return;
+    }
+    setInsertedCount(data.length);
+    logAdminAction('bulk_add_global_exercises', 'exercises', null, { count: data.length });
+    onSaved();
+  };
+
+  const downloadTemplate = () => {
+    // One sample row so the headers + an example shape are obvious.
+    exportCSV({
+      filename: 'exercise-import-template',
+      columns: EXERCISE_CSV_COLUMNS.map((key) => ({ key, label: key })),
+      data: [{
+        name: 'Barbell Bench Press',
+        muscle_group: 'Chest',
+        equipment: 'Barbell',
+        category: 'Strength',
+        default_sets: 3,
+        default_reps: '8-12',
+        instructions: 'Lower the bar to mid-chest, press to lockout.',
+      }],
+    });
+  };
+
+  return (
+    <Modal title={t('platformSettings.bulkAddTitle', 'Bulk add exercises')} onClose={onClose}>
+      <p className="text-[12px] text-[#9CA3AF] mb-3">
+        {t('platformSettings.bulkAddDesc', 'Paste CSV rows or upload a .csv file. Required columns: name, muscle_group, equipment. Rows with unknown enum values are skipped.')}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <button
+          onClick={downloadTemplate}
+          className="text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 rounded-lg px-3 py-1.5 text-[12px] font-semibold flex items-center gap-1.5"
+        >
+          <Download className="w-3.5 h-3.5" /> {t('platformSettings.bulkDownloadTemplate', 'Download template')}
+        </button>
+        <label className="text-[#9CA3AF] hover:text-[#E5E7EB] bg-[#111827] border border-white/6 rounded-lg px-3 py-1.5 text-[12px] font-medium flex items-center gap-1.5 cursor-pointer">
+          <Upload className="w-3.5 h-3.5" /> {t('platformSettings.bulkUploadFile', 'Upload .csv')}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0] || null)}
+          />
+        </label>
+      </div>
+
+      <Field label={t('platformSettings.bulkPasteLabel', 'CSV data')}>
+        <textarea
+          className={`${inputCls} min-h-[120px] resize-none font-mono text-[11px]`}
+          value={raw}
+          onChange={(e) => { setRaw(e.target.value); }}
+          onBlur={() => runParse(raw)}
+          placeholder={`name,muscle_group,equipment,category,default_sets,default_reps,instructions`}
+        />
+      </Field>
+
+      <div className="flex justify-end mb-3">
+        <button
+          onClick={() => runParse(raw)}
+          disabled={!raw.trim()}
+          className="text-[#D4AF37] hover:text-[#E6C766] disabled:opacity-40 text-[12px] font-semibold"
+        >
+          {t('platformSettings.bulkPreview', 'Preview')}
+        </button>
+      </div>
+
+      {parsed?.headerError && (
+        <p className="text-[12px] text-red-400 mb-3">{parsed.headerError}</p>
+      )}
+
+      {parsed && !parsed.headerError && (
+        <div className="mb-3">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-[12px] text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {t('platformSettings.bulkReadyCount', '{{count}} ready', { count: parsed.ready.length })}
+            </span>
+            {parsed.skipped.length > 0 && (
+              <span className="text-[12px] text-amber-400 flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {t('platformSettings.bulkSkippedCount', '{{count}} skipped', { count: parsed.skipped.length })}
+              </span>
+            )}
+          </div>
+          {parsed.skipped.length > 0 && (
+            <div className="max-h-[160px] overflow-y-auto space-y-1 bg-[#111827] border border-white/6 rounded-lg p-2">
+              {parsed.skipped.map((s, i) => (
+                <div key={i} className="text-[11px] text-[#9CA3AF] flex gap-2">
+                  <span className="text-[#6B7280] shrink-0">
+                    {t('platformSettings.bulkRowLabel', 'Row {{n}}', { n: s.line })}
+                  </span>
+                  <span className="text-amber-400/90">{s.reason}</span>
+                  {s.row?.name ? <span className="text-[#4B5563] truncate">— {s.row.name}</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-[12px] text-red-400 mb-2">{error}</p>}
+      {insertedCount > 0 && (
+        <p className="text-[12px] text-emerald-400 mb-2 flex items-center gap-1">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          {t('platformSettings.bulkInserted', 'Imported {{count}} exercises', { count: insertedCount })}
+        </p>
+      )}
+
+      <div className="flex justify-end gap-3 mt-4">
+        <button onClick={onClose} className="px-4 py-2 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg">{tp('cancel')}</button>
+        <button
+          onClick={handleConfirm}
+          disabled={saving || !parsed?.ready?.length}
+          className="text-black rounded-lg px-4 py-2 text-[12px] font-semibold disabled:opacity-40 flex items-center gap-1.5"
+          style={{ background: '#D4AF37' }}
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          {saving
+            ? tp('saving')
+            : t('platformSettings.bulkImportN', 'Import {{count}}', { count: parsed?.ready?.length || 0 })}
         </button>
       </div>
     </Modal>

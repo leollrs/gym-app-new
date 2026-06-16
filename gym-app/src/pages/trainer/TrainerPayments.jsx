@@ -5,6 +5,7 @@ import { DollarSign, Bell, MessageCircle, CheckCircle2, ChevronLeft, ChevronRigh
 import { format, addMonths, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale/es';
 import { enUS } from 'date-fns/locale/en-US';
+import posthogClient from 'posthog-js';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import { useAuth } from '../../contexts/AuthContext';
@@ -149,12 +150,13 @@ export default function TrainerPayments() {
   const paidCount = clients.filter(c => c.paid_this_month).length;
   const packsCount = clients.filter(c => packByClient[c.client_id]).length;
 
-  const act = async (id, fn, okMsg) => {
+  const act = async (id, fn, okMsg, onOk) => {
     if (busyId) return;
     setBusyId(id);
     try {
       const { error } = await fn();
       if (error) throw error;
+      onOk?.();
       if (okMsg) showToast(okMsg, 'success');
       await loadMonth();
     } catch (e) {
@@ -168,7 +170,8 @@ export default function TrainerPayments() {
       p_client_id: c.client_id, p_period_month: periodStr(viewMonth),
       p_amount: c.monthly_fee != null ? Number(c.monthly_fee) : null,
       p_note: methodLabel(c.payment_method) || null,
-    }), t('trainerPayment.markedPaid', 'Marked paid'));
+    }), t('trainerPayment.markedPaid', 'Marked paid'),
+    () => posthogClient?.capture('trainer_client_marked_paid'));
 
   const unmark = (c) => act(c.client_id,
     () => supabase.rpc('unmark_client_paid', { p_client_id: c.client_id, p_period_month: periodStr(viewMonth) }),
@@ -176,12 +179,14 @@ export default function TrainerPayments() {
 
   const remindApp = (c) => act(c.client_id,
     () => supabase.rpc('trainer_send_payment_reminder', { p_client_id: c.client_id }),
-    t('trainerPayment.reminderSent', 'Reminder sent'));
+    t('trainerPayment.reminderSent', 'Reminder sent'),
+    () => posthogClient?.capture('trainer_payment_reminder_sent', { channel: 'in_app' }));
 
-  const remindWA = (c) => {
+  const remindWA = async (c) => {
     const name = (c.full_name || '').split(' ')[0];
     // P2-11: this is the trainer's own PT fee, not the gym membership.
-    openWhatsApp(c.phone_number, t('trainerPayment.waMessage', 'Hi {{name}}! Quick reminder: your training payment for this month is still pending. Thanks!', { name: name || '' }));
+    const opened = await openWhatsApp(c.phone_number, t('trainerPayment.waMessage', 'Hi {{name}}! Quick reminder: your training payment for this month is still pending. Thanks!', { name: name || '' }));
+    if (opened) posthogClient?.capture('trainer_payment_reminder_sent', { channel: 'whatsapp' });
   };
 
   const openEdit = (c) => {

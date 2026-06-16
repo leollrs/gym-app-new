@@ -20,12 +20,16 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 
 export default function MarkDeliveredModal({ card, gymId, onClose }) {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation('pages');
+
+  // This component only mounts while the modal is open, so lock unconditionally.
+  useScrollLock(true);
 
   // Pre-fill with the signed-in staffer's name (most often the same person),
   // but it stays editable + required so a front-desk hand-over gets the real name.
@@ -82,16 +86,23 @@ export default function MarkDeliveredModal({ card, gymId, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto"
+      style={{
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+        // Clear the mobile admin header (~56px) + bottom nav (~80px) + safe areas
+        // so the dialog is fully on-screen and scrolls under the keyboard.
+        paddingTop: 'calc(56px + env(safe-area-inset-top) + 12px)',
+        paddingBottom: 'calc(80px + env(safe-area-inset-bottom) + 12px)',
+        paddingLeft: '16px', paddingRight: '16px',
+      }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl max-h-[min(85vh,100%)] flex flex-col my-auto"
         style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+        <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'var(--color-success-soft)' }}>
               <Check size={14} style={{ color: 'var(--color-success-ink)' }} />
@@ -116,7 +127,7 @@ export default function MarkDeliveredModal({ card, gymId, onClose }) {
         </div>
 
         {/* Body */}
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-3 overflow-y-auto flex-1">
           {/* Who handed it over — mandatory */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>

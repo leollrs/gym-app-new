@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Download, Loader2 } from 'lucide-react';
 import { Share } from '@capacitor/share';
+import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
 import { shareBlob } from '../ShareCardRenderer';
 import { rasterizeNode, urlToDataUrl } from './ShareSheet';
@@ -148,6 +149,8 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         if (blob) await shareBlob(blob, 'tugympr-month.png', fullText);
         else await Share.share({ title: gym || 'TuGymPR', text: fullText, url: shareLink });
       }
+      // Reached only when the destination dispatch above didn't throw.
+      try { posthogClient?.capture('content_shared', { type: 'month', dest }); } catch { /* noop */ }
     } catch (err) {
       console.warn('[ShareMonthSheet] share failed', err);
     } finally {

@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { logAdminAction } from '../../lib/adminAudit';
+import { saveBlob } from '../../lib/saveBlob';
 import {
-  Search, ChevronDown, ChevronUp, ExternalLink, Shield, UserCog, Eye, X,
-  Building2, RefreshCw, KeyRound, UserX, UserCheck, Link2, Plus,
-  Activity, Clock, AlertTriangle, Dumbbell, ChevronRight, Copy, Check,
+  Search, ExternalLink, Shield, UserCog, X,
+  Building2, RefreshCw, KeyRound, UserX, Plus,
+  Clock, AlertTriangle, ChevronRight, Copy, Check, Download, Trash2, ArrowRightLeft,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -72,7 +72,6 @@ const churnTierColor = (tier) => {
 
 // ── Main component ───────────────────────────────────────────
 export default function SupportConsole() {
-  const { profile } = useAuth();
   const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const dateFnsLocale = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
@@ -300,6 +299,67 @@ export default function SupportConsole() {
   const [resetCode, setResetCode] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // ── Move member to another gym (atomic via admin_move_member_to_gym) ──────
+  const [moveModal, setMoveModal] = useState(false);
+  const [moveGymQuery, setMoveGymQuery] = useState('');
+  const [moveGymResults, setMoveGymResults] = useState([]);
+  const [moveGymSearching, setMoveGymSearching] = useState(false);
+  const [moveTarget, setMoveTarget] = useState(null); // chosen target gym
+  const [moving, setMoving] = useState(false);
+
+  const openMoveModal = () => {
+    setMoveGymQuery('');
+    setMoveGymResults([]);
+    setMoveTarget(null);
+    setMoveModal(true);
+  };
+
+  // Debounced target-gym search (excludes the member's current gym).
+  useEffect(() => {
+    if (!moveModal) return;
+    const term = moveGymQuery.trim();
+    if (term.length < 2) { setMoveGymResults([]); setMoveGymSearching(false); return; }
+    setMoveGymSearching(true);
+    const safe = term.replace(/[%_\\,()."']/g, '');
+    const pattern = `%${safe}%`;
+    const timeout = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from('gyms')
+        .select('id, name, slug, is_active')
+        .or(`name.ilike.${pattern},slug.ilike.${pattern}`)
+        .order('name', { ascending: true })
+        .limit(8);
+      if (error) { setMoveGymResults([]); setMoveGymSearching(false); return; }
+      setMoveGymResults((data || []).filter(g => g.id !== selectedMember?.gym_id));
+      setMoveGymSearching(false);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [moveGymQuery, moveModal, selectedMember?.gym_id]);
+
+  const handleMoveMember = async () => {
+    if (!selectedMember || !moveTarget) return;
+    if (selectedMember.role === 'super_admin') {
+      showToast(t('platform.support.protectedAccount', 'Protected account — super admin role and status can only be changed in the database'), 'error');
+      return;
+    }
+    setMoving(true);
+    const { data, error } = await supabase.rpc('admin_move_member_to_gym', {
+      p_user_id: selectedMember.id,
+      p_target_gym_id: moveTarget.id,
+    });
+    setMoving(false);
+    if (error) { showToast(error.message, 'error'); return; }
+    logAdminAction('move_member', 'member', selectedMember.id, { from_gym: selectedMember.gym_id, to_gym: moveTarget.id, gym_name: moveTarget.name }, moveTarget.id);
+    // Reflect the move locally: gym pointer + embedded gym summary.
+    const movedGym = { id: moveTarget.id, name: moveTarget.name, slug: moveTarget.slug };
+    setSelectedMember(prev => prev ? { ...prev, gym_id: moveTarget.id, gyms: movedGym } : prev);
+    setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, gym_id: moveTarget.id, gyms: movedGym } : m));
+    const restamped = data?.rows_restamped ?? 0;
+    const cleared = data?.rows_cleared ?? 0;
+    showToast(t('platform.support.moveDone', { gym: moveTarget.name, restamped, cleared, defaultValue: 'Moved to {{gym}} — {{restamped}} records transferred, {{cleared}} old-gym links reset' }), 'success');
+    setMoveModal(false);
+  };
+
   const openRoleModal = () => { setNewRole(selectedMember?.role || 'member'); setRoleModal(true); };
   const openStatusModal = () => { setNewStatus(selectedMember?.membership_status || 'active'); setStatusReason(''); setStatusModal(true); };
 
@@ -490,6 +550,52 @@ export default function SupportConsole() {
     setInviteLoading(false);
   };
 
+  // Single-member data export (DSAR) — super_admin reads the member's own
+  // gym-scoped rows and downloads them as JSON.
+  const handleExportMember = async () => {
+    if (!selectedMember) return;
+    try {
+      const id = selectedMember.id;
+      const [prof, sessions, prs, body, checkins, goals] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
+        supabase.from('workout_sessions').select('*').eq('profile_id', id),
+        supabase.from('personal_records').select('*').eq('profile_id', id),
+        supabase.from('body_measurements').select('*').eq('profile_id', id),
+        supabase.from('check_ins').select('*').eq('profile_id', id),
+        supabase.from('member_goals').select('*').eq('profile_id', id),
+      ]);
+      const payload = {
+        exported_at: new Date().toISOString(),
+        profile: prof.data ?? null,
+        workout_sessions: sessions.data ?? [],
+        personal_records: prs.data ?? [],
+        body_measurements: body.data ?? [],
+        check_ins: checkins.data ?? [],
+        goals: goals.data ?? [],
+      };
+      const safe = String(selectedMember.full_name || selectedMember.username || id).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+      await saveBlob(`member-export-${safe}.json`, new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+      logAdminAction('export_member', 'member', id, {}, selectedMember.gym_id);
+      showToast(t('platform.support.exportDone', 'Member data exported'), 'success');
+    } catch (err) {
+      showToast(err.message || 'Export failed', 'error');
+    }
+  };
+
+  // Permanent member delete (right-to-erasure) — reuses the cross-gym RPC the
+  // GymDetail member list uses.
+  const handleDeleteMember = async () => {
+    if (!selectedMember) return;
+    const name = selectedMember.full_name || selectedMember.username || 'this member';
+    if (!window.confirm(t('platform.support.deleteConfirm', { name, defaultValue: `Permanently delete ${name} and all their data? This cannot be undone.` }))) return;
+    const { error } = await supabase.rpc('admin_delete_gym_member', { p_user_id: selectedMember.id });
+    if (error) { showToast(error.message, 'error'); return; }
+    logAdminAction('delete_member', 'member', selectedMember.id, { name }, selectedMember.gym_id);
+    setMembers(prev => prev.filter(m => m.id !== selectedMember.id));
+    setSelectedMember(null);
+    showToast(t('platform.support.memberDeleted', 'Member deleted'), 'success');
+  };
+
   // Generate a fresh code via the existing admin_create_invite_code RPC.
   // It is is_admin()-gated (super_admin included) and takes p_gym_id with no
   // own-gym check, so it already works cross-gym (0305/0465 — verified).
@@ -677,7 +783,6 @@ export default function SupportConsole() {
                   </p>
                   <div className="space-y-1">
                     {members.map((member) => {
-                      const initial = (member.full_name || member.username || '?').charAt(0).toUpperCase();
                       const isSelected = selectedMember?.id === member.id;
                       return (
                         <button
@@ -920,8 +1025,17 @@ export default function SupportConsole() {
                         <button onClick={openInviteModal} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors" style={{ background: '#111827' }}>
                           <KeyRound size={13} />{t('platform.support.inviteCodes', 'Invite Codes')}
                         </button>
+                        <button onClick={openMoveModal} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-white/6" style={{ background: '#111827' }}>
+                          <ArrowRightLeft size={13} />{t('platform.support.moveToGym', 'Move to gym')}
+                        </button>
                         <button onClick={handleDeactivate} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-red-400/70 disabled:hover:border-white/6" style={{ background: '#111827' }}>
                           <UserX size={13} />{t('platform.support.deactivate', 'Deactivate')}
+                        </button>
+                        <button onClick={handleExportMember} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#D4AF37]/30 transition-colors" style={{ background: '#111827' }}>
+                          <Download size={13} />{t('platform.support.exportMember', 'Export data')}
+                        </button>
+                        <button onClick={handleDeleteMember} disabled={isProtected} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/6 text-[12px] text-red-400/70 hover:text-red-400 hover:border-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-red-400/70 disabled:hover:border-white/6" style={{ background: '#111827' }}>
+                          <Trash2 size={13} />{t('platform.support.deleteMember', 'Delete member')}
                         </button>
                       </div>
                       {isProtected && (
@@ -1152,6 +1266,89 @@ export default function SupportConsole() {
               )}
               <button onClick={() => setInviteModal(false)} className="w-full px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">
                 {t('platform.support.close', 'Close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Move to Gym Modal ──────────────────────────────── */}
+      {moveModal && selectedMember && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4" onClick={() => setMoveModal(false)}>
+          <div className="bg-[#0F172A] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.support.moveToGym', 'Move to gym')}</h3>
+              <button onClick={() => setMoveModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={16} /></button>
+            </div>
+
+            {/* From → To */}
+            <div className="flex items-center gap-2 text-[12px]">
+              <span className="flex-1 min-w-0 truncate px-2.5 py-1.5 rounded-lg bg-[#111827] border border-white/8 text-[#9CA3AF]">
+                {selectedMember.gyms?.name || t('platform.support.noGym', 'No gym')}
+              </span>
+              <ArrowRightLeft size={14} className="text-[#4B5563] flex-shrink-0" />
+              <span className={`flex-1 min-w-0 truncate px-2.5 py-1.5 rounded-lg border ${moveTarget ? 'bg-[#D4AF37]/10 border-[#D4AF37]/25 text-[#D4AF37]' : 'bg-[#111827] border-white/8 text-[#4B5563]'}`}>
+                {moveTarget?.name || t('platform.support.moveSelectTarget', 'Select a gym…')}
+              </span>
+            </div>
+
+            {/* Target search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4B5563]" />
+              <input
+                type="text"
+                value={moveGymQuery}
+                onChange={e => { setMoveGymQuery(e.target.value); setMoveTarget(null); }}
+                placeholder={t('platform.support.moveSearchPlaceholder', 'Search gym by name or slug…')}
+                className="w-full bg-[#111827] border border-white/10 rounded-lg pl-9 pr-3 py-2.5 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40"
+              />
+            </div>
+
+            {moveGymSearching ? (
+              <p className="text-[12px] text-[#6B7280] text-center py-2">{t('platform.support.searching', 'Searching…')}</p>
+            ) : moveGymResults.length > 0 ? (
+              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                {moveGymResults.map(g => (
+                  <button
+                    key={g.id}
+                    onClick={() => setMoveTarget(g)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors ${
+                      moveTarget?.id === g.id ? 'bg-[#D4AF37]/10 border-[#D4AF37]/25' : 'bg-[#111827] border-white/8 hover:border-white/15'
+                    }`}
+                  >
+                    <Building2 size={14} className="text-[#6B7280] flex-shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[12px] font-medium text-[#E5E7EB] truncate">{g.name}</span>
+                      <span className="block text-[10px] text-[#6B7280] truncate">{g.slug}</span>
+                    </span>
+                    {!g.is_active && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 flex-shrink-0">{t('platform.support.inactive', 'Inactive')}</span>}
+                    {moveTarget?.id === g.id && <Check size={14} className="text-[#D4AF37] flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            ) : moveGymQuery.trim().length >= 2 ? (
+              <p className="text-[12px] text-[#6B7280] text-center py-2">{t('platform.support.moveNoGyms', 'No other gyms found')}</p>
+            ) : null}
+
+            {/* What transfers vs resets */}
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/8 border border-amber-500/15">
+              <AlertTriangle size={13} className="text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-400/90 leading-relaxed">
+                {t('platform.support.moveExplainer', 'Their workout history, PRs, body data, goals, achievements and points transfer to the new gym. Old-gym program enrollment, challenge entries, class bookings, leaderboard standing, friendships and trainer assignment are reset.')}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setMoveModal(false)} className="flex-1 px-3 py-2 rounded-lg bg-white/5 text-[12px] text-[#9CA3AF] hover:bg-white/10 transition-colors">
+                {t('platform.support.cancel', 'Cancel')}
+              </button>
+              <button
+                onClick={handleMoveMember}
+                disabled={moving || !moveTarget}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                style={{ background: '#D4AF37', color: '#0F172A' }}
+              >
+                {moving ? <><RefreshCw size={13} className="animate-spin" />{t('platform.support.moving', 'Moving…')}</> : t('platform.support.moveConfirm', 'Move member')}
               </button>
             </div>
           </div>

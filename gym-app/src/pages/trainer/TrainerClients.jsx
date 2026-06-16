@@ -735,6 +735,7 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
       } else {
         showToast(t('trainerClients.messageSentSuccess', 'Sent to {{count}}', { count: successCount }), 'success');
       }
+      posthog?.capture('trainer_bulk_message_sent', { client_count: successCount });
       onDone();
     } catch (err) {
       logger.error('ComposeMessage: error', err);

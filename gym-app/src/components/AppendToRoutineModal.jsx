@@ -13,6 +13,7 @@ import { X, Check, Loader2 } from 'lucide-react';
 import { useRoutines } from '../hooks/useRoutines';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 export default function AppendToRoutineModal({ open, onClose, exercise }) {
   const { t, i18n } = useTranslation('pages');
@@ -20,6 +21,9 @@ export default function AppendToRoutineModal({ open, onClose, exercise }) {
   const { routines, loading, refetch } = useRoutines();
   const [selectedId, setSelectedId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Lock background page scroll while the modal is open.
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) setSelectedId(null);

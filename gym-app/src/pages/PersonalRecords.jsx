@@ -15,6 +15,7 @@ import FadeIn from '../components/FadeIn';
 import ChartTooltip from '../components/ChartTooltip';
 import { exName } from '../lib/exerciseName';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 const TU_DISPLAY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 const TU_ACCENT = 'var(--color-accent, #2EC4C4)';
@@ -136,6 +137,7 @@ export default function PersonalRecords({ embedded = false }) {
   const [filterGroup, setFilterGroup] = useState('all');
   const [filterEquipment, setFilterEquipment] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  useScrollLock(showFilters);
 
   const activeFilterCount = (filterGroup !== 'all' ? 1 : 0) + (filterEquipment !== 'all' ? 1 : 0);
 

@@ -254,17 +254,15 @@ Deno.serve(async (req) => {
         return jsonResp({ error: 'HTML must be 1-200000 characters' }, 400);
       }
 
-      // SECURITY: testMode sends caller-supplied (un-sanitized) `html` from
-      // noreply@tugympr.com. To prevent it being abused as a phishing primitive
-      // to send arbitrary HTML to arbitrary addresses, the recipient is
-      // restricted to the calling admin's OWN email. The raw template HTML is
-      // intentionally not run through buildEmailHtml escaping because the whole
-      // point of testMode is to preview the fully-rendered template verbatim;
-      // restricting the recipient to self + the rate limit below bound the risk.
-      const adminEmail = (user.email || '').toLowerCase();
-      if (!adminEmail || to.toLowerCase() !== adminEmail) {
-        return jsonResp({ error: 'testMode can only send to your own email address' }, 403);
-      }
+      // testMode sends the caller-supplied `html` verbatim from
+      // noreply@tugympr.com so the admin can preview the fully-rendered template
+      // in whatever real inbox they choose — their own, a teammate's, or a
+      // personal Gmail to sanity-check cross-client rendering. The recipient is
+      // any valid email (format validated above). The HTML is intentionally not
+      // run through buildEmailHtml escaping because the whole point of testMode
+      // is to preview the template exactly as it will ship. Abuse is bounded by:
+      // admin/super_admin-only (checked above), the per-admin hourly rate limit
+      // (below), and an admin_audit_log row written per send.
 
       // Rate limiting: same cap as the live-send path, applied here too so
       // testMode is not an unbounded send channel. Counts all of this admin's
