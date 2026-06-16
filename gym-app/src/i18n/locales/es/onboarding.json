@@ -1,4 +1,11 @@
 {
+  "exit": {
+    "button": "Salir",
+    "title": "¿Salir de la configuración por ahora?",
+    "body": "Tu cuenta queda guardada. Inicia sesión cuando quieras para continuar justo donde lo dejaste; no perderás tu progreso ni tendrás que crear otra cuenta.",
+    "confirm": "Guardar y cerrar sesión",
+    "exiting": "Cerrando sesión…"
+  },
   "title": "Vamos a configurarte",
   "subtitle": "Unas preguntas rápidas para crear tu plan perfecto",
   "stepLabels": {

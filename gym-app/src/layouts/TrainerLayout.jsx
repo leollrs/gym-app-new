@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import useKeyboardOpen from '../hooks/useKeyboardOpen';
+import UserAvatar from '../components/UserAvatar';
 
 const BASE_NAV = [
   { to: '/trainer',          labelKey: 'trainerNav.home',     icon: Home,           exact: true },
@@ -178,8 +179,8 @@ export default function TrainerLayout({ children }) {
             aria-label={`${profile?.full_name ?? 'Trainer'} profile`}
             className="w-full flex items-center gap-3 px-3 py-2 mb-1 rounded-xl hover:bg-[var(--tt-surface-2)] transition-colors text-left"
           >
-            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--tt-accent-soft)' }}>
-              <span className="text-[11px] font-bold" style={{ color: '#1E9C8E' }}>{profile?.full_name?.[0]?.toUpperCase() ?? 'T'}</span>
+            <div className="flex-shrink-0">
+              <UserAvatar user={profile} size={28} rounded="full" />
             </div>
             <div className="min-w-0">
               <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--tt-text)' }}>{profile?.full_name ?? 'Trainer'}</p>
@@ -240,11 +241,8 @@ export default function TrainerLayout({ children }) {
             </button>
             <button type="button" onClick={() => navigate('/trainer/profile')}
               className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform focus:ring-2 focus:outline-none"
-              style={{ background: 'var(--tt-accent-soft)' }}
               aria-label={t('trainerNav.profile', 'Profile')}>
-              <span className="text-[14px] font-bold" style={{ color: '#1E9C8E' }}>
-                {profile?.full_name?.[0]?.toUpperCase() ?? 'T'}
-              </span>
+              <UserAvatar user={profile} size={36} rounded="full" />
             </button>
           </div>
         </header>

@@ -209,6 +209,32 @@ const Router = isNative ? MemoryRouter : BrowserRouter;
 // Tell Capgo the app loaded successfully (enables OTA live updates)
 CapacitorUpdater.notifyAppReady();
 
+// We ship via Xcode / Android Studio (autoUpdate is OFF), so the freshly-built
+// native bundle is the source of truth. If a stale Capgo OTA bundle is still
+// "current" in the data container it overrides the native assets → renders an
+// OLD app even after a clean sync + build. Force back to the builtin (native)
+// bundle so the newest local build always wins.
+if (isNative) {
+  CapacitorUpdater.current()
+    .then((r) => { if (r?.bundle?.id && r.bundle.id !== 'builtin') return CapacitorUpdater.reset(); })
+    .catch(() => {});
+}
+
+// Native serves its web assets from the on-device filesystem, so a service
+// worker is pure downside here: a STALE SW from an older build keeps serving
+// old chunks (an old splash / old UI flashing on launch), and the WKWebView
+// data container survives an Xcode reinstall so it lingers. The PWA plugin
+// already ships a self-destroying SW on Capacitor; this also nukes any leftover
+// registration + its caches immediately so a clean native bundle always wins.
+if (isNative && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations()
+    .then((regs) => regs.forEach((r) => r.unregister()))
+    .catch(() => {});
+  if (typeof caches !== 'undefined' && caches.keys) {
+    caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+  }
+}
+
 // Initialize Apple Watch communication bridge
 initWatchListeners();
 
@@ -612,14 +638,11 @@ if (isNative) {
     });
   }).catch(() => {});
 
-  // Splash screen — hide after auth session is resolved (avoids white flash)
-  import('@capacitor/splash-screen').then(({ SplashScreen }) => {
-    import('./lib/supabase').then(({ supabase }) => {
-      supabase.auth.getSession().finally(() => {
-        SplashScreen.hide({ fadeOutDuration: 300 });
-      });
-    }).catch(() => SplashScreen.hide({ fadeOutDuration: 300 }));
-  }).catch(() => {});
+  // Native splash screen is hidden in renderApp() — on the first paint frame
+  // AFTER React has committed the dark JS LaunchSplash. Hiding it earlier (e.g.
+  // once getSession resolves, which can be <100ms) uncovers the white light-mode
+  // body before the JS splash paints → a white flash between the two dark splashes.
+  // The launchShowDuration backstop in capacitor.config covers a wedged render.
 
   // App — handle Android hardware back button
   import('@capacitor/app').then(({ App: CapApp }) => {
@@ -669,6 +692,14 @@ if (isNative) {
         const itemMatch = path.match(/^\/(challenge|class)\/[^/]+$/i);
         if (itemMatch) {
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: parsed.pathname + (parsed.search || '') } }));
+        }
+        // /t/ID → the trainer-profile share link. When the app is installed the
+        // universal link lands here, so translate it to the real in-app profile
+        // route. (People WITHOUT the app load /t/ID in a browser and get the
+        // AppDownloadLanding page instead — never the bare website profile.)
+        const trainerShareMatch = path.match(/^\/t\/([^/]+)$/i);
+        if (trainerShareMatch) {
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/trainers/${trainerShareMatch[1]}` } }));
         }
       } catch {}
     });

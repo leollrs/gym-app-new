@@ -109,6 +109,7 @@ const QuickStart       = lazy(quickStartImport);
 const HealthSync       = lazy(() => import('./pages/HealthSync'));
 const Classes          = lazy(() => import('./pages/Classes'));
 const PublicTrainerProfile = lazy(() => import('./pages/PublicTrainerProfile'));
+const AppDownloadLanding = lazy(() => import('./pages/AppDownloadLanding'));
 
 // ── Lazy-loaded trainer pages ───────────────────────────────
 const TrainerLayout        = lazy(() => import('./layouts/TrainerLayout'));
@@ -1638,6 +1639,22 @@ function App() {
       <Route path="/tv-display" element={<ErrorBoundary><TVDisplay /></ErrorBoundary>} />
       {/* Short alias for fast typing on a TV remote. */}
       <Route path="/tv" element={<ErrorBoundary><TVDisplay /></ErrorBoundary>} />
+
+      {/* /t/:id — public share-link landing for a trainer profile. Visitors
+          WITHOUT the app get the "download the app" page here; with the app
+          installed the universal link opens it directly (appUrlOpen translates
+          /t/:id → /trainers/:id). Bare route (no auth wrapper) so logged-out
+          recipients can see it instead of bouncing to login. */}
+      <Route
+        path="/t/:id"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton variant="page" />}>
+              <AppDownloadLanding />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
 
       {/* Public-facing trainer profile — viewable by members, trainers, and admins
           within the same gym (gym-id guard enforced inside the page). Standalone

@@ -1,4 +1,32 @@
 {
+  "programBuilder": {
+    "title": "Create program",
+    "editTitle": "Edit program",
+    "save": "Save",
+    "namePlaceholder": "Program name",
+    "duration": "Duration",
+    "weeksUnit": "weeks",
+    "customWeeks": "Custom weeks",
+    "addDay": "Add a day",
+    "dayNamePlaceholder": "Day {{n}}",
+    "addExercise": "Add exercise",
+    "removeDay": "Remove day",
+    "searchExercises": "Search exercises…",
+    "noMatches": "No exercises found",
+    "errName": "Name your program",
+    "errEmpty": "Add at least one exercise to a day",
+    "saved": "Program created",
+    "saveFailed": "Could not save program"
+  },
+  "weekdaysShort": {
+    "sunday": "S",
+    "monday": "M",
+    "tuesday": "T",
+    "wednesday": "W",
+    "thursday": "T",
+    "friday": "F",
+    "saturday": "S"
+  },
   "checkinPhoto": {
     "title": "Check-in photo",
     "hint": "Staff only — used to verify identity at check-in.",
@@ -1787,6 +1815,8 @@
     "showLess": "Show less",
     "myPrograms": "My Programs",
     "newProgram": "+ New Program",
+    "createProgram": "Create",
+    "editProgram": "Edit",
     "weekProgram": "{{count}} week program",
     "programOverview": "Program Overview",
     "noExercisesAssigned": "No exercises assigned yet",
@@ -2513,6 +2543,11 @@
     "rest": "Rest",
     "generateMyProgram": "Generate My Program",
     "stepXOfY": "Step {{current}} of {{total}}",
+    "chooseSubtitle": "How do you want to build it?",
+    "createYourself": "Build it myself",
+    "createYourselfDesc": "Pick your days and exercises from scratch.",
+    "autoChoice": "Auto-generate",
+    "autoChoiceDesc": "We build a program for you from your goals.",
     "week1Routines": "Week 1 routines",
     "cardioPerWeek": "{{count}}x cardio/week",
     "previewProgram": "Preview Program",
@@ -2555,6 +2590,7 @@
     "targetAreas": "Target areas (for auto-generate)",
     "autoGenerate": "Auto-generate routine",
     "orEditManually": "or edit manually",
+    "createManually": "Create manually",
     "exercisesCount": "Exercises ({{count}})",
     "emptyExercisesHint": "Select muscle groups above and tap Auto-generate, or save and add exercises in the editor.",
     "cancel": "Cancel",
@@ -8679,6 +8715,7 @@
     "minLabel": "min",
     "editRoutine": "Edit routine",
     "ariaSwap": "Swap exercise",
+    "ariaDragReorder": "Drag to reorder",
     "swapExercise": "Swap Exercise"
   },
   "months": {
@@ -9397,7 +9434,7 @@
     "heroLabel": "Last 7 days",
     "heroTitle": "Active clients in the feed",
     "heroSub": "Your engaged trainees this week",
-    "reactionsGiven": "Reactions given",
+    "reactionsGiven": "Reactions",
     "lastSevenDays": "Last 7 days",
     "commentsPosted": "Comments",
     "loadingStats": "Loading stats"
@@ -10400,7 +10437,46 @@
     "addPhoto": "Add photo (optional)",
     "changePhoto": "Change photo",
     "uploading": "Uploading…",
-    "photoUploadFailed": "Could not upload photo"
+    "photoUploadFailed": "Could not upload photo",
+    "addExercises": "Add exercises",
+    "searchExercisesFull": "Search by name, muscle or equipment…",
+    "results": "Results",
+    "exercisesLabel": "Exercises",
+    "tryAnother": "Try another name or clear the filters.",
+    "addOneExercise": "Add exercise",
+    "addManyExercises": "Add {{n}} exercises",
+    "superset": "Superset",
+    "separate": "Separate",
+    "remove": "Remove",
+    "noteAdded": "Note added",
+    "noClientGeneral": "No client (general plan)",
+    "preferences": "Client preferences",
+    "prefsHint": "Used to filter the generated meals",
+    "allergiesLabel": "Allergies",
+    "dietLabel": "Diet",
+    "startDate": "Start date (optional)",
+    "timeframe": "Time frame",
+    "week": "week",
+    "weekN": "Week {{n}}",
+    "weeklyRotationNote": "The same weekly plan repeats each week.",
+    "pref": {
+      "nuts": "Nuts",
+      "shellfish": "Shellfish",
+      "dairy": "Dairy",
+      "eggs": "Eggs",
+      "soy": "Soy",
+      "wheat": "Wheat",
+      "fish": "Fish",
+      "vegan": "Vegan",
+      "vegetarian": "Vegetarian",
+      "pescatarian": "Pescatarian",
+      "keto": "Keto",
+      "gluten_free": "Gluten-free",
+      "dairy_free": "Dairy-free",
+      "halal": "Halal"
+    },
+    "clientWord": "client",
+    "clientsWord": "clients"
   },
   "trainerPrograms": {
     "title": "Program Library",
@@ -10996,7 +11072,7 @@
     "personalInfoSaveError": "Failed to save personal info",
     "verified": "Verified trainer",
     "certified": "Certified",
-    "yrsExperience": "{{count}} years experience",
+    "yrsExperience": "{{n}} years experience",
     "editProfile": "Edit profile",
     "thisMonth": "This month",
     "about": "About",
@@ -11024,7 +11100,11 @@
       "perSession": "/sess",
       "rateHint": "Pre-fills new clients’ fees. Optional.",
       "usernameTaken": "That username is taken",
-      "phonePublicHint": "Visible to gym members as a Call button on your public profile."
+      "phonePublicHint": "Visible to gym members as a Call button on your public profile.",
+      "firstName": "First name",
+      "middleName": "Middle name",
+      "lastName1": "First last name",
+      "lastName2": "Second last name"
     },
     "services": {
       "title": "Services",
@@ -11102,7 +11182,10 @@
     "cover": {
       "edit": "Edit cover",
       "updated": "Cover updated",
-      "uploadError": "Failed to upload cover"
+      "uploadError": "Failed to upload cover",
+      "pickTitle": "Cover",
+      "pickHint": "Pick a cover — no photo needed. Or upload your own below.",
+      "uploadOwn": "Upload your own photo"
     },
     "share": {
       "copied": "Link copied",
@@ -13413,6 +13496,11 @@
     "reviewsCount_one": "Review · 1",
     "reviewsCount_other": "Reviews · {{count}}",
     "seeAll": "See all",
+    "allReviewsTitle": "All reviews",
+    "textSms": "Text message",
+    "whatsapp": "WhatsApp",
+    "shareText": "Check out {{name}} on TuGymPR",
+    "waText": "Hi {{name}}, I found you on TuGymPR.",
     "member": "Member",
     "activeClients": "Active clients",
     "coaching": "Coaching",
@@ -13441,7 +13529,8 @@
     "declineCta": "Can't make it",
     "declineSent": "We let your trainer know",
     "respondFailed": "Couldn't send your response. Try again.",
-    "packsRemaining": "You have {{left}} of {{total}} sessions left"
+    "packsRemaining": "You have {{left}} of {{total}} sessions left",
+    "about": "About"
   },
   "trainerLive": {
     "watchLive": "Watch live",
@@ -13967,5 +14056,14 @@
     "Smith Machine": "Smith Machine",
     "Cardio Machine": "Cardio Machine",
     "EZ Bar": "EZ Bar"
+  },
+  "appDownload": {
+    "brandTagline": "Train. Compete. Progress.",
+    "headline": "Get the TuGymPR app",
+    "headlineNamed": "Train with {{name}} on TuGymPR",
+    "sub": "Your workouts, classes, progress and coach — all in one app.",
+    "comingSoon": "Coming soon to the App Store and Google Play",
+    "appStore": "Download for iOS",
+    "playStore": "Download for Android"
   }
 }

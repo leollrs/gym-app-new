@@ -4,6 +4,7 @@ import { Users, Heart, MessageCircle } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { subDays } from 'date-fns';
 import logger from '../../lib/logger';
 import { TT } from './components/designTokens';
@@ -24,8 +25,13 @@ const FeedSkeleton = () => (
 export default function TrainerSocial() {
   const { t } = useTranslation('pages');
   const { profile } = useAuth();
-  const [stats, setStats] = useState({ activeClients: 0, totalReactions: 0, totalComments: 0 });
-  const [loadingStats, setLoadingStats] = useState(true);
+  // Hydrate the stat strip from cache so revisiting paints the real numbers
+  // instantly instead of counting up from 0 again.
+  const statsCK = `tsocial:stats:${profile?.id || 'x'}`;
+  const [stats, setStats] = useState(
+    () => readTrainerCache(statsCK) || { activeClients: 0, totalReactions: 0, totalComments: 0 },
+  );
+  const [loadingStats, setLoadingStats] = useState(() => !readTrainerCache(statsCK));
 
   // Load lightweight engagement stats for the hero strip.
   useEffect(() => {
@@ -63,11 +69,17 @@ export default function TrainerSocial() {
         const activeClients = clients.filter(c => c.last_active_at && new Date(c.last_active_at).getTime() >= sevenDaysAgoMs).length;
 
         if (!cancelled) {
-          setStats({
+          const next = {
             activeClients: tcRes.error ? null : activeClients,
             totalReactions: reactionsRes.error ? null : (reactionsRes.count || 0),
             totalComments: commentsRes.error ? null : (commentsRes.count || 0),
-          });
+          };
+          setStats(next);
+          // Only cache a fully-successful read so a transient error never
+          // persists "—" placeholders for the next visit.
+          if (!tcRes.error && !reactionsRes.error && !commentsRes.error) {
+            writeTrainerCache(statsCK, next);
+          }
         }
       } catch (err) {
         logger.error('TrainerSocial: failed to load stats', err);

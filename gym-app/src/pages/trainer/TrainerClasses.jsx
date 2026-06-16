@@ -6,6 +6,7 @@ import {
   Trash2, Search, Check, UserCheck, X, ChevronRight, ChevronLeft,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { cacheGet, cacheSet, trainerKey } from '../../hooks/useTrainerCache';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -1510,6 +1511,11 @@ export default function TrainerClasses() {
 
   const CLASS_SELECT = '*, gym_class_schedules(id, day_of_week, specific_date, start_time, end_time, override_capacity)';
 
+  // Instant-load cache: seed the assigned-classes list from the last visit so a
+  // revisit renders immediately (no skeleton) and then revalidates in the
+  // background. initialDataUpdatedAt:0 keeps it stale so the fetch still runs.
+  const CK_classes = trainerKey('classes', trainerId);
+
   const { data: classes = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['trainer', 'my-classes', trainerId],
     queryFn: async () => {
@@ -1563,10 +1569,15 @@ export default function TrainerClasses() {
         }
       }
 
+      cacheSet(CK_classes, data); // write-through for instant load next visit
       return data;
     },
     enabled: !!trainerId,
     staleTime: 60 * 1000,
+    // Paint instantly from the last-visit cache, but mark it stale (updatedAt:0)
+    // so the queryFn still revalidates in the background on mount.
+    initialData: () => cacheGet(CK_classes),
+    initialDataUpdatedAt: 0,
   });
 
   const tabKeys = {

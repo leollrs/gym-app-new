@@ -1,12 +1,23 @@
 {
+  "buildCommand": "cd gym-app && npm install && npm run build",
+  "outputDirectory": "gym-app/dist",
+  "installCommand": "echo skip",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    },
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    },
     {
       "source": "/(.*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: data: https://*.supabase.co; media-src 'self' https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' https://us-assets.i.posthog.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: data: https://*.supabase.co https://images.openfoodfacts.org https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://api.mapbox.com; media-src 'self' blob: https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com https://us.i.posthog.com https://us-assets.i.posthog.com https://*.openfoodfacts.org https://api.mapbox.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://api.pwnedpasswords.com; frame-src 'self' https://tugympr.com https://*.tugympr.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         },
         {
           "key": "X-Content-Type-Options",
@@ -25,17 +36,14 @@
           "value": "max-age=63072000; includeSubDomains; preload"
         },
         {
-          "key": "Permissions-Policy",
-          "value": "camera=(), microphone=(), geolocation=(self), payment=()"
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS"
         },
         {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
+          "key": "Permissions-Policy",
+          "value": "camera=(self), geolocation=(self), microphone=()"
         }
       ]
     }
-  ],
-  "buildCommand": "cd gym-app && npm install && npm run build",
-  "outputDirectory": "gym-app/dist",
-  "installCommand": "echo skip"
+  ]
 }

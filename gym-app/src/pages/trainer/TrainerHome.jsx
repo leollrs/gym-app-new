@@ -85,7 +85,10 @@ export default function TrainerHome() {
 
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
-    fetchHomeData();
+    // Spinner only on a true cold load. With cache hydrated, revalidate silently
+    // so returning to Home keeps the data on screen instead of re-flashing the
+    // skeleton (the mount fetch was previously non-silent and undid the cache).
+    fetchHomeData({ silent: !!homeCache });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.gym_id, profile?.id]);
 

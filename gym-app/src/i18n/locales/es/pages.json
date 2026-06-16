@@ -1,4 +1,32 @@
 {
+  "programBuilder": {
+    "title": "Crear programa",
+    "editTitle": "Editar programa",
+    "save": "Guardar",
+    "namePlaceholder": "Nombre del programa",
+    "duration": "Duración",
+    "weeksUnit": "semanas",
+    "customWeeks": "Semanas personalizadas",
+    "addDay": "Añadir un día",
+    "dayNamePlaceholder": "Día {{n}}",
+    "addExercise": "Añadir ejercicio",
+    "removeDay": "Eliminar día",
+    "searchExercises": "Buscar ejercicios…",
+    "noMatches": "No se encontraron ejercicios",
+    "errName": "Ponle nombre a tu programa",
+    "errEmpty": "Añade al menos un ejercicio a un día",
+    "saved": "Programa creado",
+    "saveFailed": "No se pudo guardar el programa"
+  },
+  "weekdaysShort": {
+    "sunday": "D",
+    "monday": "L",
+    "tuesday": "M",
+    "wednesday": "X",
+    "thursday": "J",
+    "friday": "V",
+    "saturday": "S"
+  },
   "checkinPhoto": {
     "title": "Foto de check-in",
     "hint": "Solo el personal — para verificar identidad en el check-in.",
@@ -1422,7 +1450,7 @@
     "dropReps": "Reps del drop {{n}}",
     "dropsCount": "{{count}} drop",
     "dropsCount_plural": "{{count}} drops",
-    "supersetWithNext": "Superserie con el siguiente",
+    "supersetWithNext": "Super serie con el siguiente",
     "suggestedForWorkout": "Sugerido para este entrenamiento",
     "suggestedCount": "{{count}} sugerencia",
     "suggestedCount_plural": "{{count}} sugerencias",
@@ -1431,7 +1459,7 @@
     "swapMatchAria": "{{pct}}% de coincidencia para este cambio",
     "addCustomPlaceholder": "Ejercicio personalizado (ej. Empuje de Trineo)",
     "addCustomHint": "Lo guardamos en el catálogo de tu gimnasio para usarlo la próxima vez.",
-    "supersetPickerEyebrow": "Superserie",
+    "supersetPickerEyebrow": "Super serie",
     "supersetPickerTitle": "Combina con…",
     "supersetPickerSubtitle": "Elige un ejercicio para alternar — o añade uno nuevo.",
     "supersetPickerEmpty": "No hay otros ejercicios disponibles — añade uno nuevo abajo.",
@@ -1505,13 +1533,13 @@
     "rpeMax": "Máximo",
     "addNote": "Añadir nota",
     "notePlaceholder": "Añadir nota... (ej. \"se sintió fácil\", \"dolor de codo\")",
-    "superset": "Biserie",
+    "superset": "Super serie",
     "circuit": "Circuito",
-    "supersetWith": "Biserie con {{name}}",
+    "supersetWith": "Super serie con {{name}}",
     "circuitWith": "Circuito con {{names}}",
     "roundXOfY": "Ronda {{current}} de {{total}}",
     "nextInSuperset": "Siguiente: {{name}}",
-    "noRestSuperset": "Sin descanso — siguiente ejercicio de la biserie",
+    "noRestSuperset": "Sin descanso — siguiente ejercicio de la super serie",
     "noRestCircuit": "Sin descanso — siguiente ejercicio del circuito",
     "swap": "Cambiar",
     "swapExercise": "Cambiar ejercicio",
@@ -1641,7 +1669,7 @@
       "setLogged": "Tu coach registró el set {{n}}: {{w}} × {{r}}"
     },
     "groupSelectedCount": "{{count}} seleccionados — agrupar como:",
-    "supersetHint": "Marca la casilla en 2 o más ejercicios para agruparlos como Biserie o Circuito.",
+    "supersetHint": "Marca la casilla en 2 o más ejercicios para agruparlos como Super serie o Circuito.",
     "ariaDeselect": "Quitar selección",
     "ariaSelect": "Seleccionar para agrupar",
     "removeExercise": "Quitar",
@@ -1787,6 +1815,8 @@
     "showLess": "Mostrar menos",
     "myPrograms": "Mis Programas",
     "newProgram": "+ Nuevo Programa",
+    "createProgram": "Crear",
+    "editProgram": "Editar",
     "weekProgram": "Programa de {{count}} semanas",
     "programOverview": "Resumen del Programa",
     "noExercisesAssigned": "Sin ejercicios asignados aún",
@@ -2513,6 +2543,11 @@
     "rest": "Descanso",
     "generateMyProgram": "Generar Mi Programa",
     "stepXOfY": "Paso {{current}} de {{total}}",
+    "chooseSubtitle": "¿Cómo quieres armarlo?",
+    "createYourself": "Crear yo mismo",
+    "createYourselfDesc": "Elige tus días y ejercicios desde cero.",
+    "autoChoice": "Generar automáticamente",
+    "autoChoiceDesc": "Creamos un programa según tus metas.",
     "week1Routines": "Rutinas de la semana 1",
     "cardioPerWeek": "{{count}}x cardio/semana",
     "previewProgram": "Vista Previa del Programa",
@@ -2555,6 +2590,7 @@
     "targetAreas": "Áreas objetivo (para auto-generar)",
     "autoGenerate": "Auto-generar rutina",
     "orEditManually": "o editar manualmente",
+    "createManually": "Crear manualmente",
     "exercisesCount": "Ejercicios ({{count}})",
     "emptyExercisesHint": "Selecciona grupos musculares arriba y toca Auto-generar, o guarda y añade ejercicios en el editor.",
     "cancel": "Cancelar",
@@ -6791,7 +6827,7 @@
         "descriptionEsPlaceholder": "¿Qué lograrán los miembros?",
         "reps": "reps",
         "swap": "Cambiar ejercicio",
-        "superset": "Superserie",
+        "superset": "Super serie",
         "circuit": "Circuito",
         "ungroup": "Desagrupar",
         "dropSet": "Drop set",
@@ -8682,7 +8718,7 @@
       "desc": "Añade tu primer amigo del gym"
     },
     "social_5": {
-      "label": "Squad Goals",
+      "label": "Escuadra",
       "desc": "Ten 5 amigos en el gym"
     },
     "social_10": {
@@ -8801,7 +8837,7 @@
     }
   },
   "workoutBuilder": {
-    "supersetHint": "Toca la casilla en 2 o más ejercicios para agruparlos como superserie o circuito.",
+    "supersetHint": "Toca la casilla en 2 o más ejercicios para agruparlos como super serie o circuito.",
     "sets": "Series",
     "reps": "Repeticiones",
     "rest": "Descanso",
@@ -8827,7 +8863,7 @@
     "routineSaved": "Rutina guardada",
     "noOwnExercises": "No has creado ejercicios aún. Ve a la Biblioteca de Ejercicios para añadir uno.",
     "noFriendExercises": "Sin ejercicios de amigos aún.",
-    "groupAsSuperset": "Agrupar como Biserie",
+    "groupAsSuperset": "Agrupar como Super serie",
     "groupAsCircuit": "Agrupar como Circuito",
     "ungroup": "Desagrupar",
     "selectToGroup": "Selecciona 2-3 ejercicios para agrupar",
@@ -8847,6 +8883,7 @@
     "minLabel": "min",
     "editRoutine": "Editar rutina",
     "ariaSwap": "Cambiar ejercicio",
+    "ariaDragReorder": "Arrastra para reordenar",
     "swapExercise": "Cambiar ejercicio"
   },
   "months": {
@@ -9565,7 +9602,7 @@
     "heroLabel": "Últimos 7 días",
     "heroTitle": "Clientes activos en el feed",
     "heroSub": "Tus alumnos activos esta semana",
-    "reactionsGiven": "Reacciones enviadas",
+    "reactionsGiven": "Reacciones",
     "lastSevenDays": "Últimos 7 días",
     "commentsPosted": "Comentarios",
     "loadingStats": "Cargando estadísticas"
@@ -10568,7 +10605,46 @@
     "addPhoto": "Añadir foto (opcional)",
     "changePhoto": "Cambiar foto",
     "uploading": "Subiendo…",
-    "photoUploadFailed": "No se pudo subir la foto"
+    "photoUploadFailed": "No se pudo subir la foto",
+    "addExercises": "Agregar ejercicios",
+    "searchExercisesFull": "Busca por nombre, músculo o equipo…",
+    "results": "Resultados",
+    "exercisesLabel": "Ejercicios",
+    "tryAnother": "Prueba otro nombre o quita los filtros.",
+    "addOneExercise": "Añadir ejercicio",
+    "addManyExercises": "Añadir {{n}} ejercicios",
+    "superset": "Super serie",
+    "separate": "Separar",
+    "remove": "Eliminar",
+    "noteAdded": "Nota añadida",
+    "noClientGeneral": "Sin cliente (plan general)",
+    "preferences": "Preferencias del cliente",
+    "prefsHint": "Se usan para filtrar las comidas generadas",
+    "allergiesLabel": "Alergias",
+    "dietLabel": "Dieta",
+    "startDate": "Fecha de inicio (opcional)",
+    "timeframe": "Periodo",
+    "week": "semana",
+    "weekN": "Semana {{n}}",
+    "weeklyRotationNote": "El mismo plan semanal se repite cada semana.",
+    "pref": {
+      "nuts": "Frutos secos",
+      "shellfish": "Mariscos",
+      "dairy": "Lácteos",
+      "eggs": "Huevos",
+      "soy": "Soya",
+      "wheat": "Trigo",
+      "fish": "Pescado",
+      "vegan": "Vegano",
+      "vegetarian": "Vegetariano",
+      "pescatarian": "Pescetariano",
+      "keto": "Keto",
+      "gluten_free": "Sin gluten",
+      "dairy_free": "Sin lácteos",
+      "halal": "Halal"
+    },
+    "clientWord": "cliente",
+    "clientsWord": "clientes"
   },
   "trainerPrograms": {
     "title": "Biblioteca de Programas",
@@ -11164,7 +11240,7 @@
     "personalInfoSaveError": "Error al guardar datos personales",
     "verified": "Entrenador verificado",
     "certified": "Certificado",
-    "yrsExperience": "{{count}} años de experiencia",
+    "yrsExperience": "{{n}} años de experiencia",
     "editProfile": "Editar perfil",
     "thisMonth": "Este mes",
     "about": "Sobre mí",
@@ -11192,7 +11268,11 @@
       "perSession": "/ses",
       "rateHint": "Rellena la cuota de nuevos clientes. Opcional.",
       "usernameTaken": "Ese nombre de usuario ya está en uso",
-      "phonePublicHint": "Visible para los miembros del gym como botón de llamada en tu perfil público."
+      "phonePublicHint": "Visible para los miembros del gym como botón de llamada en tu perfil público.",
+      "firstName": "Nombre",
+      "middleName": "Segundo nombre",
+      "lastName1": "Primer apellido",
+      "lastName2": "Segundo apellido"
     },
     "services": {
       "title": "Servicios",
@@ -11270,7 +11350,10 @@
     "cover": {
       "edit": "Editar portada",
       "updated": "Portada actualizada",
-      "uploadError": "Error al subir la portada"
+      "uploadError": "Error al subir la portada",
+      "pickTitle": "Portada",
+      "pickHint": "Elige una portada — sin necesidad de foto. O sube la tuya abajo.",
+      "uploadOwn": "Sube tu propia foto"
     },
     "share": {
       "copied": "Enlace copiado",
@@ -13564,6 +13647,11 @@
     "reviewsCount_one": "Reseña · 1",
     "reviewsCount_other": "Reseñas · {{count}}",
     "seeAll": "Ver todas",
+    "allReviewsTitle": "Todas las reseñas",
+    "textSms": "Mensaje de texto",
+    "whatsapp": "WhatsApp",
+    "shareText": "Mira a {{name}} en TuGymPR",
+    "waText": "Hola {{name}}, te encontré en TuGymPR.",
     "member": "Miembro",
     "activeClients": "Clientes activos",
     "coaching": "Entrenando",
@@ -13592,7 +13680,8 @@
     "declineCta": "No puedo",
     "declineSent": "Le avisamos a tu entrenador",
     "respondFailed": "No pudimos enviar tu respuesta. Intenta de nuevo.",
-    "packsRemaining": "Te quedan {{left}} de {{total}} sesiones"
+    "packsRemaining": "Te quedan {{left}} de {{total}} sesiones",
+    "about": "Sobre mí"
   },
   "trainerLive": {
     "watchLive": "Ver en vivo",
@@ -14118,5 +14207,14 @@
     "Smith Machine": "Máquina Smith",
     "Cardio Machine": "Máquina de cardio",
     "EZ Bar": "Barra Z"
+  },
+  "appDownload": {
+    "brandTagline": "Entrena. Compite. Progresa.",
+    "headline": "Descarga la app de TuGymPR",
+    "headlineNamed": "Entrena con {{name}} en TuGymPR",
+    "sub": "Tus entrenos, clases, progreso y coach — todo en una app.",
+    "comingSoon": "Muy pronto en App Store y Google Play",
+    "appStore": "Descargar para iOS",
+    "playStore": "Descargar para Android"
   }
 }

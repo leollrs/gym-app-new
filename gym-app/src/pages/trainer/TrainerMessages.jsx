@@ -16,6 +16,7 @@ import { useScrollLock } from '../../hooks/useScrollLock';
 import { selectInBatches } from '../../lib/churn/batchedSelect';
 import { encryptMessage, decryptMessage } from '../../lib/messageEncryption';
 import { sanitize } from '../../lib/sanitize';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import logger from '../../lib/logger';
 import UserAvatar from '../../components/UserAvatar';
 import EmptyState from '../../components/EmptyState';
@@ -315,8 +316,12 @@ export default function TrainerMessages() {
   const { conversationId: routeConvId } = useParams();
   const { showToast } = useToast();
 
-  const [conversations, setConversations] = useState([]);
-  const [convsLoading, setConvsLoading] = useState(true);
+  // Per-trainer cached conversation LIST (left pane) → instant paint on
+  // navigate-back, then loadConversations revalidates in the background. Only
+  // the list is cached; individual threads always load fresh.
+  const convosCK = `tmsg:convos:${profile?.id}`;
+  const [conversations, setConversations] = useState(() => readTrainerCache(convosCK) ?? []);
+  const [convsLoading, setConvsLoading] = useState(() => !readTrainerCache(convosCK));
   const [activeConvId, setActiveConvId] = useState(routeConvId || null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -379,7 +384,9 @@ export default function TrainerMessages() {
   // ── Load conversation list ────────────
   const loadConversations = useCallback(async () => {
     if (!profile?.id) return;
-    setConvsLoading(true);
+    // Only show the list skeleton on a true cold load — a warm cache paints
+    // instantly and this fetch just revalidates underneath.
+    if (!readTrainerCache(convosCK)) setConvsLoading(true);
     try {
       // One-time: migrate legacy localStorage archive/hidden state onto the
       // server (conversation_member_state) so swipe state survives devices and
@@ -438,6 +445,7 @@ export default function TrainerMessages() {
 
       if (!convs || convs.length === 0) {
         setConversations([]);
+        writeTrainerCache(convosCK, []);
         return;
       }
 
@@ -484,13 +492,16 @@ export default function TrainerMessages() {
       }));
 
       setConversations(enriched);
+      // Write through only on success so a failed reload never blanks the
+      // cached list. enriched carries decrypted last-message previews.
+      writeTrainerCache(convosCK, enriched);
     } catch (err) {
       logger.error('TrainerMessages: failed to load conversations', err);
-      setConversations([]);
+      // Keep whatever is on screen (possibly cached) — don't clobber to empty.
     } finally {
       setConvsLoading(false);
     }
-  }, [profile?.id]);
+  }, [profile?.id, convosCK]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 

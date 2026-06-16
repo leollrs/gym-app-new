@@ -1749,6 +1749,10 @@ const Messages = ({ embedded = false, hideBackButton = false, headerExtra = null
   const handleBack = () => {
     if (embedded) {
       setEmbeddedConvId(null);
+    } else if (location.state?.from) {
+      // Opened from a specific page (e.g. a trainer profile passed
+      // state.from) → go back THERE, not to the conversation list.
+      navigate(location.state.from);
     } else {
       navigate(basePath);
     }

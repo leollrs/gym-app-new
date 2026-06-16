@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Zap, Dumbbell, Heart, Check, AlertTriangle, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { clearCache } from '../lib/queryCache';
@@ -345,10 +345,12 @@ const buildTemplateWeeks = (routinesA, routinesB, programWeeks, preferredTrainin
 };
 
 // ── Main Modal ─────────────────────────────────────────────────────────────
-const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
+const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual }) => {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   const [step, setStep]     = useState(0);
+  // 'choose' = the build-it-myself vs auto fork; 'auto' = the customize→preview flow.
+  const [mode, setMode]     = useState('choose');
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const [result, setResult] = useState(null);
@@ -762,7 +764,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
             </div>
             <div>
               <p id="generate-workout-title" className="text-[15px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('generateWorkout.generateMyProgram')}</p>
-              <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.stepXOfY', { current: step + 1, total: 2 })}</p>
+              <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{mode === 'choose' ? t('generateWorkout.chooseSubtitle', 'How do you want to build it?') : t('generateWorkout.stepXOfY', { current: step + 1, total: 2 })}</p>
             </div>
           </div>
           <button onClick={onClose} aria-label={t('generateWorkout.ariaCloseDialog', 'Close dialog')} className="w-9 h-9 rounded-full flex items-center justify-center focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
@@ -770,24 +772,60 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
           </button>
         </div>
 
-        {/* Step indicator */}
-        <div className="flex gap-1 px-5 pt-3 flex-shrink-0">
-          {[0, 1].map(i => (
-            <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= step ? 'bg-[#6D5FDB]' : ''}`} style={i > step ? { backgroundColor: 'var(--color-border-subtle)' } : undefined} />
-          ))}
-        </div>
+        {/* Step indicator (auto flow only) */}
+        {mode === 'auto' && (
+          <div className="flex gap-1 px-5 pt-3 flex-shrink-0">
+            {[0, 1].map(i => (
+              <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= step ? 'bg-[#6D5FDB]' : ''}`} style={i > step ? { backgroundColor: 'var(--color-border-subtle)' } : undefined} />
+            ))}
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {step === 0 && (
-            <StepCustomize form={form} onChange={onChange} onToggleMuscle={onToggleMuscle} />
-          )}
-          {step === 1 && (
-            <StepPreview result={result} programWeeks={form.program_weeks} />
+          {mode === 'choose' ? (
+            <div className="py-1">
+              <button
+                onClick={() => { onClose(); onCreateManual?.(); }}
+                className="w-full flex items-start gap-3 p-4 rounded-2xl mb-3 text-left active:scale-[0.99] transition-transform"
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)' }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)' }}>
+                  <Pencil size={18} style={{ color: 'var(--color-accent)' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.createYourself', 'Build it myself')}</p>
+                  <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.createYourselfDesc', 'Pick your days and exercises from scratch.')}</p>
+                </div>
+              </button>
+              <button
+                onClick={() => setMode('auto')}
+                className="w-full flex items-start gap-3 p-4 rounded-2xl text-left active:scale-[0.99] transition-transform"
+                style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(109,95,219,0.14)' }}>
+                  <Zap size={18} style={{ color: '#6D5FDB' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.autoChoice', 'Auto-generate')}</p>
+                  <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{t('generateWorkout.autoChoiceDesc', 'We build a program for you from your goals.')}</p>
+                </div>
+              </button>
+            </div>
+          ) : (
+            <>
+              {step === 0 && (
+                <StepCustomize form={form} onChange={onChange} onToggleMuscle={onToggleMuscle} />
+              )}
+              {step === 1 && (
+                <StepPreview result={result} programWeeks={form.program_weeks} />
+              )}
+            </>
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer (auto flow only — choose mode has its own buttons) */}
+        {mode === 'auto' && (
         <div className="px-5 pb-5 pt-3 border-t flex-shrink-0 space-y-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
           {gymHoursWarnings.length > 0 && (
             <div className="space-y-1">
@@ -831,6 +869,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated }) => {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import { useNotifications, useInvalidate } from '../../hooks/useSupabaseQuery';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { sanitize } from '../../lib/sanitize';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import Skeleton from '../../components/Skeleton';
 import EmptyState from '../../components/EmptyState';
 import { TT, TFont } from './components/designTokens';
@@ -65,18 +66,21 @@ export default function TrainerNotifications() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation(['pages', 'common']);
   const dateFnsLocale = i18n.language?.startsWith('es') ? esLocale : enLocale;
-  const { user, refreshNotifications } = useAuth();
+  const { user, profile, refreshNotifications } = useAuth();
   const { showToast } = useToast();
   const { data: queryItems, isLoading } = useNotifications(user?.id, 'trainer');
   const { invalidateNotifications } = useInvalidate();
 
-  const [items, setItems] = useState([]);
+  // Per-trainer cached notifications list → instant paint on navigate-back,
+  // then the React Query fetch revalidates in the background.
+  const CK = `tnotif:list:${profile?.id}`;
+  const [items, setItems] = useState(() => readTrainerCache(CK) ?? []);
   const [filter, setFilter] = useState('all');
   const [marking, setMarking] = useState(false);
 
   useEffect(() => { document.title = `${t('pages:trainerNotifications.title', 'Trainer alerts')} | TuGymPR`; }, [t]);
 
-  useEffect(() => { if (queryItems) setItems(queryItems); }, [queryItems]);
+  useEffect(() => { if (queryItems) { setItems(queryItems); writeTrainerCache(CK, queryItems); } }, [queryItems, CK]);
 
   // Realtime: only append rows targeted at the trainer view.
   useEffect(() => {

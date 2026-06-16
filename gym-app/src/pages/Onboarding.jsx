@@ -4,7 +4,7 @@ import {
   ChevronLeft, ArrowRight, Check, Heart, Flame, Dumbbell, Zap,
   Sun, Sunrise, Moon, Sparkles, Trophy, Pin, Camera, Activity,
   Shield, BarChart3, Gift, X, Users, AlertTriangle, Loader2,
-  UtensilsCrossed, Search, ExternalLink, Sprout, Smartphone, ChevronDown,
+  UtensilsCrossed, Search, ExternalLink, Sprout, Smartphone, ChevronDown, LogOut,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
@@ -494,7 +494,7 @@ function formatPhoneInput(raw, countryCode) {
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
 const Onboarding = () => {
-  const { user, refreshProfile, markOnboarded, profile } = useAuth();
+  const { user, refreshProfile, markOnboarded, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const { t, i18n, ready: i18nReady } = useTranslation(['onboarding', 'common']);
   const posthog = usePostHog();
@@ -699,6 +699,30 @@ const Onboarding = () => {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [referredRewardId, setReferredRewardId] = useState(null);
   const [inviteError, setInviteError] = useState('');
+
+  // ── Exit onboarding (account preserved) ──────────────────────
+  // Onboarding was the one authenticated screen with NO way out. A member who
+  // signed up but never finished is force-routed here on every launch (App.jsx
+  // ProtectedRoute/PublicRoute send any authed, not-yet-onboarded user to
+  // /onboarding) — so if their gym/invite state can't be completed they could
+  // neither finish NOR get back to the login screen ("can't log in"). signOut
+  // keeps the account intact (profile + is_onboarded:false untouched) and
+  // returns to /login; signing back in routes straight back here and the saved
+  // draft resumes — no new account, no lost progress.
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const handleExitOnboarding = async () => {
+    if (exiting) return;
+    setExiting(true);
+    try { posthog?.capture('onboarding_exited', { step }); } catch {}
+    try {
+      await signOut();
+    } catch {
+      // signOut navigates internally + has its own fallbacks; if it somehow
+      // throws, hard-bounce to /login so the user is never left stranded here.
+      try { navigate('/login', { replace: true }); } catch {}
+    }
+  };
 
   const defaultData = {
     language:                   i18n.language || 'en',
@@ -2045,6 +2069,49 @@ const Onboarding = () => {
         flexDirection: 'column',
       }}
     >
+      {/* Exit confirm — leave onboarding without losing the account. */}
+      {showExitConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => { if (!exiting) setShowExitConfirm(false); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 90,
+            background: 'rgba(11,15,18,0.45)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            padding: 16,
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="animate-fade-in"
+            style={{
+              width: '100%', maxWidth: 420, background: OB.surface,
+              borderRadius: 22, padding: 22,
+              boxShadow: '0 12px 40px rgba(11,15,18,0.28)',
+            }}
+          >
+            <h2 style={{
+              fontFamily: OB_FONT.display, fontWeight: 900, fontSize: 20,
+              letterSpacing: -0.6, color: OB.ink, margin: 0,
+            }}>
+              {t('exit.title', 'Leave setup for now?')}
+            </h2>
+            <p style={{ fontSize: 14, color: OB.sub, marginTop: 8, lineHeight: 1.5 }}>
+              {t('exit.body', "Your account is saved. Sign back in anytime to pick up right where you left off — you won't lose your progress and you won't need to sign up again.")}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
+              <OBButton full tone="dark" icon={<LogOut size={16}/>} onClick={handleExitOnboarding} disabled={exiting}>
+                {exiting ? t('exit.exiting', 'Signing out…') : t('exit.confirm', 'Save & sign out')}
+              </OBButton>
+              <OBButton full tone="ghost" onClick={() => setShowExitConfirm(false)} disabled={exiting} style={{ border: `1.5px solid ${OB.line}` }}>
+                {t('common:cancel', 'Cancel')}
+              </OBButton>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         style={{
           width: '100%',
@@ -2093,6 +2160,23 @@ const Onboarding = () => {
             null
           }
           onBack={canGoBack ? () => setStep(s => s - 1) : null}
+          rightAction={step < CORE_STEPS ? (
+            <button
+              type="button"
+              onClick={() => setShowExitConfirm(true)}
+              aria-label={t('exit.button', 'Exit')}
+              style={{
+                height: 36, padding: '0 13px', borderRadius: 999,
+                border: `1.5px solid ${OB.line}`, background: OB.surface,
+                color: OB.sub, fontFamily: OB_FONT.body, fontWeight: 700,
+                fontSize: 12.5, letterSpacing: 0.2,
+                display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+              }}
+            >
+              <LogOut size={14} strokeWidth={2.2} />
+              {t('exit.button', 'Exit')}
+            </button>
+          ) : null}
           t={t}
         />
 

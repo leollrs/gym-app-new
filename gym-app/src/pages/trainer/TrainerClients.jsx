@@ -965,7 +965,9 @@ export default function TrainerClients() {
   useEffect(() => {
     if (!profile?.gym_id || !profile?.id) return;
     const load = async () => {
-      setLoading(true);
+      // Spinner only on a true cold load; with cache present, keep the list on
+      // screen and revalidate silently so revisiting is instant.
+      if (!readTrainerCache(clientsCacheKey)) setLoading(true);
       const fourteenDaysAgo = subDays(new Date(), 14).toISOString();
 
       // Fetch only assigned clients via trainer_clients join

@@ -11,12 +11,17 @@ import { supabase } from '../lib/supabase';
 //   • If the gym uploaded a splash video, it plays over the code default and
 //     fades in the moment it actually starts; the splash ends when it finishes.
 //   • If there's no video, it's slow to start (>VIDEO_START_MS), or it errors,
-//     the choreographed code default runs instead (mesh + ignition + logo shimmer).
+//     the code default runs instead.
 //   • First launch (video not cached) shows the default while the file is
 //     prefetched into the SW cache → the gym's video plays from the 2nd launch.
 //
-// White-label logo (default path): gym's own logo in a gym; the gym NAME wordmark
-// while its logo URL resolves; the platform logo (wordmark fallback) pre-login.
+// Code default = simple + premium (Apple-style restraint): the logo fades up with
+// a gentle scale-in (no pop), a soft glow eases in behind it, and one quiet
+// specular shimmer passes across — then it holds. CSS-keyframe driven, accent-driven
+// (var(--ls-accent)) → white-label: every gym gets it in their own color/logo.
+//
+// White-label logo: gym's own logo in a gym; the gym NAME wordmark while its logo
+// URL resolves; the platform logo (wordmark fallback) pre-login.
 
 let splashPlayed = false;
 
@@ -25,59 +30,65 @@ const MAX_MS = 6000;          // hard backstop (also caps an over-long video)
 const VIDEO_START_MS = 1200;  // window for the video to actually start, else → default
 const SPLASH_BG = '#05070B';
 const PLATFORM_LOGO_SRC = '/tugympr-logo.png';
-const ACCENT = 'var(--color-accent, #D4AF37)';
+const ACCENT = 'var(--ls-accent, #F5A623)';
 
 const reduce =
   typeof window !== 'undefined' &&
   !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 
-const LOGO_STYLE = { position: 'relative', width: 'min(48vw, 200px)', maxHeight: 200, objectFit: 'contain', display: 'block' };
+// Animations run only under `.ls-run`; `.ls-run .ls-center{opacity:0}` keeps the
+// logo hidden until its fade-in runs (no pre-animation flash).
+const SPLASH_CSS = `
+.ls-glow{ position:absolute; top:50%; left:50%; width:64vmin; height:64vmin; border-radius:50%;
+  pointer-events:none; filter:blur(30px); opacity:0; transform:translate(-50%,-50%);
+  background:radial-gradient(circle, color-mix(in srgb, ${ACCENT} 40%, transparent) 0%, transparent 64%);
+  will-change:transform,opacity; }
+.ls-center{ position:relative; display:flex; align-items:center; justify-content:center; opacity:1; will-change:transform,opacity; }
+.ls-run .ls-center{ opacity:0; }
+.ls-logoBox{ position:relative; width:min(46vw,190px); height:min(46vw,190px); }
+.ls-logo{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
+.ls-shimmer{ position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen; opacity:0;
+  -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  -webkit-mask-position:center; mask-position:center;
+  background:linear-gradient(100deg, transparent 42%, rgba(255,255,255,0.85) 50%, transparent 58%);
+  background-size:250% 100%; background-repeat:no-repeat; background-position:175% 0;
+  will-change:background-position,opacity; }
+.ls-word{ position:relative; font-family:'Barlow Condensed','Barlow',system-ui,sans-serif;
+  font-weight:800; text-transform:uppercase; letter-spacing:0.01em; font-size:clamp(30px,9vw,48px);
+  white-space:nowrap;
+  background:linear-gradient(100deg, var(--color-text-primary,#fff) 38%, color-mix(in srgb, ${ACCENT} 85%, #fff) 50%, var(--color-text-primary,#fff) 62%);
+  background-size:250% 100%; background-repeat:no-repeat; background-position:-75% 0;
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+.ls-vignette{ position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(circle at center, transparent 55%, rgba(0,0,0,0.4) 100%); }
 
-const Shimmer = ({ src }) => (
-  <motion.div
-    aria-hidden
-    style={{
-      position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen',
-      WebkitMaskImage: `url("${src}")`, maskImage: `url("${src}")`,
-      WebkitMaskSize: 'contain', maskSize: 'contain',
-      WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-      WebkitMaskPosition: 'center', maskPosition: 'center',
-      background: 'linear-gradient(100deg, transparent 40%, rgba(255,255,255,0.75) 50%, transparent 60%)',
-      backgroundSize: '250% 100%', backgroundRepeat: 'no-repeat',
-    }}
-    initial={{ backgroundPosition: '175% 0', opacity: 0 }}
-    animate={{ backgroundPosition: '-75% 0', opacity: [0, 1, 1, 0] }}
-    transition={{ duration: 0.95, ease: 'easeInOut', delay: 0.8 }}
-  />
-);
+.ls-run .ls-glow{ animation:ls-glowIn 1100ms ease-out both; }
+.ls-run .ls-center{ animation:ls-logoIn 900ms cubic-bezier(0.16,1,0.3,1) both; }
+.ls-run .ls-shimmer{ animation:ls-sweep 1600ms ease-in-out both; }
+.ls-run .ls-word{ animation:ls-sweepWord 1400ms ease-in-out both; }
 
-const Wordmark = ({ text }) => (
-  <motion.span
-    style={{
-      position: 'relative',
-      fontFamily: "'Barlow Condensed', 'Barlow', system-ui, sans-serif",
-      fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.01em',
-      fontSize: 'clamp(30px, 9vw, 48px)', whiteSpace: 'nowrap',
-      background: `linear-gradient(100deg, var(--color-text-primary,#fff) 38%, color-mix(in srgb, ${ACCENT} 85%, #fff) 50%, var(--color-text-primary,#fff) 62%)`,
-      backgroundSize: '250% 100%', backgroundRepeat: 'no-repeat',
-      WebkitBackgroundClip: 'text', backgroundClip: 'text',
-      WebkitTextFillColor: 'transparent', color: 'transparent',
-    }}
-    initial={reduce ? { opacity: 0 } : { backgroundPosition: '175% 0' }}
-    animate={reduce ? { opacity: 1 } : { backgroundPosition: '-75% 0' }}
-    transition={{ duration: 1.1, ease: 'easeInOut', delay: 0.55 }}
-  >
-    {text}
-  </motion.span>
-);
+@keyframes ls-logoIn{ 0%{opacity:0; transform:scale(0.93);} 55%{opacity:1;} 100%{opacity:1; transform:scale(1);} }
+@keyframes ls-glowIn{ 0%{opacity:0; transform:translate(-50%,-50%) scale(0.85);} 100%{opacity:0.5; transform:translate(-50%,-50%) scale(1);} }
+@keyframes ls-sweep{ 0%,40%{background-position:175% 0; opacity:0;} 52%{opacity:0.85;} 66%{opacity:0.85;} 80%{background-position:-75% 0; opacity:0;} 100%{background-position:-75% 0; opacity:0;} }
+@keyframes ls-sweepWord{ 0%,7%{opacity:0; background-position:175% 0;} 35%{opacity:1;} 100%{opacity:1; background-position:-75% 0;} }
+`;
 
-const PlatformMark = () => {
+const Wordmark = ({ text }) => <span className="ls-word">{text}</span>;
+
+// Logo image with a single masked specular sweep; falls back to a wordmark if it fails.
+const LogoMark = ({ src, fallbackText }) => {
   const [failed, setFailed] = useState(false);
-  if (failed) return <Wordmark text={(typeof window !== 'undefined' && window.__APP_NAME) || 'TuGymPR'} />;
+  if (failed || !src) return <Wordmark text={fallbackText} />;
   return (
-    <div style={{ position: 'relative' }}>
-      <img src={PLATFORM_LOGO_SRC} alt="" onError={() => setFailed(true)} style={LOGO_STYLE} />
-      {!reduce && <Shimmer src={PLATFORM_LOGO_SRC} />}
+    <div className="ls-logoBox">
+      <img className="ls-logo" src={src} alt="" onError={() => setFailed(true)} />
+      {!reduce && (
+        <div
+          className="ls-shimmer"
+          aria-hidden
+          style={{ WebkitMaskImage: `url("${src}")`, maskImage: `url("${src}")` }}
+        />
+      )}
     </div>
   );
 };
@@ -146,16 +157,16 @@ export default function LaunchSplash() {
 
   let mark;
   if (gymLogoUrl) {
-    mark = (
-      <div style={{ position: 'relative' }}>
-        <img src={gymLogoUrl} alt={gymName || ''} style={LOGO_STYLE} />
-        {!reduce && <Shimmer src={gymLogoUrl} />}
-      </div>
-    );
+    mark = <LogoMark src={gymLogoUrl} fallbackText={gymName || ''} />;
   } else if (inGym) {
     mark = <Wordmark text={gymName || ''} />;
   } else {
-    mark = <PlatformMark />;
+    mark = (
+      <LogoMark
+        src={PLATFORM_LOGO_SRC}
+        fallbackText={(typeof window !== 'undefined' && window.__APP_NAME) || 'TuGymPR'}
+      />
+    );
   }
 
   return (
@@ -163,51 +174,26 @@ export default function LaunchSplash() {
       {show && (
         <motion.div
           key="launch-splash"
-          className="fixed inset-0 flex items-center justify-center overflow-hidden"
-          style={{ background: SPLASH_BG, zIndex: 99999 }}
+          className={`fixed inset-0 flex items-center justify-center overflow-hidden${reduce ? '' : ' ls-run'}`}
+          style={{
+            background: SPLASH_BG,
+            zIndex: 99999,
+            // gym → their accent; pre-login → the platform gold.
+            ['--ls-accent']: inGym ? 'var(--color-accent, #F5A623)' : '#F5A623',
+          }}
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.55, ease: 'easeInOut' }}
         >
+          <style>{SPLASH_CSS}</style>
+
           {/* ── Code default (renders underneath; shown until/unless the video plays) ── */}
-          {!reduce && (
-            <>
-              <motion.div aria-hidden style={{
-                position: 'absolute', top: '12%', left: '8%', width: 420, height: 420, borderRadius: '50%',
-                background: `radial-gradient(circle, color-mix(in srgb, ${ACCENT} 16%, transparent) 0%, transparent 70%)`,
-                filter: 'blur(40px)', pointerEvents: 'none',
-              }} initial={{ opacity: 0, x: -30, y: -10 }} animate={{ opacity: 0.7, x: 20, y: 20 }} transition={{ duration: 6, ease: 'easeOut' }} />
-              <motion.div aria-hidden style={{
-                position: 'absolute', bottom: '10%', right: '6%', width: 460, height: 460, borderRadius: '50%',
-                background: `radial-gradient(circle, color-mix(in srgb, ${ACCENT} 12%, transparent) 0%, transparent 70%)`,
-                filter: 'blur(48px)', pointerEvents: 'none',
-              }} initial={{ opacity: 0, x: 30, y: 20 }} animate={{ opacity: 0.6, x: -20, y: -16 }} transition={{ duration: 7, ease: 'easeOut' }} />
-              <motion.div aria-hidden style={{
-                position: 'absolute', width: 540, height: 540, borderRadius: '50%',
-                background: `radial-gradient(circle, color-mix(in srgb, ${ACCENT} 30%, transparent) 0%, transparent 62%)`,
-                filter: 'blur(30px)', pointerEvents: 'none',
-              }} initial={{ opacity: 0, scale: 0.4 }} animate={{ opacity: [0, 0.85, 0.4], scale: [0.4, 1, 0.92] }} transition={{ duration: 1.3, ease: [0.16, 1, 0.3, 1] }} />
-              <motion.div aria-hidden style={{
-                position: 'absolute', width: 200, height: 200, borderRadius: '50%',
-                border: `1px solid color-mix(in srgb, ${ACCENT} 45%, transparent)`, pointerEvents: 'none',
-              }} initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: [0, 0.5, 0], scale: [0.5, 2.4, 3] }} transition={{ duration: 1.6, ease: 'easeOut', delay: 0.15 }} />
-            </>
-          )}
+          {!reduce && <div className="ls-glow" aria-hidden />}
 
-          <motion.div
-            style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.965, y: 6 }}
-            animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
-          >
-            {mark}
-          </motion.div>
+          <div className="ls-center">{mark}</div>
 
-          <div aria-hidden style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none',
-            background: 'radial-gradient(circle at center, transparent 45%, rgba(0,0,0,0.45) 100%)',
-          }} />
+          <div className="ls-vignette" aria-hidden />
 
           {/* ── Custom gym video (on top; invisible until it actually starts) ── */}
           {useVideo && (

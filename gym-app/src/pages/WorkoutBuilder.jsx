@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Plus, Trash2, Dumbbell,
-  ChevronRight, RotateCcw, Link2, Unlink, ArrowLeftRight
+  ChevronRight, RotateCcw, Link2, Unlink, ArrowLeftRight, GripVertical
 } from 'lucide-react';
 import ExerciseLibrary from './ExerciseLibrary';
 import LazyVideoTile from '../components/LazyVideoTile';
@@ -26,24 +26,101 @@ const nanoid = (len = 8) => {
 
 const REST_OPTIONS = [30, 60, 90, 120, 180, 240];
 
-const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveUp, onMoveDown, onSwap, isSelected, onToggleSelect, t, primaryGoal }) => {
+// Stable per-row id for drag-reorder (exercise ids can repeat; the array index
+// is unstable mid-drag). Transient — never persisted.
+let _rowSeq = 0;
+const nextRowUid = () => `row-${++_rowSeq}`;
+
+// Pointer drag-to-reorder — ported from the trainer plan builder (useDragSort)
+// so the member routine editor reorders the same way: grab the grip, drag, rows
+// live-reorder underneath while the grabbed card stays glued to the finger.
+// Rows carry `data-dragitem={uid}` inside a `data-dragroot` container.
+const DRAG_GAP = 12; // matches the `gap-3` (0.75rem) between exercise cards
+function useDragSort(ids, onReorder) {
+  const [drag, setDrag] = useState(null);
+  const latest = useRef({ ids, onReorder });
+  latest.current.ids = ids;
+  latest.current.onReorder = onReorder;
+  const st = useRef({});
+  const h = useRef(null);
+  if (!h.current) {
+    const move = (e) => {
+      const s = st.current;
+      if (!s.id) return;
+      setDrag(d => (d ? { ...d, y: e.clientY } : d));
+      let idx = 0;
+      for (let i = 0; i < s.rects.length; i++) {
+        const mid = s.rects[i].rect.top + s.rects[i].rect.height / 2;
+        if (e.clientY > mid) idx = i + 1;
+      }
+      const cur = s.order.indexOf(s.id);
+      idx = Math.max(0, Math.min(s.order.length - 1, idx > cur ? idx - 1 : idx));
+      if (idx !== s.lastIndex) {
+        const next = s.order.filter(x => x !== s.id);
+        next.splice(idx, 0, s.id);
+        s.order = next; s.lastIndex = idx;
+        latest.current.onReorder(next.slice());
+      }
+    };
+    const end = () => {
+      st.current = {};
+      setDrag(null);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+    const start = (id, e, rowEl) => {
+      e.preventDefault(); e.stopPropagation();
+      const root = rowEl?.closest('[data-dragroot]');
+      if (!root) return;
+      const rows = Array.from(root.querySelectorAll('[data-dragitem]'));
+      const rects = rows.map(r => ({ id: r.getAttribute('data-dragitem'), rect: r.getBoundingClientRect() }));
+      const from = latest.current.ids.indexOf(id);
+      const cardH = rects[from]?.rect.height || 0;
+      st.current = { id, order: latest.current.ids.slice(), rects, lastIndex: from };
+      setDrag({ id, startY: e.clientY, y: e.clientY, from, h: cardH });
+      try { rowEl.setPointerCapture(e.pointerId); } catch (_) { /* capture optional */ }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+    };
+    h.current = { start, end };
+  }
+  useEffect(() => () => h.current?.end?.(), []);
+  const draggedTranslate = () => {
+    if (!drag) return 0;
+    const curIndex = latest.current.ids.indexOf(drag.id);
+    return (drag.y - drag.startY) - (curIndex - drag.from) * (drag.h + DRAG_GAP);
+  };
+  return { dragId: drag?.id ?? null, draggedTranslate, start: h.current.start };
+}
+
+const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap, onGripDown, isSelected, onToggleSelect, t, primaryGoal }) => {
   if (!exercise) return null;
 
   return (
     <div className={`rounded-2xl overflow-hidden transition-colors duration-200 ${isSelected ? 'ring-1 ring-[#D4AF37]/50' : ''}`} style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-      {/* Top: name + reorder + delete — all 44px touch targets */}
+      {/* Top: drag handle + name + actions — all 44px touch targets */}
       <div className="flex items-center gap-2 px-5 py-3">
+        {/* Drag handle — grab to reorder (replaces the up/down arrows) */}
+        <button
+          type="button"
+          aria-label={t('workoutBuilder.ariaDragReorder', 'Drag to reorder')}
+          onPointerDown={onGripDown}
+          className="w-7 h-11 -ml-1.5 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing touch-none"
+          style={{ color: 'var(--color-text-subtle)', touchAction: 'none' }}
+        >
+          <GripVertical size={18} />
+        </button>
         {/* Select checkbox for grouping */}
         <button
           type="button"
           onClick={() => onToggleSelect(index)}
           aria-label={isSelected ? t('workoutBuilder.ariaDeselect', 'Deselect exercise') : t('workoutBuilder.ariaSelect', 'Select exercise')}
-          className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
-            isSelected
-              ? 'border-[#D4AF37] text-[var(--color-text-on-accent,#000)]'
-              : 'text-transparent'
-          }`}
-          style={!isSelected ? { borderColor: 'var(--color-border-strong)' } : { background: '#D4AF37' }}
+          className="w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors"
+          style={isSelected
+            ? { background: '#D4AF37', borderColor: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }
+            : { borderColor: 'color-mix(in srgb, var(--color-accent) 60%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
         >
           {isSelected && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
         </button>
@@ -61,24 +138,6 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onMoveU
           </div>
         </div>
         <div className="flex items-center flex-shrink-0 -mr-1">
-          <button
-            onClick={() => onMoveUp(index)}
-            disabled={index === 0}
-            aria-label={t('workoutBuilder.ariaMoveUp', 'Move exercise up')}
-            className="w-11 h-11 flex items-center justify-center disabled:opacity-20 transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
-            style={{ color: 'var(--color-text-subtle)' }}
-          >
-            <ChevronLeft size={18} className="rotate-90" />
-          </button>
-          <button
-            onClick={() => onMoveDown(index)}
-            disabled={index === total - 1}
-            aria-label={t('workoutBuilder.ariaMoveDown', 'Move exercise down')}
-            className="w-11 h-11 flex items-center justify-center disabled:opacity-20 transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
-            style={{ color: 'var(--color-text-subtle)' }}
-          >
-            <ChevronRight size={18} className="rotate-90" />
-          </button>
           <button
             onClick={() => onSwap(index)}
             aria-label={t('workoutBuilder.ariaSwap', 'Swap exercise')}
@@ -286,8 +345,9 @@ const WorkoutBuilder = () => {
             groupId:     re.group_id || null,
             groupType:   re.group_type || null,
           }));
-        setRoutineExercises(exs);
-        setOriginalExercises(exs);
+        const withUid = exs.map((e) => ({ ...e, _uid: nextRowUid() }));
+        setRoutineExercises(withUid);
+        setOriginalExercises(withUid);
       }
       setLoading(false);
     };
@@ -374,7 +434,7 @@ const WorkoutBuilder = () => {
     const adj = goalAdjustedDefaults(exercise, goal);
     setRoutineExercises(prev => [
       ...prev,
-      { id: exercise.id, sets: adj.sets, reps: adj.reps, restSeconds: adj.rest, groupId: null, groupType: null }
+      { id: exercise.id, sets: adj.sets, reps: adj.reps, restSeconds: adj.rest, groupId: null, groupType: null, _uid: nextRowUid() }
     ]);
     setShowLibrary(false);
   };
@@ -417,7 +477,7 @@ const WorkoutBuilder = () => {
     setSelectedIndices(prev => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
-      else if (next.size < 3) next.add(index);
+      else next.add(index); // no cap — group as many as you want into a superset/circuit
       return next;
     });
   };
@@ -440,6 +500,17 @@ const WorkoutBuilder = () => {
       prev.map(ex => ex.groupId === groupId ? { ...ex, groupId: null, groupType: null } : ex)
     );
   };
+
+  // Drag-to-reorder for the exercise list — grip handle on each row (ported
+  // from the trainer plan builder's useDragSort). Reorders by stable _uid.
+  const reorderByUids = (uids) => setRoutineExercises(prev => {
+    const byUid = new Map(prev.map((x) => [x._uid, x]));
+    return uids.map((u) => byUid.get(u)).filter(Boolean);
+  });
+  const { dragId, draggedTranslate, start: startDrag } = useDragSort(
+    routineExercises.map((x) => x._uid),
+    reorderByUids,
+  );
 
   const handleSave = async ({ andExit = false } = {}) => {
     setSaving(true);
@@ -887,7 +958,7 @@ const WorkoutBuilder = () => {
 
         {/* Exercise list */}
         {routineExercises.length > 0 ? (
-          <div className="flex flex-col gap-3 mb-5">
+          <div className="flex flex-col gap-3 mb-5" data-dragroot>
             {routineExercises.map((item, index) => {
               // Determine if this is the first in a group (show header)
               const isFirstInGroup = item.groupId && (index === 0 || routineExercises[index - 1]?.groupId !== item.groupId);
@@ -895,7 +966,7 @@ const WorkoutBuilder = () => {
               const isInGroup = !!item.groupId;
 
               return (
-                <React.Fragment key={`${item.id}-${index}`}>
+                <React.Fragment key={item._uid}>
                   {/* Group header badge */}
                   {isFirstInGroup && (
                     <div className="flex items-center gap-2 -mb-2">
@@ -916,8 +987,14 @@ const WorkoutBuilder = () => {
                       </button>
                     </div>
                   )}
-                  {/* Bracket wrapper for grouped exercises */}
-                  <div className={`relative ${isInGroup ? 'pl-4' : ''}`}>
+                  {/* Bracket wrapper for grouped exercises + drag item */}
+                  <div
+                    data-dragitem={item._uid}
+                    className={`relative ${isInGroup ? 'pl-4' : ''}`}
+                    style={dragId === item._uid
+                      ? { transform: `translateY(${draggedTranslate()}px)`, zIndex: 30, boxShadow: '0 14px 30px rgba(0,0,0,0.35)', borderRadius: 16 }
+                      : undefined}
+                  >
                     {isInGroup && (
                       <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-full ${
                         item.groupType === 'superset' ? 'bg-purple-500/40' : 'bg-blue-500/40'
@@ -930,9 +1007,8 @@ const WorkoutBuilder = () => {
                       total={routineExercises.length}
                       onChange={handleChange}
                       onRemove={handleRemove}
-                      onMoveUp={handleMoveUp}
-                      onMoveDown={handleMoveDown}
                       onSwap={handleSwap}
+                      onGripDown={(e) => startDrag(item._uid, e, e.currentTarget.closest('[data-dragitem]'))}
                       isSelected={selectedIndices.has(index)}
                       onToggleSelect={handleToggleSelect}
                       t={t}

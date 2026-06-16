@@ -237,7 +237,7 @@ export const AuthProvider = ({ children }) => {
       const [{ data: fallback }, { data: onboarding }] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, qr_external_id, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at, health_sync_enabled, metric_units, trainer_tagline, trainer_cover_url, trainer_years_exp, trainer_location, trainer_pronouns, trainer_specialties, trainer_credentials, trainer_services, trainer_availability, trainer_verified, trainer_directory_visible, trainer_default_rate, trainer_rate_unit')
+          .select('id, gym_id, full_name, username, role, additional_roles, is_onboarded, avatar_url, avatar_type, avatar_value, preferred_language, membership_status, last_active_at, qr_code_payload, qr_external_id, preferred_training_days, skip_suggestion_date, accent_color, trainer_icon, phone_number, bio, specialties, years_of_experience, date_of_birth, age_verified_at, created_at, health_sync_enabled, metric_units, trainer_tagline, trainer_cover_url, trainer_years_exp, trainer_location, trainer_specialties, trainer_credentials, trainer_services, trainer_availability, trainer_verified, trainer_directory_visible, trainer_default_rate, trainer_rate_unit')
           .eq('id', userId)
           .maybeSingle(),
         supabase

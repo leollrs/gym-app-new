@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 import CreateRoutineModal from '../components/CreateRoutineModal';
+import MemberProgramBuilder from '../components/MemberProgramBuilder';
 import TrainerPlanSection from '../components/TrainerPlanSection';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
@@ -465,6 +466,8 @@ const Workouts = () => {
   const [deleteBlockedInfo, setDeleteBlockedInfo] = useState(null); // { reason } or null — alert() doesn't render in Capacitor WebView
   const [deletingId, setDeletingId]           = useState(null);
   const [showGenerator, setShowGenerator]     = useState(false);
+  const [showBuilder, setShowBuilder]         = useState(false);
+  const [builderProgram, setBuilderProgram]   = useState(null); // null = create your own, program = edit
   const [programCategoryFilter, setProgramCategoryFilter] = useState('All');
   const [programLevelFilter, setProgramLevelFilter] = useState('All');
   const [programDurationFilter, setProgramDurationFilter] = useState('all'); // 'all' | 'quick'
@@ -2383,9 +2386,19 @@ const Workouts = () => {
                     {t('workouts.select', 'Select')}
                   </button>
                 )}
+                {programActive && generatedProgram && (
+                  <button
+                    onClick={() => { setBuilderProgram(generatedProgram); setShowBuilder(true); }}
+                    className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors whitespace-nowrap"
+                    style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+                  >
+                    <Pencil size={12} strokeWidth={2.4} />
+                    {t('workouts.editProgram', 'Edit')}
+                  </button>
+                )}
                 <button
                   onClick={() => setShowGenerator(true)}
-                  className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors whitespace-nowrap"
                   style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)`, color: TU_ACCENT }}
                 >
                   <Zap size={12} strokeWidth={2.4} />
@@ -3349,7 +3362,29 @@ const Workouts = () => {
       <GenerateWorkoutModal
         onboarding={onboardingData}
         onClose={() => setShowGenerator(false)}
+        onCreateManual={() => { setBuilderProgram(null); setShowBuilder(true); }}
         onGenerated={() => {
+          if (user?.id) {
+            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
+              .then(({ data }) => {
+                const programs = data || [];
+                setAllPrograms(programs);
+                setGeneratedProgram(programs[0] || null);
+                setGoalsMismatch(false);
+              });
+          }
+          refetch();
+        }}
+      />
+    )}
+
+    {showBuilder && (
+      <MemberProgramBuilder
+        editProgram={builderProgram}
+        onClose={() => { setShowBuilder(false); setBuilderProgram(null); }}
+        onSaved={() => {
+          setShowBuilder(false);
+          setBuilderProgram(null);
           if (user?.id) {
             supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
               .then(({ data }) => {

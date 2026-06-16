@@ -6,9 +6,10 @@ import {
   MessageSquare, Bell, Phone, Mail, UserCheck, Plus, X, Dumbbell, Trophy,
   AlertTriangle, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Flame,
   Zap, UtensilsCrossed, ClipboardList, Ruler,
-  Loader2, Play, Eye, MessageCircle, Smartphone,
+  Loader2, Play, Eye, MessageCircle, Smartphone, Pencil,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -300,12 +301,27 @@ export default function TrainerClientNotes() {
   const { t, i18n } = useTranslation(['pages', 'common']);
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const [searchParams, setSearchParams] = useSearchParams();
+  // Per-trainer, PER-CLIENT cache key for the main client overview payload.
+  // Per-client is REQUIRED so switching clients never paints stale data from
+  // the previous one. Drives the first-paint hydration + write-through below.
+  const CK = `tcd:overview:${profile?.id}:${clientId}`;
   // Lazy init: restore the active tab from ?tab= so refresh / deep-links land
-  // on the same tab instead of always resetting to Overview.
+  // on the same tab instead of always resetting to Overview. Also hydrate the
+  // primary client data from cache (stale-while-revalidate) so navigating back
+  // paints instantly instead of showing a spinner + full refetch.
   const [state, dispatch] = useReducer(reducer, initialState, (init) => {
     if (typeof window === 'undefined') return init;
+    let base = init;
+    const cached = readTrainerCache(CK);
+    if (cached) {
+      // Cache holds the LOAD_DATA-shaped payload (minus the loading flag).
+      // Seed it and drop the cold spinner, but leave isAssigned false so the
+      // normal two-phase flow still re-verifies assignment + reloads (with the
+      // notes ref properly populated) in the background.
+      base = { ...init, ...cached, loading: false };
+    }
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    return urlTab && MEMBER_TAB_ORDER.includes(urlTab) ? { ...init, activeTab: urlTab } : init;
+    return urlTab && MEMBER_TAB_ORDER.includes(urlTab) ? { ...base, activeTab: urlTab } : base;
   });
   const notesSavedTimerRef = useRef(null);
   // Raw trainer_clients.notes as last fetched/saved — loadClientData re-derives
@@ -380,7 +396,19 @@ export default function TrainerClientNotes() {
   // Phase 1: verify trainer ↔ client assignment BEFORE any data queries fire.
   const checkAssignment = useCallback(async () => {
     // Fresh client load — any dirty-notes state belongs to the previous client.
-    dispatch({ type: 'SET', payload: { loading: true, accessDenied: false, isAssigned: false, notesDirty: false } });
+    // On a warm cache, seed THIS client's cached overview and skip the cold
+    // spinner so the page paints instantly; assignment re-verifies underneath.
+    // This per-client re-seed also fixes switching from another client (the
+    // reducer's lazy init only runs once, so the route-param change reuses the
+    // instance and would otherwise keep showing the previous client's data).
+    // With no cache we show the spinner, which hides any prior client's fields.
+    const cached = readTrainerCache(CK);
+    dispatch({
+      type: 'SET',
+      payload: cached
+        ? { ...cached, loading: false, accessDenied: false, isAssigned: false, notesDirty: false }
+        : { loading: true, accessDenied: false, isAssigned: false, notesDirty: false },
+    });
     try {
       const { data: assignment } = await supabase
         .from('trainer_clients')
@@ -403,7 +431,7 @@ export default function TrainerClientNotes() {
       logger.error('Error checking assignment:', err);
       dispatch({ type: 'SET', payload: { loading: false } });
     }
-  }, [clientId, profile?.id, profile?.gym_id]);
+  }, [clientId, profile?.id, profile?.gym_id, CK]);
 
   // Phase 2: load all client data — only runs after isAssigned is true.
   const loadClientData = useCallback(async () => {
@@ -591,36 +619,40 @@ export default function TrainerClientNotes() {
         signedUrl: signedByPath[photo.storage_path] || '',
       }));
 
-      dispatch({
-        type: 'LOAD_DATA',
-        payload: {
-          client: clientRes.data,
-          stats: { count: (statsRes.data || []).length },
-          programName: loadedProgramName,
-          enrollment: loadedEnrollment,
-          weights: weightsRes.data || [],
-          measurements: measRes.data?.[0] || null,
-          measurementsPrev: measRes.data?.[1] || null,
-          streak: streakRes.data || null,
-          followups: followupsRes.data || [],
-          recentSessions: recentRes.data || [],
-          personalRecords: prsRes.data || [],
-          onboarding: onbRes.data || null,
-          nextSession: nextSessionRes.data || null,
-          workoutsThisWeek: thisWeekRes.data?.length || 0,
-          memberGoals: goalsRes.error ? [] : (goalsRes.data || []),
-          availablePrograms: progsRes.data || [],
-          progressPhotos: photosWithUrls,
-          checkIns: checkInsRes.data || [],
-          notesData: parsedNotes,
-          loading: false,
-        },
-      });
+      const loadedPayload = {
+        client: clientRes.data,
+        stats: { count: (statsRes.data || []).length },
+        programName: loadedProgramName,
+        enrollment: loadedEnrollment,
+        weights: weightsRes.data || [],
+        measurements: measRes.data?.[0] || null,
+        measurementsPrev: measRes.data?.[1] || null,
+        streak: streakRes.data || null,
+        followups: followupsRes.data || [],
+        recentSessions: recentRes.data || [],
+        personalRecords: prsRes.data || [],
+        onboarding: onbRes.data || null,
+        nextSession: nextSessionRes.data || null,
+        workoutsThisWeek: thisWeekRes.data?.length || 0,
+        memberGoals: goalsRes.error ? [] : (goalsRes.data || []),
+        availablePrograms: progsRes.data || [],
+        progressPhotos: photosWithUrls,
+        checkIns: checkInsRes.data || [],
+        notesData: parsedNotes,
+      };
+
+      dispatch({ type: 'LOAD_DATA', payload: { ...loadedPayload, loading: false } });
+
+      // Write through to the per-client cache for instant paint on the next
+      // visit. Only reached after a fully-successful load (we're inside the try
+      // after every query resolved), so a failed fetch never clobbers cache.
+      // The `loading` flag is excluded — the next mount derives it from cache.
+      writeTrainerCache(CK, loadedPayload);
     } catch (err) {
       logger.error('Error loading client data:', err);
       dispatch({ type: 'SET', payload: { loading: false } });
     }
-  }, [clientId, profile?.id, profile?.gym_id, t]);
+  }, [clientId, profile?.id, profile?.gym_id, t, CK]);
 
   // Phase 1: run assignment check whenever clientId / trainer changes.
   useEffect(() => {

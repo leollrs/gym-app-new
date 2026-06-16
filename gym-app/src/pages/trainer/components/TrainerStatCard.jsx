@@ -48,7 +48,7 @@ export default function TrainerStatCard({
         boxShadow: TT.shadow,
       }}
     >
-      <div className="flex items-center gap-2.5 mb-2">
+      <div className="flex items-center gap-2.5 mb-2 min-w-0">
         {Icon && (
           <div
             className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -57,8 +57,10 @@ export default function TrainerStatCard({
             <Icon size={16} style={{ color: accentColor }} strokeWidth={2.2} />
           </div>
         )}
+        {/* min-w-0 lets `truncate` actually shrink/ellipsize inside the flex row
+            (without it a long label like "Reacciones enviadas" overflows). */}
         <p
-          className="text-[11px] font-semibold uppercase tracking-[0.08em] truncate"
+          className="text-[11px] font-semibold uppercase tracking-[0.08em] truncate min-w-0"
           style={{ color: TT.textMute }}
         >
           {label}

@@ -11,18 +11,22 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import logger from '../../lib/logger';
-import { PROD_WEB_URL } from '../../lib/appUrls';
+import { trainerShareUrl } from '../../lib/appUrls';
 import { validateImageFile } from '../../lib/validateImage';
 import { stripExif } from '../../lib/stripExif';
+import { createPortal } from 'react-dom';
 import AvatarPicker from '../../components/AvatarPicker';
+import UserAvatar from '../../components/UserAvatar';
+import useKeyboardOpen from '../../hooks/useKeyboardOpen';
 import { TT, TFont, avatarIdx } from './components/designTokens';
 import {
   TCard, TPill, TAvatar, TPrimaryButton, TDarkButton, TIconButton,
 } from './components/designPrimitives';
-
-const COVER_GRADIENT = 'linear-gradient(135deg, #FFB86B 0%, #FF7A3D 60%, #FF5A2E 100%)';
-const AVATAR_GRADIENT = 'linear-gradient(135deg, #1E9C8E 0%, #2EC9B7 100%)';
+import {
+  COVER_PRESETS, coverBackground, isPhotoCover, presetId, presetValue,
+} from '../../lib/trainerCovers';
 
 const DOW_LETTERS_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DOW_INDEX_TO_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 0: 'sun' };
@@ -32,7 +36,7 @@ const DOW_INDEX_TO_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 
 // profile that predates 0528 (get_auth_context didn't return them).
 const TRAINER_PROFILE_COLS = [
   'trainer_tagline', 'trainer_cover_url', 'trainer_years_exp',
-  'trainer_location', 'trainer_pronouns', 'trainer_specialties',
+  'trainer_location', 'trainer_specialties',
   'trainer_credentials', 'trainer_services', 'trainer_availability',
   'trainer_verified', 'trainer_directory_visible',
   'trainer_default_rate', 'trainer_rate_unit',
@@ -100,26 +104,54 @@ function summarizeAvailability(availability, dayLabels) {
 // ────────────────────────────────────────────────────────────────────
 function ModalShell({ open, onClose, title, children, footer, maxWidth = 460 }) {
   const { t } = useTranslation(['common']);
+  const keyboardOpen = useKeyboardOpen();
+  // Mobile (≤640px) → bottom sheet so the footer hugs the bottom edge and stays
+  // just above the keyboard (the iOS webview shrinks when it opens). Desktop →
+  // centered dialog. Tracked via a resize listener so we don't need media
+  // queries inside these inline styles.
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 640,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const onResize = () => setIsMobile(window.innerWidth <= 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   if (!open) return null;
-  return (
+
+  // 100dvh tracks the dynamic viewport (and the keyboard on iOS), unlike vh.
+  const sheetMaxHeight = isMobile
+    ? (keyboardOpen ? '100dvh' : '92dvh')
+    : '90dvh';
+
+  // Portal to <body> so the fixed overlay escapes the page's transformed
+  // (framer-motion) ancestor — otherwise position:fixed is relative to the
+  // scrolling content area and the modal's top/bottom hide behind the trainer
+  // header + bottom nav. z-100 clears the nav.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 80,
+        position: 'fixed', inset: 0, zIndex: 100,
         background: 'rgba(11,15,18,0.55)',
         backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16,
+        display: 'flex',
+        alignItems: isMobile ? 'flex-end' : 'center',
+        justifyContent: 'center',
+        padding: isMobile ? 0 : 16,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
           background: TT.surface,
-          borderRadius: 18,
-          width: '100%', maxWidth, maxHeight: '90vh',
+          borderRadius: isMobile ? '18px 18px 0 0' : 18,
+          width: '100%', maxWidth: isMobile ? '100%' : maxWidth,
+          maxHeight: sheetMaxHeight,
           overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
           boxShadow: TT.shadowLg,
@@ -148,19 +180,26 @@ function ModalShell({ open, onClose, title, children, footer, maxWidth = 460 }) 
             <X size={16} />
           </button>
         </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+        <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: 16 }}>
           {children}
         </div>
         {footer && (
           <div style={{
-            padding: '12px 16px', borderTop: `1px solid ${TT.border}`,
+            // Pinned footer; on mobile add the safe-area inset so Save/Cancel
+            // clear the home indicator when the sheet sits at the very bottom.
+            padding: isMobile
+              ? '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))'
+              : '12px 16px',
+            borderTop: `1px solid ${TT.border}`,
             display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0,
+            background: TT.surface,
           }}>
             {footer}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -179,12 +218,41 @@ const labelStyle = {
 // ────────────────────────────────────────────────────────────────────
 // Edit Identity Modal
 // ────────────────────────────────────────────────────────────────────
+// Name parts: PR convention = nombre [segundo nombre] apellido1 [apellido2].
+// Seed from the dedicated columns when present, else best-effort parse full_name.
+const parseNameParts = (profile) => {
+  if (profile?.first_name || profile?.middle_name || profile?.last_name || profile?.second_last_name) {
+    return {
+      first_name: profile.first_name || '',
+      middle_name: profile.middle_name || '',
+      last_name: profile.last_name || '',
+      second_last_name: profile.second_last_name || '',
+    };
+  }
+  const toks = (profile?.full_name || '').trim().split(/\s+/).filter(Boolean);
+  if (toks.length <= 1) return { first_name: toks[0] || '', middle_name: '', last_name: '', second_last_name: '' };
+  if (toks.length === 2) return { first_name: toks[0], middle_name: '', last_name: toks[1], second_last_name: '' };
+  if (toks.length === 3) return { first_name: toks[0], middle_name: '', last_name: toks[1], second_last_name: toks[2] };
+  return { first_name: toks[0], middle_name: toks[1], last_name: toks[2], second_last_name: toks.slice(3).join(' ') };
+};
+const composeFullName = (d) => [d.first_name, d.middle_name, d.last_name, d.second_last_name].map(s => (s || '').trim()).filter(Boolean).join(' ');
+
+// Phone: store/seed as 10 digits; render as (787) 414 - 4239 behind a fixed +1.
+const phoneDigits = (s) => { const x = (s || '').replace(/\D/g, ''); const tt = (x.length === 11 && x[0] === '1') ? x.slice(1) : x; return tt.slice(0, 10); };
+const formatUSPhone = (s) => {
+  const x = phoneDigits(s);
+  const a = x.slice(0, 3), b = x.slice(3, 6), c = x.slice(6, 10);
+  if (x.length > 6) return `(${a}) ${b} - ${c}`;
+  if (x.length > 3) return `(${a}) ${b}`;
+  if (x.length > 0) return `(${a}`;
+  return '';
+};
+
 const makeIdentityDraft = (profile, currentEmail) => ({
-  full_name: profile?.full_name || '',
+  ...parseNameParts(profile),
   username: profile?.username || '',
   email: currentEmail || '',
-  phone_number: profile?.phone_number || '',
-  trainer_pronouns: profile?.trainer_pronouns || '',
+  phone_number: phoneDigits(profile?.phone_number),
   trainer_location: profile?.trainer_location || '',
   trainer_years_exp: profile?.trainer_years_exp != null ? String(profile.trainer_years_exp) : '',
   bio: profile?.bio || '',
@@ -198,10 +266,12 @@ const makeIdentityDraft = (profile, currentEmail) => ({
 // (Previously every save wrote ALL fields; with an un-hydrated context
 // profile that nulled pronouns/location/years/tagline/rate on any save.)
 const normalizeIdentityDraft = (d) => ({
-  full_name: d.full_name.trim() || null,
+  // The 4 name fields compose into full_name (no separate DB columns needed, so
+  // this works without a migration and can't break boot). parseNameParts re-
+  // splits full_name on open.
+  full_name: composeFullName(d) || null,
   username: d.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || null,
-  phone_number: d.phone_number.trim() || null,
-  trainer_pronouns: d.trainer_pronouns.trim() || null,
+  phone_number: d.phone_number ? `+1${d.phone_number}` : null,
   trainer_location: d.trainer_location.trim() || null,
   trainer_years_exp: d.trainer_years_exp.trim()
     ? Math.max(0, Math.min(80, parseInt(d.trainer_years_exp, 10) || 0))
@@ -259,15 +329,33 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div>
-          <label style={labelStyle}>{t('pages:profile.fullName', 'Full name')}</label>
-          <input
-            type="text"
-            value={draft.full_name}
-            onChange={(e) => setDraft(d => ({ ...d, full_name: e.target.value }))}
-            maxLength={80}
-            style={inputStyle}
-          />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.firstName', 'First name')}</label>
+            <input type="text" value={draft.first_name}
+              onChange={(e) => setDraft(d => ({ ...d, first_name: e.target.value }))}
+              maxLength={40} style={inputStyle} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.middleName', 'Middle name')}</label>
+            <input type="text" value={draft.middle_name}
+              onChange={(e) => setDraft(d => ({ ...d, middle_name: e.target.value }))}
+              maxLength={40} style={inputStyle} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.lastName1', 'First last name')}</label>
+            <input type="text" value={draft.last_name}
+              onChange={(e) => setDraft(d => ({ ...d, last_name: e.target.value }))}
+              maxLength={40} style={inputStyle} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.lastName2', 'Second last name')}</label>
+            <input type="text" value={draft.second_last_name}
+              onChange={(e) => setDraft(d => ({ ...d, second_last_name: e.target.value }))}
+              maxLength={40} style={inputStyle} />
+          </div>
         </div>
         <div>
           <label style={labelStyle}>{t('pages:profile.username', 'Username')}</label>
@@ -298,44 +386,31 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
         </div>
         <div>
           <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.phone', 'Phone')}</label>
-          <input
-            type="tel"
-            value={draft.phone_number}
-            onChange={(e) => setDraft(d => ({ ...d, phone_number: e.target.value }))}
-            placeholder={t('pages:trainerProfile.editIdentity.phonePlaceholder', '+1 555 123 4567')}
-            maxLength={20}
-            autoComplete="tel"
-            style={inputStyle}
-          />
-          <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 4, lineHeight: 1.4 }}>
-            {t('pages:trainerProfile.editIdentity.phoneHint', 'Format: +1 followed by 10 digits.')}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '0 13px', borderRadius: 10, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.textSub, fontSize: 14, fontWeight: 800, flexShrink: 0 }}>+1</div>
+            <input
+              type="tel" inputMode="numeric"
+              value={formatUSPhone(draft.phone_number)}
+              onChange={(e) => setDraft(d => ({ ...d, phone_number: phoneDigits(e.target.value) }))}
+              placeholder="(787) 414 - 4239"
+              maxLength={20}
+              autoComplete="tel"
+              style={{ ...inputStyle, flex: 1 }}
+            />
           </div>
-          <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 2, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 4, lineHeight: 1.4 }}>
             {t('pages:trainerProfile.editIdentity.phonePublicHint', 'Visible to gym members as a Call button on your public profile.')}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.pronouns', 'Pronouns')}</label>
-            <input
-              type="text"
-              value={draft.trainer_pronouns}
-              onChange={(e) => setDraft(d => ({ ...d, trainer_pronouns: e.target.value }))}
-              placeholder={t('pages:trainerProfile.editIdentity.pronounsPlaceholder', 'she/her')}
-              maxLength={20}
-              style={inputStyle}
-            />
-          </div>
-          <div style={{ width: 120 }}>
-            <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.years', 'Years exp')}</label>
-            <input
-              type="number"
-              min="0" max="80"
-              value={draft.trainer_years_exp}
-              onChange={(e) => setDraft(d => ({ ...d, trainer_years_exp: e.target.value }))}
-              style={inputStyle}
-            />
-          </div>
+        <div>
+          <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.years', 'Years exp')}</label>
+          <input
+            type="number"
+            min="0" max="80"
+            value={draft.trainer_years_exp}
+            onChange={(e) => setDraft(d => ({ ...d, trainer_years_exp: e.target.value }))}
+            style={inputStyle}
+          />
         </div>
         <div>
           <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.location', 'Location')}</label>
@@ -944,13 +1019,19 @@ export default function TrainerProfile() {
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
 
-  // Stats
-  const [clientCount, setClientCount] = useState(0);
-  const [sessionsThisMonth, setSessionsThisMonth] = useState(0);
-  const [adherencePct, setAdherencePct] = useState(null);
-  const [reviewSummary, setReviewSummary] = useState({ review_count: 0, avg_rating: null, five_pct: 0 });
-  const [recentReviews, setRecentReviews] = useState([]);
+  // Stats — hydrated from cache so revisiting paints the real numbers/reviews
+  // instantly instead of counting up from 0 + re-fetching on every mount.
+  const statsCK = `tprofile:stats:${profile?.id || 'x'}`;
+  const cachedStats = useMemo(() => readTrainerCache(statsCK), [statsCK]);
+  const [clientCount, setClientCount] = useState(() => cachedStats?.clientCount ?? 0);
+  const [sessionsThisMonth, setSessionsThisMonth] = useState(() => cachedStats?.sessionsThisMonth ?? 0);
+  const [adherencePct, setAdherencePct] = useState(() => cachedStats?.adherencePct ?? null);
+  const [reviewSummary, setReviewSummary] = useState(
+    () => cachedStats?.reviewSummary || { review_count: 0, avg_rating: null, five_pct: 0 },
+  );
+  const [recentReviews, setRecentReviews] = useState(() => cachedStats?.recentReviews || []);
 
   // (Account list / language / delete-account UX moved to /trainer/settings.)
 
@@ -960,7 +1041,10 @@ export default function TrainerProfile() {
   // the page rendered empty and the editors seeded from nothing (adding one
   // service rebuilt the JSONB from [] and wiped the rest). Fetch our own row
   // and merge it over the context profile; every read below goes through `tp`.
-  const [trainerRow, setTrainerRow] = useState(null);
+  // Hydrate from cache so services/credentials/bio render instantly on revisit
+  // (otherwise the trainer_* lists flash empty until this fetch returns).
+  const rowCK = `tprofile:row:${profile?.id || 'x'}`;
+  const [trainerRow, setTrainerRow] = useState(() => readTrainerCache(rowCK));
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -978,7 +1062,10 @@ export default function TrainerProfile() {
         logger.error('TrainerProfile trainer-row fetch failed', error);
         return;
       }
-      if (data) setTrainerRow(data);
+      if (data) {
+        setTrainerRow(data);
+        writeTrainerCache(rowCK, data);
+      }
     })();
     return () => { cancelled = true; };
   }, [profile?.id]);
@@ -992,19 +1079,12 @@ export default function TrainerProfile() {
   );
 
   // ── Data fetching ────────────────────────
+  // Batched into one pass so the KPI bundle can be written through to cache once
+  // (and revalidate silently behind the hydrated values). On a per-query error
+  // we keep the cached value rather than zeroing the card.
   useEffect(() => {
     if (!profile?.id) return;
-
-    // Active clients
-    supabase
-      .from('trainer_clients')
-      .select('id', { count: 'exact', head: true })
-      .eq('trainer_id', profile.id)
-      .eq('is_active', true)
-      .then(({ count, error }) => {
-        if (error) { logger.error('TrainerProfile client count failed', error); return; }
-        setClientCount(count || 0);
-      });
+    let cancelled = false;
 
     // Sessions this month (completed) — trainer_sessions has no `started_at`
     // column (the old filter errored and the KPI sat at 0 forever); sessions
@@ -1012,70 +1092,97 @@ export default function TrainerProfile() {
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
-    supabase
-      .from('trainer_sessions')
-      .select('id', { count: 'exact', head: true })
-      .eq('trainer_id', profile.id)
-      .eq('status', 'completed')
-      .gte('scheduled_at', monthStart.toISOString())
-      .then(({ count, error }) => {
-        if (error) { logger.error('TrainerProfile sessions count failed', error); return; }
-        setSessionsThisMonth(count || 0);
-      });
 
-    // Avg adherence — average of (completed/planned) across clients for the current week
-    supabase
-      .rpc('get_trainer_adherence', { p_trainer_id: profile.id })
-      .then(({ data }) => {
-        if (Array.isArray(data) && data.length) {
-          const ratios = data
-            .map(r => (r.planned_count > 0 ? r.completed_count / r.planned_count : null))
-            .filter(v => v != null);
-          if (ratios.length) {
-            const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-            setAdherencePct(Math.round(Math.min(1, avg) * 100));
-          }
-        }
-      });
+    (async () => {
+      const prev = readTrainerCache(statsCK);
+      const [clientRes, sessRes, adherenceRes, summaryRes, reviewsRes] = await Promise.all([
+        supabase
+          .from('trainer_clients')
+          .select('id', { count: 'exact', head: true })
+          .eq('trainer_id', profile.id)
+          .eq('is_active', true),
+        supabase
+          .from('trainer_sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('trainer_id', profile.id)
+          .eq('status', 'completed')
+          .gte('scheduled_at', monthStart.toISOString()),
+        supabase.rpc('get_trainer_adherence', { p_trainer_id: profile.id }),
+        supabase.rpc('get_trainer_review_summary', { p_trainer_id: profile.id }),
+        supabase
+          .from('trainer_reviews')
+          .select('id, rating, body, created_at, reviewer_id')
+          .eq('trainer_id', profile.id)
+          .order('created_at', { ascending: false })
+          .limit(3),
+      ]);
+      if (cancelled) return;
 
-    // Review summary
-    supabase
-      .rpc('get_trainer_review_summary', { p_trainer_id: profile.id })
-      .then(({ data }) => {
-        if (Array.isArray(data) && data.length) {
-          const r = data[0];
-          setReviewSummary({
-            review_count: Number(r.review_count) || 0,
-            avg_rating: r.avg_rating != null ? Number(r.avg_rating) : null,
-            five_pct: r.five_pct != null ? Number(r.five_pct) : 0,
-          });
-        }
-      });
+      // Active clients
+      let nextClientCount = prev?.clientCount ?? 0;
+      if (clientRes.error) logger.error('TrainerProfile client count failed', clientRes.error);
+      else nextClientCount = clientRes.count || 0;
 
-    // Recent reviews (top 3) — separate query for the reviewer profile
-    supabase
-      .from('trainer_reviews')
-      .select('id, rating, body, created_at, reviewer_id')
-      .eq('trainer_id', profile.id)
-      .order('created_at', { ascending: false })
-      .limit(3)
-      .then(async ({ data }) => {
-        if (Array.isArray(data) && data.length) {
-          // Reviewer display data comes from the same-gym
-          // gym_member_profiles_safe view (see migration 0289) — reading
-          // `profiles` directly is RLS-limited to ACTIVE clients, so reviews
-          // from deactivated clients rendered as "Anonymous".
-          const ids = [...new Set(data.map(r => r.reviewer_id).filter(Boolean))];
-          const { data: reviewers } = await supabase
-            .from('gym_member_profiles_safe')
-            .select('id, full_name, username, avatar_url')
-            .in('id', ids);
-          const byId = new Map((reviewers || []).map(p => [p.id, p]));
-          setRecentReviews(data.map(r => ({ ...r, reviewer: byId.get(r.reviewer_id) || null })));
-        } else {
-          setRecentReviews([]);
+      // Sessions this month
+      let nextSessions = prev?.sessionsThisMonth ?? 0;
+      if (sessRes.error) logger.error('TrainerProfile sessions count failed', sessRes.error);
+      else nextSessions = sessRes.count || 0;
+
+      // Avg adherence — average of (completed/planned) across clients
+      let nextAdherence = prev?.adherencePct ?? null;
+      if (Array.isArray(adherenceRes.data) && adherenceRes.data.length) {
+        const ratios = adherenceRes.data
+          .map(r => (r.planned_count > 0 ? r.completed_count / r.planned_count : null))
+          .filter(v => v != null);
+        if (ratios.length) {
+          const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+          nextAdherence = Math.round(Math.min(1, avg) * 100);
         }
+      }
+
+      // Review summary
+      let nextSummary = prev?.reviewSummary || { review_count: 0, avg_rating: null, five_pct: 0 };
+      if (Array.isArray(summaryRes.data) && summaryRes.data.length) {
+        const r = summaryRes.data[0];
+        nextSummary = {
+          review_count: Number(r.review_count) || 0,
+          avg_rating: r.avg_rating != null ? Number(r.avg_rating) : null,
+          five_pct: r.five_pct != null ? Number(r.five_pct) : 0,
+        };
+      }
+
+      // Recent reviews (top 3) — reviewer display data comes from the same-gym
+      // gym_member_profiles_safe view (migration 0289); reading `profiles`
+      // directly is RLS-limited to ACTIVE clients, so reviews from deactivated
+      // clients rendered as "Anonymous".
+      let nextReviews = [];
+      if (Array.isArray(reviewsRes.data) && reviewsRes.data.length) {
+        const ids = [...new Set(reviewsRes.data.map(r => r.reviewer_id).filter(Boolean))];
+        const { data: reviewers } = await supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url')
+          .in('id', ids);
+        if (cancelled) return;
+        const byId = new Map((reviewers || []).map(p => [p.id, p]));
+        nextReviews = reviewsRes.data.map(r => ({ ...r, reviewer: byId.get(r.reviewer_id) || null }));
+      }
+
+      setClientCount(nextClientCount);
+      setSessionsThisMonth(nextSessions);
+      setAdherencePct(nextAdherence);
+      setReviewSummary(nextSummary);
+      setRecentReviews(nextReviews);
+
+      writeTrainerCache(statsCK, {
+        clientCount: nextClientCount,
+        sessionsThisMonth: nextSessions,
+        adherencePct: nextAdherence,
+        reviewSummary: nextSummary,
+        recentReviews: nextReviews,
       });
+    })();
+
+    return () => { cancelled = true; };
   }, [profile?.id]);
 
   // ── Helpers — JSONB column writes ────────
@@ -1089,7 +1196,10 @@ export default function TrainerProfile() {
     // Keep the hydrated row in sync so the page reflects the save instantly
     // even when the context profile lags (pre-0528 get_auth_context).
     setTrainerRow(prev => ({ ...(prev || {}), [column]: nextValue }));
-  }, [profile?.id, patchProfile]);
+    // Keep the cache in sync too so a navigate-away-and-back shows the saved
+    // value immediately instead of the pre-edit cached one.
+    writeTrainerCache(rowCK, { ...(readTrainerCache(rowCK) || {}), [column]: nextValue });
+  }, [profile?.id, patchProfile, rowCK]);
 
   // Current value of a JSONB array column. Never rebuilds from an empty
   // assumption: if the value isn't hydrated (undefined), read the column from
@@ -1174,12 +1284,26 @@ export default function TrainerProfile() {
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       await upsertColumn('trainer_cover_url', urlData.publicUrl);
+      setCoverPickerOpen(false);
       showToast(t('pages:trainerProfile.cover.updated', 'Cover updated'), 'success');
     } catch (err) {
       logger.error('TrainerProfile cover upload failed', err);
       showToast(t('pages:trainerProfile.cover.uploadError', 'Failed to upload cover'), 'error');
     } finally {
       setUploadingCover(false);
+    }
+  };
+
+  // Pick one of our preset "portadas" — no upload needed. Stored as a
+  // `preset:<id>` sentinel in the same column; coverBackground() resolves it.
+  const applyPresetCover = async (id) => {
+    try {
+      await upsertColumn('trainer_cover_url', presetValue(id));
+      setCoverPickerOpen(false);
+      showToast(t('pages:trainerProfile.cover.updated', 'Cover updated'), 'success');
+    } catch (err) {
+      logger.error('TrainerProfile preset cover failed', err);
+      showToast(t('pages:trainerProfile.cover.uploadError', 'Failed to upload cover'), 'error');
     }
   };
 
@@ -1339,7 +1463,6 @@ export default function TrainerProfile() {
 
   // ── Derived values (all from the hydrated `tp`) ──
   const displayName = tp?.full_name || tp?.username || t('pages:trainerProfile.trainerBadge', 'Trainer');
-  const initial = (displayName || '?').trim()[0]?.toUpperCase() || 'T';
   const isVerified = !!tp?.trainer_verified;
   const services = Array.isArray(tp?.trainer_services) ? tp.trainer_services : [];
   const credentials = Array.isArray(tp?.trainer_credentials) ? tp.trainer_credentials : [];
@@ -1390,12 +1513,12 @@ export default function TrainerProfile() {
       <div style={{ position: 'relative' }}>
         <div style={{
           height: 130,
-          background: tp?.trainer_cover_url
-            ? `url(${tp.trainer_cover_url}) center/cover, ${COVER_GRADIENT}`
-            : COVER_GRADIENT,
+          background: coverBackground(tp?.trainer_cover_url),
           position: 'relative', overflow: 'hidden',
         }}>
-          {!tp?.trainer_cover_url && (
+          {/* Soft sheen over gradients (default + presets); skipped on a real
+              photo so it doesn't wash the image out. */}
+          {!isPhotoCover(tp?.trainer_cover_url) && (
             <div style={{
               position: 'absolute', inset: 0,
               background: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.18), transparent 50%)',
@@ -1424,9 +1547,9 @@ export default function TrainerProfile() {
               <button
                 type="button"
                 onClick={() => {
-                  // PROD_WEB_URL, not window.location.origin — on Capacitor the
-                  // origin is capacitor://localhost, which is dead for recipients.
-                  const url = `${PROD_WEB_URL}/trainers/${profile?.id || ''}`;
+                  // Smart share link (/t/:id): opens the app if installed, else
+                  // the download landing — never the bare website profile.
+                  const url = trainerShareUrl(profile?.id);
                   if (navigator.share) {
                     navigator.share({ url, title: displayName }).catch(() => {});
                   } else {
@@ -1475,54 +1598,41 @@ export default function TrainerProfile() {
               </button>
             </div>
           </div>
-          {/* Edit cover pill */}
-          <label style={{
-            position: 'absolute', bottom: 12, right: 16, zIndex: 2,
-            padding: '6px 10px', borderRadius: 999,
-            background: 'rgba(0,0,0,0.35)', color: '#fff',
-            fontSize: 10.5, fontWeight: 700,
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            cursor: 'pointer',
-          }}>
+          {/* Edit cover pill — opens the picker (presets + upload) */}
+          <button
+            type="button"
+            onClick={() => setCoverPickerOpen(true)}
+            disabled={uploadingCover}
+            style={{
+              position: 'absolute', bottom: 12, right: 16, zIndex: 2,
+              padding: '6px 10px', borderRadius: 999, border: 'none',
+              background: 'rgba(0,0,0,0.35)', color: '#fff',
+              fontSize: 10.5, fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              cursor: 'pointer',
+            }}>
             {uploadingCover
               ? <Loader2 size={11} color="#fff" className="animate-spin" />
               : <Camera size={11} color="#fff" strokeWidth={2.2} />}
             {t('pages:trainerProfile.cover.edit', 'Edit cover')}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={handleCoverUpload}
-              style={{ display: 'none' }}
-              disabled={uploadingCover}
-            />
-          </label>
+          </button>
         </div>
 
         {/* Avatar */}
         <div style={{ position: 'absolute', left: 16, top: 80, zIndex: 3 }}>
           <div style={{ position: 'relative' }}>
-            {profile?.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={displayName}
-                style={{
-                  width: 90, height: 90, borderRadius: 24,
-                  border: `4px solid ${TT.bg}`,
-                  objectFit: 'cover', display: 'block',
-                }}
-              />
-            ) : (
-              <div style={{
-                width: 90, height: 90, borderRadius: 24,
-                background: AVATAR_GRADIENT,
-                border: `4px solid ${TT.bg}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: TFont.display, fontSize: 36, fontWeight: 900, color: '#06363B',
-                letterSpacing: -1,
-              }}>
-                {initial}
-              </div>
-            )}
+            {/* All avatar types (photo / design / color / initials) via the
+                shared renderer — a chosen color or design used to fall back to
+                the gradient+initials placeholder here. The wrapper carries the
+                4px ring + 24px radius the design expects. */}
+            <div style={{
+              width: 90, height: 90, borderRadius: 24,
+              border: `4px solid ${TT.bg}`,
+              overflow: 'hidden', boxSizing: 'border-box',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <UserAvatar user={tp} size={82} rounded="2xl" />
+            </div>
             {/* Camera button */}
             <button
               type="button"
@@ -1571,10 +1681,7 @@ export default function TrainerProfile() {
               {displayName}
             </div>
             <div style={{ fontSize: 12, color: TT.textSub, marginTop: 4 }}>
-              {tp?.username ? `@${tp.username}` : ''}
-              {tp?.username && tp?.trainer_pronouns ? ' · ' : ''}
-              {tp?.trainer_pronouns || ''}
-              {!tp?.username && !tp?.trainer_pronouns && gymName ? gymName : ''}
+              {tp?.username ? `@${tp.username}` : (gymName || '')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
               {topCredential && (
@@ -1908,8 +2015,9 @@ export default function TrainerProfile() {
             </div>
           </div>
 
-          {/* Bio (long form) */}
-          {profile?.bio && (
+          {/* Bio (long form) — reads from `tp` (profile ∪ trainerRow) so an
+              edit reflects instantly after save, like the other fields here. */}
+          {tp?.bio && (
             <div className="max-w-3xl mx-auto" style={{ padding: '0 16px 14px' }}>
               <div style={{
                 fontFamily: TFont.display, fontSize: 14, fontWeight: 800,
@@ -1921,7 +2029,7 @@ export default function TrainerProfile() {
                 <div style={{
                   fontSize: 13, color: TT.text, lineHeight: 1.5, whiteSpace: 'pre-wrap',
                 }}>
-                  {profile.bio}
+                  {tp.bio}
                 </div>
               </TCard>
             </div>
@@ -2171,6 +2279,74 @@ export default function TrainerProfile() {
         onSave={handleAvatarSave}
         uploading={uploadingAvatar}
       />
+      <ModalShell
+        open={coverPickerOpen}
+        onClose={() => setCoverPickerOpen(false)}
+        title={t('pages:trainerProfile.cover.pickTitle', 'Cover')}
+        maxWidth={460}
+        footer={
+          <label style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            width: '100%', padding: '12px 14px', borderRadius: 12,
+            background: TT.surface2, border: `1px solid ${TT.border}`,
+            color: TT.text, fontFamily: TFont.display, fontWeight: 700, fontSize: 14,
+            cursor: uploadingCover ? 'default' : 'pointer',
+          }}>
+            {uploadingCover
+              ? <Loader2 size={15} className="animate-spin" style={{ color: TT.textMute }} />
+              : <Camera size={15} strokeWidth={2.2} style={{ color: TT.accent }} />}
+            {t('pages:trainerProfile.cover.uploadOwn', 'Upload your own photo')}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={handleCoverUpload}
+              style={{ display: 'none' }}
+              disabled={uploadingCover}
+            />
+          </label>
+        }
+      >
+        <div style={{ padding: '4px 2px' }}>
+          <p style={{ fontSize: 12.5, color: TT.textMute, margin: '0 0 12px', lineHeight: 1.4 }}>
+            {t('pages:trainerProfile.cover.pickHint', 'Pick a cover — no photo needed. Or upload your own below.')}
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {COVER_PRESETS.map((p) => {
+              const selected = presetId(tp?.trainer_cover_url) === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPresetCover(p.id)}
+                  aria-label={p.id}
+                  aria-pressed={selected}
+                  style={{
+                    position: 'relative', height: 66, borderRadius: 12, padding: 0,
+                    background: p.css, overflow: 'hidden', cursor: 'pointer',
+                    border: selected ? `2px solid ${TT.accent}` : `1px solid ${TT.border}`,
+                    boxShadow: selected ? `0 0 0 3px color-mix(in srgb, ${TT.accent} 25%, transparent)` : 'none',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', inset: 0, pointerEvents: 'none',
+                    background: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.20), transparent 55%)',
+                  }} />
+                  {selected && (
+                    <span style={{
+                      position: 'absolute', top: 5, right: 5,
+                      width: 20, height: 20, borderRadius: 999,
+                      background: TT.accent, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Check size={13} strokeWidth={3} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </ModalShell>
       {identityOpen && (
         <EditIdentityModal
           open={identityOpen}

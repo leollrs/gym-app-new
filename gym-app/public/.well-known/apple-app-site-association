@@ -9,7 +9,8 @@
           "/class/*",
           "/invite/*",
           "/referral/*",
-          "/add-friend/*"
+          "/add-friend/*",
+          "/t/*"
         ]
       }
     ]

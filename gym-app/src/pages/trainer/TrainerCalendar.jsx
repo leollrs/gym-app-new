@@ -7,6 +7,7 @@ import {
   Trash2, Bell, BellOff, Repeat, Dumbbell,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { cacheGet, cacheSet, cacheHas, trainerKey } from '../../hooks/useTrainerCache';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -773,15 +774,23 @@ export default function TrainerSchedule() {
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Instant-load cache: seed the primary datasets from the last visit so
+  // navigating back paints immediately, then the useEffects below revalidate
+  // in the background (stale-while-revalidate).
+  const CK_sessions = trainerKey('calendar-sessions', profile?.id);
+  const CK_clients = trainerKey('calendar-clients', profile?.id);
+  const CK_plans = trainerKey('calendar-plans', profile?.id);
+
   const [viewMode, setViewMode] = useState('week');
   const [weekOffset, setWeekOffset] = useState(0);
   const [dayOffset, setDayOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
-  const [sessions, setSessions] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [clientsLoaded, setClientsLoaded] = useState(false);
-  const [workoutPlans, setWorkoutPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState(() => cacheGet(CK_sessions) ?? []);
+  const [clients, setClients] = useState(() => cacheGet(CK_clients) ?? []);
+  const [clientsLoaded, setClientsLoaded] = useState(() => cacheHas(CK_clients));
+  const [workoutPlans, setWorkoutPlans] = useState(() => cacheGet(CK_plans) ?? []);
+  // Spinner only on a true cold load — `sessions` drives every day/week/month view.
+  const [loading, setLoading] = useState(() => !cacheHas(CK_sessions));
   const [modal, setModal] = useState(null);
   // `?client=<id>&book=1` deep-link (messages page contract): open the
   // booking modal with that client preselected. null = no pending request.
@@ -887,7 +896,9 @@ export default function TrainerSchedule() {
       setClientsLoaded(true); // unblock the deep-link modal (opens w/o preselect)
       return; // keep prior list
     }
-    setClients((data || []).map(tc => tc.profiles).filter(Boolean));
+    const nextClients = (data || []).map(tc => tc.profiles).filter(Boolean);
+    setClients(nextClients);
+    cacheSet(CK_clients, nextClients);
     setClientsLoaded(true);
   };
 
@@ -938,6 +949,7 @@ export default function TrainerSchedule() {
       })),
     ];
     setWorkoutPlans(mapped);
+    cacheSet(CK_plans, mapped);
   };
 
   const loadSessions = async () => {
@@ -957,6 +969,7 @@ export default function TrainerSchedule() {
       return; // keep prior sessions
     }
     setSessions(data || []);
+    cacheSet(CK_sessions, data || []);
     setLoading(false);
   };
 

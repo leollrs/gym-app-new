@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Zap, Trash2, Dumbbell, AlertCircle, ArrowRight } from 'lucide-react';
+import { X, Zap, Trash2, Dumbbell, AlertCircle, Pencil } from 'lucide-react';
 import { MUSCLE_GROUPS, getExerciseById } from '../data/exercises';
 import { generateRoutineFromMuscles } from '../lib/workoutGenerator';
 import useFocusTrap from '../hooks/useFocusTrap';
@@ -258,25 +258,28 @@ const CreateRoutineModal = ({ onClose, onSave, saveLabel }) => {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={handleAutoGenerate}
-              disabled={selectedMuscles.length === 0}
-              className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-full text-[13px] font-bold disabled:opacity-50 transition-all text-[var(--color-text-on-accent,#fff)]"
-              style={{ backgroundColor: 'var(--color-accent, #2EC4C4)' }}
-            >
-              <Zap size={16} />
-              {t('createRoutine.autoGenerate')}
-            </button>
-            <button
-              type="button"
-              onClick={handleEditManually}
-              disabled={saving}
-              className="mt-2 flex items-center gap-1 text-[13px] font-medium transition-colors disabled:opacity-50"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              {t('createRoutine.orEditManually')} <ArrowRight size={13} />
-            </button>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={handleAutoGenerate}
+                disabled={selectedMuscles.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-full text-[13px] font-bold disabled:opacity-50 transition-all text-[var(--color-text-on-accent,#fff)]"
+                style={{ backgroundColor: 'var(--color-accent, #2EC4C4)' }}
+              >
+                <Zap size={16} />
+                {t('createRoutine.autoGenerate')}
+              </button>
+              <button
+                type="button"
+                onClick={handleEditManually}
+                disabled={saving}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-full text-[13px] font-bold border-2 disabled:opacity-50 transition-all"
+                style={{ backgroundColor: 'var(--color-surface-hover)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+              >
+                <Pencil size={15} strokeWidth={2.4} />
+                {t('createRoutine.createManually', 'Create manually')}
+              </button>
+            </div>
           </div>
 
           {/* Exercise list */}

@@ -1,0 +1,10 @@
+# The Vercel web build only needs the gym-app/ source + root vercel.json; it runs
+# its own `npm install` + `vite build`. Excluding these keeps the upload under
+# Vercel's 15k-file limit (the native projects + node_modules blew past it and
+# forced a --archive=tgz workaround on the first deploy).
+node_modules
+dist
+ios
+android
+.git
+*.log

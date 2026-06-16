@@ -4,10 +4,11 @@ import {
   Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell,
   ClipboardList, Search, ToggleLeft, ToggleRight, ArrowLeft, StickyNote,
   ChevronUp, FileText, Calendar, Zap, Loader2, RefreshCw, Pencil,
-  Activity, Target, MoreHorizontal,
+  Activity, Target, MoreHorizontal, Minus, GripVertical, Link2, Check,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useScrollLock } from '../../hooks/useScrollLock';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
 import { selectAllRows } from '../../lib/churn/batchedSelect';
@@ -41,15 +42,46 @@ const DEFAULT_SETS = 3;
 const DEFAULT_REPS = '8-12';
 const DEFAULT_REST = 60;
 
+// Transient per-row id — stable identity for drag-reorder + React keys within
+// a session. NOT persisted (stripped in buildWeeksPayload). `ss` IS persisted:
+// it's the superset-group token (null | 'A' | 'B' …) shared by consecutive
+// exercises that should run as a superset.
+let _uidSeq = 0;
+const newUid = () => `x${(_uidSeq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
 const normalizeExercise = (ex) => {
-  if (typeof ex === 'string') return { id: ex, sets: DEFAULT_SETS, reps: DEFAULT_REPS, rest_seconds: DEFAULT_REST, notes: '' };
+  if (typeof ex === 'string') return { _uid: newUid(), id: ex, sets: DEFAULT_SETS, reps: DEFAULT_REPS, rest_seconds: DEFAULT_REST, notes: '', ss: null };
   return {
+    _uid: ex._uid || newUid(),
     id: ex.id,
     sets: ex.sets ?? DEFAULT_SETS,
     reps: ex.reps ?? DEFAULT_REPS,
     rest_seconds: ex.rest_seconds ?? DEFAULT_REST,
     notes: ex.notes ?? '',
+    ss: ex.ss ?? null,
   };
+};
+
+// Next free superset-group letter within a day's exercise list.
+const nextSS = (items) => {
+  const used = new Set(items.map(x => x.ss).filter(Boolean));
+  for (let i = 0; i < 26; i++) { const c = String.fromCharCode(65 + i); if (!used.has(c)) return c; }
+  return 'Z' + items.length;
+};
+
+// Group consecutive items sharing a non-null `ss` into superset runs (≥2).
+const groupExercises = (items) => {
+  const out = []; let i = 0;
+  while (i < items.length) {
+    const it = items[i];
+    if (it.ss) {
+      const run = [it]; let j = i + 1;
+      while (j < items.length && items[j].ss === it.ss) { run.push(items[j]); j++; }
+      if (run.length > 1) { out.push({ type: 'ss', ss: it.ss, items: run }); i = j; continue; }
+    }
+    out.push({ type: 'single', items: [it] }); i++;
+  }
+  return out;
 };
 
 const normalizeWeeks = (raw, t) => {
@@ -132,10 +164,184 @@ const getMuscleColor = (group) => {
   return MUSCLE_GROUP_COLORS[key] || MUSCLE_FALLBACK;
 };
 
-// ── Exercise Search Panel ────────────────────────────────
-const ExerciseSearchPanel = ({ exercises, exSearch, setExSearch, onAdd, exLabel, muscleLabelFor, t }) => {
+// ── Tap-to-type number stepper (keeps +/−, but the value itself is editable) ──
+const Stepper = ({ value, onChange, suffix = '', min = 0, max = 999, step = 1, w = 42, accent = false }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+  const inputRef = useRef(null);
+  useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [editing]);
+  const commit = () => {
+    let n = parseInt(draft, 10);
+    if (isNaN(n)) n = value;
+    n = Math.max(min, Math.min(max, n));
+    onChange(n); setEditing(false);
+  };
+  const bump = (dir) => onChange(Math.max(min, Math.min(max, value + dir * step)));
+  const btn = (dir) => (
+    <button type="button" onPointerDown={e => e.stopPropagation()} onClick={() => bump(dir)}
+      className="flex items-center justify-center rounded-lg active:scale-90 transition-transform flex-shrink-0"
+      style={{ width: 30, height: 30, background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
+      {dir < 0 ? <Minus size={14} /> : <Plus size={14} />}
+    </button>
+  );
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      {btn(-1)}
+      <div onPointerDown={e => e.stopPropagation()} onClick={() => { setDraft(String(value)); setEditing(true); }}
+        className="flex items-center justify-center cursor-text"
+        style={{
+          minWidth: w, height: 30, padding: '0 6px', borderRadius: 9,
+          background: editing ? TT.surface : (accent ? TT.accentSoft : 'transparent'),
+          border: `1.5px solid ${editing ? TT.accent : 'transparent'}`,
+          boxShadow: editing ? `0 0 0 3px ${TT.accentSoft}` : 'none',
+        }}>
+        {editing ? (
+          <input ref={inputRef} value={draft} inputMode="numeric"
+            onChange={e => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+            onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+            className="bg-transparent text-center outline-none p-0"
+            style={{ width: w - 8, fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text }} />
+        ) : (
+          <span style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: accent ? TT.accentInk : TT.text, fontVariantNumeric: 'tabular-nums' }}>{value}{suffix}</span>
+        )}
+      </div>
+      {btn(1)}
+    </div>
+  );
+};
+
+// ── Free-text mini field for rep ranges ("8-12"), tap-to-type ──
+const TextStepField = ({ value, onChange, w = 64, placeholder }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef(null);
+  useEffect(() => { if (editing && ref.current) { ref.current.focus(); ref.current.select(); } }, [editing]);
+  const commit = () => { onChange((draft ?? '').toString().trim() || value); setEditing(false); };
+  return (
+    <div onPointerDown={e => e.stopPropagation()} onClick={() => { setDraft(value); setEditing(true); }}
+      className="flex items-center justify-center cursor-text"
+      style={{
+        minWidth: w, height: 30, padding: '0 10px', borderRadius: 9,
+        background: editing ? TT.surface : TT.accentSoft,
+        border: `1.5px solid ${editing ? TT.accent : 'transparent'}`,
+        boxShadow: editing ? `0 0 0 3px ${TT.accentSoft}` : 'none',
+      }}>
+      {editing ? (
+        <input ref={ref} value={draft} placeholder={placeholder}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+          className="bg-transparent text-center outline-none p-0"
+          style={{ width: w - 8, fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text }} />
+      ) : (
+        <span style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.accentInk }}>{value}</span>
+      )}
+    </div>
+  );
+};
+
+// ── Pointer drag-to-reorder (replaces the up/down arrows). The grabbed card
+//    LIFTS and tracks the finger (translateY) while the list live-reorders by
+//    midpoint crossing underneath; the follow offset is compensated for each
+//    reorder shift so the card stays glued to the pointer. Stable handlers read
+//    the latest ids/onReorder from a ref so window listeners attach/detach
+//    cleanly. ──
+const DRAG_GAP = 8; // matches the `space-y-2` (0.5rem) gap between cards
+function useDragSort(ids, onReorder) {
+  const [drag, setDrag] = useState(null); // { id, startY, y, from, h }
+  const latest = useRef({ ids, onReorder });
+  latest.current.ids = ids;
+  latest.current.onReorder = onReorder;
+  const st = useRef({});
+  const h = useRef(null);
+  if (!h.current) {
+    const move = (e) => {
+      const s = st.current;
+      if (!s.id) return;
+      setDrag(d => (d ? { ...d, y: e.clientY } : d));
+      let idx = 0;
+      for (let i = 0; i < s.rects.length; i++) {
+        const mid = s.rects[i].rect.top + s.rects[i].rect.height / 2;
+        if (e.clientY > mid) idx = i + 1;
+      }
+      const cur = s.order.indexOf(s.id);
+      idx = Math.max(0, Math.min(s.order.length - 1, idx > cur ? idx - 1 : idx));
+      if (idx !== s.lastIndex) {
+        const next = s.order.filter(x => x !== s.id);
+        next.splice(idx, 0, s.id);
+        s.order = next; s.lastIndex = idx;
+        latest.current.onReorder(next.slice());
+      }
+    };
+    const end = () => {
+      st.current = {};
+      setDrag(null);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+    const start = (id, e, rowEl) => {
+      e.preventDefault(); e.stopPropagation();
+      const root = rowEl?.closest('[data-dragroot]');
+      if (!root) return;
+      const rows = Array.from(root.querySelectorAll('[data-dragitem]'));
+      const rects = rows.map(r => ({ id: r.getAttribute('data-dragitem'), rect: r.getBoundingClientRect() }));
+      const from = latest.current.ids.indexOf(id);
+      const cardH = rects[from]?.rect.height || 0;
+      st.current = { id, order: latest.current.ids.slice(), rects, lastIndex: from };
+      setDrag({ id, startY: e.clientY, y: e.clientY, from, h: cardH });
+      try { rowEl.setPointerCapture(e.pointerId); } catch (_) { /* capture optional */ }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+    };
+    h.current = { start, end };
+  }
+  useEffect(() => () => h.current?.end?.(), []);
+  // translateY for the grabbed card: follow the finger, minus the flow shift
+  // already applied by live reordering, so it stays under the pointer.
+  const draggedTranslate = () => {
+    if (!drag) return 0;
+    const curIndex = latest.current.ids.indexOf(drag.id);
+    return (drag.y - drag.startY) - (curIndex - drag.from) * (drag.h + DRAG_GAP);
+  };
+  return { dragId: drag?.id ?? null, draggedTranslate, start: h.current.start };
+}
+
+// ── Custom-weeks input — holds a draft string so the field can be CLEARED and
+//    retyped. A plain controlled number input bound to durationWeeks snapped
+//    back to the current value on empty, so you couldn't erase "4" to type "5"
+//    (it became "45"). Commits live when 1–52; clamps/reverts on blur. ──
+const CustomWeeksInput = ({ value, onCommit, color, ariaLabel }) => {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => { setDraft(String(value)); }, [value]);
+  return (
+    <input type="number" inputMode="numeric" min={1} max={52}
+      value={draft}
+      onChange={e => {
+        const raw = e.target.value;
+        setDraft(raw);
+        const v = parseInt(raw, 10);
+        if (!isNaN(v) && v >= 1 && v <= 52) onCommit(v);
+      }}
+      onBlur={() => {
+        const v = parseInt(draft, 10);
+        if (isNaN(v) || v < 1) { setDraft(String(value)); }
+        else { const c = Math.min(52, v); onCommit(c); setDraft(String(c)); }
+      }}
+      aria-label={ariaLabel}
+      className="w-9 bg-transparent text-center text-[12px] font-semibold outline-none"
+      style={{ color }} />
+  );
+};
+
+// ── Exercise picker — member-style live search, muscle + equipment filter
+//    chips, tap-to-toggle multi-select, running-count footer. Rendered inside
+//    a bottom sheet by PlanBuilder (replaces the old per-day inline panel). ──
+const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor, t }) => {
+  const [q, setQ] = useState('');
   const [muscle, setMuscle] = useState('all');
   const [equipment, setEquipment] = useState('all');
+  const [sel, setSel] = useState({}); // id -> ex
   const equipmentLabelFor = useCallback((eq) => (eq ? t(`equipment.${eq}`, eq) : ''), [t]);
 
   const muscles = useMemo(() => {
@@ -147,131 +353,250 @@ const ExerciseSearchPanel = ({ exercises, exSearch, setExSearch, onAdd, exLabel,
     return ['all', ...[...present].sort()];
   }, [exercises]);
 
-  const filteredExercises = useMemo(() => {
-    const q = exSearch.trim().toLowerCase();
+  const results = useMemo(() => {
+    const query = q.trim().toLowerCase();
     return exercises.filter(e => {
       if (muscle !== 'all' && e.muscle_group !== muscle) return false;
       if (equipment !== 'all' && e.equipment !== equipment) return false;
-      if (!q) return true;
-      return e.name?.toLowerCase().includes(q) ||
-        e.name_es?.toLowerCase().includes(q) ||
-        e.muscle_group?.toLowerCase().includes(q) ||
-        muscleLabelFor(e.muscle_group)?.toLowerCase().includes(q) ||
-        e.equipment?.toLowerCase().includes(q) ||
-        equipmentLabelFor(e.equipment)?.toLowerCase().includes(q);
+      if (!query) return true;
+      return e.name?.toLowerCase().includes(query) ||
+        e.name_es?.toLowerCase().includes(query) ||
+        e.muscle_group?.toLowerCase().includes(query) ||
+        muscleLabelFor(e.muscle_group)?.toLowerCase().includes(query) ||
+        e.equipment?.toLowerCase().includes(query) ||
+        equipmentLabelFor(e.equipment)?.toLowerCase().includes(query);
     });
-  }, [exercises, exSearch, muscle, equipment, muscleLabelFor, equipmentLabelFor]);
+  }, [exercises, q, muscle, equipment, muscleLabelFor, equipmentLabelFor]);
 
-  const chipStyle = (active) => ({
-    padding: '5px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
-    whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0,
-    border: `1px solid ${active ? TT.accent : TT.border}`,
-    background: active ? TT.accent : TT.surface2,
+  const selCount = Object.keys(sel).length;
+  const toggle = (ex) => setSel(s => { const n = { ...s }; if (n[ex.id]) delete n[ex.id]; else n[ex.id] = ex; return n; });
+
+  const chip = (active) => ({
+    flexShrink: 0, height: 34, padding: '0 13px', borderRadius: 999, cursor: 'pointer',
+    fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
+    border: `1.5px solid ${active ? TT.accent : TT.border}`,
+    background: active ? TT.accent : TT.surface,
     color: active ? '#fff' : TT.textSub,
+    boxShadow: active ? TT.shadow : 'none',
   });
 
   return (
-    <div className="space-y-2">
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: TT.textMute }} />
-        <input
-          value={exSearch}
-          onChange={e => setExSearch(e.target.value)}
-          placeholder={t('trainerPlans.searchExercises', 'Search exercises...')}
-          className="w-full rounded-xl pl-9 pr-10 py-3 text-[16px] sm:text-[13px] outline-none"
-          style={{ background: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }}
-          onFocus={e => { e.target.style.borderColor = TT.accent; }}
-          onBlur={e => { e.target.style.borderColor = TT.border; }}
-        />
-        {exSearch && (
-          <button
-            onClick={() => setExSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full transition-colors"
-            style={{ background: TT.surface, color: TT.textMute }}
-          >
-            <X size={10} />
-          </button>
-        )}
+    <div className="flex flex-col h-full relative" style={{ background: TT.bg }}>
+      {/* grabber */}
+      <div className="flex justify-center pt-2.5 pb-1 flex-shrink-0">
+        <div style={{ width: 40, height: 5, borderRadius: 999, background: TT.borderStrong }} />
       </div>
-      {/* Muscle-group filter chips (member-style) */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
-        {muscles.map(m => (
-          <button key={m} type="button" onClick={() => setMuscle(m)} style={chipStyle(muscle === m)}>
-            {m === 'all' ? t('trainerPlans.allMuscles', 'All') : muscleLabelFor(m)}
+      {/* header + search */}
+      <div className="px-4 pt-1 pb-3 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[19px] font-extrabold" style={{ fontFamily: TFont.display, color: TT.text, letterSpacing: -0.4 }}>
+            {t('trainerPlans.addExercises', 'Add exercises')}
+          </h3>
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: TT.surface2, color: TT.textSub }}>
+            <X size={17} />
           </button>
-        ))}
-      </div>
-      {/* Equipment filter chips (only when there's a real choice) */}
-      {equipmentList.length > 2 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
-          {equipmentList.map(eq => (
-            <button key={eq} type="button" onClick={() => setEquipment(eq)} style={chipStyle(equipment === eq)}>
-              {eq === 'all' ? t('trainerPlans.allEquipment', 'All equipment') : equipmentLabelFor(eq)}
+        </div>
+        <div className="relative">
+          <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: TT.textMute }} />
+          <input value={q} onChange={e => setQ(e.target.value)} autoFocus
+            placeholder={t('trainerPlans.searchExercisesFull', 'Search by name, muscle or equipment…')}
+            className="w-full rounded-2xl pl-11 pr-10 outline-none"
+            style={{ height: 50, fontSize: 16, fontWeight: 500, background: TT.surface, border: `1.5px solid ${TT.border}`, color: TT.text }}
+            onFocus={e => { e.target.style.borderColor = TT.accent; }}
+            onBlur={e => { e.target.style.borderColor = TT.border; }} />
+          {q && (
+            <button onClick={() => setQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: TT.surface2, color: TT.textSub }}>
+              <X size={12} />
             </button>
+          )}
+        </div>
+      </div>
+      {/* filter chips */}
+      <div className="flex-shrink-0 space-y-2 pb-2">
+        <div className="flex gap-1.5 overflow-x-auto px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+          <button onClick={() => setMuscle('all')} style={chip(muscle === 'all')}>{t('trainerPlans.allMuscles', 'All')}</button>
+          {muscles.filter(m => m !== 'all').map(m => (
+            <button key={m} onClick={() => setMuscle(muscle === m ? 'all' : m)} style={chip(muscle === m)}>{muscleLabelFor(m)}</button>
           ))}
         </div>
-      )}
-      <div className="space-y-0.5 max-h-[320px] overflow-y-auto overscroll-contain">
-        {filteredExercises.length === 0 && (
-          <p className="text-[12px] text-center py-4" style={{ color: TT.textMute }}>{t('trainerPlans.noExercisesFound', 'No exercises found')}</p>
+        {equipmentList.length > 2 && (
+          <div className="flex gap-1.5 overflow-x-auto px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+            <button onClick={() => setEquipment('all')} style={chip(equipment === 'all')}>{t('trainerPlans.allEquipment', 'All equipment')}</button>
+            {equipmentList.filter(e => e !== 'all').map(eq => (
+              <button key={eq} onClick={() => setEquipment(equipment === eq ? 'all' : eq)} style={chip(equipment === eq)}>{equipmentLabelFor(eq)}</button>
+            ))}
+          </div>
         )}
-        {filteredExercises.map(ex => {
-          const mc = getMuscleColor(ex.muscle_group);
-          return (
-            <button
-              key={ex.id}
-              onClick={() => onAdd(ex.id)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left active:scale-[0.98] transition-all group min-h-[48px]"
-              onMouseEnter={e => { e.currentTarget.style.background = TT.surface2; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-            >
-              <Plus size={14} className="flex-shrink-0 transition-colors" style={{ color: TT.textMute }} />
-              <div className="min-w-0 flex-1 flex items-center gap-2">
-                <p className="text-[13px] truncate" style={{ color: TT.text }}>{exLabel(ex)}</p>
-                {ex.muscle_group && (
-                  <span
-                    className="flex-shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
-                    style={{ background: mc.bg, color: mc.text }}
-                  >
-                    {muscleLabelFor(ex.muscle_group)}
-                  </span>
-                )}
-              </div>
-            </button>
-          );
-        })}
       </div>
+      {/* results */}
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-1" style={{ paddingBottom: selCount ? 100 : 24, WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex items-center justify-between px-1 pb-2">
+          <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: TT.textMute }}>{q ? t('trainerPlans.results', 'Results') : t('trainerPlans.exercisesLabel', 'Exercises')}</span>
+          <span className="text-[11px] font-bold" style={{ color: TT.textMute }}>{results.length}</span>
+        </div>
+        {results.length === 0 ? (
+          <div className="py-10 text-center">
+            <p className="text-[14px] font-bold" style={{ color: TT.textSub }}>{t('trainerPlans.noExercisesFound', 'No exercises found')}</p>
+            <p className="text-[12px] mt-1" style={{ color: TT.textMute }}>{t('trainerPlans.tryAnother', 'Try another name or clear the filters.')}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {results.map(ex => {
+              const selected = !!sel[ex.id];
+              const mc = getMuscleColor(ex.muscle_group);
+              return (
+                <button key={ex.id} onClick={() => toggle(ex)}
+                  className="w-full flex items-center gap-3 text-left rounded-2xl px-3 py-2.5 active:scale-[0.99] transition-transform"
+                  style={{ background: selected ? TT.accentSoft : TT.surface, border: `1.5px solid ${selected ? TT.accent : TT.border}` }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: mc.bg, color: mc.text }}>
+                    <Dumbbell size={18} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-bold truncate" style={{ fontFamily: TFont.display, color: TT.text }}>{exLabel(ex)}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {ex.muscle_group && <span className="text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: mc.bg, color: mc.text }}>{muscleLabelFor(ex.muscle_group)}</span>}
+                      {ex.equipment && <span className="text-[11px] truncate" style={{ color: TT.textMute }}>{equipmentLabelFor(ex.equipment)}</span>}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: selected ? TT.accent : TT.surface2, border: selected ? 'none' : `1.5px solid ${TT.border}` }}>
+                    {selected ? <Check size={16} color="#fff" /> : <Plus size={16} style={{ color: TT.textSub }} />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {/* footer */}
+      {selCount > 0 && (
+        <div className="absolute left-0 right-0 bottom-0 px-4 pt-4" style={{ paddingBottom: 'calc(20px + env(safe-area-inset-bottom))', background: `linear-gradient(to top, ${TT.bg} 72%, transparent)` }}>
+          <button onClick={() => onAddMany(Object.values(sel))}
+            className="w-full flex items-center justify-center gap-2.5 rounded-2xl active:scale-[0.99] transition-transform"
+            style={{ height: 54, background: TT.accent, color: '#fff', fontFamily: TFont.display, fontSize: 16, fontWeight: 800, boxShadow: '0 8px 22px rgba(30,156,142,0.34)' }}>
+            <span className="flex items-center justify-center rounded-full" style={{ width: 26, height: 26, background: 'rgba(255,255,255,0.22)', fontSize: 14, fontWeight: 800 }}>{selCount}</span>
+            {selCount === 1 ? t('trainerPlans.addOneExercise', 'Add exercise') : t('trainerPlans.addManyExercises', 'Add {{n}} exercises', { n: selCount })}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
 
-// ── Day Card (within builder) ────────────────────────────
-const DayCard = ({ day, di, wk, exercises, exName, exLabel, muscleLabelFor, updateDayName, removeDay, addExercise, removeExercise, updateExercise, moveExercise, copyDayMenu, setCopyDayMenu, setCopyWeekMenu, allDayTargets, copyDayTo, t }) => {
+// ── Day Card (Direction A — drag-grip reorder, tap-to-type, supersets) ──
+const DayCard = ({ day, di, wk, exMuscle, exName, muscleLabelFor, updateDayName, removeDay, onAddExercise, removeExercise, updateExercise, duplicateExercise, reorderExercises, linkExercise, unlinkSuperset, copyDayMenu, setCopyDayMenu, setCopyWeekMenu, allDayTargets, copyDayTo, t }) => {
   const dayTime = calcDaySeconds(day);
   const showCopyDay = copyDayMenu?.wk === wk && copyDayMenu?.di === di;
   const dayTargets = allDayTargets(wk, di);
   const [expanded, setExpanded] = useState(true);
-  const [showExSearch, setShowExSearch] = useState(false);
-  const [exSearch, setExSearch] = useState('');
   const [expandedNotes, setExpandedNotes] = useState({});
+  const toggleNote = (key) => setExpandedNotes(prev => ({ ...prev, [key]: !prev[key] }));
 
-  const toggleNote = (ei) => setExpandedNotes(prev => ({ ...prev, [ei]: !prev[ei] }));
+  const items = day.exercises;
+  const orderIds = items.map(e => e._uid);
+  const { dragId, draggedTranslate, start } = useDragSort(orderIds, (ids) => reorderExercises(wk, di, ids));
+  const groups = groupExercises(items);
+
+  // One white exercise card. `ei` is its live index (for the index-based
+  // update/remove/duplicate handlers); drag identity is the stable `_uid`.
+  const exerciseCard = (ex) => {
+    const ei = items.findIndex(x => x._uid === ex._uid);
+    const mg = exMuscle(ex.id);
+    const mc = getMuscleColor(mg);
+    const dragging = dragId === ex._uid;
+    const ty = dragging ? draggedTranslate() : 0;
+    const noteOpen = expandedNotes[ex._uid] || ex.notes;
+    const labelCol = { fontSize: 12, fontWeight: 600, color: TT.textSub };
+    return (
+      <div key={ex._uid} data-dragitem={ex._uid}
+        className="rounded-2xl px-3 pt-3 pb-3.5"
+        style={{
+          background: TT.surface,
+          border: `1.5px solid ${dragging ? TT.accent : TT.border}`,
+          boxShadow: dragging ? TT.shadowLg : '0 1px 2px rgba(0,0,0,0.04)',
+          transform: dragging ? `translateY(${ty}px) scale(1.03)` : 'none',
+          opacity: dragging ? 0.97 : 1,
+          position: 'relative', zIndex: dragging ? 30 : 1,
+          // grabbed card tracks the finger 1:1 (no transition); on drop it
+          // settles into its new slot with a short ease.
+          transition: dragging ? 'none' : 'transform 170ms cubic-bezier(0.2,0.9,0.3,1), box-shadow 140ms',
+          willChange: dragging ? 'transform' : undefined,
+        }}>
+        {/* row 1: grip + name/muscle + duplicate + delete */}
+        <div className="flex items-center gap-2">
+          <div onPointerDown={(e) => start(ex._uid, e, e.currentTarget.closest('[data-dragitem]'))}
+            className="flex items-center justify-center flex-shrink-0 -ml-1"
+            style={{ width: 28, height: 36, cursor: 'grab', touchAction: 'none', color: TT.textMute }}>
+            <GripVertical size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[14.5px] font-bold truncate" style={{ fontFamily: TFont.display, color: TT.text }}>{exName(ex.id)}</p>
+            {mg && <span className="inline-block mt-1 text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: mc.bg, color: mc.text }}>{muscleLabelFor(mg)}</span>}
+          </div>
+          <button onPointerDown={e => e.stopPropagation()} onClick={() => duplicateExercise(wk, di, ei)}
+            aria-label={t('trainerPlans.duplicate', 'Duplicate')}
+            className="w-8 h-9 flex items-center justify-center flex-shrink-0" style={{ color: TT.textMute }}>
+            <Copy size={15} />
+          </button>
+          <button onPointerDown={e => e.stopPropagation()} onClick={() => removeExercise(wk, di, ei)}
+            aria-label={t('trainerPlans.remove', 'Remove')}
+            className="w-8 h-9 flex items-center justify-center flex-shrink-0 -mr-1" style={{ color: TT.textMute }}
+            onMouseEnter={e => { e.currentTarget.style.color = TT.hot; }}
+            onMouseLeave={e => { e.currentTarget.style.color = TT.textMute; }}>
+            <Trash2 size={15} />
+          </button>
+        </div>
+        {/* row 2: series + reps */}
+        <div className="flex items-center flex-wrap gap-x-5 gap-y-2.5 mt-3 pl-6">
+          <div className="flex items-center gap-2">
+            <span style={labelCol}>{t('trainerPlans.sets', 'Sets')}</span>
+            <Stepper value={ex.sets ?? DEFAULT_SETS} onChange={v => updateExercise(wk, di, ei, 'sets', v)} min={1} max={12} w={40} accent />
+          </div>
+          <div className="flex items-center gap-2">
+            <span style={labelCol}>{t('trainerPlans.reps', 'Reps')}</span>
+            <TextStepField value={ex.reps ?? DEFAULT_REPS} onChange={v => updateExercise(wk, di, ei, 'reps', v)} placeholder={t('trainerPlans.repsPlaceholder', '8-12')} />
+          </div>
+        </div>
+        {/* row 3: rest + note toggle */}
+        <div className="flex items-center flex-wrap gap-x-5 gap-y-2.5 mt-2.5 pl-6">
+          <div className="flex items-center gap-2">
+            <span style={labelCol}>{t('trainerPlans.rest', 'Rest')}</span>
+            <Stepper value={ex.rest_seconds ?? DEFAULT_REST} onChange={v => updateExercise(wk, di, ei, 'rest_seconds', v)} suffix="s" min={0} max={600} step={15} w={54} />
+          </div>
+          <button onPointerDown={e => e.stopPropagation()} onClick={() => toggleNote(ex._uid)}
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold"
+            style={{ color: noteOpen ? TT.accentInk : TT.textMute }}>
+            <StickyNote size={14} /> {ex.notes ? t('trainerPlans.noteAdded', 'Note added') : t('trainerPlans.addNote', 'Add note')}
+          </button>
+        </div>
+        {/* note textarea — pinned mounted until blurred empty */}
+        {noteOpen ? (
+          <textarea value={ex.notes || ''} onPointerDown={e => e.stopPropagation()}
+            onChange={e => updateExercise(wk, di, ei, 'notes', e.target.value)}
+            onFocus={() => setExpandedNotes(prev => ({ ...prev, [ex._uid]: true }))}
+            onBlur={e => { if (!e.target.value.trim()) setExpandedNotes(prev => ({ ...prev, [ex._uid]: false })); }}
+            maxLength={500} rows={2}
+            placeholder={t('trainerPlans.trainerNotesPlaceholder', 'e.g., Tempo 3-1-2, pause at bottom')}
+            className="mt-2.5 ml-6 rounded-xl px-3 py-2 text-[16px] sm:text-[13px] outline-none resize-none"
+            style={{ width: 'calc(100% - 1.5rem)', background: TT.surface2, border: `1px solid ${TT.border}`, color: TT.textSub }} />
+        ) : null}
+      </div>
+    );
+  };
 
   return (
-    <div className="rounded-2xl overflow-visible" style={{ border: `1px solid ${TT.border}`, background: TT.surface }}>
+    <div className="rounded-2xl overflow-visible" style={{ border: `1px solid ${TT.border}`, background: TT.surface2 }}>
       {/* Day header - whole header tappable for expand/collapse */}
       <div
         className="flex items-center gap-1 md:gap-2 px-3 md:px-4 py-3 rounded-t-2xl cursor-pointer transition-colors"
-        style={{ background: TT.surface2 }}
         onClick={() => setExpanded(!expanded)}
       >
-        <ChevronDown size={14} className={`transition-transform flex-shrink-0 ${expanded ? '' : '-rotate-90'}`} style={{ color: TT.textMute }} />
+        <ChevronDown size={16} className={`transition-transform flex-shrink-0 ${expanded ? '' : '-rotate-90'}`} style={{ color: TT.textMute }} />
         <input value={day.name} onChange={e => updateDayName(wk, di, e.target.value)}
           onClick={e => e.stopPropagation()}
           placeholder={t('trainerPlans.dayPrefix', 'Day {{num}}', { num: di + 1 })}
-          className="flex-1 bg-transparent text-[14px] font-semibold outline-none min-w-0" style={{ color: TT.text }} />
+          className="flex-1 bg-transparent text-[15px] font-extrabold outline-none min-w-0" style={{ fontFamily: TFont.display, color: TT.text }} />
         <span className="text-[11px] flex-shrink-0 flex items-center gap-1.5" style={{ color: TT.textMute }}>
-          <span>{day.exercises.length} {t('trainerPlans.ex', 'ex')}</span>
+          <span>{items.length} {t('trainerPlans.ex', 'ex')}</span>
           {dayTime > 0 && (
             <>
               <span className="opacity-40">&middot;</span>
@@ -291,7 +616,7 @@ const DayCard = ({ day, di, wk, exercises, exName, exLabel, muscleLabelFor, upda
               {dayTargets.map((target, idx) => (
                 <button key={idx} onClick={() => copyDayTo(wk, di, target.wk, target.di)}
                   className="w-full text-left px-3 py-2 text-[12px] transition-colors min-h-[44px] flex items-center" style={{ color: TT.text }}
-                  onMouseEnter={e => { e.currentTarget.style.background = TT.surface2; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = TT.surface; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                   {target.label}
                 </button>
@@ -309,9 +634,9 @@ const DayCard = ({ day, di, wk, exercises, exName, exLabel, muscleLabelFor, upda
 
       {/* Exercises */}
       {expanded && (
-        <div className="px-3 md:px-4 pb-4 pt-3 space-y-2">
+        <div className="px-3 md:px-4 pb-4 pt-2">
           {/* Empty state */}
-          {day.exercises.length === 0 && (
+          {items.length === 0 && (
             <div className="py-8 text-center">
               <Dumbbell size={24} className="mx-auto mb-2" style={{ color: TT.textMute }} />
               <p className="text-[12px]" style={{ color: TT.textMute }}>{t('trainerPlans.noExercisesYet', 'No exercises yet')}</p>
@@ -319,117 +644,53 @@ const DayCard = ({ day, di, wk, exercises, exName, exLabel, muscleLabelFor, upda
             </div>
           )}
 
-          {day.exercises.map((ex, ei) => (
-            <div key={ei} className="rounded-xl px-3 py-3" style={{ background: TT.surface2 }}>
-              {/* Exercise name + reorder + delete */}
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[13px] font-semibold flex-1 min-w-0 truncate" style={{ color: TT.text }}>{exName(ex.id)}</span>
-                {/* Real reorder controls (replaced the decorative drag handle) */}
-                <button onClick={() => moveExercise(wk, di, ei, -1)} disabled={ei === 0}
-                  aria-label={t('trainerPlans.moveUp', 'Move up')}
-                  className="min-w-[32px] min-h-[36px] flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-25"
-                  style={{ color: TT.textMute }}>
-                  <ChevronUp size={13} />
-                </button>
-                <button onClick={() => moveExercise(wk, di, ei, 1)} disabled={ei === day.exercises.length - 1}
-                  aria-label={t('trainerPlans.moveDown', 'Move down')}
-                  className="min-w-[32px] min-h-[36px] flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-25"
-                  style={{ color: TT.textMute }}>
-                  <ChevronDown size={13} />
-                </button>
-                <button onClick={() => removeExercise(wk, di, ei)}
-                  className="min-w-[36px] min-h-[36px] flex items-center justify-center transition-colors flex-shrink-0 -mr-1" style={{ color: TT.textMute }}
-                  onMouseEnter={e => { e.currentTarget.style.color = TT.hot; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = TT.textMute; }}>
-                  <Trash2 size={12} />
-                </button>
-              </div>
-              {/* Sets / Reps / Rest controls - compact row below name */}
-              <div className="flex items-center gap-2 flex-wrap pb-0.5">
-                {/* Sets */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-[10px] mr-0.5" style={{ color: TT.textMute }}>{t('trainerPlans.sets', 'Sets')}:</span>
-                  <button onClick={() => updateExercise(wk, di, ei, 'sets', Math.max(1, (ex.sets ?? DEFAULT_SETS) - 1))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>&minus;</button>
-                  <span className="text-[12px] font-medium w-5 text-center" style={{ color: TT.text }}>{ex.sets ?? DEFAULT_SETS}</span>
-                  <button onClick={() => updateExercise(wk, di, ei, 'sets', Math.min(10, (ex.sets ?? DEFAULT_SETS) + 1))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>+</button>
-                </div>
-                {/* Reps */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-[10px] mr-0.5" style={{ color: TT.textMute }}>{t('trainerPlans.reps', 'Reps')}:</span>
-                  <input value={ex.reps ?? DEFAULT_REPS}
-                    onChange={e => updateExercise(wk, di, ei, 'reps', e.target.value)}
-                    className="w-16 rounded-lg px-2 py-1.5 text-[12px] text-center outline-none min-h-[36px]" style={{ background: TT.surface, color: TT.text, border: `1px solid ${TT.border}` }}
-                    placeholder={t('trainerPlans.repsPlaceholder', '8-12')} />
-                </div>
-                {/* Rest */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <span className="text-[10px] mr-0.5" style={{ color: TT.textMute }}>{t('trainerPlans.rest', 'Rest')}:</span>
-                  <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', Math.max(0, (ex.rest_seconds ?? DEFAULT_REST) - 15))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>&minus;</button>
-                  <span className="text-[12px] font-medium w-8 text-center" style={{ color: TT.text }}>{ex.rest_seconds ?? DEFAULT_REST}s</span>
-                  <button onClick={() => updateExercise(wk, di, ei, 'rest_seconds', Math.min(600, (ex.rest_seconds ?? DEFAULT_REST) + 15))}
-                    className="min-w-[36px] min-h-[36px] rounded-lg text-[12px] flex items-center justify-center active:scale-95 transition-all" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>+</button>
-                </div>
-              </div>
-              {/* Exercise notes - collapsible. Once visible it stays MOUNTED
-                  until blur (expandedNotes pins it), so clearing the text
-                  mid-edit no longer unmounts the textarea under the cursor. */}
-              {expandedNotes[ei] || ex.notes ? (
-                <textarea
-                  value={ex.notes || ''}
-                  onChange={e => updateExercise(wk, di, ei, 'notes', e.target.value)}
-                  onFocus={() => setExpandedNotes(prev => ({ ...prev, [ei]: true }))}
-                  onBlur={e => { if (!e.target.value.trim()) setExpandedNotes(prev => ({ ...prev, [ei]: false })); }}
-                  maxLength={500}
-                  rows={2}
-                  placeholder={t('trainerPlans.trainerNotesPlaceholder', 'e.g., Tempo 3-1-2, pause at bottom')}
-                  className="mt-2 w-full rounded-lg px-2.5 py-2 text-[16px] sm:text-[13px] outline-none resize-none transition-colors" style={{ background: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}
-                />
-              ) : (
-                <button
-                  onClick={() => toggleNote(ei)}
-                  className="mt-2 flex items-center gap-1 text-[11px] transition-colors"
-                  style={{ color: TT.textMute }}
-                >
-                  <StickyNote size={10} />
-                  {t('trainerPlans.addNote', 'Add note')}
-                </button>
-              )}
+          {items.length > 0 && (
+            <div data-dragroot className="space-y-2">
+              {groups.map((g) => {
+                if (g.type === 'ss') {
+                  return (
+                    <div key={g.ss} className="rounded-2xl p-2" style={{ background: TT.accentSoft, border: `1.5px solid color-mix(in srgb, ${TT.accent} 28%, transparent)` }}>
+                      <div className="flex items-center justify-between px-1.5 pt-0.5 pb-2">
+                        <span className="inline-flex items-center gap-1.5 text-[10.5px] font-extrabold uppercase tracking-wider" style={{ color: TT.accentInk }}>
+                          <Link2 size={13} /> {t('trainerPlans.superset', 'Superset')} {g.ss}
+                        </span>
+                        <button onClick={() => unlinkSuperset(wk, di, g.ss)} className="text-[11px] font-bold" style={{ color: TT.textMute }}>
+                          {t('trainerPlans.separate', 'Separate')}
+                        </button>
+                      </div>
+                      <div className="space-y-2">{g.items.map(it => exerciseCard(it))}</div>
+                    </div>
+                  );
+                }
+                const it = g.items[0];
+                const gi = items.findIndex(x => x._uid === it._uid);
+                return (
+                  <div key={it._uid}>
+                    {gi > 0 && dragId == null && (
+                      <div className="flex justify-center py-0.5 -my-0.5">
+                        <button onClick={() => linkExercise(wk, di, gi)} onPointerDown={e => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold transition-colors"
+                          style={{ background: TT.surface, border: `1.5px dashed ${TT.borderStrong}`, color: TT.textSub }}>
+                          <Link2 size={12} /> {t('trainerPlans.superset', 'Superset')}
+                        </button>
+                      </div>
+                    )}
+                    {exerciseCard(it)}
+                  </div>
+                );
+              })}
             </div>
-          ))}
-
-          {/* Add exercise - searchable panel */}
-          {showExSearch ? (
-            <div className="mt-1 rounded-xl p-3" style={{ border: `1px solid ${TT.borderSolid}`, background: TT.surface2 }}>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[12px] font-semibold" style={{ color: TT.textSub }}>{t('trainerPlans.addExercise', 'Add Exercise')}</p>
-                <button onClick={() => { setShowExSearch(false); setExSearch(''); }}
-                  className="min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2" style={{ color: TT.textMute }}>
-                  <X size={14} />
-                </button>
-              </div>
-              <ExerciseSearchPanel
-                exercises={exercises}
-                exSearch={exSearch}
-                setExSearch={setExSearch}
-                onAdd={(id) => { addExercise(wk, di, id); }}
-                exLabel={exLabel}
-                muscleLabelFor={muscleLabelFor}
-                t={t}
-              />
-            </div>
-          ) : (
-            <button onClick={() => setShowExSearch(true)}
-              className="w-full py-4 rounded-xl border-2 border-dashed transition-colors flex flex-col items-center justify-center gap-1 min-h-[44px] active:scale-[0.98]"
-              style={{ borderColor: TT.borderSolid, color: TT.textMute }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = TT.accent; e.currentTarget.style.color = TT.accent; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = TT.borderSolid; e.currentTarget.style.color = TT.textMute; }}>
-              <Plus size={18} />
-              <span className="text-[12px] font-medium">{t('trainerPlans.addExercise', 'Add Exercise')}</span>
-            </button>
           )}
+
+          {/* Add exercise — opens the multi-select picker sheet */}
+          <button onClick={onAddExercise}
+            className="w-full mt-2 py-3.5 rounded-2xl border-2 border-dashed transition-colors flex items-center justify-center gap-2 min-h-[44px] active:scale-[0.99]"
+            style={{ borderColor: TT.borderStrong, color: TT.accentInk }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = TT.accent; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = TT.borderStrong; }}>
+            <Plus size={17} />
+            <span className="text-[13.5px] font-bold" style={{ fontFamily: TFont.display }}>{t('trainerPlans.addExercise', 'Add Exercise')}</span>
+          </button>
         </div>
       )}
     </div>
@@ -452,10 +713,6 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const [durationWeeks, setDuration]= useState(init.duration_weeks ?? 4);
   const PRESET_DURATIONS = [4, 6, 8, 10, 12];
   const isCustomDuration = !PRESET_DURATIONS.includes(durationWeeks);
-  const setCustomDuration = (raw) => {
-    const v = parseInt(raw, 10);
-    if (!isNaN(v)) setDuration(Math.max(1, Math.min(52, v)));
-  };
   const [weeks, setWeeks]           = useState(() => normalizeWeeks(init.weeks, t));
   const [exercises, setExercises]   = useState([]);
   const [selectedWeek, setSelectedWeek] = useState(1);
@@ -469,7 +726,8 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const [clientProfile, setClientProfile] = useState(null);
   const [confirmPrune, setConfirmPrune] = useState(null); // { prunedWeeks } pending save
   const [confirmDiscard, setConfirmDiscard] = useState(false); // unsaved-changes guard
-  useScrollLock(!!confirmPrune || confirmDiscard); // lock page behind builder dialogs
+  const [pickerTarget, setPickerTarget] = useState(null); // { wk, di } for the add-exercise sheet
+  useScrollLock(!!confirmPrune || confirmDiscard || !!pickerTarget); // lock page behind builder dialogs/sheets
   // Editing a plan whose client was deactivated: the active-clients list no
   // longer contains them, so the (disabled) select showed "Select client...".
   // Keep the assigned name around for display.
@@ -491,9 +749,12 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
 
   // Snapshot of what the builder opened with — compared on back-arrow to
   // warn before discarding unsaved work.
+  // `_uid` is a transient per-row drag id (regenerated each load) — exclude it
+  // from the signature so a freshly-opened plan never reads as already-edited.
+  const planSig = (o) => JSON.stringify(o, (k, v) => (k === '_uid' ? undefined : v));
   const initialSnapshot = useRef(null);
   if (initialSnapshot.current === null) {
-    initialSnapshot.current = JSON.stringify({
+    initialSnapshot.current = planSig({
       clientId: init.client_id || '',
       name: init.name ?? '',
       description: init.description ?? '',
@@ -501,7 +762,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       weeks: normalizeWeeks(init.weeks, t),
     });
   }
-  const isDirty = () => initialSnapshot.current !== JSON.stringify({ clientId, name, description, durationWeeks, weeks });
+  const isDirty = () => initialSnapshot.current !== planSig({ clientId, name, description, durationWeeks, weeks });
   const handleBack = () => {
     if (isDirty()) { setConfirmDiscard(true); return; }
     onClose();
@@ -629,7 +890,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
         newWeeks[wk] = JSON.parse(JSON.stringify(wk % 2 === 1 ? routinesA : routinesB));
       }
 
-      setWeeks(newWeeks);
+      setWeeks(normalizeWeeks(newWeeks, t)); // ensure _uid + ss on generated rows
       setDuration(newDuration);
       // Clean, client-facing name — no "Auto:" prefix.
       const splitLabel = result.splitLabel || t('trainerPlans.programFallback', 'Program');
@@ -643,10 +904,12 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
     }
   };
 
+  const exById = useMemo(() => new Map(exercises.map(e => [e.id, e])), [exercises]);
   const exName = (id) => {
-    const ex = exercises.find(e => e.id === id);
+    const ex = exById.get(id);
     return ex ? exLabel(ex) : id;
   };
+  const exMuscle = (id) => exById.get(id)?.muscle_group || null;
 
   // Week operations
   const copyWeekTo = (fromWk, toWk) => {
@@ -684,12 +947,13 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   };
 
   // Exercise operations
-  const addExercise = (wk, di, id) => {
-    if (!id) return;
+  // Multi-add from the picker sheet (a list of library exercise rows).
+  const addExercises = (wk, di, list) => {
+    if (!list?.length) return;
     setWeeks(prev => ({
       ...prev,
       [wk]: prev[wk].map((d, i) => i === di
-        ? { ...d, exercises: [...d.exercises, { id, sets: DEFAULT_SETS, reps: DEFAULT_REPS, rest_seconds: DEFAULT_REST, notes: '' }] }
+        ? { ...d, exercises: [...d.exercises, ...list.map(ex => ({ _uid: newUid(), id: ex.id, sets: DEFAULT_SETS, reps: DEFAULT_REPS, rest_seconds: DEFAULT_REST, notes: '', ss: null }))] }
         : d
       ),
     }));
@@ -708,14 +972,46 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       : d
     ),
   }));
-  const moveExercise = (wk, di, ei, dir) => setWeeks(prev => {
-    const days = prev[wk] || [];
-    const exs = [...(days[di]?.exercises || [])];
-    const target = ei + dir;
-    if (target < 0 || target >= exs.length) return prev;
-    [exs[ei], exs[target]] = [exs[target], exs[ei]];
-    return { ...prev, [wk]: days.map((d, i) => i === di ? { ...d, exercises: exs } : d) };
-  });
+  const duplicateExercise = (wk, di, ei) => setWeeks(prev => ({
+    ...prev,
+    [wk]: prev[wk].map((d, i) => {
+      if (i !== di) return d;
+      const exs = d.exercises.slice();
+      const src = exs[ei];
+      if (!src) return d;
+      exs.splice(ei + 1, 0, { ...src, _uid: newUid(), ss: null });
+      return { ...d, exercises: exs };
+    }),
+  }));
+  // Reorder a day's exercises to a new order of stable `_uid`s (from drag-sort).
+  const reorderExercises = (wk, di, orderedUids) => setWeeks(prev => ({
+    ...prev,
+    [wk]: prev[wk].map((d, i) => {
+      if (i !== di) return d;
+      const byUid = new Map(d.exercises.map(e => [e._uid, e]));
+      const next = orderedUids.map(u => byUid.get(u)).filter(Boolean);
+      return next.length === d.exercises.length ? { ...d, exercises: next } : d;
+    }),
+  }));
+  // Superset: link the exercise at `ei` with the one above it (shared token).
+  const linkExercise = (wk, di, ei) => setWeeks(prev => ({
+    ...prev,
+    [wk]: prev[wk].map((d, i) => {
+      if (i !== di || ei <= 0) return d;
+      const exs = d.exercises.slice();
+      const ss = exs[ei - 1].ss || nextSS(exs);
+      exs[ei - 1] = { ...exs[ei - 1], ss };
+      exs[ei] = { ...exs[ei], ss };
+      return { ...d, exercises: exs };
+    }),
+  }));
+  const unlinkSuperset = (wk, di, ss) => setWeeks(prev => ({
+    ...prev,
+    [wk]: prev[wk].map((d, i) => i === di
+      ? { ...d, exercises: d.exercises.map(ex => ex.ss === ss ? { ...ex, ss: null } : ex) }
+      : d
+    ),
+  }));
 
   // Save. Weeks beyond the chosen duration are PRUNED from the JSON (an
   // 8→4-week shrink used to keep orphan keys 5-8, corrupting counts/chips).
@@ -723,7 +1019,13 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const buildWeeksPayload = () => {
     const kept = {};
     Object.entries(weeks).forEach(([wk, days]) => {
-      if (Number(wk) <= durationWeeks) kept[wk] = days;
+      if (Number(wk) <= durationWeeks) {
+        kept[wk] = (days || []).map(d => ({
+          ...d,
+          // strip transient drag id; keep `ss` (superset group) — it persists.
+          exercises: (d.exercises || []).map(({ _uid, ...ex }) => ex),
+        }));
+      }
     });
     return kept;
   };
@@ -1027,11 +1329,9 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               {/* Custom weeks — uneven counts, 12+ */}
               <div className="flex items-center gap-1 px-2.5 rounded-lg min-h-[44px]"
                 style={isCustomDuration ? { backgroundColor: TT.accent } : { backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                <input type="number" inputMode="numeric" min={1} max={52} value={durationWeeks}
-                  onChange={e => setCustomDuration(e.target.value)}
-                  aria-label={t('trainerPlans.customWeeks', 'Custom weeks')}
-                  className="w-9 bg-transparent text-center text-[12px] font-semibold outline-none"
-                  style={{ color: isCustomDuration ? '#06363B' : TT.text }} />
+                <CustomWeeksInput value={durationWeeks} onCommit={setDuration}
+                  ariaLabel={t('trainerPlans.customWeeks', 'Custom weeks')}
+                  color={isCustomDuration ? '#06363B' : TT.text} />
                 <span className="text-[11px] font-semibold" style={{ color: isCustomDuration ? '#06363B' : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
               </div>
             </div>
@@ -1080,11 +1380,9 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                 {/* Custom weeks — uneven counts, 12+ */}
                 <div className="flex items-center gap-1 px-2 rounded-xl min-h-[44px]"
                   style={isCustomDuration ? { background: TT.accentSoft, border: `1px solid ${TT.accent}` } : { background: TT.surface, border: `1px solid ${TT.border}` }}>
-                  <input type="number" inputMode="numeric" min={1} max={52} value={durationWeeks}
-                    onChange={e => setCustomDuration(e.target.value)}
-                    aria-label={t('trainerPlans.customWeeks', 'Custom weeks')}
-                    className="w-9 bg-transparent text-center text-[12px] font-semibold outline-none"
-                    style={{ color: isCustomDuration ? TT.accentInk : TT.text }} />
+                  <CustomWeeksInput value={durationWeeks} onCommit={setDuration}
+                    ariaLabel={t('trainerPlans.customWeeks', 'Custom weeks')}
+                    color={isCustomDuration ? TT.accentInk : TT.text} />
                   <span className="text-[11px] font-semibold" style={{ color: isCustomDuration ? TT.accentInk : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
                 </div>
               </div>
@@ -1206,16 +1504,18 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                 day={day}
                 di={di}
                 wk={selectedWeek}
-                exercises={exercises}
+                exMuscle={exMuscle}
                 exName={exName}
-                exLabel={exLabel}
                 muscleLabelFor={muscleLabelFor}
                 updateDayName={updateDayName}
                 removeDay={removeDay}
-                addExercise={addExercise}
+                onAddExercise={() => setPickerTarget({ wk: selectedWeek, di })}
                 removeExercise={removeExercise}
                 updateExercise={updateExercise}
-                moveExercise={moveExercise}
+                duplicateExercise={duplicateExercise}
+                reorderExercises={reorderExercises}
+                linkExercise={linkExercise}
+                unlinkSuperset={unlinkSuperset}
                 copyDayMenu={copyDayMenu}
                 setCopyDayMenu={setCopyDayMenu}
                 setCopyWeekMenu={setCopyWeekMenu}
@@ -1287,6 +1587,28 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           </div>
         </div>
       )}
+
+      {/* ── Add-exercise picker (bottom sheet, multi-select) ── */}
+      {pickerTarget && createPortal(
+        <div className="fixed inset-0 z-[95] flex flex-col justify-end">
+          <div className="absolute inset-0" style={{ background: 'rgba(8,10,12,0.5)' }} onClick={() => setPickerTarget(null)} />
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }}
+            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+            className="relative w-full mx-auto max-w-[480px] overflow-hidden"
+            style={{ height: '88vh', background: TT.bg, borderRadius: '24px 24px 0 0', boxShadow: TT.shadowLg }}>
+            <ExercisePicker
+              exercises={exercises}
+              exLabel={exLabel}
+              muscleLabelFor={muscleLabelFor}
+              t={t}
+              onClose={() => setPickerTarget(null)}
+              onAddMany={(list) => { addExercises(pickerTarget.wk, pickerTarget.di, list); setPickerTarget(null); }}
+            />
+          </motion.div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 };
@@ -1307,9 +1629,9 @@ export default function TrainerPlans() {
   const section = SECTION_TABS[sectionIndex].key;
 
   // Training plans state
-  const [plans, setPlans]       = useState([]);
-  const [clients, setClients]   = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [plans, setPlans]       = useState(() => readTrainerCache(`tplans:workout:${profile?.id}`) || []);
+  const [clients, setClients]   = useState(() => readTrainerCache(`tplans:clients:${profile?.id}`) || []);
+  const [loading, setLoading]   = useState(() => !readTrainerCache(`tplans:workout:${profile?.id}`));
   const [view, setView]         = useState('list'); // 'list' | 'builder'
   const [editing, setEditing]   = useState(null);
   const [filterClient, setFilterClient] = useState('all');
@@ -1323,33 +1645,47 @@ export default function TrainerPlans() {
   const [duplicating, setDuplicating] = useState(false);
 
   // Nutrition plans state
-  const [mealPlans, setMealPlans] = useState([]);
-  const [mealPlansLoading, setMealPlansLoading] = useState(true);
+  const [mealPlans, setMealPlans] = useState(() => readTrainerCache(`tplans:meals:${profile?.id}`) || []);
+  const [mealPlansLoading, setMealPlansLoading] = useState(() => !readTrainerCache(`tplans:meals:${profile?.id}`));
   const [mealFilterStatus, setMealFilterStatus] = useState('active');
   const [showMealModal, setShowMealModal] = useState(false);
-  const [mealForm, setMealForm] = useState({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4 });
+  const [mealForm, setMealForm] = useState({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4, start_date: '' });
   const [mealSaving, setMealSaving] = useState(false);
+  const [mealPrefs, setMealPrefs] = useState({ allergies: [], restrictions: [] }); // client's food prefs, editable for this plan
   const [mealClientProfile, setMealClientProfile] = useState(null);
   const [mealGoalOverride, setMealGoalOverride] = useState(null);
   // Saved meal-plan detail viewer (tap a card → day-by-day meals)
   const [mealDetail, setMealDetail] = useState(null);
   const [mealDetailDay, setMealDetailDay] = useState(0);
+  const [mealDetailWeek, setMealDetailWeek] = useState(0);
   const [confirmDeleteMealPlan, setConfirmDeleteMealPlan] = useState(null);
   const GOAL_OPTIONS = ['fat_loss', 'muscle_gain', 'strength', 'endurance', 'general_fitness'];
+  const COMMON_ALLERGENS = ['nuts', 'shellfish', 'dairy', 'eggs', 'soy', 'wheat', 'fish'];
+  const COMMON_DIETS = ['vegan', 'vegetarian', 'pescatarian', 'keto', 'gluten_free', 'dairy_free', 'halal'];
+  const prefLabel = (x) => t(`trainerPlans.pref.${x}`, x.replace(/_/g, ' '));
+  const togglePref = (group, val) => setMealPrefs(p => ({
+    ...p, [group]: p[group].includes(val) ? p[group].filter(v => v !== val) : [...p[group], val],
+  }));
 
   // Fetch client data when meal form client changes
   useEffect(() => {
     const cid = mealForm.client_id;
-    if (!cid) { setMealClientProfile(null); setMealGoalOverride(null); return; }
+    if (!cid) { setMealClientProfile(null); setMealGoalOverride(null); setMealPrefs({ allergies: [], restrictions: [] }); return; }
     (async () => {
       const [obRes, weightRes] = await Promise.all([
         supabase.from('member_onboarding')
-          .select('fitness_level, primary_goal, training_days_per_week, height_cm, height_inches, weight_kg, age, gender, sex')
+          .select('fitness_level, primary_goal, training_days_per_week, height_cm, height_inches, weight_kg, age, gender, sex, dietary_restrictions, food_allergies')
           .eq('profile_id', cid).maybeSingle(),
         supabase.from('body_weight_logs')
           .select('weight_lbs').eq('profile_id', cid).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
       setMealClientProfile({ onboarding: obRes.data, latestWeight: weightRes.data?.weight_lbs });
+      // Seed editable preferences from the client's saved allergies/diet so the
+      // trainer sees them and the generator respects them.
+      setMealPrefs({
+        allergies: Array.isArray(obRes.data?.food_allergies) ? obRes.data.food_allergies : [],
+        restrictions: Array.isArray(obRes.data?.dietary_restrictions) ? obRes.data.dietary_restrictions : [],
+      });
     })();
   }, [mealForm.client_id]);
 
@@ -1357,6 +1693,7 @@ export default function TrainerPlans() {
   const [generatedMeals, setGeneratedMeals] = useState(null); // 7-day plan
   const [generatingMeals, setGeneratingMeals] = useState(false);
   const [mealPreviewDay, setMealPreviewDay] = useState(0);
+  const [mealPreviewWeek, setMealPreviewWeek] = useState(0);
   const DAY_LABELS = [
     t('trainerPlans.dayMon', 'Mon'), t('trainerPlans.dayTue', 'Tue'), t('trainerPlans.dayWed', 'Wed'),
     t('trainerPlans.dayThu', 'Thu'), t('trainerPlans.dayFri', 'Fri'), t('trainerPlans.daySat', 'Sat'), t('trainerPlans.daySun', 'Sun'),
@@ -1372,6 +1709,16 @@ export default function TrainerPlans() {
   // Saved meal-plan rows keep only compact meal JSON (no image); recover the
   // full record (image, titles) from the local MEALS catalog by id.
   const mealById = useMemo(() => new Map(MEALS.map(m => [m.id, m])), []);
+
+  // Date range for a given week index of a saved plan (start_date + N weeks).
+  const planWeekDates = (plan, weekIdx) => {
+    if (!plan?.start_date) return null;
+    const start = new Date(`${plan.start_date}T00:00:00`);
+    if (isNaN(start.getTime())) return null;
+    const ws = new Date(start.getTime() + weekIdx * 7 * 86400000);
+    const we = new Date(ws.getTime() + 6 * 86400000);
+    return { ws, we };
+  };
 
   const handleGenerateMeals = () => {
     const cal = parseInt(mealForm.target_calories);
@@ -1389,6 +1736,8 @@ export default function TrainerPlans() {
         const plan = generateWeekPlan({
           targets: { calories: cal, protein: pro, carbs: carb || 200, fat: fat || 60 },
           slots: 4,
+          allergies: mealPrefs.allergies,
+          restrictions: mealPrefs.restrictions,
           lang: i18n?.language || 'en',
         });
         // Slot type comes from the generator's tag; index fallback for safety.
@@ -1403,6 +1752,7 @@ export default function TrainerPlans() {
         setMealsDirty(false); // fresh generation — nothing manual to protect
         setMealStep('meals');
         setMealPreviewDay(0);
+        setMealPreviewWeek(0);
       } catch (err) {
         logger.error('TrainerPlans: meal generation failed:', err);
         showToast(t('trainerPlans.generateMealsFailed', 'Could not generate the meal plan. Try again.'), 'error');
@@ -1517,7 +1867,7 @@ export default function TrainerPlans() {
     setShowMealModal(false);
     setMealStep('settings');
     setGeneratedMeals(null);
-    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4 });
+    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4, start_date: '' });
     setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '' });
     setShowAddMeal(false);
     setMealPickerSlot(null);
@@ -1663,7 +2013,10 @@ export default function TrainerPlans() {
   }, [profile?.id]);
 
   const loadData = async () => {
-    setLoading(true);
+    // Only show the spinner on a true cold load. With cache present we keep the
+    // hydrated list on screen and revalidate silently, so navigating back is
+    // instant instead of flashing a spinner over good data.
+    if (!readTrainerCache(`tplans:workout:${profile.id}`)) setLoading(true);
     const [plansRes, clientsRes] = await Promise.all([
       supabase
         .from('trainer_workout_plans')
@@ -1683,8 +2036,13 @@ export default function TrainerPlans() {
       showToast(t('trainerPlans.loadFailed', 'Could not load your plans. Try again.'), 'error');
     }
     const loadedPlans = plansRes.data || [];
+    const loadedClients = (clientsRes.data || []).map(tc => tc.profiles).filter(Boolean);
     setPlans(loadedPlans);
-    setClients((clientsRes.data || []).map(tc => tc.profiles).filter(Boolean));
+    setClients(loadedClients);
+    // Write through to cache so a revisit renders instantly (skip on error so a
+    // failed fetch never overwrites good cached data with empties).
+    if (!plansRes.error) writeTrainerCache(`tplans:workout:${profile.id}`, loadedPlans);
+    if (!clientsRes.error) writeTrainerCache(`tplans:clients:${profile.id}`, loadedClients);
     setLoading(false);
   };
 
@@ -1701,7 +2059,8 @@ export default function TrainerPlans() {
   }, [mealPlans, mealFilterStatus]);
 
   const loadMealPlans = () => {
-    setMealPlansLoading(true);
+    // Same as loadData: spinner only on cold load, otherwise revalidate silently.
+    if (!readTrainerCache(`tplans:meals:${profile.id}`)) setMealPlansLoading(true);
     supabase
       .from('trainer_meal_plans')
       .select('*, profiles!trainer_meal_plans_client_id_fkey(full_name)')
@@ -1713,28 +2072,32 @@ export default function TrainerPlans() {
           logger.error('TrainerPlans: failed to load meal plans:', error);
           showToast(t('trainerPlans.loadMealPlansFailed', 'Could not load meal plans. Try again.'), 'error');
         }
+        if (!error) writeTrainerCache(`tplans:meals:${profile.id}`, data || []);
         setMealPlans(data || []);
         setMealPlansLoading(false);
       });
   };
 
   const saveMealPlan = async () => {
-    if (!mealForm.client_id || !mealForm.name.trim()) return;
+    // Client is OPTIONAL — a plan with no client is a general/reusable plan
+    // (mirrors the workout builder). Only the name is required.
+    if (!mealForm.name.trim()) return;
     setMealSaving(true);
-    // Single-active invariant (P2-2): ClientDetail reads the active plan with
-    // .maybeSingle() — stacking a second active row breaks it into "No plan".
-    // Retire this client's currently-active plans first; abort on failure so
-    // we never silently end up with duplicate actives.
-    const { error: deactivateErr } = await supabase.from('trainer_meal_plans')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('trainer_id', profile.id)
-      .eq('client_id', mealForm.client_id)
-      .eq('is_active', true);
-    if (deactivateErr) {
-      logger.error('TrainerPlans: failed to deactivate previous meal plans:', deactivateErr);
-      showToast(t('trainerPlans.errorSavingMealPlan', 'Failed to save meal plan'), 'error');
-      setMealSaving(false);
-      return;
+    // Single-active invariant (P2-2) applies PER CLIENT: ClientDetail reads the
+    // active plan with .maybeSingle(), so retire this client's currently-active
+    // plans first. General (client-less) plans can coexist, so skip when none.
+    if (mealForm.client_id) {
+      const { error: deactivateErr } = await supabase.from('trainer_meal_plans')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('trainer_id', profile.id)
+        .eq('client_id', mealForm.client_id)
+        .eq('is_active', true);
+      if (deactivateErr) {
+        logger.error('TrainerPlans: failed to deactivate previous meal plans:', deactivateErr);
+        showToast(t('trainerPlans.errorSavingMealPlan', 'Failed to save meal plan'), 'error');
+        setMealSaving(false);
+        return;
+      }
     }
     // Serialize generated meals into compact JSONB
     const mealsJson = generatedMeals ? generatedMeals.map((day, di) => ({
@@ -1744,12 +2107,14 @@ export default function TrainerPlans() {
     })) : [];
     // Plan length → duration_weeks + an end_date the member view counts against.
     const durWeeks = Math.max(1, Math.min(52, parseInt(mealForm.duration_weeks, 10) || 1));
-    const startDate = new Date();
+    // Optional trainer-set start date (so the plan isn't generic); default today.
+    const startDate = mealForm.start_date ? new Date(`${mealForm.start_date}T00:00:00`) : new Date();
     const endDate = new Date(startDate.getTime() + durWeeks * 7 * 86400000);
+    const toISODate = (d) => d.toISOString().split('T')[0];
     const { error } = await supabase.from('trainer_meal_plans').insert({
       gym_id: profile.gym_id,
       trainer_id: profile.id,
-      client_id: mealForm.client_id,
+      client_id: mealForm.client_id || null,
       name: mealForm.name.trim(),
       description: mealForm.description.trim() || null,
       target_calories: mealForm.target_calories ? parseInt(mealForm.target_calories) : null,
@@ -1757,7 +2122,8 @@ export default function TrainerPlans() {
       target_carbs_g: mealForm.target_carbs_g ? parseInt(mealForm.target_carbs_g) : null,
       target_fat_g: mealForm.target_fat_g ? parseInt(mealForm.target_fat_g) : null,
       duration_weeks: durWeeks,
-      end_date: endDate.toISOString().split('T')[0],
+      start_date: toISODate(startDate),
+      end_date: toISODate(endDate),
       meals: mealsJson,
     });
     if (error) {
@@ -1767,7 +2133,7 @@ export default function TrainerPlans() {
     }
     setMealSaving(false);
     setShowMealModal(false);
-    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4 });
+    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4, start_date: '' });
     setGeneratedMeals(null);
     setMealStep('settings');
     loadMealPlans();
@@ -2061,24 +2427,30 @@ export default function TrainerPlans() {
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
           >
             <Plus size={15} strokeWidth={2.4} />
-            {section === 'training'
-              ? t('trainerPlans.newPlan', 'New plan')
-              : t('trainerPlans.newMealPlan', 'New meal plan')}
+            {t('trainerPlans.newPlan', 'New plan')}
           </TPrimaryButton>
         </div>
 
-        {/* Section tabs (Training / Nutrition) */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-          {SECTION_TABS.map((tab, i) => (
-            <TTabPill
-              key={tab.key}
-              active={sectionIndex === i}
-              accent={sectionIndex === i}
-              onClick={() => setSectionIndex(i)}
-            >
-              {tab.label}
-            </TTabPill>
-          ))}
+        {/* Section tabs (Training / Nutrition) — underline tab bar */}
+        <div style={{ display: 'flex', marginBottom: 16, borderBottom: `1px solid ${TT.border}` }}>
+          {SECTION_TABS.map((tab, i) => {
+            const on = sectionIndex === i;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setSectionIndex(i)}
+                style={{
+                  flex: 1, padding: '10px 4px 11px', background: 'transparent',
+                  border: 'none', borderBottom: `2px solid ${on ? TT.accent : 'transparent'}`,
+                  marginBottom: -1, cursor: 'pointer',
+                  fontFamily: TFont.display, fontSize: 15, fontWeight: 800, letterSpacing: -0.2,
+                  color: on ? TT.accent : TT.textMute,
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
         <SwipeableTabView activeIndex={sectionIndex} onChangeIndex={setSectionIndex} tabKeys={['training', 'nutrition']}>
@@ -2252,9 +2624,7 @@ export default function TrainerPlans() {
                           }}>
                             {type} · {plan.duration_weeks || 0} {t('trainerPlans.weeks', 'weeks')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {assignedCount === 0
                               ? t('trainerPlans.genericPlan', 'Generic')
-                              : assignedCount === 1
-                                ? t('trainerPlans.assigned_one', '{{count}} client', { count: assignedCount })
-                                : t('trainerPlans.assigned_other', '{{count}} clients', { count: assignedCount })}
+                              : `${assignedCount} ${assignedCount === 1 ? t('trainerPlans.clientWord', 'client') : t('trainerPlans.clientsWord', 'clients')}`}
                           </div>
                         </div>
                         <button
@@ -2398,7 +2768,7 @@ export default function TrainerPlans() {
               {filteredMealPlans.map(plan => (
                 <TCard key={plan.id} padded={16}
                   role="button" tabIndex={0}
-                  onClick={() => { setMealDetail(plan); setMealDetailDay(0); }}
+                  onClick={() => { setMealDetail(plan); setMealDetailDay(0); setMealDetailWeek(0); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') { setMealDetail(plan); setMealDetailDay(0); } }}
                   className="tt-tap"
                   style={{ cursor: 'pointer' }}>
@@ -2485,7 +2855,7 @@ export default function TrainerPlans() {
                     <select value={mealForm.client_id} onChange={e => { setMealForm(f => ({ ...f, client_id: e.target.value })); setMealGoalOverride(null); setGeneratedMeals(null); }}
                       className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
                       style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }}>
-                      <option value="">{t('trainerPlans.selectClient', 'Select client...')}</option>
+                      <option value="">{t('trainerPlans.noClientGeneral', 'No client (general plan)')}</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
                     </select>
                   </div>
@@ -2525,6 +2895,41 @@ export default function TrainerPlans() {
                         <Zap size={14} />
                         {t('trainerPlans.autoCalculateMacros', 'Auto-Calculate Macros')}
                       </button>
+                    </div>
+                  )}
+
+                  {/* Client food preferences (allergies + diet) — seeded from the
+                      client's saved prefs, editable here, fed to meal generation. */}
+                  {mealClientProfile?.onboarding && (
+                    <div className="rounded-xl p-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-1" style={{ color: TT.accent }}>{t('trainerPlans.preferences', 'Client preferences')}</p>
+                      <p className="text-[10px] mb-2" style={{ color: TT.textMute }}>{t('trainerPlans.prefsHint', 'Used to filter the generated meals')}</p>
+                      <p className="text-[10px] font-medium mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.allergiesLabel', 'Allergies')}</p>
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {[...new Set([...COMMON_ALLERGENS, ...mealPrefs.allergies])].map(a => {
+                          const on = mealPrefs.allergies.includes(a);
+                          return (
+                            <button key={a} type="button" onClick={() => togglePref('allergies', a)}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors capitalize"
+                              style={on ? { background: TT.hot, color: '#fff' } : { background: TT.surface, color: TT.textMute, border: `1px solid ${TT.border}` }}>
+                              {prefLabel(a)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] font-medium mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.dietLabel', 'Diet')}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[...new Set([...COMMON_DIETS, ...mealPrefs.restrictions])].map(d => {
+                          const on = mealPrefs.restrictions.includes(d);
+                          return (
+                            <button key={d} type="button" onClick={() => togglePref('restrictions', d)}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors capitalize"
+                              style={on ? { background: TT.accent, color: '#06363B' } : { background: TT.surface, color: TT.textMute, border: `1px solid ${TT.border}` }}>
+                              {prefLabel(d)}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
@@ -2589,6 +2994,14 @@ export default function TrainerPlans() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Start date (optional) — set so the plan isn't generic */}
+                  <div>
+                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.startDate', 'Start date (optional)')}</label>
+                    <input type="date" value={mealForm.start_date} onChange={e => setMealForm(f => ({ ...f, start_date: e.target.value }))}
+                      className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
+                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
+                  </div>
                 </div>
 
                 {/* Footer — Step 1 */}
@@ -2599,7 +3012,7 @@ export default function TrainerPlans() {
                     {t('trainerPlans.cancel', 'Cancel')}
                   </button>
                   <button onClick={handleGenerateMeals}
-                    disabled={generatingMeals || !mealForm.target_calories || !mealForm.target_protein_g || !mealForm.client_id || !mealForm.name.trim()}
+                    disabled={generatingMeals || !mealForm.target_calories || !mealForm.target_protein_g || !mealForm.name.trim()}
                     className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-bold min-h-[44px] transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
                     style={{ background: TT.accent, color: '#06363B' }}>
                     {generatingMeals ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
@@ -2613,22 +3026,49 @@ export default function TrainerPlans() {
             {mealStep === 'meals' && generatedMeals && (
               <>
                 <div className="flex-1 min-h-0 overflow-y-auto">
-                  {/* Day selector — Atelier filter chips */}
-                  <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
-                    {DAY_LABELS.map((label, i) => (
-                      <button key={i} onClick={() => setMealPreviewDay(i)}
-                        className="shrink-0 tt-tap"
-                        style={{
-                          padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
-                          whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
-                          ...(mealPreviewDay === i
-                            ? { background: TT.text, color: TT.onInverse }
-                            : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
-                        }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Week selector — the same 7-day plan repeats for N weeks.
+                      Dates derive from the chosen start date (or today). */}
+                  {(() => {
+                    const dw = Math.max(1, Number(mealForm.duration_weeks) || 1);
+                    const previewStart = mealForm.start_date
+                      ? new Date(`${mealForm.start_date}T00:00:00`)
+                      : new Date();
+                    const dayDate = (i) => new Date(previewStart.getTime() + (mealPreviewWeek * 7 + i) * 86400000);
+                    return (
+                      <>
+                        {dw > 1 && (
+                          <div className="px-4 pt-3">
+                            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                              {Array.from({ length: dw }, (_, w) => (
+                                <button key={w} onClick={() => setMealPreviewWeek(w)} className="shrink-0 tt-tap"
+                                  style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', border: 'none', cursor: 'pointer',
+                                    ...(mealPreviewWeek === w ? { background: TT.accent, color: '#06363B' } : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }) }}>
+                                  {t('trainerPlans.weekN', 'Week {{n}}', { n: w + 1 })}
+                                </button>
+                              ))}
+                            </div>
+                            <p className="text-[10px] mt-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.weeklyRotationNote', 'The same weekly plan repeats each week.')}</p>
+                          </div>
+                        )}
+                        {/* Day selector — Atelier filter chips, with date numbers */}
+                        <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
+                          {DAY_LABELS.map((label, i) => (
+                            <button key={i} onClick={() => setMealPreviewDay(i)}
+                              className="shrink-0 tt-tap"
+                              style={{
+                                padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+                                whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
+                                ...(mealPreviewDay === i
+                                  ? { background: TT.text, color: TT.onInverse }
+                                  : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
+                              }}>
+                              {label} {dayDate(i).getDate()}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {/* Day totals */}
                   {generatedMeals[mealPreviewDay] && (
@@ -2933,22 +3373,62 @@ export default function TrainerPlans() {
 
               {Array.isArray(mealDetail.meals) && mealDetail.meals.length > 0 ? (
                 <>
-                  {/* Day selector — Atelier filter chips */}
-                  <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
-                    {mealDetail.meals.map((day, i) => (
-                      <button key={i} onClick={() => setMealDetailDay(i)}
-                        className="shrink-0 tt-tap"
-                        style={{
-                          padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
-                          whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
-                          ...(mealDetailDay === i
-                            ? { background: TT.text, color: TT.onInverse }
-                            : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
-                        }}>
-                        {DAY_LABELS[i] || `${t('trainerPlans.day', 'Day')} ${day.day || i + 1}`}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Time frame + week selector — the weekly plan repeats for N weeks */}
+                  {(Number(mealDetail.duration_weeks) > 1 || mealDetail.start_date) && (() => {
+                    const dw = Math.max(1, Number(mealDetail.duration_weeks) || 1);
+                    const dr = planWeekDates(mealDetail, mealDetailWeek);
+                    return (
+                      <div className="px-4 pt-3">
+                        <div className="flex items-center justify-between mb-2 gap-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: TT.textMute }}>{t('trainerPlans.timeframe', 'Time frame')}</p>
+                          <span className="text-[11px] font-semibold text-right" style={{ color: TT.textSub }}>
+                            {dw} {dw === 1 ? t('trainerPlans.week', 'week') : t('trainerPlans.weeks', 'weeks')}{dr ? ` · ${format(dr.ws, 'd MMM', { locale: dateFnsLocale })} – ${format(dr.we, 'd MMM', { locale: dateFnsLocale })}` : ''}
+                          </span>
+                        </div>
+                        {dw > 1 && (
+                          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                            {Array.from({ length: dw }, (_, w) => (
+                              <button key={w} onClick={() => setMealDetailWeek(w)} className="shrink-0 tt-tap"
+                                style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', border: 'none',
+                                  ...(mealDetailWeek === w ? { background: TT.accent, color: '#06363B' } : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }) }}>
+                                {t('trainerPlans.weekN', 'Week {{n}}', { n: w + 1 })}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {dw > 1 && <p className="text-[10px] mt-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.weeklyRotationNote', 'The same weekly plan repeats each week.')}</p>}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Day selector — Atelier filter chips, with date numbers.
+                      Week start = chosen start date for the selected week, else
+                      the plan's creation date. */}
+                  {(() => {
+                    const ws = planWeekDates(mealDetail, mealDetailWeek)?.ws
+                      || (mealDetail.created_at ? new Date(mealDetail.created_at) : null);
+                    const dayDate = (i) => (ws ? new Date(ws.getTime() + i * 86400000) : null);
+                    return (
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
+                        {mealDetail.meals.map((day, i) => {
+                          const dd = dayDate(i);
+                          return (
+                            <button key={i} onClick={() => setMealDetailDay(i)}
+                              className="shrink-0 tt-tap"
+                              style={{
+                                padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+                                whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
+                                ...(mealDetailDay === i
+                                  ? { background: TT.text, color: TT.onInverse }
+                                  : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
+                              }}>
+                              {DAY_LABELS[i] || `${t('trainerPlans.day', 'Day')} ${day.day || i + 1}`}{dd ? ` ${dd.getDate()}` : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   {(() => {
                     const day = mealDetail.meals[Math.min(mealDetailDay, mealDetail.meals.length - 1)];

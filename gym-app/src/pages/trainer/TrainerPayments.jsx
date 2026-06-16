@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { openWhatsApp, hasWhatsApp } from '../../lib/whatsapp';
 import { exportCSV } from '../../lib/csvExport';
+import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import EmptyState from '../../components/EmptyState';
 import { TT, TFont, avatarIdx } from './components/designTokens';
 import { TCard, TAvatar } from './components/designPrimitives';
@@ -46,9 +47,15 @@ export default function TrainerPayments() {
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
 
-  const [data, setData] = useState(null);
-  const [yearData, setYearData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Per-trainer, per-period payment caches → navigating back paints the last
+  // month/year instantly, then the RPC revalidates in the background. Keyed by
+  // period so paging to an already-seen month/year is also instant.
+  const monthCK = `tpay:list:${profile?.id}:${format(startOfMonth(new Date()), 'yyyy-MM-01')}`;
+  const yearCK = `tpay:year:${profile?.id}:${new Date().getFullYear()}`;
+  const [data, setData] = useState(() => readTrainerCache(monthCK) ?? null);
+  const [yearData, setYearData] = useState(() => readTrainerCache(yearCK) ?? null);
+  // Cold load only — gate the spinner on the default (month) view's cache.
+  const [loading, setLoading] = useState(() => !readTrainerCache(monthCK));
   const [busyId, setBusyId] = useState(null);
   const [filter, setFilter] = useState('pending'); // pending | paid | packs | all
   const [editId, setEditId] = useState(null);
@@ -64,24 +71,35 @@ export default function TrainerPayments() {
   const periodStr = (d) => format(d, 'yyyy-MM-01');
 
   const loadMonth = useCallback(async () => {
-    setLoading(true);
+    const key = `tpay:list:${profile?.id}:${periodStr(viewMonth)}`;
+    // Stale-while-revalidate: paint cached data for this period instantly and
+    // skip the spinner; only show it when this period has nothing cached.
+    const cached = profile?.id ? readTrainerCache(key) : null;
+    if (cached) setData(cached); else setLoading(true);
     try {
       const { data: r, error } = await supabase.rpc('get_trainer_money_overview', { p_month: periodStr(viewMonth) });
       if (error) throw error;
-      setData(r || {});
-    } catch (e) { logger.error('TrainerPayments month load failed', e); setData({}); }
+      // Only write through on success so a failed fetch never clobbers good cache.
+      const next = r || {};
+      setData(next);
+      if (profile?.id) writeTrainerCache(key, next);
+    } catch (e) { logger.error('TrainerPayments month load failed', e); if (!cached) setData({}); }
     finally { setLoading(false); }
-  }, [viewMonth]);
+  }, [viewMonth, profile?.id]);
 
   const loadYear = useCallback(async () => {
-    setLoading(true);
+    const key = `tpay:year:${profile?.id}:${viewYear}`;
+    const cached = profile?.id ? readTrainerCache(key) : null;
+    if (cached) setYearData(cached); else setLoading(true);
     try {
       const { data: r, error } = await supabase.rpc('get_trainer_year_overview', { p_year: viewYear });
       if (error) throw error;
-      setYearData(r || {});
-    } catch (e) { logger.error('TrainerPayments year load failed', e); setYearData({}); }
+      const next = r || {};
+      setYearData(next);
+      if (profile?.id) writeTrainerCache(key, next);
+    } catch (e) { logger.error('TrainerPayments year load failed', e); if (!cached) setYearData({}); }
     finally { setLoading(false); }
-  }, [viewYear]);
+  }, [viewYear, profile?.id]);
 
   useEffect(() => { if (mode === 'month') loadMonth(); else loadYear(); }, [mode, loadMonth, loadYear]);
 

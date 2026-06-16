@@ -2,16 +2,19 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft, Heart, Share2, Calendar, MessageSquare, Phone,
-  Dumbbell, BadgeCheck, Star, X, Loader2, Send,
+  ChevronLeft, Heart, Share2, Calendar, MessageSquare, MessageCircle, Phone,
+  Dumbbell, BadgeCheck, Star, X, Loader2, Send, MapPin,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
-import { PROD_WEB_URL } from '../lib/appUrls';
+import { trainerShareUrl } from '../lib/appUrls';
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 import UserAvatar from '../components/UserAvatar';
 import ContentActionMenu from '../components/ContentActionMenu';
 import { TT, TFont, avatarIdx } from './trainer/components/designTokens';
+import { coverBackground } from '../lib/trainerCovers';
 import { TCard, TAvatar } from './trainer/components/designPrimitives';
 
 // ────────────────────────────────────────────────────────────────────
@@ -56,7 +59,7 @@ function relativeShort(date, t) {
 // ────────────────────────────────────────────────────────────────────
 // ContactPickerModal — soft "intro to messages" dialog
 // ────────────────────────────────────────────────────────────────────
-function ContactPickerModal({ open, onClose, trainerName, isClient, onOpenMessages }) {
+function ContactPickerModal({ open, onClose, trainerName, isClient, onOpenMessages, phone, onSms, onWhatsApp }) {
   const { t } = useTranslation('pages');
   if (!open) return null;
   return (
@@ -126,6 +129,39 @@ function ContactPickerModal({ open, onClose, trainerName, isClient, onOpenMessag
               ? t('publicTrainerProfile.bookCta.openMessages', 'Open messages')
               : t('publicTrainerProfile.bookCta.sendMessage', 'Send message')}
           </button>
+          {phone && (
+            <>
+              <button
+                type="button"
+                onClick={onSms}
+                style={{
+                  width: '100%', padding: '11px 14px', borderRadius: 12,
+                  border: `1px solid ${TT.borderSolid}`, background: TT.surface2,
+                  color: TT.text, fontFamily: TFont.body, fontWeight: 700, fontSize: 13.5,
+                  cursor: 'pointer', minHeight: 44,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <MessageSquare size={14} strokeWidth={2.2} />
+                {t('publicTrainerProfile.textSms', 'Text message')}
+              </button>
+              <button
+                type="button"
+                onClick={onWhatsApp}
+                style={{
+                  width: '100%', padding: '11px 14px', borderRadius: 12,
+                  border: '1px solid color-mix(in srgb, #25D366 40%, transparent)',
+                  background: 'color-mix(in srgb, #25D366 12%, transparent)',
+                  color: TT.text, fontFamily: TFont.body, fontWeight: 800, fontSize: 13.5,
+                  cursor: 'pointer', minHeight: 44,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <MessageCircle size={15} strokeWidth={2.4} color="#1FA855" />
+                {t('publicTrainerProfile.whatsapp', 'WhatsApp')}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -137,6 +173,146 @@ function ContactPickerModal({ open, onClose, trainerName, isClient, onOpenMessag
           >
             {t('common:cancel', 'Cancel')}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// ReviewRow — one review card; shared by the inline preview + AllReviewsModal
+// ────────────────────────────────────────────────────────────────────
+function ReviewRow({ review, t }) {
+  const reviewer = review.reviewer || {};
+  return (
+    <TCard padded={14}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        {reviewer.avatar_url ? (
+          <UserAvatar user={reviewer} size={28} />
+        ) : (
+          <TAvatar name={reviewer.full_name || '?'} size={28} idx={avatarIdx(reviewer.id || review.id)} />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 12, fontWeight: 800, color: TT.text,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {reviewer.full_name || t('publicTrainerProfile.member', 'Member')}
+          </div>
+          <div style={{ fontSize: 10, color: TT.textMute }}>
+            {relativeShort(review.created_at, t)}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 1 }}>
+          {Array.from({ length: 5 }).map((_, j) => (
+            <span key={j} aria-hidden="true" style={{
+              color: j < (review.rating || 0) ? '#E8C547' : TT.textFaint, fontSize: 11,
+            }}>★</span>
+          ))}
+        </div>
+      </div>
+      {review.body && (
+        <div style={{ fontSize: 12, color: TT.text, lineHeight: 1.45, fontStyle: 'italic' }}>
+          &ldquo;{review.body}&rdquo;
+        </div>
+      )}
+    </TCard>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// AllReviewsModal — full, scrollable list of every review (the "See all")
+// ────────────────────────────────────────────────────────────────────
+function AllReviewsModal({ open, onClose, trainerId, trainerName, reviewCount, avgRating }) {
+  const { t } = useTranslation('pages');
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!open || !trainerId) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from('trainer_reviews')
+        .select('id, rating, body, created_at, reviewer_id')
+        .eq('trainer_id', trainerId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      const raw = data || [];
+      // Reviewer names/avatars via the same-gym safe view (the profiles embed is
+      // RLS-nulled for non-friends) — mirrors the inline preview's resolution.
+      const ids = [...new Set(raw.map((r) => r.reviewer_id).filter(Boolean))];
+      const byId = {};
+      if (ids.length) {
+        const { data: profs } = await supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, avatar_url, avatar_type, avatar_value')
+          .in('id', ids);
+        (profs || []).forEach((p) => { byId[p.id] = p; });
+      }
+      if (!cancelled) {
+        setRows(raw.map((r) => ({ ...r, reviewer: byId[r.reviewer_id] ?? null })));
+        setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, trainerId]);
+
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+      style={{ background: 'rgba(11,15,18,0.55)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 420, maxHeight: '82vh', background: TT.surface,
+          borderRadius: 20, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg,
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: TFont.body,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: '18px 18px 12px' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1.2 }}>
+              {t('publicTrainerProfile.allReviewsTitle', 'All reviews')}
+            </div>
+            <div style={{ fontSize: 12, color: TT.textSub, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {avgRating > 0 && <span style={{ color: '#E8C547', fontWeight: 800 }}>★ {avgRating.toFixed(1)} · </span>}
+              {reviewCount === 1
+                ? t('publicTrainerProfile.reviewsCount_one', 'Review · 1')
+                : t('publicTrainerProfile.reviewsCount_other', 'Reviews · {{count}}', { count: reviewCount })}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('common:close', 'Close')}
+            style={{
+              width: 32, height: 32, borderRadius: 10, border: 'none', flexShrink: 0,
+              background: TT.surface2, color: TT.textSub, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ overflowY: 'auto', padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 28 }}>
+              <Loader2 size={22} className="animate-spin" color={TT.textMute} />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: TT.textSub, textAlign: 'center', padding: 28 }}>
+              {t('publicTrainerProfile.noReviewsYet', 'No reviews yet')}
+            </div>
+          ) : (
+            rows.map((r) => <ReviewRow key={r.id} review={r} t={t} />)
+          )}
         </div>
       </div>
     </div>
@@ -303,6 +479,7 @@ export default function PublicTrainerProfile() {
   const [responding, setResponding] = useState(false);
   const [favorites, setFavorites] = useState(loadFavorites);
   const [contactOpen, setContactOpen] = useState(false);
+  const [allReviewsOpen, setAllReviewsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
 
@@ -457,19 +634,39 @@ export default function PublicTrainerProfile() {
 
   // ── Share ──────────────────────────────────────────────
   const handleShare = useCallback(async () => {
-    // PROD_WEB_URL, not window.location.origin — on Capacitor the origin is
-    // capacitor://localhost, which is dead for recipients.
-    const url = `${PROD_WEB_URL}/trainers/${trainerId}`;
-    const title = trainer?.full_name || t('publicTrainerProfile.title', 'Trainer profile');
+    // Smart share link (/t/:id): opens the app if installed, else the download
+    // landing — never the bare website profile. (capacitor://localhost, the
+    // native origin, would be dead for recipients, so this is an absolute URL.)
+    const url = trainerShareUrl(trainerId);
+    const name = trainer?.full_name || t('publicTrainerProfile.title', 'Trainer profile');
+    const text = trainer?.full_name
+      ? t('publicTrainerProfile.shareText', 'Check out {{name}} on TuGymPR', { name: trainer.full_name })
+      : name;
+    const copyFallback = async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast(t('publicTrainerProfile.linkCopied', 'Link copied'), 'success');
+      } catch {
+        showToast(t('publicTrainerProfile.shareFailed', 'Could not share'), 'error');
+      }
+    };
+    // Native: navigator.share is unavailable on the capacitor:// origin and just
+    // falls through to a silent clipboard copy. Use the Capacitor Share plugin
+    // so the real iOS/Android share sheet opens.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Share.share({ title: name, text, url, dialogTitle: name });
+      } catch (e) {
+        // Sheet dismissed → silent; any other failure → fall back to copy.
+        if (!/cancel/i.test(e?.message || '')) await copyFallback();
+      }
+      return;
+    }
+    // Web: native share sheet if available, else copy the link.
     if (typeof navigator !== 'undefined' && navigator.share) {
-      try { await navigator.share({ title, url }); return; } catch { /* user cancelled */ }
+      try { await navigator.share({ title: name, text, url }); return; } catch { return; }
     }
-    try {
-      await navigator.clipboard.writeText(url);
-      showToast(t('publicTrainerProfile.linkCopied', 'Link copied'), 'success');
-    } catch {
-      showToast(t('publicTrainerProfile.shareFailed', 'Could not share'), 'error');
-    }
+    await copyFallback();
   }, [trainerId, trainer, showToast, t]);
 
   // ── Open messages w/ trainer ────────────────────────────
@@ -485,7 +682,12 @@ export default function PublicTrainerProfile() {
     // This page is reachable from every role. A viewer in trainer view gets
     // bounced off the member /messages route by ProtectedRoute, so send them
     // to the trainer chat instead (same conversation table underneath).
-    navigate(activeView === 'trainer' ? `/trainer/messages/${convId}` : `/messages/${convId}`);
+    // Pass `from` so the conversation's Back button returns HERE, not to the
+    // messages list (Messages.handleBack prefers location.state.from).
+    navigate(
+      activeView === 'trainer' ? `/trainer/messages/${convId}` : `/messages/${convId}`,
+      { state: { from: `/trainers/${trainer.id}` } },
+    );
   }, [user, trainer, navigate, showToast, t, activeView]);
 
   // ── Tap-to-call when the trainer has shared their phone ──
@@ -499,6 +701,30 @@ export default function PublicTrainerProfile() {
     }
     window.location.href = `tel:${phone.replace(/[^+\d]/g, '')}`;
   }, [trainer?.phone_number, showToast, t]);
+
+  // ── Text (SMS) when the trainer has shared their phone ──
+  const handleSmsTap = useCallback(() => {
+    const phone = trainer?.phone_number;
+    if (!phone) return;
+    setContactOpen(false);
+    window.location.href = `sms:${phone.replace(/[^+\d]/g, '')}`;
+  }, [trainer?.phone_number]);
+
+  // ── WhatsApp when the trainer has shared their phone ──
+  const handleWhatsAppTap = useCallback(() => {
+    const phone = trainer?.phone_number;
+    if (!phone) return;
+    setContactOpen(false);
+    // wa.me wants full international digits, no '+'. A bare 10-digit local
+    // number is treated as US/PR (+1) — the gym market. Opened via _blank so
+    // Capacitor hands it to the system (→ WhatsApp), not the in-app webview.
+    let digits = phone.replace(/\D/g, '');
+    if (digits.length === 10) digits = `1${digits}`;
+    const text = encodeURIComponent(
+      t('publicTrainerProfile.waText', 'Hi {{name}}, I found you on TuGymPR.', { name: trainer?.full_name || '' }),
+    );
+    window.open(`https://wa.me/${digits}?text=${text}`, '_blank');
+  }, [trainer?.phone_number, trainer?.full_name, t]);
 
   // ── Submit review ──────────────────────────────────────
   const handleSubmitReview = useCallback(async ({ rating, body }) => {
@@ -571,7 +797,7 @@ export default function PublicTrainerProfile() {
   );
   const topCredential = credentialsArr[0]?.name || credentialsArr[0]?.issuer || '';
   const yearsExp = typeof trainer?.trainer_years_exp === 'number' ? trainer.trainer_years_exp : null;
-  const tagline = trainer?.trainer_tagline || trainer?.bio || '';
+  const tagline = trainer?.trainer_tagline || '';
   const ratingValue = Number(reviewSummary?.avg_rating || 0);
   const reviewCount = Number(reviewSummary?.review_count || 0);
   const fivePct = Number(reviewSummary?.five_pct || 0);
@@ -642,9 +868,7 @@ export default function PublicTrainerProfile() {
       <div style={{ position: 'relative', height: 180 }}>
         <div style={{
           position: 'absolute', inset: 0,
-          background: trainer?.trainer_cover_url
-            ? `url("${trainer.trainer_cover_url}") center/cover no-repeat`
-            : 'linear-gradient(135deg, #FFB86B 0%, #FF7A3D 60%, #FF5A2E 100%)',
+          background: coverBackground(trainer?.trainer_cover_url),
         }} />
         <div style={{
           position: 'absolute', inset: 0,
@@ -653,7 +877,11 @@ export default function PublicTrainerProfile() {
         {/* Top bar */}
         <div style={{
           position: 'absolute', top: 'calc(12px + env(safe-area-inset-top, 0px))', left: 16, right: 16,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 2,
+          // Above the identity card (zIndex 2). The cover is position:relative
+          // with NO z-index → not a stacking context, so this top bar and the
+          // identity card are siblings at the same level; equal z-index let the
+          // later-in-DOM identity card paint OVER the open 3-dot menu. Lift it.
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 20,
         }}>
           <button
             type="button"
@@ -747,13 +975,16 @@ export default function PublicTrainerProfile() {
                   <BadgeCheck size={16} strokeWidth={3} color={TT.goodInk} aria-label={t('publicTrainerProfile.verified', 'Verified')} />
                 )}
               </div>
-              {(topCredential || yearsExp != null) && (
-                <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2 }}>
+              {(topCredential || trainer?.trainer_location) && (
+                <div style={{ fontSize: 11.5, color: TT.textSub, marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                   {topCredential}
-                  {topCredential && yearsExp != null ? ' · ' : ''}
-                  {yearsExp != null
-                    ? t('publicTrainerProfile.yrsExp', '{{n}} yrs', { n: yearsExp })
-                    : ''}
+                  {topCredential && trainer?.trainer_location ? ' · ' : ''}
+                  {trainer?.trainer_location && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <MapPin size={11} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+                      {trainer.trainer_location}
+                    </span>
+                  )}
                 </div>
               )}
               {reviewCount > 0 ? (
@@ -784,6 +1015,20 @@ export default function PublicTrainerProfile() {
           )}
         </TCard>
       </div>
+
+      {/* ── About / bio ─── */}
+      {trainer?.bio && (
+        <div style={{ padding: '0 16px 4px' }}>
+          <TCard>
+            <div style={{ fontSize: 11, fontWeight: 800, color: TT.textMute, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>
+              {t('publicTrainerProfile.about', 'About')}
+            </div>
+            <div style={{ fontSize: 13.5, color: TT.text, lineHeight: 1.55, fontFamily: TFont.body, whiteSpace: 'pre-wrap' }}>
+              {trainer.bio}
+            </div>
+          </TCard>
+        </div>
+      )}
 
       {/* ── Big book CTA + secondary actions ─── */}
       <div style={{ padding: '14px 16px' }}>
@@ -1078,9 +1323,16 @@ export default function PublicTrainerProfile() {
               : t('publicTrainerProfile.reviewsCount_other', 'Reviews · {{count}}', { count: reviewCount })}
           </div>
           {reviewCount > 0 && (
-            <div style={{ fontSize: 11.5, color: TT.accent, fontWeight: 700 }}>
+            <button
+              type="button"
+              onClick={() => setAllReviewsOpen(true)}
+              style={{
+                fontSize: 11.5, color: TT.accent, fontWeight: 700,
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              }}
+            >
               {t('publicTrainerProfile.seeAll', 'See all')} →
-            </div>
+            </button>
           )}
         </div>
         {reviews.length === 0 ? (
@@ -1091,55 +1343,9 @@ export default function PublicTrainerProfile() {
           </TCard>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {reviews.map((r) => {
-              const reviewer = r.reviewer || {};
-              return (
-                <TCard key={r.id} padded={14}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    {reviewer.avatar_url ? (
-                      <UserAvatar user={reviewer} size={28} />
-                    ) : (
-                      <TAvatar
-                        name={reviewer.full_name || '?'}
-                        size={28}
-                        idx={avatarIdx(reviewer.id || r.id)}
-                      />
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 12, fontWeight: 800, color: TT.text,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {reviewer.full_name || t('publicTrainerProfile.member', 'Member')}
-                      </div>
-                      <div style={{ fontSize: 10, color: TT.textMute }}>
-                        {relativeShort(r.created_at, t)}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 1 }}>
-                      {Array.from({ length: 5 }).map((_, j) => (
-                        <span
-                          key={j}
-                          aria-hidden="true"
-                          style={{
-                            color: j < (r.rating || 0) ? '#E8C547' : TT.textFaint,
-                            fontSize: 11,
-                          }}
-                        >★</span>
-                      ))}
-                    </div>
-                  </div>
-                  {r.body && (
-                    <div style={{
-                      fontSize: 12, color: TT.text, lineHeight: 1.45,
-                      fontStyle: 'italic',
-                    }}>
-                      &ldquo;{r.body}&rdquo;
-                    </div>
-                  )}
-                </TCard>
-              );
-            })}
+            {reviews.map((r) => (
+              <ReviewRow key={r.id} review={r} t={t} />
+            ))}
           </div>
         )}
 
@@ -1227,6 +1433,17 @@ export default function PublicTrainerProfile() {
         trainerName={displayName}
         isClient={isClient}
         onOpenMessages={openMessages}
+        phone={trainer?.phone_number}
+        onSms={handleSmsTap}
+        onWhatsApp={handleWhatsAppTap}
+      />
+      <AllReviewsModal
+        open={allReviewsOpen}
+        onClose={() => setAllReviewsOpen(false)}
+        trainerId={trainerId}
+        trainerName={displayName}
+        reviewCount={reviewCount}
+        avgRating={ratingValue}
       />
       <ReviewModal
         open={reviewOpen}

@@ -137,6 +137,22 @@ const TrainerPlanViewer = ({ plan, onClose }) => {
         if (insErr) throw insErr;
         routineId = created.id;
       }
+      // Supersets: consecutive exercises sharing a non-null `ss` token (set in
+      // the trainer plan builder) become a real routine group so ActiveSession
+      // renders them paired. group_id is plain text (member side uses nanoid).
+      const groupIdFor = {};
+      for (let i = 0; i < exs.length;) {
+        const ss = exs[i].ss;
+        if (ss) {
+          let j = i + 1;
+          while (j < exs.length && exs[j].ss === ss) j++;
+          if (j - i >= 2) {
+            const gid = `ssg-${routineId}-${i}`;
+            for (let k = i; k < j; k++) groupIdFor[k] = gid;
+          }
+          i = j;
+        } else { i++; }
+      }
       const rows = exs.map((ex, i) => ({
         routine_id: routineId,
         exercise_id: ex.id,
@@ -144,6 +160,8 @@ const TrainerPlanViewer = ({ plan, onClose }) => {
         target_sets: Number(ex.sets) || 3,
         target_reps: String(ex.reps || '8-12'),
         rest_seconds: Number.isFinite(Number(ex.rest_seconds)) ? Number(ex.rest_seconds) : 60,
+        group_id: groupIdFor[i] || null,
+        group_type: groupIdFor[i] ? 'superset' : null,
       }));
       const { error: exErr } = await supabase.from('routine_exercises').insert(rows);
       if (exErr) throw exErr;

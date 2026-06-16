@@ -1,4 +1,11 @@
 {
+  "exit": {
+    "button": "Exit",
+    "title": "Leave setup for now?",
+    "body": "Your account is saved. Sign back in anytime to pick up right where you left off — you won't lose your progress and you won't need to sign up again.",
+    "confirm": "Save & sign out",
+    "exiting": "Signing out…"
+  },
   "title": "Let's set you up",
   "subtitle": "A few quick questions so we can build your perfect plan",
   "stepLabels": {
