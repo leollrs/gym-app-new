@@ -17,6 +17,7 @@ import logger from '../lib/logger';
 import { useTranslation } from 'react-i18next';
 import { exName, exInstructions } from '../lib/exerciseName';
 import { usePostHog } from '@posthog/react';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 /* ── Resolve a video path to a full public URL ──────────────────────────────── */
 const resolveVideoUrl = (path) => {
@@ -2573,6 +2574,11 @@ export const ExerciseLibraryPage = () => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, [showFilters]);
+
+  // Lock background scroll for the full-screen Edit Exercise modal (its own
+  // form doesn't lock, unlike Add). Filter modal is handled above; the Add
+  // modal + ExerciseCard detail modal lock themselves.
+  useScrollLock(!!editingExercise);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchInput), 300);

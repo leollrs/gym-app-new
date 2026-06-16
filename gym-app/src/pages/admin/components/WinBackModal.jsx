@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RotateCcw, CheckCircle, FlaskConical, Bell, Mail, Smartphone, Gift } from 'lucide-react';
-import { supabase } from '../../../lib/supabase';
+import { supabase, authHeader } from '../../../lib/supabase';
 import { encryptMessage } from '../../../lib/messageEncryption';
 import { RewardSymbol } from '../../../lib/rewardSymbols';
 import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { AdminModal, SectionLabel } from '../../../components/admin';
+import { useToast } from '../../../contexts/ToastContext';
 import { logAdminAction } from '../../../lib/adminAudit';
 import posthog from 'posthog-js';
 
 export default function WinBackModal({ member, gymId, adminId, activeCampaign, onClose, onSent, memberEmail: emailProp, memberPhone }) {
   const { t } = useTranslation('pages');
+  const { showToast } = useToast();
   const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
   const defaultMsg = t('admin.churn.winBackDefaultMsg', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}! We miss you at the gym. We'd love to have you back \u2014 come in this week and let's pick up where you left off. Your spot is waiting!` });
 
@@ -94,6 +96,12 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reward-qr?id=${redemptionId}&format=png`
         : null;
 
+      // One fresh auth header for whichever edge function this channel hits —
+      // send-push-user / send-admin-email / send-sms are all verify_jwt=on, so a
+      // header-less request is bounced by the gateway before the function runs.
+      // Throws SESSION_EXPIRED (caught below) when the session can't be refreshed.
+      const reqHeaders = await authHeader();
+
       // Send via selected channel
       if (channel === 'push') {
         // Send as DM so it shows in Messages page
@@ -113,7 +121,6 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
 
         // Send push notification so phone buzzes
         const pushTitle = t('admin.churn.weWantYouBack', 'We want you back!');
-        const { data: { session: pushSession } } = await supabase.auth.getSession();
         supabase.functions.invoke('send-push-user', {
           body: {
             profile_id: member.id,
@@ -122,10 +129,11 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
             body: fullMsg.substring(0, 150),
             data: { type: 'direct_message', conversation_id: convoId },
           },
-          headers: pushSession?.access_token ? { Authorization: `Bearer ${pushSession.access_token}` } : {},
+          headers: reqHeaders,
         }).catch(err => logger.warn('WinBack: push failed:', err));
       } else if (channel === 'email') {
         const { error: emailErr } = await supabase.functions.invoke('send-admin-email', {
+          headers: reqHeaders,
           body: {
             memberId: member.id,
             subject: t('admin.churn.weWantYouBack', 'We want you back!'),
@@ -136,13 +144,11 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         if (emailErr) throw emailErr;
       } else if (channel === 'sms') {
         const smsText = fullMsg.length > 320 ? fullMsg.slice(0, 317) + '...' : fullMsg;
-        const { data: { session: smsSession } } = await supabase.auth.getSession();
-        if (!smsSession?.access_token) throw new Error('No active session');
         const smsPayload = { memberId: member.id, body: smsText, source: 'win_back' };
         if (qrImageUrl) smsPayload.mediaUrl = qrImageUrl;
         const { data: smsData, error: smsErr } = await supabase.functions.invoke('send-sms', {
           body: smsPayload,
-          headers: { Authorization: `Bearer ${smsSession.access_token}` },
+          headers: reqHeaders,
         });
         if (smsErr) throw smsErr;
         if (smsData?.error) throw new Error(smsData.error);
@@ -177,9 +183,11 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
       logAdminAction('send_winback', 'member', member.id, { channel, offer: rewardName });
       posthog?.capture('admin_winback_sent', { method: channel });
       setSent(true);
+      showToast(t('admin.churn.winBackSentToast', { defaultValue: 'Win-back message sent' }), 'success');
       setTimeout(() => { onSent?.(); onClose(); }, 1200);
     } catch (err) {
       logger.error('Failed to send win-back', err);
+      showToast(err?.message || t('admin.churn.winBackSendFailed', { defaultValue: "Couldn't send — try again" }), 'error');
     } finally {
       setSending(false);
     }

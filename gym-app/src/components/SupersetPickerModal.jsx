@@ -10,6 +10,7 @@ import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, Link2 } from 'lucide-react';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 export default function SupersetPickerModal({
   open,
@@ -20,6 +21,9 @@ export default function SupersetPickerModal({
   onAddNew,
 }) {
   const { t, i18n } = useTranslation('pages');
+
+  // Lock background page scroll while the picker is open.
+  useScrollLock(open);
 
   const candidates = useMemo(() => {
     if (!Array.isArray(exercises)) return [];

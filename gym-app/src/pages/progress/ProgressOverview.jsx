@@ -25,6 +25,7 @@ import { formatStatNumber, statFontSize } from '../../lib/formatStatValue';
 import GoalsSection from '../../components/GoalsSection';
 import { usePostHog } from '@posthog/react';
 import { useCachedState, hasCachedState } from '../../hooks/useCachedState';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 export default function ProgressOverview() {
   const { t, i18n } = useTranslation('pages');
@@ -956,6 +957,7 @@ function MonthlyTimeline({ userId }) {
   // Only show skeleton if we've never loaded this timeline before
   const [loading, setLoading] = useState(() => !hasCachedState(timelineCacheKey));
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  useScrollLock(!!deleteConfirm);
 
   const handleDeleteSession = async () => {
     if (!deleteConfirm) return;

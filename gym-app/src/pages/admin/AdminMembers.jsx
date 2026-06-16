@@ -417,9 +417,11 @@ export default function AdminMembers() {
         logger.error('Bulk message failed for member:', id, err);
       }
     }
-    if (successCount < total) {
+    if (successCount === 0) {
+      showToast(t('admin.members.bulkMessageError', { defaultValue: "Couldn't send — try again" }), 'error');
+    } else if (successCount < total) {
       showToast(t('admin.members.bulkPartialResult', { success: successCount, total, defaultValue: 'Sent to {{success}} of {{total}} members' }), 'warning');
-    } else if (successCount > 0) {
+    } else {
       showToast(t('admin.members.bulkMessageSuccess', { count: successCount, defaultValue: 'Message sent to {{count}} members' }), 'success');
     }
     clearSelection();

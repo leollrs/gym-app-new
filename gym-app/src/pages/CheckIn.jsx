@@ -12,6 +12,7 @@ import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import QRCodeModal from '../components/QRCodeModal';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 
 // GPS check-in is intentionally omitted: GPS is reserved for cardio tracking.
@@ -42,6 +43,9 @@ export default function CheckIn() {
   const [showQR,    setShowQR]    = useState(false);
 
   const qrPayload = profile?.qr_code_payload || null;
+
+  // Lock background scroll while the full-screen QR overlay is open.
+  useScrollLock(showQR && qrEnabled);
 
   const load = useCallback(async () => {
     if (!user) return;

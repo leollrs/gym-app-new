@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
 import UserAvatar from './UserAvatar';
 import ReportContentModal from './ReportContentModal';
+import { useScrollLock } from '../hooks/useScrollLock';
 import posthogClient from 'posthog-js';
 
 // Goal display config
@@ -43,6 +44,9 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
   const [blocking, setBlocking]       = useState(false);
   const backdropRef = useRef(null);
   const menuRef = useRef(null);
+
+  // Lock background page scroll while the preview is open.
+  useScrollLock(isOpen);
 
   // Close menu on outside click
   useEffect(() => {

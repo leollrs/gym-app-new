@@ -21,6 +21,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Image as ImageIcon, Camera as CameraIcon } from 'lucide-react';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 const OUTPUT_W = 1080;
 const OUTPUT_H = 1920;
@@ -33,6 +34,7 @@ export default function StickerComposer({
   initialPhotoSrc,    // optional starting background
 }) {
   const { t } = useTranslation('pages');
+  useScrollLock(open);
   const [photoSrc, setPhotoSrc] = useState(initialPhotoSrc || null);
   // sticker transform in unit space (0..1 across the canvas).
   // cx, cy = center as a fraction of canvas width/height.

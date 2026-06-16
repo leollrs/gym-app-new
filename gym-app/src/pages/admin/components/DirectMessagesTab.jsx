@@ -628,7 +628,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
       p_other_user: member.id,
     });
 
-    if (error) { logger.error('AdminMessaging: create convo:', error); return; }
+    if (error) {
+      logger.error('AdminMessaging: create convo:', error);
+      showToast(t('admin.messaging.sendFailed', { defaultValue: "Couldn't send — try again" }), 'error');
+      return;
+    }
 
     // Fetch the encryption seed for the new/existing conversation so it's
     // available before messages are loaded or sent.

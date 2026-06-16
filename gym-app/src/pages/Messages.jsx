@@ -13,6 +13,7 @@ import EmptyState from '../components/EmptyState';
 import ContentActionMenu from '../components/ContentActionMenu';
 import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { encryptMessage, decryptMessage } from '../lib/messageEncryption';
 import { checkContentBeforeSend } from '../lib/moderationFilter';
 import { sanitize } from '../lib/sanitize';
@@ -253,6 +254,7 @@ const MessageBody = ({ body }) => {
 // ── Block User Confirm Modal (center-aligned) ──────────────────────
 const BlockUserModal = ({ open, name, onClose, onConfirm, t }) => {
   const [submitting, setSubmitting] = useState(false);
+  useScrollLock(open);
   if (!open) return null;
   const firstName = name?.split(' ')[0] ?? '';
   const handleConfirm = async () => {
@@ -391,6 +393,8 @@ const MemberPicker = ({ isOpen, onClose, onSelect }) => {
     }, 300);
     return () => clearTimeout(timeout);
   }, [query, user.id, hiddenIds]);
+
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 

@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import AvatarPicker from '../../components/AvatarPicker';
 import UserAvatar from '../../components/UserAvatar';
 import useKeyboardOpen from '../../hooks/useKeyboardOpen';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { TT, TFont, avatarIdx } from './components/designTokens';
 import {
   TCard, TPill, TAvatar, TPrimaryButton, TDarkButton, TIconButton,
@@ -118,6 +119,10 @@ function ModalShell({ open, onClose, title, children, footer, maxWidth = 460 }) 
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Every TrainerProfile modal routes through this shell, so locking here
+  // freezes the page behind any of them. Called before the early return.
+  useScrollLock(open);
 
   if (!open) return null;
 

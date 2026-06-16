@@ -5587,7 +5587,8 @@
       "today": "today",
       "tomorrow": "tomorrow",
       "currentWorkouts": "Currently {{count}} workout",
-      "currentWorkouts_plural": "Currently {{count}} workouts"
+      "currentWorkouts_plural": "Currently {{count}} workouts",
+      "rewardBtn": "Reward"
     },
     "printCards": {
       "pageTitle": "Print Cards",
@@ -7432,8 +7433,11 @@
       "sendTest": "Send test to me",
       "sendTestSuccess": "Test sent to {{email}}",
       "sendTestFailed": "Test send failed",
+      "sendTestFailedReason": "Test send failed: {{reason}}",
       "sendTestNoEmail": "No email on your account",
       "sendTestSub": "Delivers the full design to the address you pick.",
+      "sendTestSelfSub": "We’ll deliver the full design to your own inbox.",
+      "sendTestSelfNote": "Test emails can only be sent to your own inbox.",
       "sendTestTo": "Send to",
       "sendTestConfirm": "Send test",
       "sendTestInvalidEmail": "Enter a valid email",
@@ -7779,6 +7783,8 @@
       "emptyAudience": "No members match this audience",
       "sentToast": "Sent to {{count}} member",
       "sentToast_plural": "Sent to {{count}} members",
+      "allFailed": "All {{count}} send(s) failed — nothing was delivered",
+      "partialSent": "Sent {{sent}}, {{failed}} failed",
       "tier": {
         "critical": "Critical churn risk",
         "high": "At risk",

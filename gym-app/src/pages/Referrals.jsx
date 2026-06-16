@@ -15,6 +15,7 @@ import { rewardLabelText } from '../lib/rewardSymbols';
 import { PROD_WEB_URL } from '../lib/appUrls';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { useTranslation } from 'react-i18next';
 import QRCodeModal from '../components/QRCodeModal';
 import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
@@ -76,6 +77,7 @@ export default function Referrals() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  useScrollLock(showQRModal); // lock background scroll while the QR modal is open
   const [walletLoading, setWalletLoading] = useState(false);
   const isEs = i18n.language?.startsWith('es');
 

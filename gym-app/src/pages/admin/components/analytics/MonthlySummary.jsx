@@ -9,6 +9,7 @@ import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import logger from '../../../../lib/logger';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
+import { useScrollLock } from '../../../../hooks/useScrollLock';
 import { TK, FK, Card } from './analyticsKit';
 
 async function fetchSummaryData(gymId, summaryMonth, dateFnsLocale) {
@@ -102,6 +103,7 @@ export default function MonthlySummary({ gymId }) {
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const [summaryMonth, setSummaryMonth] = useState(0);
   const [showReport, setShowReport] = useState(false);
+  useScrollLock(showReport);
 
   const { data: summary, isLoading, isError, refetch } = useQuery({
     queryKey: [...adminKeys.analytics.summary(gymId, summaryMonth), i18n.language],

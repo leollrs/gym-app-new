@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MessageSquare, Mail, Phone, CheckCircle, Send, Gift, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { supabase } from '../../../lib/supabase';
+import { supabase, authHeader } from '../../../lib/supabase';
 import { encryptMessage } from '../../../lib/messageEncryption';
 import i18n from 'i18next';
 import logger from '../../../lib/logger';
@@ -266,7 +266,7 @@ export default function ContactPanel({
         reqBody.rewardType = selected?.reward_type || 'custom';
         reqBody.rewardLabel = selected?.label || rewardType;
       }
-      const { data, error: fnError } = await supabase.functions.invoke('send-admin-email', { body: reqBody });
+      const { data, error: fnError } = await supabase.functions.invoke('send-admin-email', { headers: await authHeader(), body: reqBody });
       // supabase.functions.invoke surfaces 4xx/5xx as `data` with the error
       // payload AND sets `error`. Inspect the data for the upstream detail.
       if (fnError || (data && data.error)) {

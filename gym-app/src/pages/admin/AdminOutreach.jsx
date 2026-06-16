@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Send, Loader2, Sparkles, Eye, Mail, ChevronDown, History } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import { supabase } from '../../lib/supabase';
+import { supabase, authHeader, isSessionError } from '../../lib/supabase';
 import {
   PageHeader, AdminCard, AdminPageShell, FadeIn, AdminModal,
 } from '../../components/admin';
@@ -335,19 +335,23 @@ export default function AdminOutreach() {
       const first = (profile?.full_name || 'there').split(' ')[0] || 'there';
       const html = designer.html.replace(/\{\{first_name\}\}/g, first);
       const subj = (subject || designer.subject || 'Message from your gym').replace(/\{\{first_name\}\}/g, first);
-      const { data: { session } } = await supabase.auth.getSession();
       // testMode=true is REQUIRED: it routes the edge fn down the self-send
       // preview path (free-form `to` + raw `html`, no memberId). Without it the
       // request falls through to the live-send branch, which 400s on the missing
       // memberId — that was why "Send test" silently failed.
       const { error } = await supabase.functions.invoke('send-admin-email', {
-        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        headers: await authHeader(),
         body: { testMode: true, to: user.email, subject: `[TEST] ${subj}`, html },
       });
       if (error) throw error;
       showToast(t('admin.outreach.testSent', { email: user.email, defaultValue: 'Test sent to {{email}}' }), 'success');
-    } catch {
-      showToast(t('admin.outreach.testFailed', 'Test send failed'), 'error');
+    } catch (err) {
+      showToast(
+        isSessionError(err)
+          ? t('platformLayout.sessionExpiredMsg', 'Your session expired — please sign in again.')
+          : t('admin.outreach.testFailed', 'Test send failed'),
+        'error',
+      );
     } finally {
       setSendingTest(false);
     }
@@ -389,13 +393,29 @@ export default function AdminOutreach() {
         audienceLabel,
       });
       setLastResult({ recipients: recipients.length, results });
-      showToast(
-        t('admin.outreach.sentToast', { count: recipients.length, defaultValue: 'Sent to {{count}} member(s)' }),
-        'success',
-      );
+      // Surface real delivery outcomes — `sendOutreach` tallies per-channel
+      // failures instead of throwing, so a wholly-failed batch must NOT be
+      // reported as an unqualified success (that's what hid the missing-auth-
+      // header email failures behind a green "Sent to N" toast).
+      const sent = (results.email?.sent || 0) + (results.sms?.sent || 0)
+        + (results.push?.sent || 0) + (results.inApp?.sent || 0);
+      const failed = (results.email?.failed || 0) + (results.sms?.failed || 0)
+        + (results.push?.failed || 0) + (results.inApp?.failed || 0);
+      if (sent === 0 && failed > 0) {
+        showToast(t('admin.outreach.allFailed', { count: failed, defaultValue: 'All {{count}} send(s) failed — nothing was delivered' }), 'error');
+      } else if (failed > 0) {
+        showToast(t('admin.outreach.partialSent', { sent, failed, defaultValue: 'Sent {{sent}}, {{failed}} failed' }), 'error');
+      } else {
+        showToast(t('admin.outreach.sentToast', { count: recipients.length, defaultValue: 'Sent to {{count}} member(s)' }), 'success');
+      }
       refetchRecent();
     } catch (err) {
-      showToast(err.message || 'Failed', 'error');
+      showToast(
+        isSessionError(err)
+          ? t('platformLayout.sessionExpiredMsg', 'Your session expired — please sign in again.')
+          : (err.message || 'Failed'),
+        'error',
+      );
     } finally {
       setSending(false);
     }

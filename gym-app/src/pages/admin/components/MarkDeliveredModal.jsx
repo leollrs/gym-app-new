@@ -20,12 +20,16 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 
 export default function MarkDeliveredModal({ card, gymId, onClose }) {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation('pages');
+
+  // This component only mounts while the modal is open, so lock unconditionally.
+  useScrollLock(true);
 
   // Pre-fill with the signed-in staffer's name (most often the same person),
   // but it stays editable + required so a front-desk hand-over gets the real name.

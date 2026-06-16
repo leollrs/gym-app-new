@@ -21,6 +21,7 @@ import { X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 // Lower soreness → green (recovered), middle → amber, high → red.
 const toneFor = (score) => {
@@ -48,6 +49,9 @@ export default function WellnessCheckinModal({ open, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [errorState, setErrorState] = useState(false);
+
+  // Lock background page scroll while the check-in is open.
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) {

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { List as VirtualList } from 'react-window';
 import { Trophy, BarChart2, Flame, Dumbbell, MapPin, TrendingUp, Target, ChevronRight, ChevronDown, Sparkles, Award, CheckCircle2, X, Swords, UserPlus, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +60,7 @@ const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, i
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const { showToast } = useToast();
+  useScrollLock(true); // lock background scroll while this modal is mounted
 
   const handleChallenge = async () => {
     if (sending || sent) return;
@@ -385,6 +387,7 @@ const ExpandedListRow = React.memo(function ExpandedListRow({ index, style, entr
 
 // ── Expanded full list modal ────────────────────────────────
 const ExpandedList = ({ title, icon: Icon, iconColor, entries, loading, userId, unit, isImproved, isConsistency, onClose, timeRange, setTimeRange, availableTimes, boardKey, friendIds, pendingIds, gymId, userName, onChallenge, onSendFriendRequest, t }) => {
+  useScrollLock(true); // lock background scroll while the expanded board modal is open
   const metric = BOARD_TO_METRIC[boardKey];
   const canChallenge = !!metric; // Only volume, workouts, prs can be challenged
 

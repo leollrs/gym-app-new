@@ -5,6 +5,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 export default function AdminModal({
   isOpen,
@@ -18,6 +19,10 @@ export default function AdminModal({
 }) {
   const dialogRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+
+  // Robust, ref-counted background-scroll lock (iOS-safe + trainer scroll region)
+  // — freezes the page behind the modal. Covers every modal built on AdminModal.
+  useScrollLock(isOpen);
 
   // Trap focus, handle Escape, and restore focus on close
   useEffect(() => {

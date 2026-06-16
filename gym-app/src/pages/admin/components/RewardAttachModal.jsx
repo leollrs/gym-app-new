@@ -22,6 +22,7 @@ import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 
 const EMOJI_PRESETS = ['🎁', '☕', '🥤', '🍪', '🏋️', '⭐', '💪', '🎯'];
 
@@ -30,6 +31,9 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
+
+  // This component only mounts while the modal is open, so lock unconditionally.
+  useScrollLock(true);
 
   const hasReward = !!card.reward_qr_code;
 

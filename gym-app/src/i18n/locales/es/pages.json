@@ -5593,7 +5593,8 @@
       "toastFailed": "No se pudo poner la tarjeta en cola",
       "statusQueued": "En cola",
       "statusPrinted": "Impresa",
-      "viewBtn": "Ver"
+      "viewBtn": "Ver",
+      "rewardBtn": "Premio"
     },
     "printCards": {
       "pageTitle": "Tarjetas Impresas",
@@ -7600,8 +7601,11 @@
       "sendTest": "Enviarme una prueba",
       "sendTestSuccess": "Prueba enviada a {{email}}",
       "sendTestFailed": "No se pudo enviar la prueba",
+      "sendTestFailedReason": "No se pudo enviar la prueba: {{reason}}",
       "sendTestNoEmail": "Tu cuenta no tiene correo",
       "sendTestSub": "Envía el diseño completo al correo que elijas.",
+      "sendTestSelfSub": "Te enviaremos el diseño completo a tu propia bandeja.",
+      "sendTestSelfNote": "Las pruebas solo se pueden enviar a tu propio correo.",
       "sendTestTo": "Enviar a",
       "sendTestConfirm": "Enviar prueba",
       "sendTestInvalidEmail": "Escribe un correo válido",
@@ -7947,6 +7951,8 @@
       "emptyAudience": "Ningún miembro coincide con esta audiencia",
       "sentToast": "Enviado a {{count}} miembro",
       "sentToast_plural": "Enviado a {{count}} miembros",
+      "allFailed": "Fallaron los {{count}} envío(s) — no se entregó nada",
+      "partialSent": "Enviados {{sent}}, {{failed}} fallaron",
       "tier": {
         "critical": "Riesgo crítico de baja",
         "high": "En riesgo",

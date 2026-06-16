@@ -13,6 +13,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 export default function PreviewOverlay({
   open,
@@ -23,6 +24,8 @@ export default function PreviewOverlay({
   w,
   h,
 }) {
+  useScrollLock(open);
+
   if (!open) return null;
 
   // Fit the card to the viewport (with margins for the close button / safe area).

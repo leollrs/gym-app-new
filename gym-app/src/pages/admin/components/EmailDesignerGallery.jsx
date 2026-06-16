@@ -6,11 +6,12 @@ import { Eye, Send, X, Mail, Loader2, Users, BarChart3, Activity, Flame, Trophy,
 import { AdminCard } from '../../../components/admin';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
-import { supabase } from '../../../lib/supabase';
+import { supabase, ensureFreshSession, isSessionError, readFunctionError } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import { DESIGNER_CAMPAIGNS, renderDesignerEmail } from '../../../lib/admin/emailDesignerTemplates';
 import DesignerEmail from './designerEmailComponents';
 import { ToneIconChip } from './emailTemplateKinds';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 
 // Section header icon + tone per designer campaign (replaces the old emoji).
 // Tones resolve to theme tokens via ToneIconChip — dark-mode + white-label safe.
@@ -150,6 +151,7 @@ function SendTestDialog({ open, defaultEmail, sending, onCancel, onSend, t }) {
 function SendTestDialogInner({ defaultEmail, sending, onCancel, onSend, t }) {
   const [value, setValue] = useState(defaultEmail || '');
   const [error, setError] = useState('');
+  useScrollLock(true); // modal only mounts while open
   const submit = (e) => {
     e?.preventDefault?.();
     const v = value.trim();
@@ -393,6 +395,7 @@ function ScaledFullEmail(props) {
 }
 
 function FullPreviewModal({ entry, html, subject, preview /* eslint-disable-line no-unused-vars */, lang, gymName, gymLogoUrl, primary, secondary, onClose, onUse, onSendTest, sendingTest, testTargetEmail, t }) {
+  useScrollLock(!!entry); // lock background scroll while the full preview is open
   if (!entry || typeof document === 'undefined') return null;
   // Portal to body so the modal escapes ANY parent stacking context: nothing
   // in the admin shell (transform, overflow, z-index) can clip it or shift it
@@ -517,9 +520,12 @@ export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
         name: lang === 'es' ? 'José' : 'Alex',
       });
       if (!r?.html) throw new Error('Render returned no HTML');
-      const { data: { session } } = await supabase.auth.getSession();
+      // Attach a freshly-refreshed token — the fn's gateway is verify_jwt=on, so a
+      // stale/missing session is bounced as UNAUTHORIZED_NO_AUTH_HEADER before the
+      // function runs. ensureFreshSession throws SESSION_EXPIRED if truly dead.
+      const session = await ensureFreshSession();
       const { error } = await supabase.functions.invoke('send-admin-email', {
-        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        headers: { Authorization: `Bearer ${session.access_token}` },
         body: {
           testMode: true,
           to: toEmail,
@@ -532,7 +538,15 @@ export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
       setTestTarget(null);
     } catch (err) {
       logger.error('send test designer email failed', err);
-      showToast(t('admin.emailTemplates.sendTestFailed', 'Test send failed'), 'error');
+      const fnMsg = await readFunctionError(err);
+      showToast(
+        isSessionError(err)
+          ? t('platformLayout.sessionExpiredMsg', 'Your session expired — please sign in again.')
+          : fnMsg
+            ? t('admin.emailTemplates.sendTestFailedReason', { reason: fnMsg, defaultValue: 'Test send failed: {{reason}}' })
+            : t('admin.emailTemplates.sendTestFailed', 'Test send failed'),
+        'error',
+      );
     } finally {
       setSendingTest(false);
     }
