@@ -36,9 +36,33 @@ function blobToBase64(blob) {
   });
 }
 
+// True when running inside the Tauri desktop shell (WebView2 / WKWebView).
+// Tauri is neither Capacitor-native nor a normal browser: its webview ignores
+// the `<a download>` + blob trick, so exports silently did nothing. We detect
+// it and route through a Rust command that pops a native "Save As" dialog.
+function isTauri() {
+  return typeof window !== 'undefined'
+    && (!!window.__TAURI_INTERNALS__ || !!window.__TAURI__);
+}
+
 export async function saveBlob(filename, blob) {
   if (!blob) throw new Error('saveBlob: blob is required');
   if (!filename) throw new Error('saveBlob: filename is required');
+
+  // ── Tauri desktop path ──
+  // The WebView doesn't trigger downloads, so hand the bytes to Rust, which
+  // shows the OS save dialog and writes the file. Falls through to the web
+  // path if the command is unavailable (e.g. an older installed build).
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const b64 = await blobToBase64(blob);
+      await invoke('save_export', { filename, b64 });
+      return;
+    } catch (err) {
+      console.warn('[saveBlob] Tauri save_export failed, falling back to web download:', err);
+    }
+  }
 
   if (Capacitor.isNativePlatform()) {
     // Dynamic import — keeps the @capacitor/filesystem and /share modules

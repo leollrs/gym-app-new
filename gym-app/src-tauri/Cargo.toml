@@ -24,6 +24,8 @@ log = "0.4"
 tauri = { version = "2.11.2", features = ["tray-icon"] }
 tauri-plugin-log = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+base64 = "0.22"
 serialport = "4.7"
 
 # Global keyboard hook so the scanner can input into TuGymPR even when the

@@ -30,9 +30,46 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 
+// Save a file to a user-chosen location via the OS "Save As" dialog.
+//
+// Why this exists: the Tauri WebView (unlike a browser or Capacitor) does not
+// honor the `<a download>` + blob trick, so JS-side exports (CSV, PDF) silently
+// did nothing on desktop. The frontend base64-encodes the blob and calls this;
+// Rust pops the native save dialog and writes the bytes directly (full disk
+// access — no fs-scope juggling). Returns false if the user cancels.
+//
+// `async` so it runs on a worker thread; `blocking_save_file` must not run on
+// the main thread (it would deadlock the event loop the dialog needs).
+#[tauri::command]
+async fn save_export(app: tauri::AppHandle, filename: String, b64: String) -> Result<bool, String> {
+  use base64::Engine;
+  use tauri_plugin_dialog::DialogExt;
+
+  let bytes = base64::engine::general_purpose::STANDARD
+    .decode(b64.as_bytes())
+    .map_err(|e| format!("decode failed: {e}"))?;
+
+  let chosen = app
+    .dialog()
+    .file()
+    .set_file_name(&filename)
+    .blocking_save_file();
+
+  match chosen {
+    Some(fp) => {
+      let path = fp.into_path().map_err(|e| e.to_string())?;
+      std::fs::write(&path, &bytes).map_err(|e| format!("write failed: {e}"))?;
+      Ok(true)
+    }
+    None => Ok(false), // user cancelled
+  }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_dialog::init())
+    .invoke_handler(tauri::generate_handler![save_export])
     .plugin(tauri_plugin_autostart::init(
       // On macOS, "launch agent" is the right place for this — registers a
       // ~/Library/LaunchAgents plist instead of Login Items so behavior is

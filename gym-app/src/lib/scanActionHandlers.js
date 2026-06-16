@@ -94,6 +94,11 @@ async function tryExternalIdCheckin(scanned, ctx) {
         memberId: data.profile_id,
         avatarUrl: data.avatar_url,
         data: { duplicate: true, cardsToDeliver, cardsPending, pendingReferral },
+        // Still mirror the scan to the gym's legacy software / local bridge.
+        // TuGymPR's 3h rule only suppresses duplicate points/streak credit — it
+        // does NOT mean the person didn't physically show up at the desk, which
+        // is exactly what an access-control / membership system wants to log.
+        externalPayload: { action: 'checkin', memberId: data.profile_id, memberExternalId: data.external_id, memberName: data.member_name, timestamp: new Date().toISOString(), data: { duplicate: true } },
       };
     }
 
@@ -163,6 +168,9 @@ export async function handleCheckinScan(parsed, ctx) {
       memberId: member.id,
       avatarUrl: member.avatar_url,
       data: { duplicate: true, cardsToDeliver, cardsPending, pendingReferral },
+      // Mirror every desk scan to the legacy software / local bridge, even when
+      // TuGymPR suppresses duplicate points (see note in tryExternalIdCheckin).
+      externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { duplicate: true } },
     };
   }
 

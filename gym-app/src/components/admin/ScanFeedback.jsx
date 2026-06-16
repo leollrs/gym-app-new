@@ -325,10 +325,15 @@ export default function ScanFeedback() {
       try {
         // Cloud integrations (Mindbody, ClubReady, etc.) via gym_integrations
         // table — server-to-server webhook from a Supabase edge function.
-        dispatchToIntegration(gymId, parsed.type, result.externalPayload);
+        // Skip on duplicate check-ins so a real cloud membership system isn't
+        // double-counting visits when the front desk re-scans someone.
+        if (!result.data?.duplicate) {
+          dispatchToIntegration(gymId, parsed.type, result.externalPayload);
+        }
         // Local sidecar on the same machine — bridges to whatever legacy
         // gym software is running alongside TuGymPR. Fire-and-forget,
-        // graceful no-op if the sidecar isn't running.
+        // graceful no-op if the sidecar isn't running. Mirrors EVERY desk scan
+        // (including duplicates) — an access-control system logs each swipe.
         dispatchToLocalBridge({
           gymId,
           action: parsed.type,
