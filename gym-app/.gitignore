@@ -18,6 +18,10 @@ supabase/.temp/
 build_output/
 gym-app/
 
+# Archived production source maps (kept locally for symbolicating crash stacks;
+# never committed or deployed — see scripts/symbolicate.mjs)
+sourcemaps/
+
 # Firebase credentials (should not be committed)
 android/app/google-services.json
 

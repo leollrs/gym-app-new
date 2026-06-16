@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { execSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, mkdirSync, renameSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
 const isCapacitor = process.env.CAPACITOR_BUILD === 'true';
 
@@ -32,6 +33,43 @@ if (!buildId) {
 if (!buildId) buildId = String(Date.now());
 // eslint-disable-next-line no-console
 console.log(`[vite] BUILD_ID = ${buildId}`);
+
+// ── Source-map archiving ──────────────────────────────────────────────────────
+// We build with `sourcemap: 'hidden'`, so every chunk gets a .map (for decoding
+// minified crash stacks from error_logs) WITHOUT a sourceMappingURL comment in
+// the shipped JS. This plugin then MOVES the .map files out of dist/ into a
+// local, git-ignored `sourcemaps/<version>-<buildId>/` archive after each build
+// — so the maps are kept for symbolication (scripts/symbolicate.mjs) but NEVER
+// deployed to the web (a public .map = full source leak) or embedded in the
+// native app bundle.
+function archiveSourcemaps() {
+  return {
+    name: 'archive-sourcemaps',
+    apply: 'build',
+    closeBundle() {
+      try {
+        const outDir = fileURLToPath(new URL('./dist', import.meta.url));
+        if (!existsSync(outDir)) return;
+        const archiveDir = fileURLToPath(new URL(`./sourcemaps/${appVersion}-${buildId}`, import.meta.url));
+        let moved = 0;
+        const walk = (dir) => {
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const full = join(dir, entry.name);
+            if (entry.isDirectory()) { walk(full); continue; }
+            if (!entry.name.endsWith('.map')) continue;
+            mkdirSync(archiveDir, { recursive: true });
+            renameSync(full, join(archiveDir, entry.name));
+            moved++;
+          }
+        };
+        walk(outDir);
+        if (moved) console.log(`[vite] archived ${moved} source map(s) → sourcemaps/${appVersion}-${buildId}/`);
+      } catch (err) {
+        console.warn('[vite] source-map archiving skipped:', err?.message || err);
+      }
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -78,6 +116,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // No SW source map in dist — keeps the deploy free of any .map (app
+        // chunk maps are archived out by archiveSourcemaps(); the SW/workbox
+        // glue isn't proprietary but we drop its map for a clean guarantee).
+        sourcemap: false,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MiB
         // On Capacitor, skip precaching (Capgo handles app shell updates).
         // On web, precache the app shell as before.
@@ -104,31 +146,22 @@ export default defineConfig({
               expiration: { maxEntries: 500, maxAgeSeconds: 7 * 24 * 60 * 60 },
             },
           },
-          {
-            // Google Fonts stylesheets
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'font-stylesheets' },
-          },
-          {
-            // Google Fonts files (woff2, etc.)
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'font-files',
-              expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
-            },
-          },
+          // Self-hosted fonts (public/fonts/*.woff2) are part of the app shell
+          // and covered by the precache globs — no Google Fonts runtime rules.
         ],
       },
     }),
+    archiveSourcemaps(),
   ],
   // Ensure build works for Capacitor native embedding
   build: {
     // Target modern browsers only (iOS 16+, Android 10+)
     target: ['es2020', 'safari16', 'chrome91'],
-    // Generate source maps for Capgo crash reporting
-    sourcemap: false,
+    // Hidden source maps: every chunk gets a .map (no sourceMappingURL comment
+    // in the shipped JS), which the archiveSourcemaps() plugin then moves OUT of
+    // dist/ into ./sourcemaps/ so crash stacks in error_logs can be symbolicated
+    // (scripts/symbolicate.mjs) without ever publishing source publicly.
+    sourcemap: 'hidden',
     // Warn about chunks exceeding 1000 kB
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
