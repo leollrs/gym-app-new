@@ -346,7 +346,7 @@ export default function TVDisplay() {
   const isEmptyChallengeTrack = dashboardData && track === 'challenges' && slides.length === 0;
 
   return (
-    <div className="h-screen overflow-hidden select-none" style={{ height: '100dvh', background: palette.ink }}>
+    <div className="relative h-screen overflow-hidden select-none" style={{ height: '100dvh', background: palette.ink }}>
       {isEmptyChallengeTrack ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-10" style={{ background: palette.ink, color: palette.text }}>
           <div className="text-[20px] tracking-[0.3em] font-bold uppercase mb-3" style={{ color: palette.hot }}>
@@ -538,20 +538,24 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
     timeLabel = tStr.ongoing;
   }
 
-  // QR deep link: opens the gym's web app on the challenges page, focused on
-  // this challenge. The member's phone browser handles auth — if signed in,
-  // they land on the challenge detail; otherwise they're routed through
-  // login first. The gym slug helps post-login routing land in the right
-  // tenant when the member uses a fresh browser.
+  // QR deep link → opens the app straight on this challenge, ready to join.
+  //
+  // Uses the singular `/challenge/:id` path, NOT `/challenges?challenge=...`:
+  //   • `/challenge/*` is registered in the app's apple-app-site-association, so
+  //     a phone with the app installed opens it NATIVELY via the universal link
+  //     (App.jsx routes /challenge/:id → the ?challenge=<id> focus the page
+  //     understands). The bare `/challenges` path is NOT in the AASA, so it used
+  //     to open the website instead of the app — defeating the QR's purpose.
+  //   • No app installed → the same URL opens app.tugympr.com and the web app
+  //     handles /challenge/:id identically (focus if signed in, login first if
+  //     not). The phone handles auth either way.
+  //
+  // Host MUST be the universal-link domain (PROD_WEB_URL) — a custom gym domain
+  // or the kiosk/localhost origin isn't in the AASA and a scanning phone can't
+  // reach it anyway. The gym slug rides along for fresh-browser tenant context.
   const qrUrl = (() => {
-    // Must be a publicly reachable URL — a phone scanning the TV can't reach the
-    // TV's own origin when that's localhost (dev) or a kiosk host. In dev we use
-    // the canonical production URL; in prod the real serving origin is correct
-    // (handles custom domains too).
-    const base = import.meta.env.DEV ? PROD_WEB_URL : window.location.origin;
-    const params = new URLSearchParams({ challenge: c.id });
-    if (gymSlug) params.set('gym', gymSlug);
-    return `${base}/challenges?${params.toString()}`;
+    const slug = gymSlug ? `?gym=${encodeURIComponent(gymSlug)}` : '';
+    return `${PROD_WEB_URL}/challenge/${c.id}${slug}`;
   })();
 
   const participants = c.participants || [];

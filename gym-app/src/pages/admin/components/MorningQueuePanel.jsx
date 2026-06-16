@@ -212,7 +212,7 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
               {t('admin.morningQueue.emptyTitle', "Inbox zero. Nobody needs you right now.")}
             </p>
             <p className="text-[12px] mt-1" style={{ color: 'var(--color-admin-text-muted)' }}>
-              {t('admin.morningQueue.emptyDesc', "The orchestrator checks every morning at 5am. New conversations will appear here.")}
+              {t('admin.morningQueue.emptyDesc', "We check your members every morning at 5am. New conversations will appear here.")}
             </p>
           </div>
         </div>

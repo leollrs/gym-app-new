@@ -466,7 +466,7 @@ export default function AdminMembers() {
     { key: 'all', label: t('admin.members.filterAll', 'All'), count: members.length },
     { key: 'active', label: t('admin.members.filterActive', 'Active'), count: activeCount },
     { key: 'frozen', label: t('admin.members.filterFrozen', 'Frozen'), count: frozenCount },
-    { key: 'unonboarded', label: t('admin.members.filterUnonboarded', 'Unonboarded'), count: unonboardedCount },
+    { key: 'unonboarded', label: t('admin.members.filterUnonboarded', 'Not signed up'), count: unonboardedCount },
   ];
 
   const tabOptions = [
@@ -937,7 +937,7 @@ export default function AdminMembers() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{inv.member_name || k('unnamed')}</p>
+                            <p className="text-[14px] font-semibold text-[var(--color-admin-text)] truncate">{inv.member_name || k('unnamed')}</p>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sc.bg} ${sc.text} border ${sc.border}`}>
                               {status === 'pending' && daysLeft !== null
                                 ? `${k('statusPending')} · ${daysLeft}${k('daysLeftShort')}`
@@ -961,13 +961,13 @@ export default function AdminMembers() {
                           </code>
                           <button onClick={() => handleCopyCode(inv)}
                             title={k('copyInviteCode')}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-[var(--color-bg-hover)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] hover:border-[var(--color-admin-border)] transition-colors">
                             <Copy size={12} />
                             {copiedId === inv.id ? k('copied') : k('copy')}
                           </button>
                           <button onClick={() => setQrInvite(inv)}
                             title={t('admin.members.qrCodeTitle', 'QR Code')}
-                            className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-white/4 border border-white/6 text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-white/15 transition-colors">
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-[var(--color-bg-hover)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] hover:border-[var(--color-admin-border)] transition-colors">
                             <QrCode size={12} />
                           </button>
                           {status === 'pending' && (
@@ -1009,7 +1009,7 @@ export default function AdminMembers() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">
+                      <p className="text-[14px] font-semibold text-[var(--color-admin-text)] truncate">
                         {r.profiles?.full_name || t('admin.members.unknown', 'Unknown')}
                       </p>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D4AF37]/12 text-[#D4AF37] border border-[#D4AF37]/25">

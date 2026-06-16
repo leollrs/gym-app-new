@@ -614,7 +614,12 @@ export default function AdminOutreach() {
                 <div className="flex items-start justify-between gap-3">
                   <dt style={{ color: 'var(--color-text-muted)' }}>{t('admin.outreach.channelsLabel', 'Channels')}</dt>
                   <dd className="text-right font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                    {Object.entries(channels).filter(([, v]) => v).map(([k]) => k).join(', ') || '—'}
+                    {Object.entries(channels).filter(([, v]) => v).map(([k]) => ({
+                      push: t('admin.outreach.channelPushShort', 'Push'),
+                      inApp: t('admin.outreach.channelInAppShort', 'In-app'),
+                      email: t('admin.outreach.channelEmailShort', 'Email'),
+                      sms: t('admin.outreach.channelSmsShort', 'SMS'),
+                    }[k] || k)).join(', ') || '—'}
                   </dd>
                 </div>
               </dl>

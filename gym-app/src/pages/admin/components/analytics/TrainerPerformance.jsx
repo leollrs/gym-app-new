@@ -44,7 +44,7 @@ async function fetchTrainerData(gymId) {
     const retention = clientCount > 0 ? Math.round((clientsWithWorkout / clientCount) * 100) : 0;
     const totalClientSessions = activeClients.reduce((sum, tc) => sum + (sessionCountMap[tc.client_id] || 0), 0);
     const avgWorkouts = clientCount > 0 ? (totalClientSessions / clientCount / 4.33).toFixed(1) : '0.0';
-    return { id: tr.id, name: tr.full_name || 'Unnamed', clientCount, retention, avgWorkouts };
+    return { id: tr.id, name: tr.full_name || '', clientCount, retention, avgWorkouts };
   });
 
   trainerStats.sort((a, b) => b.clientCount - a.clientCount);
@@ -83,7 +83,7 @@ export default function TrainerPerformance({ gymId }) {
         <div key={tr.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 0', borderTop: `1px solid ${TK.divider}` }}>
           <span style={{ width: 34, height: 34, borderRadius: 99, flexShrink: 0, display: 'grid', placeItems: 'center', background: TK.accentSoft, color: TK.accent, fontFamily: FK.display, fontSize: 14, fontWeight: 800 }}>{(tr.name || '?')[0].toUpperCase()}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr.name}</div>
+            <div style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr.name || t('admin.analytics.trainerUnnamed', 'Unnamed trainer')}</div>
             <div style={{ fontFamily: FK.body, fontSize: 12.5, color: TK.textMute }}>{t('admin.analytics.trainerActiveClients', { count: tr.clientCount, defaultValue: '{{count}} active clients' })}</div>
           </div>
           <div style={{ textAlign: 'right', width: 90 }}>

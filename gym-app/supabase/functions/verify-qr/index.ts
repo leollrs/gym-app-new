@@ -18,7 +18,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const QR_SIGNING_SECRET    = Deno.env.get('QR_SIGNING_SECRET');
-const ANON_KEY             = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ALLOWED_ORIGIN       = Deno.env.get('ALLOWED_ORIGIN');
 
@@ -114,10 +113,15 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return jsonResp({ error: 'Unauthorized' }, 401);
 
-    const authClient = createClient(SUPABASE_URL, ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authErr } = await authClient.auth.getUser();
+    // Validate the caller's JWT by passing the token EXPLICITLY to getUser, with
+    // a service-role client — the pattern proven to work for this project's new
+    // ES256 (asymmetric signing-key) access tokens (see send-admin-email). The
+    // previous `createClient(ANON_KEY, { global.headers.Authorization })` +
+    // `getUser()` (no-arg) form returned 401 for valid authenticated staff, which
+    // would brick the front-desk check-in scanner.
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    const authClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { data: { user }, error: authErr } = await authClient.auth.getUser(token);
     if (authErr || !user) return jsonResp({ error: 'Unauthorized' }, 401);
 
     // ── Database-based rate limiting (per authenticated caller, per hour) ──

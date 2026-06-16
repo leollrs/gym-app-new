@@ -992,8 +992,7 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
             {!membersLoading && membersError && (
               <div className="py-4 text-center">
                 <p className="text-[12px] text-red-400 mb-2">
-                  {t('admin.messaging.membersLoadFailed', 'No se pudo cargar la lista. ')}
-                  <span className="opacity-70">{membersError}</span>
+                  {t('admin.messaging.membersLoadFailed', "Couldn't load the member list.")}
                 </p>
                 <button
                   onClick={() => fetchMembers(newMsgSearch)}

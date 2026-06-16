@@ -98,7 +98,7 @@ export default function BookingsView({ classItem, gymId, t, tc }) {
   if (validDates.length === 0) {
     return (
       <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>
-        {t('admin.classes.noSchedules', 'Esta clase no tiene horarios configurados.')}
+        {t('admin.classes.noSchedules', 'This class has no schedule set up yet.')}
       </p>
     );
   }
@@ -269,7 +269,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
           onClick={onPrev}
           className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04]"
           style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
-          aria-label={t('admin.classes.prevNav', 'Anterior')}
+          aria-label={t('admin.classes.prevNav', 'Previous')}
         >
           ‹
         </button>
@@ -296,7 +296,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
           onClick={onNext}
           className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.04]"
           style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
-          aria-label={t('admin.classes.nextNav', 'Siguiente')}
+          aria-label={t('admin.classes.nextNav', 'Next')}
         >
           ›
         </button>
@@ -307,7 +307,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
         <>
           {schedulesForDate.length === 0 ? (
             <p className="text-[12px] italic" style={{ color: 'var(--color-text-muted)' }}>
-              {t('admin.classes.noSlotsThatDay', 'Esta clase no se imparte ese día.')}
+              {t('admin.classes.noSlotsThatDay', "This class isn't held that day.")}
             </p>
           ) : (
             <div className="space-y-3">
@@ -356,7 +356,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
                     {formatPickerLabel(dateStr)}
                   </p>
                   <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                    {isValid ? `${slots.length} ${t('admin.classes.slot', 'horario')}${slots.length === 1 ? '' : 's'}` : t('admin.classes.noSlotsShort', '—')}
+                    {isValid ? `${slots.length} ${slots.length === 1 ? t('admin.classes.slot', 'slot') : t('admin.classes.slots', 'slots')}` : t('admin.classes.noSlotsShort', '—')}
                   </span>
                 </button>
                 {isValid && slots.length > 0 && (
@@ -524,17 +524,17 @@ function ScheduleAttendees({ schedule, date, classItem, gymId, t, tc }) {
   const waitlistCount = attendees.filter(a => a.status === 'waitlisted').length;
 
   const adminCancel = async (booking) => {
-    if (!window.confirm(t('admin.classes.confirmCancel', { defaultValue: '¿Cancelar la reserva de {{name}}?', name: booking.full_name || '' }))) return;
+    if (!window.confirm(t('admin.classes.confirmCancel', { defaultValue: "Cancel {{name}}'s booking?", name: booking.full_name || '' }))) return;
     setCancellingId(booking.booking_id);
     // admin_cancel_class_booking lets staff cancel any booking in their
     // gym (member RPC requires profile_id = auth.uid()). Migration 0378.
     const { error } = await supabase.rpc('admin_cancel_class_booking', { p_booking_id: booking.booking_id });
     setCancellingId(null);
     if (error) {
-      showToast(error.message || t('admin.classes.cancelFailed', 'No se pudo cancelar'), 'error');
+      showToast(error.message || t('admin.classes.cancelFailed', "Couldn't cancel the booking"), 'error');
       return;
     }
-    showToast(t('admin.classes.cancelled', 'Reserva cancelada'), 'success');
+    showToast(t('admin.classes.cancelled', 'Booking cancelled'), 'success');
     queryClient.invalidateQueries({ queryKey: ['admin', 'class-attendees', schedule.id, date] });
   };
 
@@ -586,7 +586,7 @@ function ScheduleAttendees({ schedule, date, classItem, gymId, t, tc }) {
                 )}
                 {isWait && (
                   <span className="text-[10px] uppercase tracking-wider font-bold flex-shrink-0" style={{ color: 'var(--color-warning)' }}>
-                    {t('admin.classes.waitlistPill', 'Lista')}
+                    {t('admin.classes.waitlistPill', 'Waitlist')}
                   </span>
                 )}
                 {canCancel && (
@@ -594,7 +594,7 @@ function ScheduleAttendees({ schedule, date, classItem, gymId, t, tc }) {
                     type="button"
                     onClick={() => adminCancel(a)}
                     disabled={cancellingId === a.booking_id}
-                    aria-label={t('admin.classes.cancelAttendee', 'Cancelar reserva')}
+                    aria-label={t('admin.classes.cancelAttendee', 'Cancel booking')}
                     className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-50"
                     style={{
                       background: 'rgba(239,68,68,0.12)',

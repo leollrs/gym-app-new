@@ -24,6 +24,8 @@
  */
 
 // ── Color math (pure, no DOM — runs in node tests too) ─────────────
+import { appDeepLink } from '../appUrls';
+
 const _clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
 function hexToRgb(hex) {
@@ -300,7 +302,7 @@ function eWordmark({ size = 14, color = E.ink, weight = 800, gymName = 'Gym' }) 
   }, escHtml(gymName));
 }
 
-function eBtn({ children, tone = 'teal', size = 'lg', wide = false, icon = null, href = '#' }) {
+function eBtn({ children, tone = 'teal', size = 'lg', wide = false, icon = null, href = appDeepLink('home') }) {
   // Accent tones compute their fg from the (possibly gym-adapted) bg so text
   // stays legible whatever the brand color is. Neutral tones are explicit.
   const tones = {
@@ -523,7 +525,7 @@ function welcomeEditorial({ lang, name, gymName, logoUrl, coachName }) {
       ], { width: '100%', tableStyle: { width: '100%', borderBottom: i < 2 ? `1px solid ${E.line}` : 'none' } })),
     ]),
     h('div', { class: 'dz-pad', style: { padding: '32px 36px 44px', textAlign: 'center' } }, [
-      eBtn({ tone: 'dark', size: 'lg', wide: true, icon: EI.arrow, children: tx(lang, 'Abrir mi plan', 'Open my plan') }),
+      eBtn({ href: appDeepLink('workout'), tone: 'dark', size: 'lg', wide: true, icon: EI.arrow, children: tx(lang, 'Abrir mi plan', 'Open my plan') }),
       h('div', { style: { marginTop: 14, fontSize: 12, color: E.mute } }, tx(lang, `o responde este correo — ${coachName} lo lee todo`, `or reply to this email — ${coachName} reads them all`)),
     ]),
   ]);
@@ -569,8 +571,8 @@ function welcomePoster({ lang, name, gymName, logoUrl, coachName }) {
             { valign: 'middle', align: 'right', style: { fontFamily: F.mono, fontSize: 11, color: E.sub, textAlign: 'right' }, children: r[2] },
           ], { width: '100%', tableStyle: { width: '100%', borderBottom: i < 3 ? `1px dashed ${E.line}` : 'none', paddingBottom: 10, marginBottom: i < 3 ? 10 : 0 } }))),
       ]),
-      h('div', { style: { marginTop: 28 } }, eBtn({ tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Ver mi plan completo', 'See my full plan') })),
-      h('div', { style: { marginTop: 10 } }, eBtn({ tone: 'ghost', size: 'md', wide: true, children: tx(lang, `Saludar a ${coachName}`, `Say hi to ${coachName}`) })),
+      h('div', { style: { marginTop: 28 } }, eBtn({ href: appDeepLink('workout'), tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Ver mi plan completo', 'See my full plan') })),
+      h('div', { style: { marginTop: 10 } }, eBtn({ href: appDeepLink('messages'), tone: 'ghost', size: 'md', wide: true, children: tx(lang, `Saludar a ${coachName}`, `Say hi to ${coachName}`) })),
     ]),
   ];
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.paper, content, gymName, logoUrl, lang }) };
@@ -660,7 +662,7 @@ function recapMagazine({ lang, name, gymName, logoUrl, coachName, v }) {
       h('div', { style: { fontFamily: F.serif, fontSize: 24, fontWeight: 300, color: E.ink, lineHeight: 1.3, letterSpacing: -0.5, fontStyle: 'italic' } }, tx(lang, 'La consistencia se compone. Cada sesión que registras está construyendo algo.', 'Consistency compounds. Every session you log is building something.')),
       h('div', { style: { marginTop: 16, fontFamily: F.mono, fontSize: 10.5, color: E.sub, letterSpacing: 1.5, textTransform: 'uppercase' } }, tx(lang, `— ${coachName}, tu entrenador`, `— ${coachName}, your coach`)),
     ]),
-    h('div', { class: 'dz-pad', style: { padding: '8px 32px 40px' } }, eBtn({ tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Ver semana completa', 'See full week') })),
+    h('div', { class: 'dz-pad', style: { padding: '8px 32px 40px' } }, eBtn({ href: appDeepLink('progress'), tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Ver semana completa', 'See full week') })),
   ]);
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.cream, content, gymName, logoUrl, lang }) };
 }
@@ -721,7 +723,7 @@ function recapReceipt({ lang, name, gymName, logoUrl, coachName, v }) {
     ]),
     h('div', { style: { marginTop: 28, textAlign: 'center' } },
       h('div', { style: { display: 'inline-block', transform: 'rotate(-6deg)', border: `2.5px solid ${E.hot}`, color: E.hot, padding: '8px 18px', borderRadius: 4, fontFamily: F.display, fontWeight: 900, fontSize: 18, letterSpacing: 1, textTransform: 'uppercase' } }, tx(lang, 'Buena semana ✓', 'Good week ✓'))),
-    h('div', { style: { marginTop: 32 } }, eBtn({ tone: 'ghost', wide: true, size: 'md', icon: EI.arrow, children: tx(lang, 'Ver log completo', 'See full log') })),
+    h('div', { style: { marginTop: 32 } }, eBtn({ href: appDeepLink('log'), tone: 'ghost', wide: true, size: 'md', icon: EI.arrow, children: tx(lang, 'Ver log completo', 'See full log') })),
   ]);
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.paper, content, gymName, logoUrl, lang }) };
 }
@@ -797,8 +799,8 @@ function winbackQuiet({ lang, name, gymName, logoUrl, coachName, v }) {
     h('p', { style: { marginTop: 24, fontSize: 15.5, lineHeight: 1.65, color: E.ink2, textAlign: 'center', maxWidth: 380, marginLeft: 'auto', marginRight: 'auto' } },
       tx(lang, 'No es para meterte presión. A veces la vida se mete, y lo entendemos. Solo queríamos saber si quieres que ajustemos algo — el horario, el plan, la entrenadora.',
                'No pressure at all. Life gets in the way sometimes, and we get it. We just wanted to know if you’d like us to adjust something — the schedule, the plan, the coach.')),
-    h('div', { style: { marginTop: 36 } }, eBtn({ tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Volver despacio', 'Ease back in') })),
-    h('div', { style: { marginTop: 10 } }, eBtn({ tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Pausar mi membresía', 'Pause my membership') })),
+    h('div', { style: { marginTop: 36 } }, eBtn({ href: appDeepLink('workout'), tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Volver despacio', 'Ease back in') })),
+    h('div', { style: { marginTop: 10 } }, eBtn({ href: appDeepLink('profile'), tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Pausar mi membresía', 'Pause my membership') })),
     h('div', { style: { marginTop: 48, textAlign: 'center' } }, [
       h('div', { style: { fontFamily: F.serif, fontSize: 22, fontStyle: 'italic', color: E.ink, fontWeight: 400 } }, `— ${escHtml(coachName)}`),
       h('div', { style: { marginTop: 4, fontSize: 11.5, color: E.sub, letterSpacing: 0.4 } }, tx(lang, 'Tu entrenador · responde este correo cuando puedas', 'Your coach · reply when you can')),
@@ -837,8 +839,8 @@ function winbackData({ lang, name, gymName, logoUrl, coachName, v }) {
                  [`${coachName} reviewed your history and built a `, h('strong', null, '14-day comeback plan'), ' — low volume, no guilt. The first workout is 22 minutes.'])),
     ]),
     h('div', { class: 'dz-pad', style: { padding: '24px 32px 36px' } }, [
-      eBtn({ tone: 'hot', wide: true, icon: EI.arrow, children: tx(lang, 'Empezar el regreso · 22 min', 'Start the comeback · 22 min') }),
-      h('div', { style: { marginTop: 10 } }, eBtn({ tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Cambiar de entrenador', 'Switch coach') })),
+      eBtn({ href: appDeepLink('workout'), tone: 'hot', wide: true, icon: EI.arrow, children: tx(lang, 'Empezar el regreso · 22 min', 'Start the comeback · 22 min') }),
+      h('div', { style: { marginTop: 10 } }, eBtn({ href: appDeepLink('messages'), tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Cambiar de entrenador', 'Switch coach') })),
     ]),
   ];
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.paper, content, gymName, logoUrl, lang }) };
@@ -882,7 +884,7 @@ function winbackText({ lang, name, gymName, logoUrl, coachName }) {
             h('div', { style: { marginTop: 10, fontSize: 13, color: 'rgba(245,242,236,0.75)', lineHeight: 1.5 } },
               tx(lang, ['22 min · 4 ejercicios · sin pesa máxima', h('br'), 'Mañana 6:30am · Sede Hato Rey'],
                        ['22 min · 4 exercises · no max lifts', h('br'), 'Tomorrow 6:30am · Hato Rey'])),
-            h('div', { style: { marginTop: 14 } }, eBtn({ tone: 'gold', size: 'sm', children: tx(lang, 'Confirmar y verlo →', 'Confirm & view →') })),
+            h('div', { style: { marginTop: 14 } }, eBtn({ href: appDeepLink('records'), tone: 'gold', size: 'sm', children: tx(lang, 'Confirmar y verlo →', 'Confirm & view →') })),
           ]),
         },
         { valign: 'top', width: '12%', style: { width: '12%' }, children: ' ' },
@@ -947,7 +949,7 @@ function streakPoster({ lang, gymName, logoUrl, v }) {
       h('div', { style: { fontFamily: F.display, fontSize: 26, fontWeight: 900, color: E.ink, letterSpacing: -1, lineHeight: 1.15, marginBottom: 14 } }, tx(lang, 'Una sesión más y la salvas.', 'One more session and you save it.')),
       h('p', { style: { fontSize: 14.5, color: E.ink2, lineHeight: 1.55, margin: 0 } }, tx(lang, 'Te armamos 3 opciones cortas. La más rápida son 18 minutos. Camina al gym o hazla en casa.', 'We lined up 3 short options. The fastest is 18 minutes. Walk to the gym or do it at home.')),
       h('div', { style: { marginTop: 22 } }, optionRows),
-      h('div', { style: { marginTop: 22 } }, eBtn({ tone: 'dark', wide: true, icon: EI.bolt, children: tx(lang, 'Salvar mi racha', 'Save my streak') })),
+      h('div', { style: { marginTop: 22 } }, eBtn({ href: appDeepLink('checkin'), tone: 'dark', wide: true, icon: EI.bolt, children: tx(lang, 'Salvar mi racha', 'Save my streak') })),
       h('div', { style: { marginTop: 14, fontSize: 12, color: E.mute, textAlign: 'center' } },
         tx(lang, ['¿Hoy no puedes? ', h('a', { href: '#', style: { color: E.ink, textDecoration: 'underline' } }, 'Congelar racha por enfermedad')],
                  ['Can’t today? ', h('a', { href: '#', style: { color: E.ink, textDecoration: 'underline' } }, 'Freeze streak for illness')])),
@@ -993,8 +995,8 @@ function streakCalm({ lang, gymName, logoUrl, v }) {
         h('div', { style: { fontSize: 12.5, color: E.tealInk, opacity: 0.8, marginTop: 2 } }, tx(lang, 'Cualquier sesión registrada de 20+ min mantiene la racha viva.', 'Any logged session of 20+ min keeps the streak alive.')),
       ] },
     ], { width: '100%', tableStyle: { width: '100%' } })),
-    h('div', { style: { marginTop: 28 } }, eBtn({ tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Abrir mi plan de hoy', 'Open today’s plan') })),
-    h('div', { style: { marginTop: 10 } }, eBtn({ tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Usar día de gracia (1 disponible)', 'Use grace day (1 available)') })),
+    h('div', { style: { marginTop: 28 } }, eBtn({ href: appDeepLink('workout'), tone: 'dark', wide: true, icon: EI.arrow, children: tx(lang, 'Abrir mi plan de hoy', 'Open today’s plan') })),
+    h('div', { style: { marginTop: 10 } }, eBtn({ href: appDeepLink('checkin'), tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Usar día de gracia (1 disponible)', 'Use grace day (1 available)') })),
   ]);
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.paper, content, gymName, logoUrl, lang }) };
 }
@@ -1047,7 +1049,7 @@ function prCertificate({ lang, name, gymName, logoUrl, coachName }) {
     h('div', { style: { padding: '28px 12px 0', textAlign: 'center' } }, [
       h('p', { style: { fontSize: 14, color: E.ink2, lineHeight: 1.6, margin: 0 } }, tx(lang, 'Compártelo. Ponlo de fondo. Imprímelo y pégalo en la pared. Lo levantaste tú.', 'Share it. Set it as your wallpaper. Print it and stick it on the wall. You lifted it.')),
       h('div', { style: { marginTop: 22, textAlign: 'center' } }, [
-        eBtn({ tone: 'dark', icon: EI.send, children: tx(lang, 'Compartir', 'Share') }),
+        eBtn({ href: appDeepLink('social'), tone: 'dark', icon: EI.send, children: tx(lang, 'Compartir', 'Share') }),
         h('span', { style: { display: 'inline-block', width: 10, fontSize: 0, lineHeight: 0 } }, ' '),
         eBtn({ tone: 'ghost', children: tx(lang, 'Descargar', 'Download') }),
       ]),
@@ -1100,8 +1102,8 @@ function prBigNumber({ lang, name, gymName, logoUrl, coachName }) {
         h('div', { style: { fontFamily: F.serif, fontSize: 17, fontStyle: 'italic', color: E.ink, lineHeight: 1.45 } }, tx(lang, '"Lo vi venir desde la sesión del lunes. Te aguantaste las ganas de saltar y eso valió. Vamos por 100 antes de julio."', '"I saw it coming since Monday’s session. You held back from rushing and it paid off. Let’s go for 100 before July."')),
         h('div', { style: { marginTop: 12, fontFamily: F.mono, fontSize: 10, color: E.sub, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 700 } }, tx(lang, `— ${coachName}, coach`, `— ${coachName}, coach`)),
       ]),
-      h('div', { style: { marginTop: 24 } }, eBtn({ tone: 'dark', wide: true, icon: EI.send, children: tx(lang, 'Compartir con el feed', 'Share to the feed') })),
-      h('div', { style: { marginTop: 10 } }, eBtn({ tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Ver historial completo', 'See full history') })),
+      h('div', { style: { marginTop: 24 } }, eBtn({ href: appDeepLink('social'), tone: 'dark', wide: true, icon: EI.send, children: tx(lang, 'Compartir con el feed', 'Share to the feed') })),
+      h('div', { style: { marginTop: 10 } }, eBtn({ href: appDeepLink('progress'), tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Ver historial completo', 'See full history') })),
     ]),
   ];
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.paper, content, gymName, logoUrl, lang }) };
@@ -1167,8 +1169,8 @@ function classTicket({ lang, gymName, logoUrl, coachName }) {
         ] },
       ], { width: '100%', tableStyle: { width: '100%' } })),
     h('div', { style: { marginTop: 18 } }, tRow([
-      { valign: 'middle', style: { paddingRight: 10 }, children: eBtn({ tone: 'dark', wide: true, size: 'md', children: tx(lang, 'Añadir a calendario', 'Add to calendar') }) },
-      { valign: 'middle', align: 'right', width: 110, style: { width: 110, textAlign: 'right' }, children: eBtn({ tone: 'ghost', size: 'md', children: tx(lang, 'Cancelar', 'Cancel') }) },
+      { valign: 'middle', style: { paddingRight: 10 }, children: eBtn({ href: appDeepLink('classes'), tone: 'dark', wide: true, size: 'md', children: tx(lang, 'Añadir a calendario', 'Add to calendar') }) },
+      { valign: 'middle', align: 'right', width: 110, style: { width: 110, textAlign: 'right' }, children: eBtn({ href: appDeepLink('classes'), tone: 'ghost', size: 'md', children: tx(lang, 'Cancelar', 'Cancel') }) },
     ], { width: '100%', tableStyle: { width: '100%' } })),
   ]);
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.cream, content, gymName, logoUrl, lang }) };
@@ -1224,8 +1226,8 @@ function classClean({ lang, gymName, logoUrl, coachName }) {
       h('p', { style: { fontSize: 14, color: E.ink2, lineHeight: 1.55, margin: 0 } }, tx(lang, 'Trabajamos cadera y core. Trae botella de agua y zapatos de gimnasio (no de correr — necesitamos suela plana).', 'We work hips and core. Bring a water bottle and gym shoes (not running shoes — we need flat soles).')),
     ]),
     h('div', { class: 'dz-pad', style: { padding: '28px 32px 36px' } }, tRow([
-      { valign: 'middle', width: '50%', style: { width: '50%', paddingRight: 5 }, children: eBtn({ tone: 'teal', size: 'md', wide: true, icon: EI.cal, children: tx(lang, 'Calendario', 'Calendar') }) },
-      { valign: 'middle', width: '50%', style: { width: '50%', paddingLeft: 5 }, children: eBtn({ tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Cancelar', 'Cancel') }) },
+      { valign: 'middle', width: '50%', style: { width: '50%', paddingRight: 5 }, children: eBtn({ href: appDeepLink('classes'), tone: 'teal', size: 'md', wide: true, icon: EI.cal, children: tx(lang, 'Calendario', 'Calendar') }) },
+      { valign: 'middle', width: '50%', style: { width: '50%', paddingLeft: 5 }, children: eBtn({ href: appDeepLink('classes'), tone: 'ghost', size: 'md', wide: true, children: tx(lang, 'Cancelar', 'Cancel') }) },
     ], { width: '100%', tableStyle: { width: '100%' } })),
   ];
   return { subject, preview, html: emailDoc({ preview, bodyBg: E.paper, content, gymName, logoUrl, lang }) };

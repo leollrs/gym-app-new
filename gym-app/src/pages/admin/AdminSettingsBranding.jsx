@@ -63,6 +63,29 @@ async function compressImage(file, maxSize = 512, quality = 0.8) {
   });
 }
 
+// Like compressImage but PRESERVES transparency (exports WebP with alpha — no
+// white/black flatten) for the backgroundless launch logo shown on the dark
+// splash. Falls back to the original file if canvas/encode isn't available.
+async function compressTransparentLogo(file, maxSize = 512, quality = 0.92) {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > height) { if (width > maxSize) { height = Math.round((height * maxSize) / width); width = maxSize; } }
+      else if (height > maxSize) { width = Math.round((width * maxSize) / height); height = maxSize; }
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(file); return; }
+      ctx.clearRect(0, 0, width, height); // keep the alpha channel — never fill a background
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => resolve(blob || file), 'image/webp', quality);
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 async function getSignedLogoUrl(path) {
   if (!path) return '';
   const { data, error } = await supabase.storage.from('gym-logos').createSignedUrl(path, LOGO_URL_EXPIRY_SECONDS);
@@ -89,6 +112,8 @@ export default function AdminSettingsBranding() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [splashVideoUrl, setSplashVideoUrl] = useState('');
   const [uploadingSplash, setUploadingSplash] = useState(false);
+  const [splashLogoUrl, setSplashLogoUrl] = useState('');
+  const [uploadingSplashLogo, setUploadingSplashLogo] = useState(false);
   const [selectedPalette, setSelectedPalette] = useState(null);
   const [customPrimary, setCustomPrimary] = useState('');
   const [customSecondary, setCustomSecondary] = useState('');
@@ -103,7 +128,7 @@ export default function AdminSettingsBranding() {
     queryFn: async () => {
       const { data, error: brandErr } = await supabase
         .from('gym_branding')
-        .select('primary_color, accent_color, welcome_message, logo_url, palette_name, splash_video_url')
+        .select('primary_color, accent_color, welcome_message, logo_url, palette_name, splash_video_url, splash_logo_url')
         .eq('gym_id', gymId)
         .maybeSingle();
       if (brandErr) logger.warn('Failed to load branding settings', brandErr);
@@ -131,6 +156,7 @@ export default function AdminSettingsBranding() {
     }
     setLogoUrl(signedLogoUrl);
     setSplashVideoUrl(branding?.splash_video_url || '');
+    setSplashLogoUrl(branding?.splash_logo_url || '');
   }, [brandingData]);
 
   const getVideoDuration = (file) => new Promise((resolve, reject) => {
@@ -177,6 +203,42 @@ export default function AdminSettingsBranding() {
     } catch (err) {
       showToast(err.message || 'Failed', 'error');
     } finally { setUploadingSplash(false); }
+  };
+
+  const handleSplashLogoUpload = async (file) => {
+    if (!file || !gymId) return;
+    // Transparent PNG/WebP only — a "backgroundless" JPEG can't exist.
+    const validation = await validateImageFile(file, { maxSizeMB: 2, allowedTypes: ['image/png', 'image/webp'] });
+    if (!validation.valid) { showToast(validation.error, 'error'); return; }
+    setUploadingSplashLogo(true);
+    try {
+      const compressed = await compressTransparentLogo(file);
+      const path = `${gymId}/splash-logo.webp`;
+      const { error: upErr } = await supabase.storage.from('splash-logos').upload(path, compressed, { upsert: true, contentType: 'image/webp' });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('splash-logos').getPublicUrl(path);
+      // ?v= cache-busts the stable public URL on re-upload (SW + LaunchSplash cache by URL).
+      const url = `${pub.publicUrl}?v=${Date.now()}`;
+      const { error: dbErr } = await supabase.from('gym_branding').upsert({ gym_id: gymId, splash_logo_url: url }, { onConflict: 'gym_id' });
+      if (dbErr) throw dbErr;
+      setSplashLogoUrl(url);
+      showToast(t('admin.settings.launchLogoSaved', 'Launch logo saved'), 'success');
+    } catch (err) {
+      showToast(`${t('admin.settings.launchLogoFailed', 'Launch logo upload failed')}: ${err.message || ''}`, 'error');
+    } finally { setUploadingSplashLogo(false); }
+  };
+
+  const handleRemoveSplashLogo = async () => {
+    if (!gymId) return;
+    setUploadingSplashLogo(true);
+    try {
+      await supabase.storage.from('splash-logos').remove([`${gymId}/splash-logo.webp`, `${gymId}/splash-logo.png`]).catch(() => {});
+      await supabase.from('gym_branding').upsert({ gym_id: gymId, splash_logo_url: null }, { onConflict: 'gym_id' });
+      setSplashLogoUrl('');
+      showToast(t('admin.settings.launchLogoRemoved', 'Launch logo removed'), 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed', 'error');
+    } finally { setUploadingSplashLogo(false); }
   };
 
   const handleLogoUpload = async (file) => {
@@ -323,6 +385,29 @@ export default function AdminSettingsBranding() {
                   <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} disabled={uploadingLogo}
                     onChange={e => { const f = e.target.files?.[0]; if (f) { setLogoFile(f); handleLogoUpload(f); } }} />
                 </label>
+              </div>
+
+              <Fld>{t('admin.settings.launchLogo', 'Launch Logo')}</Fld>
+              <Help>{t('admin.settings.launchLogoHelp', 'Optional. A transparent (backgroundless) logo for the launch animation when there\'s no video — looks cleaner on the dark splash than your boxed app logo. Transparent PNG, 2 MB max.')}</Help>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', marginTop: 6 }}>
+                {/* Preview on the real splash backdrop (#05070B) so a transparent logo reads true. */}
+                <span style={{ width: 54, height: 54, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', background: '#05070B', border: `1px solid ${TK.borderSolid}` }}>
+                  {splashLogoUrl
+                    ? <img src={splashLogoUrl} alt="" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+                    : <Ico ch={BIC.img} size={20} color={TK.textMute} stroke={1.9} />}
+                </span>
+                <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 12, border: `1.5px dashed ${TK.borderSolid}`, background: TK.surface2, fontFamily: FK.body, fontSize: 14, fontWeight: 600, color: TK.textMute, cursor: uploadingSplashLogo ? 'default' : 'pointer' }}>
+                  <Ico ch={DIC.upload} size={16} color={TK.textMute} stroke={2} />
+                  {uploadingSplashLogo ? t('admin.settings.uploading', 'Uploading...') : t('admin.settings.uploadLaunchLogo', 'Upload launch logo')}
+                  <input type="file" accept="image/png,image/webp" style={{ display: 'none' }} disabled={uploadingSplashLogo}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleSplashLogoUpload(f); e.target.value = ''; }} />
+                </label>
+                {splashLogoUrl && (
+                  <button type="button" onClick={handleRemoveSplashLogo} disabled={uploadingSplashLogo}
+                    style={{ flexShrink: 0, padding: '0 14px', borderRadius: 12, border: `1px solid ${TK.borderSolid}`, background: TK.surface2, color: 'var(--color-danger, #E5484D)', fontFamily: FK.body, fontSize: 13, fontWeight: 700, cursor: uploadingSplashLogo ? 'default' : 'pointer' }}>
+                    {t('admin.settings.removeLaunchLogo', 'Remove')}
+                  </button>
+                )}
               </div>
 
               <Fld>{t('admin.settings.launchVideo', 'Launch Video')}</Fld>

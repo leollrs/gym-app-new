@@ -134,7 +134,7 @@ export default function ProgramSuggestionCard({ gymId, t, isEs, onCreateProgram 
               type="button"
               onClick={() => onCreateProgram(suggestion)}
               className="px-5 py-2.5 rounded-xl text-[13px] font-bold transition-all active:scale-[0.97]"
-              style={{ background: 'var(--color-admin-text)', color: '#fff' }}
+              style={{ background: 'var(--color-admin-text)', color: 'var(--color-admin-panel)' }}
             >
               {t('admin.programs.suggestion.createButton', 'Create This Program')}
             </button>

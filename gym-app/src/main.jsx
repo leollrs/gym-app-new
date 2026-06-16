@@ -9,6 +9,7 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 // with the real <PostHogProvider> once the @posthog/react chunk has loaded.
 import { Capacitor } from '@capacitor/core';
 import App from './App.jsx';
+import { resolveAppSection } from './lib/appUrls';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
@@ -708,6 +709,14 @@ if (isNative) {
         const trainerInviteMatch = path.match(/^\/invite\/t\/([^/]+)$/i);
         if (trainerInviteMatch) {
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/trainers/${trainerInviteMatch[1]}` } }));
+        }
+        // /invite/go/SECTION → email / marketing deep link. Rides the
+        // CDN-propagated /invite/* applink so it opens the app immediately, and
+        // resolves the section slug (workout, rewards, classes, …) to its in-app
+        // route. Two segments, so it can't collide with /invite/:code above.
+        const goMatch = path.match(/^\/invite\/go\/([a-z-]+)$/i);
+        if (goMatch) {
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: resolveAppSection(goMatch[1].toLowerCase()) } }));
         }
         // Custom-scheme fallback: tugympr://t/ID. The /t/:id download landing
         // hands off to the app via this scheme when the universal link doesn't

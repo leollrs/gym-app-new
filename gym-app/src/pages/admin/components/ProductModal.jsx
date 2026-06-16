@@ -122,7 +122,7 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
         {/* Cover preset grid */}
         <div>
           <label className="block text-[12px] font-medium mb-2" style={{ color: 'var(--color-admin-text-sub)' }}>
-            {t('admin.store.coverImage', 'Imagen del producto')}
+            {t('admin.store.coverImage', 'Product image')}
           </label>
           <div className="grid grid-cols-4 gap-2 mb-2">
             {PRODUCT_COVERS.map(c => {
@@ -143,11 +143,11 @@ export default function ProductModal({ isOpen, onClose, gymId, product, t }) {
 
         {/* Name */}
         <div>
-          <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.store.productName', 'Nombre del Producto')}</label>
+          <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.store.productName', 'Product Name')}</label>
           <input
             value={form.name}
             onChange={e => set('name', e.target.value)}
-            placeholder={t('admin.store.productNamePlaceholder', 'ej. Batido de Proteína')}
+            placeholder={t('admin.store.productNamePlaceholder', 'e.g. Protein Shake')}
             className={inputClass}
             style={inputStyle}
           />

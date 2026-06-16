@@ -266,7 +266,7 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>
                   {catalog.length > 0
                     ? t('admin.printCards.rewardLabelOrCustom', { defaultValue: 'Reward name (or type a custom one)' })
-                    : t('admin.printCards.rewardLabelField', { defaultValue: 'What does this reward?' })}
+                    : t('admin.printCards.rewardLabelField', { defaultValue: 'What is this reward?' })}
                 </label>
                 <input
                   type="text"

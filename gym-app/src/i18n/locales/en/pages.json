@@ -3258,6 +3258,7 @@
       "pulseSparkCaption": "Check-ins per day · last 14 days",
       "pulseSparkWorkoutsCaption": "Workouts per day · 14 days (this week highlighted)",
       "pulseSparkTooltip": "{{date}}: {{count}} check-ins",
+      "pulseSparkUnit": "check-ins",
       "dowNarrow": "S,M,T,W,T,F,S",
       "glanceActiveRate": "Active rate",
       "activeOfTotal": "{{active}} of {{total}} trained this week",
@@ -3517,6 +3518,13 @@
       "segmentChurned": "churned"
     },
     "scan": {
+      "cardsToDeliverTitle": "Card to hand over",
+      "cardsToDeliverTitle_plural": "Cards to hand over",
+      "cardsPendingTitle": "Card waiting to print",
+      "cardsPendingTitle_plural": "Cards waiting to print",
+      "cardsPendingHint": "Not printed yet — tap to open the Cards page and print it.",
+      "cardDeliver": "Handed over",
+      "cardDismissLater": "Close (hand over later)",
       "memberNotFound": "Member not found",
       "alreadyCheckedIn": "{{name}} already checked in today",
       "checkinFailed": "Check-in failed",
@@ -3943,7 +3951,7 @@
       "subtitleDirectory": "{{total}} total members",
       "filterActive": "Active",
       "filterFrozen": "Frozen",
-      "filterUnonboarded": "Unonboarded",
+      "filterUnonboarded": "Not signed up",
       "churnMovedHint": "At-risk member workflows moved to Churn Intel.",
       "openChurn": "Open Churn Intel"
     },
@@ -4188,6 +4196,18 @@
     "classes": {
       "title": "Classes",
       "subtitle": "Manage gym classes and schedules",
+      "roleAdmin": "Admin",
+      "roleTrainer": "Trainer",
+      "slot": "slot",
+      "noSchedules": "This class has no schedule set up yet.",
+      "noSlotsThatDay": "This class isn't held that day.",
+      "prevNav": "Previous",
+      "nextNav": "Next",
+      "confirmCancel": "Cancel {{name}}'s booking?",
+      "cancelFailed": "Couldn't cancel the booking",
+      "cancelled": "Booking cancelled",
+      "waitlistPill": "Waitlist",
+      "cancelAttendee": "Cancel booking",
       "addClass": "Add Class",
       "routines": "Routines",
       "routinesTitle": "Class Routines",
@@ -4492,7 +4512,8 @@
           "class_pass": "Free class pass",
           "free_days": "Free days",
           "custom": "Custom"
-        }
+        },
+        "createError": "Failed to create campaign. Please try again."
       },
       "messageFromGym": "Message from your gym",
       "messageAll": "Message All ({{count}})",
@@ -4555,6 +4576,17 @@
       "contactMethods": "Contact Methods",
       "contactMessage": "Message",
       "contactManual": "Marked contacted",
+      "contactWhatsapp": "WhatsApp",
+      "composeWhatsapp": "Send via WhatsApp",
+      "whatsappTo": "WhatsApp recipient",
+      "whatsappBodyPlaceholder": "Hey {{name}}, we miss you at the gym...",
+      "whatsappNote": "Opens WhatsApp with your message ready — sends from your own number.",
+      "openWhatsapp": "Open WhatsApp",
+      "whatsappOpened": "Opening WhatsApp…",
+      "whatsappOpenedShort": "Opened!",
+      "openMessages": "Open Messages",
+      "smsOpened": "Opening Messages…",
+      "smsNativeNote": "Opens your phone’s Messages app — sends from your own number, no SMS credits used.",
       "pushFailed": "Message sent, but the push could not be delivered",
       "pushNotDelivered": "Message sent — push not delivered ({{reason}})",
       "contactInApp": "In-app message",
@@ -4962,6 +4994,13 @@
         "owner_queue_item": "Queue item",
         "invite": "Invite",
         "gym_card_settings": "Card settings"
+      },
+      "csv": {
+        "date": "Date",
+        "actor": "Member / Staff",
+        "action": "Action",
+        "entity": "Affected item",
+        "details": "Details"
       }
     },
     "settings": {
@@ -4993,6 +5032,13 @@
       "videoSaved": "Launch video saved",
       "videoRemoved": "Launch video removed",
       "videoUploadFailed": "Video upload failed",
+      "launchLogo": "Launch Logo",
+      "launchLogoHelp": "Optional. A transparent (backgroundless) logo for the launch animation when there's no video — looks cleaner on the dark splash than your boxed app logo. Transparent PNG, 2 MB max.",
+      "uploadLaunchLogo": "Upload launch logo",
+      "removeLaunchLogo": "Remove",
+      "launchLogoSaved": "Launch logo saved",
+      "launchLogoRemoved": "Launch logo removed",
+      "launchLogoFailed": "Launch logo upload failed",
       "primaryColor": "Primary Color",
       "accentColor": "Accent Color",
       "themeColors": "Theme & Colors",
@@ -5571,11 +5617,18 @@
       "saved": "Template saved",
       "saveFailed": "Failed to save template",
       "resetDone": "Reverted to default",
-      "resetFailed": "Failed to reset"
+      "resetFailed": "Failed to reset",
+      "categories": {
+        "financial": "Cost",
+        "time": "Time",
+        "no_results": "No results",
+        "experience": "Experience",
+        "other": "Other"
+      }
     },
     "upcomingCards": {
       "title": "Coming up next",
-      "subtitle": "Cards the daily cron will queue soon — pre-print and pre-sign to stay ahead",
+      "subtitle": "Cards coming up soon — print and sign them ahead of time so they're ready for the member's next visit",
       "countBadge": "{{count}} coming",
       "countBadge_plural": "{{count}} coming",
       "empty": "No milestones or birthdays in the next 7 days.",
@@ -5648,7 +5701,7 @@
       "printedTimeAgo": "Printed {{when}}",
       "emptyPending": "No cards waiting to print.",
       "emptyPrinted": "No printed cards waiting for delivery.",
-      "emptyHint": "The daily cron generates cards for milestones and returning members.",
+      "emptyHint": "New cards are created automatically each day for milestones and returning members.",
       "toastPrinted": "Marked printed",
       "toastPrinted_plural": "Marked {{count}} printed",
       "toastDelivered": "Marked delivered",
@@ -5674,7 +5727,8 @@
       "previewLoading": "Loading…",
       "previewBatchEmpty": "No cards to preview. Go back and select cards to print.",
       "cardForLabel": "for",
-      "loadMore": "Show {{count}} more"
+      "loadMore": "Show {{count}} more",
+      "rewardLabelField": "What is this reward?"
     },
     "morningQueue": {
       "title": "Today's conversations",
@@ -5684,7 +5738,7 @@
       "explainerTitle": "What is this?",
       "explainerBody": "This queue lists the members most likely to cancel this week, ranked by urgency. Each row suggests what to say based on the pattern (haven't shown up, broken streak, etc.). Your daily job is to message them — a personal note, not a broadcast. That routine is the difference between 70% and 85% annual retention.",
       "emptyTitle": "Inbox zero. Nobody needs you right now.",
-      "emptyDesc": "The orchestrator checks every morning at 5am. New conversations will appear here.",
+      "emptyDesc": "We check your members every morning at 5am. New conversations will show up here.",
       "unknownMember": "Unknown member",
       "markDone": "Mark done",
       "snooze24h": "Snooze 24h",
@@ -5885,14 +5939,14 @@
       "membership": "Membership",
       "status": "Status",
       "qrTitle": "QR Code / External ID",
-      "externalId": "External ID",
-      "externalIdSaved": "External ID saved",
-      "externalIdSaveFailed": "Failed to save External ID.",
+      "externalId": "Existing system code",
+      "externalIdSaved": "Code saved",
+      "externalIdSaveFailed": "Couldn't save the code.",
       "externalIdDesc": "The code from your gym's existing system (e.g. keypad code, barcode number)",
       "externalIdPlaceholder": "e.g. 4821 or MBR-0042",
       "saving": "Saving…",
       "save": "Save",
-      "currentQrPayload": "Current QR payload",
+      "currentQrPayload": "Check-in code",
       "passwordReset": "Password Reset",
       "showCode": "Show this code to the member:",
       "codeExpires": "Code expires in 30 minutes",
@@ -6133,7 +6187,7 @@
       "messagePlaceholder": "Your message to members...",
       "titlePlaceholder": "e.g. New equipment arriving Friday!",
       "typeLabel": "Type",
-      "scheduleLabel": "Schedule (optional -- leave blank to publish now)",
+      "scheduleLabel": "Schedule (optional — leave blank to publish now)",
       "recurring": "Recurring",
       "frequency": "Frequency",
       "dayOfWeek": "Day of week",
@@ -6181,6 +6235,7 @@
     "messaging": {
       "title": "Messaging",
       "subtitle": "Direct messages with members",
+      "membersLoadFailed": "Couldn't load the member list.",
       "unarchive": "Unarchive",
       "archive": "Archive",
       "deleteConversation": "Delete conversation",
@@ -7229,6 +7284,7 @@
       "churnRate": "Churn Rate",
       "title": "Analytics",
       "subtitle": "Retention, growth, and engagement metrics",
+      "trainerUnnamed": "Unnamed trainer",
       "kpiTargets": "KPI Targets",
       "targetSaved": "Target saved",
       "targetSaveFailed": "Failed to save target",
@@ -7600,6 +7656,8 @@
     "abTesting": {
       "title": "A/B Testing",
       "subtitle": "Create and manage experiments to optimize engagement",
+      "atRisk": "At-risk members",
+      "reactivateConfirm": "Reactivating resets the test start time to now. Old attempts stay in the data but the time window restarts. Continue?",
       "newExperiment": "New Experiment",
       "tabActive": "Active",
       "tabCompleted": "Completed",
@@ -7712,6 +7770,10 @@
     },
     "outreach": {
       "pageTitle": "Outreach",
+      "channelPushShort": "Push",
+      "channelInAppShort": "In-app",
+      "channelEmailShort": "Email",
+      "channelSmsShort": "SMS",
       "title": "Send message",
       "subtitle": "Reach the right members on the right channel — one place, no copy-paste",
       "audience": "Audience",
@@ -10198,7 +10260,22 @@
     "storageReachable": "{{count}} buckets reachable",
     "videoTooLarge": "Video must be under 100MB",
     "videoTypeInvalid": "Only MP4, WebM, and MOV videos are allowed",
-    "saveFailed": "Save failed: {{msg}}"
+    "saveFailed": "Save failed: {{msg}}",
+    "bulkAddCsv": "Bulk add (CSV)",
+    "bulkAddTitle": "Bulk add exercises",
+    "bulkAddDesc": "Paste CSV rows or upload a .csv file. Required columns: name, muscle_group, equipment. Rows with unknown enum values are skipped.",
+    "bulkDownloadTemplate": "Download template",
+    "bulkUploadFile": "Upload .csv",
+    "bulkPasteLabel": "CSV data",
+    "bulkPreview": "Preview",
+    "bulkErrEmpty": "The CSV is empty or could not be read.",
+    "bulkErrMissingCols": "Missing required columns: {{cols}}",
+    "bulkErrNoRows": "Nothing was imported — the rows may be blocked by permissions.",
+    "bulkReadyCount": "{{count}} ready",
+    "bulkSkippedCount": "{{count}} skipped",
+    "bulkRowLabel": "Row {{n}}",
+    "bulkInserted": "Imported {{count}} exercises",
+    "bulkImportN": "Import {{count}}"
   },
   "trainerPlans": {
     "title": "Workout Plans",
@@ -11878,7 +11955,12 @@
       "cancel": "Cancel",
       "fulfillmentSaved": "Delivery mode updated",
       "returnToPending": "Return to pending",
-      "toastReturned": "Card returned to pending"
+      "toastReturned": "Card returned to pending",
+      "filterByGym": "Filter by gym",
+      "allGymsOption": "All gyms",
+      "previewCard": "Preview card",
+      "attachReward": "Attach reward",
+      "manageReward": "Manage reward"
     },
     "gymWellness": {
       "healthScore": "Composite health score",
@@ -12008,7 +12090,8 @@
         "memberStatusAria": "Member status",
         "deleteMemberAria": "Delete member",
         "prevPage": "Previous page",
-        "nextPage": "Next page"
+        "nextPage": "Next page",
+        "viewMemberAria": "View {{name}}"
       },
       "loadingAria": "Loading gym details",
       "deleteEntity": {
@@ -12216,7 +12299,8 @@
         "logoUploadFailed": "Logo upload failed: {{error}}",
         "uploading": "Uploading…",
         "uploadLogo": "Upload logo",
-        "logoUploadHint": "PNG, JPEG or WebP, under 5 MB. Compressed to 512px. The app picks it up on next launch."
+        "logoUploadHint": "PNG, JPEG or WebP, under 5 MB. Compressed to 512px. The app picks it up on next launch.",
+        "noOwnerCandidatesAny": "No members yet — add a member first, then set them as owner."
       },
       "deleteConfirm": {
         "title": "Delete {{type}}?",
@@ -13109,7 +13193,10 @@
       "bucket1_3": "1–3 mo",
       "bucket3_6": "3–6 mo",
       "bucket6_12": "6–12 mo",
-      "bucket12plus": "12+ mo"
+      "bucket12plus": "12+ mo",
+      "kpiNoDate": "{{count}} have no recorded date",
+      "datelessExcluded": "{{count}} cancellation(s) have no recorded date and are excluded from this chart.",
+      "cancellationsNoDates": "Cancellations exist but have no recorded dates — import cancellation dates to see this chart."
     },
     "audit": {
       "title": "Audit Log",

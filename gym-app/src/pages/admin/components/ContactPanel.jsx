@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Mail, Phone, CheckCircle, Send, Gift, Smartphone } from 'lucide-react';
+import { MessageSquare, Mail, Phone, CheckCircle, Send, Gift, Smartphone, MessageCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Capacitor } from '@capacitor/core';
 import { supabase, authHeader } from '../../../lib/supabase';
 import { encryptMessage } from '../../../lib/messageEncryption';
+import { normalizePhone, openWhatsApp } from '../../../lib/whatsapp';
 import i18n from 'i18next';
 import logger from '../../../lib/logger';
 import { useToast } from '../../../contexts/ToastContext';
@@ -28,11 +30,12 @@ export default function ContactPanel({
   // Single source of truth for which inline channel is open. Mutually exclusive.
   // `defaultChannel` lets callers (e.g. the "Message" quick-action) open
   // directly to a specific channel without an extra click.
-  const [activeChannel, setActiveChannel] = useState(defaultChannel); // 'message' | 'email' | 'sms' | null
+  const [activeChannel, setActiveChannel] = useState(defaultChannel); // 'message' | 'email' | 'sms' | 'whatsapp' | null
   const openChannel = (ch) => setActiveChannel(prev => (prev === ch ? null : ch));
   const messageMode = activeChannel === 'message';
   const emailMode = activeChannel === 'email';
   const smsMode = activeChannel === 'sms';
+  const whatsappMode = activeChannel === 'whatsapp';
 
   // SMS state
   const [smsBody, setSmsBody] = useState('');
@@ -42,6 +45,12 @@ export default function ContactPanel({
   // Mutable recipient — defaults to the member's stored phone, but the
   // admin can override (parity with the email-override path).
   const [smsTo, setSmsTo] = useState('');
+
+  // WhatsApp state — always a deep link to the admin's OWN WhatsApp account
+  // (never a server API). Recipient defaults to the member's phone, editable.
+  const [waTo, setWaTo] = useState('');
+  const [waBody, setWaBody] = useState('');
+  const [waSent, setWaSent] = useState(false);
 
   // Email state (must be before useEffect that references setEmailTo)
   const [emailTo, setEmailTo] = useState(email || '');
@@ -57,11 +66,15 @@ export default function ContactPanel({
   const [gymRewards, setGymRewards] = useState([]);
 
   const memberPhone = member.phone_number || null;
+  // On a phone, phone-number channels (SMS, WhatsApp) go through the admin's
+  // OWN device/apps rather than our SMS API — free, personal, no credits.
+  const isNative = Capacitor.isNativePlatform();
 
-  // Seed the SMS recipient from the member's stored phone whenever the
-  // member changes. The admin can still edit it before sending.
+  // Seed the SMS + WhatsApp recipients from the member's stored phone whenever
+  // the member changes. The admin can still edit before sending.
   useEffect(() => {
     setSmsTo(memberPhone || '');
+    setWaTo(memberPhone || '');
   }, [memberPhone]);
 
   useEffect(() => {
@@ -112,6 +125,7 @@ export default function ContactPanel({
     message: t('admin.churn.contactMessage', 'Message'),
     sms: t('admin.churn.contactSms', 'SMS'),
     email: t('admin.churn.contactEmail', 'Email'),
+    whatsapp: t('admin.churn.contactWhatsapp', 'WhatsApp'),
     manual: t('admin.churn.contactManual', 'Marked contacted'),
   }[m] || m);
 
@@ -186,6 +200,27 @@ export default function ContactPanel({
       showToast(t('admin.churn.invalidPhone', 'Please enter a valid phone number'), 'error');
       return;
     }
+    // On a phone: hand off to the native Messages app so the text goes out from
+    // the admin's OWN number — no gym SMS credits spent. Web has no device to
+    // text from, so it falls through to the send-sms API below.
+    if (isNative) {
+      const digits = normalizePhone(smsTo || memberPhone);
+      if (!digits) {
+        showToast(t('admin.churn.invalidPhone', 'Please enter a valid phone number'), 'error');
+        return;
+      }
+      try {
+        // `?&body=` is the cross-platform-safe prefill form (iOS + Android).
+        window.location.href = `sms:+${digits}?&body=${encodeURIComponent(smsBody.trim())}`;
+      } catch { /* scheme handler unavailable */ }
+      logAdminAction('send_sms', 'member', member.id);
+      onMarkContacted(member.id, 'sms', smsBody.trim());
+      recordLocal('sms', smsBody.trim());
+      showToast(t('admin.churn.smsOpened', 'Opening Messages…'), 'success');
+      setActiveChannel(null);
+      setSmsBody('');
+      return;
+    }
     setSmsSending(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -218,6 +253,27 @@ export default function ContactPanel({
     } finally {
       setSmsSending(false);
     }
+  };
+
+  // WhatsApp — always opens the admin's own WhatsApp (native app or WhatsApp
+  // Web) with the message prefilled. No server API is ever in the loop, so the
+  // member sees the admin's personal number/account, not a gym shortcode.
+  const handleOpenWhatsApp = async () => {
+    if (waTo && !isValidPhone(waTo.trim())) {
+      showToast(t('admin.churn.invalidPhone', 'Please enter a valid phone number'), 'error');
+      return;
+    }
+    const opened = await openWhatsApp(waTo || memberPhone, waBody.trim() || undefined);
+    if (!opened) {
+      showToast(t('admin.churn.invalidPhone', 'Please enter a valid phone number'), 'error');
+      return;
+    }
+    logAdminAction('send_whatsapp', 'member', member.id);
+    setWaSent(true);
+    onMarkContacted(member.id, 'whatsapp', waBody.trim() || null);
+    recordLocal('whatsapp', waBody.trim() || null);
+    showToast(t('admin.churn.whatsappOpened', 'Opening WhatsApp…'), 'success');
+    setTimeout(() => { setWaSent(false); setActiveChannel(null); setWaBody(''); }, 1500);
   };
 
   const smsSegments = smsBody.length <= 160 ? 1 : 2;
@@ -323,7 +379,7 @@ export default function ContactPanel({
         {/* Contact methods */}
         <div>
           <SectionLabel className="mb-2.5">{t('admin.churn.contactMethods', 'Contact Methods')}</SectionLabel>
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
             {/* In-App Message (also pushes to app) */}
             <button onClick={() => openChannel('message')}
               className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[var(--color-bg-subtle)] border rounded-xl transition-all group ${messageMode ? 'border-[#D4AF37]/40 bg-[#D4AF37]/5' : 'border-[var(--color-admin-border)] hover:border-[#D4AF37]/30 hover:bg-[#D4AF37]/5'}`}>
@@ -356,6 +412,18 @@ export default function ContactPanel({
               </div>
               <div className="text-center min-w-0 w-full">
                 <p className="text-[11px] sm:text-[12px] font-semibold text-[var(--color-admin-text)]">{t('admin.churn.contactSms', 'SMS')}</p>
+                <p className="text-[10px] text-[var(--color-admin-text-muted)] truncate">{memberPhone || t('admin.churn.noPhone', 'No phone')}</p>
+              </div>
+            </button>
+
+            {/* WhatsApp — opens the admin's own WhatsApp (deep link, no API) */}
+            <button onClick={() => openChannel('whatsapp')}
+              className={`flex flex-col items-center gap-1.5 p-3 sm:p-4 bg-[var(--color-bg-subtle)] border rounded-xl transition-all group ${whatsappMode ? 'border-[#25D366]/40 bg-[#25D366]/5' : 'border-[var(--color-admin-border)] hover:border-[#25D366]/30 hover:bg-[#25D366]/5'}`}>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#25D366]/10 flex items-center justify-center group-hover:bg-[#25D366]/20 transition-colors">
+                <MessageCircle size={18} className="text-[#25D366]" />
+              </div>
+              <div className="text-center min-w-0 w-full">
+                <p className="text-[11px] sm:text-[12px] font-semibold text-[var(--color-admin-text)]">{t('admin.churn.contactWhatsapp', 'WhatsApp')}</p>
                 <p className="text-[10px] text-[var(--color-admin-text-muted)] truncate">{memberPhone || t('admin.churn.noPhone', 'No phone')}</p>
               </div>
             </button>
@@ -506,13 +574,79 @@ export default function ContactPanel({
                 </div>
               )}
 
+              {isNative && (
+                <p className="text-[10px] px-1" style={{ color: 'var(--color-admin-text-faint)' }}>
+                  {t('admin.churn.smsNativeNote', 'Opens your phone’s Messages app — sends from your own number, no SMS credits used.')}
+                </p>
+              )}
+
               <div className="flex items-center gap-2">
                 <button onClick={handleSendSms} disabled={smsSending || !smsBody.trim() || smsSent}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
                   style={{ background: smsSent ? 'var(--color-success-soft)' : 'var(--color-warning-soft)', color: smsSent ? 'var(--color-success)' : 'var(--color-warning)', border: `1px solid ${smsSent ? 'var(--color-success-soft)' : 'var(--color-warning-soft)'}` }}>
-                  {smsSent ? <><CheckCircle size={14} /> {t('admin.churn.smsSent', 'Sent!')}</> : smsSending ? '...' : <><Send size={14} /> {t('admin.churn.sendSms', 'Send SMS')}</>}
+                  {smsSent ? <><CheckCircle size={14} /> {t('admin.churn.smsSent', 'Sent!')}</> : smsSending ? '...' : <><Send size={14} /> {isNative ? t('admin.churn.openMessages', 'Open Messages') : t('admin.churn.sendSms', 'Send SMS')}</>}
                 </button>
                 <button onClick={() => { setActiveChannel(null); setSmsBody(''); }}
+                  className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] transition-colors">
+                  {t('common:cancel', 'Cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* WhatsApp compose — opens the admin's WhatsApp with the text prefilled */}
+        {whatsappMode && (
+          <div>
+            <SectionLabel icon={MessageCircle} className="mb-2">{t('admin.churn.composeWhatsapp', 'Send via WhatsApp')}</SectionLabel>
+            <div className="mb-2.5">
+              <span className="text-[10px] block mb-1.5" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.churn.sendingTo', 'To:')}</span>
+              <PhoneInput
+                value={waTo}
+                onChange={setWaTo}
+                placeholder="787 555 1234"
+                ariaLabel={t('admin.churn.whatsappTo', 'WhatsApp recipient')}
+              />
+              {waTo && !isValidPhone(waTo) && (
+                <span className="text-[10px] mt-1 block" style={{ color: 'var(--color-danger)' }}>{t('admin.churn.invalidPhone', 'Invalid')}</span>
+              )}
+            </div>
+
+            {/* Quick templates (shared with SMS) */}
+            {!waBody && (
+              <div className="mb-3">
+                <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
+                <div className="flex flex-col gap-1.5">
+                  {getSmsTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
+                    <button key={tpl.key} onClick={() => setWaBody(tpl.body)}
+                      className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg text-left hover:border-[#25D366]/30 hover:bg-[#25D366]/5 transition-all">
+                      <MessageCircle size={12} className="text-[#25D366] flex-shrink-0" />
+                      <span className="text-[12px] font-medium text-[var(--color-admin-text)]">{tpl.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <textarea
+                value={waBody}
+                onChange={e => setWaBody(e.target.value)}
+                rows={3}
+                placeholder={t('admin.churn.whatsappBodyPlaceholder', { name: member.full_name.split(' ')[0], defaultValue: `Hey ${member.full_name.split(' ')[0]}, we miss you at the gym...` })}
+                className="w-full bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder-[#4B5563] outline-none focus:border-[#25D366]/40 transition-colors resize-none"
+              />
+              <p className="text-[10px] px-1" style={{ color: 'var(--color-admin-text-faint)' }}>
+                {t('admin.churn.whatsappNote', 'Opens WhatsApp with your message ready — sends from your own number.')}
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button onClick={handleOpenWhatsApp} disabled={waSent || (waTo && !isValidPhone(waTo))}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
+                  style={{ background: waSent ? 'var(--color-success-soft)' : '#25D366', color: waSent ? 'var(--color-success)' : '#ffffff', border: '1px solid transparent' }}>
+                  {waSent ? <><CheckCircle size={14} /> {t('admin.churn.whatsappOpenedShort', 'Opened!')}</> : <><MessageCircle size={14} /> {t('admin.churn.openWhatsapp', 'Open WhatsApp')}</>}
+                </button>
+                <button onClick={() => { setActiveChannel(null); setWaBody(''); }}
                   className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] transition-colors">
                   {t('common:cancel', 'Cancel')}
                 </button>

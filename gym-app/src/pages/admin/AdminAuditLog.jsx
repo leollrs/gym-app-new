@@ -115,27 +115,44 @@ function absoluteTime(ts, dateFnsLocale) {
 
 function sanitizeDetailsForExport(details) {
   if (!details || typeof details !== 'object') return '';
-  const sanitized = {};
   const sensitiveKeys = ['id', 'actor_id', 'entity_id', 'gym_id', 'user_id', 'member_id', 'profile_id', 'token', 'secret', 'password', 'ip_address'];
+  // Render as a readable "Label: value" list rather than a raw JSON blob — a
+  // gym owner opening this in Excel should not see {"new_status":"active"} with
+  // braces, quotes, and snake_case field names. Keys are humanized; nested
+  // objects/arrays fall back to a compact string.
+  const parts = [];
   for (const [key, value] of Object.entries(details)) {
     if (sensitiveKeys.includes(key)) continue;
     if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) continue;
-    sanitized[key] = value;
+    if (value == null || value === '') continue;
+    const label = humanizeKey(key);
+    const text = (typeof value === 'object') ? Object.values(value).join(', ') : String(value);
+    parts.push(`${label}: ${text}`);
   }
-  return Object.keys(sanitized).length > 0 ? JSON.stringify(sanitized) : '';
+  return parts.join('; ');
 }
 
 function buildCSVRows(pages, t) {
+  // Headers are human, localized labels (the on-screen column titles), not raw
+  // object keys — the CSV is opened by non-technical gym owners. Action and
+  // entity values are translated too (or humanized: snake_case → "Sentence
+  // case") so a cell never reads "update_settings"/"content_report". The raw
+  // entity id is intentionally omitted — a truncated UUID means nothing to an
+  // owner and the sanitizer already strips ids from the details column.
+  const colDate = t('admin.audit.csv.date', { defaultValue: 'Date' });
+  const colActor = t('admin.audit.csv.actor', { defaultValue: 'Member / Staff' });
+  const colAction = t('admin.audit.csv.action', { defaultValue: 'Action' });
+  const colEntity = t('admin.audit.csv.entity', { defaultValue: 'Affected item' });
+  const colDetails = t('admin.audit.csv.details', { defaultValue: 'Details' });
   const rows = [];
   for (const page of pages) {
     for (const entry of page) {
       rows.push({
-        date: entry.created_at ? format(new Date(entry.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
-        actor: entry.profiles?.full_name || t('admin.audit.unknownUser', 'Unknown user'),
-        action: entry.action,
-        entity_type: entry.entity_type || '',
-        entity_ref: entry.entity_type && entry.entity_id ? `${entry.entity_type}#${entry.entity_id.slice(0, 6)}` : '',
-        details: sanitizeDetailsForExport(entry.details),
+        [colDate]: entry.created_at ? format(new Date(entry.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
+        [colActor]: entry.profiles?.full_name || t('admin.audit.unknownUser', 'Unknown user'),
+        [colAction]: t(`admin.audit.actions.${entry.action}`, { defaultValue: humanizeKey(entry.action) }),
+        [colEntity]: entry.entity_type ? t(`admin.audit.entities.${entry.entity_type}`, { defaultValue: humanizeKey(entry.entity_type) }) : '',
+        [colDetails]: sanitizeDetailsForExport(entry.details),
       });
     }
   }

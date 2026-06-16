@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 
 // Fallback when the platform_config row is missing/unreadable — mirrors
-// send-sms's SMS_MONTHLY_CAP env default (parseInt(env) || '200').
-const DEFAULT_SMS_CAP = 200;
+// send-sms's getMonthlyCap() fallback (platform_config else 500).
+const DEFAULT_SMS_CAP = 500;
 // Approx Twilio cost per SMS segment — mirrors send-sms's pricing default.
 // Display-only estimate; the edge fn is the source of truth for enforcement.
 const SMS_COST_PER_SEND = 0.054;

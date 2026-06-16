@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next';
 import logger from '../../lib/logger';
 import { logAdminAction } from '../../lib/adminAudit';
 import { subDays } from 'date-fns';
+import NameFields from '../admin/components/NameFields';
+import { composeFullName, areNamePartsValid } from '../../lib/admin/memberName';
 
 import GymOverviewTab from './gym-detail/GymOverviewTab';
 import GymWellnessTab from './gym-detail/GymWellnessTab';
@@ -19,6 +21,7 @@ import GymPeopleTab from './gym-detail/GymPeopleTab';
 import GymActivityTab from './gym-detail/GymActivityTab';
 import GymContentTab from './gym-detail/GymContentTab';
 import GymSettingsTab from './gym-detail/GymSettingsTab';
+import PlatformMemberDetail from './gym-detail/PlatformMemberDetail';
 
 // ── Constants ──────────────────────────────────────────────────
 // Canonical tier set — plan_type is the source of truth (0043), the dropdown
@@ -45,6 +48,18 @@ const genInviteCode = () =>
 // hyphen, leading/trailing hyphens stripped.
 const normalizeSlug = (raw) =>
   String(raw ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
+
+// NameFields (admin component) styles its inputs from member/admin design-system
+// CSS vars. Mapped here to platform-dark values so the shared component reads
+// correctly inside the platform's fixed-dark Add Member modal without editing it.
+const NAME_FIELDS_DARK_VARS = {
+  '--color-bg-input': '#111827',
+  '--color-bg-elevated': '#111827',
+  '--color-text-primary': '#E5E7EB',
+  '--color-text-muted': '#6B7280',
+  '--color-border-subtle': 'rgba(255,255,255,0.06)',
+  '--color-danger': '#EF4444',
+};
 
 // ── Challenge Modal Component ─────────────────────────────────
 function ChallengeModal({ challenge, onSave, onClose }) {
@@ -410,26 +425,36 @@ function RewardModal({ reward, onSave, onClose }) {
 // ── Add Member Modal Component ────────────────────────────────
 function AddMemberModal({ gymId, onClose, onCreated }) {
   const { t } = useTranslation('pages');
-  const [form, setForm] = useState({ email: '', password: '', fullName: '', username: '', role: 'member' });
+  // Structured name parts (first / middle / last / second last) — mirrors
+  // CreateInviteModal so the platform add-member path collects the same 4 parts
+  // and composes a single full_name for the RPC (no schema change).
+  const [nameParts, setNameParts] = useState({ first: '', middle: '', last: '', second: '' });
+  const [form, setForm] = useState({ email: '', password: '', username: '', role: 'member' });
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const fullName = composeFullName(nameParts);
+  const namesOk = areNamePartsValid(nameParts);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.email.trim() || !form.password || !form.fullName.trim() || !form.username.trim()) { setError(t('platform.gymDetail.modals.allFieldsRequired')); return; }
+    if (!namesOk || !form.email.trim() || !form.password || !form.username.trim()) { setError(t('platform.gymDetail.modals.allFieldsRequired')); return; }
     if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password)) { setError(t('platform.gymDetail.modals.passwordRequirements')); return; }
     setSaving(true);
     try {
-      const { error: rpcErr } = await supabase.rpc('admin_create_gym_member', { p_email: form.email.trim(), p_password: form.password, p_full_name: form.fullName.trim(), p_username: form.username.trim().toLowerCase(), p_gym_id: gymId, p_role: form.role });
+      const { error: rpcErr } = await supabase.rpc('admin_create_gym_member', { p_email: form.email.trim(), p_password: form.password, p_full_name: fullName, p_username: form.username.trim().toLowerCase(), p_gym_id: gymId, p_role: form.role });
       if (rpcErr) { setError(rpcErr.message || 'Failed to create member'); setSaving(false); return; }
       onCreated();
     } catch (err) { setError(err.message || 'Failed to create member'); setSaving(false); }
   };
 
-  const autoUsername = (val) => {
-    setForm(prev => ({ ...prev, fullName: val, username: prev.username || val.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) }));
+  // Auto-derive the username from the first name while the username field is
+  // still empty (matches the old single-field behavior, now keyed off `first`).
+  const handleNameChange = (next) => {
+    setNameParts(next);
+    setForm(prev => prev.username ? prev : { ...prev, username: (next.first || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) });
   };
 
   return (
@@ -441,9 +466,11 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
           <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label="Close dialog"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.fullName')}</label>
-            <input type="text" value={form.fullName} onChange={e => autoUsername(e.target.value)} placeholder={t('platform.gymDetail.modals.fullNamePlaceholder')} className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40" required />
+          {/* Name — structured (first / middle / last / second last). NameFields
+              is admin-themed (CSS vars); it inherits the platform-dark var values
+              set on the wrapping element below so it reads correctly here. */}
+          <div style={NAME_FIELDS_DARK_VARS}>
+            <NameFields value={nameParts} onChange={handleNameChange} />
           </div>
           <div>
             <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.modals.usernameLabel')}</label>
@@ -480,7 +507,7 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
           {error && <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-[#9CA3AF] hover:text-[#E5E7EB] rounded-lg border border-white/6 hover:bg-white/[0.03] transition-colors">{t('platform.gymDetail.modals.cancel')}</button>
-            <button type="submit" disabled={saving} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50" style={{ background: '#D4AF37', color: '#000' }}>{saving ? t('platform.gymDetail.modals.creating') : t('platform.gymDetail.modals.createMember')}</button>
+            <button type="submit" disabled={saving || !namesOk} className="rounded-lg px-4 py-2 text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ background: '#D4AF37', color: '#000' }}>{saving ? t('platform.gymDetail.modals.creating') : t('platform.gymDetail.modals.createMember')}</button>
           </div>
         </form>
       </div>
@@ -532,6 +559,9 @@ export default function GymDetail() {
   const [editingReward, setEditingReward] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  // P0-7: click-into member detail — reuses the admin MemberDetail re-skinned to
+  // the platform dark theme (PlatformMemberDetail wrapper).
+  const [selectedMember, setSelectedMember] = useState(null);
   const [lifecycleModal, setLifecycleModal] = useState(null);
   const [pauseReason, setPauseReason] = useState('');
   const [deleteGymConfirmName, setDeleteGymConfirmName] = useState('');
@@ -757,7 +787,11 @@ export default function GymDetail() {
     // A6: dirty-field diff against the snapshot taken when editing started —
     // the old full-snapshot write reverted anything a gym admin changed since
     // this page loaded (name, classes_enabled, qr_enabled...).
-    const toPayload = (src) => ({ name: src.name, slug: normalizeSlug(src.slug), qr_enabled: src.qr_enabled, qr_payload_type: src.qr_payload_type, qr_display_format: src.qr_display_format, qr_payload_template: src.qr_payload_template || null, classes_enabled: src.classes_enabled, multi_admin_enabled: src.multi_admin_enabled, max_admin_seats: src.max_admin_seats, sms_phone_number: src.sms_phone_number || null });
+    // qr_display_format is hardcoded to 'qr_code' — barcode formats were removed
+    // from the UI (member-facing readers coalesce to 'qr_code' anyway). The DB
+    // column already DEFAULTs to 'qr_code'; this keeps any legacy barcode value
+    // from surviving a save.
+    const toPayload = (src) => ({ name: src.name, slug: normalizeSlug(src.slug), qr_enabled: src.qr_enabled, qr_payload_type: src.qr_payload_type, qr_display_format: 'qr_code', qr_payload_template: src.qr_payload_template || null, classes_enabled: src.classes_enabled, multi_admin_enabled: src.multi_admin_enabled, max_admin_seats: src.max_admin_seats, sms_phone_number: src.sms_phone_number || null });
     const candidate = toPayload({ ...editingGym, slug });
     const base = editBaseline.current ? toPayload(editBaseline.current) : null;
     const updates = {};
@@ -841,7 +875,9 @@ export default function GymDetail() {
       return;
     }
     logAdminAction('set_gym_owner', 'gym', gymId, { gym_name: gym?.name, owner_user_id: ownerId || null }, gymId);
-    setGym(prev => ({ ...prev, owner_user_id: ownerId || null }));
+    // Re-read the gym from the DB so the owner name re-renders from the source
+    // of truth (the GymSettingsTab owner label derives from gym.owner_user_id).
+    await fetchGym();
     notify(t('platform.gymDetail.toasts.ownerSet', 'Owner updated'));
   };
 
@@ -1080,7 +1116,7 @@ export default function GymDetail() {
         {/* Tab content */}
         {tab === 'overview' && <GymOverviewTab gym={gym} branding={branding} logoUrl={logoUrl} stats={stats} checkIns={checkIns} challenges={challenges} programs={programs} achievements={achievements} invites={invites} members={members} gymId={gymId} setTab={setTab} setContentSubTab={setContentSubTab} />}
         {tab === 'wellness' && <GymWellnessTab gymId={gymId} statsRow={statsRow?.row} />}
-        {tab === 'people' && <GymPeopleTab members={members} invites={invites} updateMemberRole={updateMemberRole} updateMemberStatus={updateMemberStatus} deleteMember={deleteMember} setShowAddMemberModal={setShowAddMemberModal} createInvite={createInvite} revokeInvite={revokeInvite} copyInviteCode={copyInviteCode} />}
+        {tab === 'people' && <GymPeopleTab members={members} invites={invites} updateMemberRole={updateMemberRole} updateMemberStatus={updateMemberStatus} deleteMember={deleteMember} setShowAddMemberModal={setShowAddMemberModal} createInvite={createInvite} revokeInvite={revokeInvite} copyInviteCode={copyInviteCode} onSelectMember={setSelectedMember} />}
         {tab === 'activity' && <GymActivityTab sessions={sessions} checkIns={checkIns} gymId={gymId} />}
         {tab === 'content' && <GymContentTab challenges={challenges} programs={programs} achievements={achievements} rewardsAvailable={rewardsAvailable} getChallengeStatus={getChallengeStatus} setEditingChallenge={setEditingChallenge} setShowChallengeModal={setShowChallengeModal} setEditingProgram={setEditingProgram} setShowProgramModal={setShowProgramModal} toggleProgramPublish={toggleProgramPublish} setEditingAchievement={setEditingAchievement} setShowAchievementModal={setShowAchievementModal} setEditingReward={setEditingReward} setShowRewardModal={setShowRewardModal} toggleRewardActive={toggleRewardActive} setDeleteConfirm={setDeleteConfirm} initialSubTab={contentSubTab} />}
         {tab === 'settings' && <GymSettingsTab gym={gym} branding={branding} logoUrl={logoUrl} invites={invites} editingGym={editingGym} setEditingGym={setEditingGym} savingGym={savingGym} saveGymSettings={saveGymSettings} settingsError={settingsError} gymStatus={gymStatus} setLifecycleModal={setLifecycleModal} members={members} setGymOwner={setGymOwner} notify={notify} onBrandingSaved={(updates) => setBranding(prev => ({ ...(prev ?? { gym_id: gymId }), ...updates }))} t={t} />}
@@ -1108,6 +1144,27 @@ export default function GymDetail() {
       {showAchievementModal && <AchievementModal achievement={editingAchievement} onSave={saveAchievement} onClose={() => { setShowAchievementModal(false); setEditingAchievement(null); }} />}
       {showRewardModal && <RewardModal reward={editingReward} onSave={saveReward} onClose={() => { setShowRewardModal(false); setEditingReward(null); }} />}
       {showAddMemberModal && <AddMemberModal gymId={gymId} onClose={() => setShowAddMemberModal(false)} onCreated={() => { setShowAddMemberModal(false); fetchMembers(); }} />}
+
+      {/* P0-7: member detail — admin MemberDetail re-skinned to platform dark.
+          onStatusChanged also fires on permanent delete ('deleted'), in which
+          case MemberDetail calls onClose itself; we just refresh the roster. */}
+      {selectedMember && (
+        <PlatformMemberDetail
+          key={selectedMember.id}
+          member={selectedMember}
+          gymId={gymId}
+          onClose={() => setSelectedMember(null)}
+          onNoteSaved={(id, note) => setMembers(prev => prev.map(m => m.id === id ? { ...m, admin_note: note } : m))}
+          onStatusChanged={(id, status) => {
+            if (status === 'deleted') {
+              setMembers(prev => prev.filter(m => m.id !== id));
+              setSelectedMember(null);
+            } else {
+              setMembers(prev => prev.map(m => m.id === id ? { ...m, membership_status: status } : m));
+            }
+          }}
+        />
+      )}
 
       {/* Delete Confirmation */}
       {deleteConfirm && (

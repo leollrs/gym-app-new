@@ -17,9 +17,19 @@
  * commit.
  */
 
+import { composeFullName } from './memberName';
+
 // Canonical column set. Order doesn't matter; lookup by name.
+// The name can be a single `full_name` column OR structured PR-style parts
+// (first_name + last_name, optionally middle_name + second_last_name), which
+// parseCSV composes into full_name — matching how the single-member create
+// modal captures names. Either form is accepted.
 export const CANONICAL_COLUMNS = [
   'full_name',
+  'first_name',
+  'middle_name',
+  'last_name',
+  'second_last_name',
   'status',
   'phone',
   'email',
@@ -60,7 +70,15 @@ export function parseCSV(text) {
   const headers = records[0].map((h) => h.trim().toLowerCase());
   const errors = [];
 
-  for (const col of REQUIRED_COLUMNS) {
+  // Name requirement is satisfied by a single `full_name` column OR by
+  // structured parts (first_name + last_name); status + join_date are always
+  // required.
+  const hasName = headers.includes('full_name') ||
+    (headers.includes('first_name') && headers.includes('last_name'));
+  if (!hasName) {
+    errors.push({ kind: 'missing_required_column', column: 'full_name' });
+  }
+  for (const col of ['status', 'join_date']) {
     if (!headers.includes(col)) {
       errors.push({ kind: 'missing_required_column', column: col });
     }
@@ -74,6 +92,16 @@ export function parseCSV(text) {
     headers.forEach((h, idx) => {
       obj[h] = (fields[idx] ?? '').trim();
     });
+    // Compose full_name from PR-style parts when no full_name was given, so
+    // the rest of the pipeline (validation, preview, RPC payload) is unchanged.
+    if (!obj.full_name && (obj.first_name || obj.middle_name || obj.last_name || obj.second_last_name)) {
+      obj.full_name = composeFullName({
+        first: obj.first_name,
+        middle: obj.middle_name,
+        last: obj.last_name,
+        second: obj.second_last_name,
+      });
+    }
     rows.push(obj);
   }
 

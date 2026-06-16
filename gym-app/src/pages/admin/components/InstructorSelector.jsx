@@ -121,7 +121,11 @@ export default function InstructorSelector({ gymId, values = [], onChange, t }) 
                   )}
                   <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--color-text-primary)' }}>{p.full_name}</span>
                   <span className={`${roleBadge(p.role)}`}>
-                    {p.role}
+                    {p.role === 'admin'
+                      ? t('admin.classes.roleAdmin', 'Admin')
+                      : p.role === 'trainer'
+                        ? t('admin.classes.roleTrainer', 'Trainer')
+                        : p.role}
                   </span>
                 </button>
               ))

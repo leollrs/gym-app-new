@@ -351,6 +351,8 @@ export default function GymImport() {
               Drag a .csv file here or click to browse. Encoding must be UTF-8.
               Required columns: <span className="font-mono text-[#E5E7EB]">{REQUIRED_COLUMNS.join(', ')}</span>.
               Optional: <span className="font-mono text-[#6B7280]">{CANONICAL_COLUMNS.filter(c => !REQUIRED_COLUMNS.includes(c)).join(', ')}</span>.
+              <br />
+              Name can be a single <span className="font-mono text-[#9CA3AF]">full_name</span> column, or split into <span className="font-mono text-[#9CA3AF]">first_name</span> + <span className="font-mono text-[#9CA3AF]">last_name</span> (plus optional <span className="font-mono text-[#6B7280]">middle_name</span>, <span className="font-mono text-[#6B7280]">second_last_name</span>).
             </p>
 
             <input

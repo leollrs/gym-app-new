@@ -131,9 +131,18 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
         // notif_<type>_enabled per recipient.
         broadcastNotification({
           gymId,
-          type: form.type || 'announcement',
+          // The notification's `type` MUST be a valid `notification_type` enum
+          // value — i.e. 'announcement'. The form's category (news/event/
+          // challenge/maintenance) is NOT an enum value, so passing it here made
+          // every per-member insert fail with "invalid input value for enum
+          // notification_type" — caught and swallowed by broadcastNotification's
+          // warn, so announcements silently produced zero in-app notifications.
+          // The category lives on the announcements row + the notification `data`
+          // for display; it must not leak into the enum column.
+          type: 'announcement',
           title: finalTitle,
           body: finalMessage,
+          data: { announcement_type: form.type || 'news' },
           dedupKey: `announcement_${form.type || 'announcement'}_${finalTitle.replace(/\s+/g, '_').slice(0, 40)}_${Date.now() / 60000 | 0}`,
         });
       }
@@ -198,7 +207,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
             <div className="mt-3 space-y-4">
               <div>
                 <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">
-                  {t('admin.announcements.scheduleLabel', 'Schedule (optional -- leave blank to publish now)')}
+                  {t('admin.announcements.scheduleLabel', 'Schedule (optional — leave blank to publish now)')}
                 </label>
                 <input type="datetime-local" value={form.scheduled_for} onChange={e => set('scheduled_for', e.target.value)}
                   className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none"
@@ -214,7 +223,7 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
                   <button
                     onClick={() => set('is_recurring', !form.is_recurring)}
                     className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-                    style={{ backgroundColor: form.is_recurring ? 'var(--color-accent)' : 'var(--color-admin-text-sub)' }}
+                    style={{ backgroundColor: form.is_recurring ? 'var(--color-accent)' : 'var(--color-admin-panel)' }}
                   >
                     <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
                       style={{ left: form.is_recurring ? 'calc(100% - 18px)' : '2px' }} />
@@ -532,7 +541,7 @@ export default function AdminAnnouncements() {
                                 <div className="mt-3 space-y-4">
                                   <div>
                                     <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">
-                                      {t('admin.announcements.scheduleLabel', 'Schedule (optional -- leave blank to publish now)')}
+                                      {t('admin.announcements.scheduleLabel', 'Schedule (optional — leave blank to publish now)')}
                                     </label>
                                     <input type="datetime-local" value={editForm.scheduled_for} onChange={e => setEditForm(p => ({ ...p, scheduled_for: e.target.value }))}
                                       className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none"
@@ -547,7 +556,7 @@ export default function AdminAnnouncements() {
                                       <button
                                         onClick={() => setEditForm(p => ({ ...p, is_recurring: !p.is_recurring }))}
                                         className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-                                        style={{ backgroundColor: editForm.is_recurring ? 'var(--color-accent)' : 'var(--color-admin-text-sub)' }}
+                                        style={{ backgroundColor: editForm.is_recurring ? 'var(--color-accent)' : 'var(--color-admin-panel)' }}
                                       >
                                         <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
                                           style={{ left: editForm.is_recurring ? 'calc(100% - 18px)' : '2px' }} />

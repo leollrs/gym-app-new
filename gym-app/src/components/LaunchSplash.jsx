@@ -103,11 +103,18 @@ export default function LaunchSplash() {
   const effGymName = isPlatformUser ? '' : gymName;
   const gymId = isPlatformUser ? null : (profile?.gym_id || null);
   const videoKey = gymId ? `splash_video_${gymId}` : null;
+  const logoKey = gymId ? `splash_logo_${gymId}` : null;
 
   const [show, setShow] = useState(!splashPlayed);
   const [minElapsed, setMinElapsed] = useState(false);
   const [videoUrl, setVideoUrl] = useState(() => {
     try { return (videoKey && localStorage.getItem(videoKey)) || ''; } catch { return ''; }
+  });
+  // Optional transparent "launch logo" — used by the default animation instead
+  // of the gym's regular (often boxy/background-baked) logo. Cached like the
+  // video for an instant cold-start read.
+  const [splashLogoUrl, setSplashLogoUrl] = useState(() => {
+    try { return (logoKey && localStorage.getItem(logoKey)) || ''; } catch { return ''; }
   });
   const [videoReady, setVideoReady] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -124,9 +131,15 @@ export default function LaunchSplash() {
     if (!gymId) { setVideoResolved(true); return; }  // no gym / platform user → default
     setVideoResolved(false);
     let cancelled = false;
-    supabase.from('gym_branding').select('splash_video_url').eq('gym_id', gymId).maybeSingle()
+    supabase.from('gym_branding').select('splash_video_url, splash_logo_url').eq('gym_id', gymId).maybeSingle()
       .then(({ data }) => {
         if (cancelled) return;
+        // Adopt the gym's transparent launch logo (if any) for the default
+        // animation; cache for the next instant cold start. Pre-warm the SW.
+        const logo = data?.splash_logo_url || '';
+        try { if (logoKey) localStorage.setItem(logoKey, logo); } catch { /* ignore */ }
+        if (logo) { try { fetch(logo).catch(() => {}); } catch { /* ignore */ } }
+        setSplashLogoUrl(logo);
         const url = data?.splash_video_url || '';
         try { if (videoKey) localStorage.setItem(videoKey, url); } catch { /* ignore */ }
         if (url) {
@@ -186,9 +199,15 @@ export default function LaunchSplash() {
 
   const inGym = !!(effLogoUrl || gymId || effGymName);
 
+  // Prefer the gym's transparent launch logo on the splash; it's masked by the
+  // specular shimmer and sits cleanly on the dark backdrop. Fall back to the
+  // regular (background-baked) gym logo, then the gym-name wordmark.
+  const effSplashLogoUrl = isPlatformUser ? '' : splashLogoUrl;
+  const markSrc = effSplashLogoUrl || effLogoUrl;
+
   let mark;
-  if (effLogoUrl) {
-    mark = <LogoMark src={effLogoUrl} fallbackText={effGymName || ''} />;
+  if (markSrc) {
+    mark = <LogoMark src={markSrc} fallbackText={effGymName || ''} />;
   } else if (inGym) {
     mark = <Wordmark text={effGymName || ''} />;
   } else {

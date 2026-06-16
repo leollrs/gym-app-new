@@ -405,14 +405,14 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     setExternalIdSaving(false);
     if (error) {
       logger.error('Failed to save external ID', error);
-      showToast?.(t('admin.memberDetail.externalIdSaveFailed', { defaultValue: 'Failed to save external ID.' }), 'error');
+      showToast?.(t('admin.memberDetail.externalIdSaveFailed', { defaultValue: "Couldn't save the code." }), 'error');
       return;
     }
     logAdminAction('update_external_id', 'member', member.id);
     originalExternalIdRef.current = payload ?? '';
     setExternalIdSaved(true);
     setTimeout(() => setExternalIdSaved(false), 2000);
-    showToast?.(t('admin.memberDetail.externalIdSaved', { defaultValue: 'External ID saved' }), 'success');
+    showToast?.(t('admin.memberDetail.externalIdSaved', { defaultValue: 'Code saved' }), 'success');
   };
 
   // Normalize phone for comparison so cosmetic-only differences (spaces/dashes/parens)
@@ -949,7 +949,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                           labels={{ photo: t('checkinPhoto.title', 'Check-in photo'), hint: t('checkinPhoto.hint', 'Staff only — used to verify identity at check-in.'), add: t('checkinPhoto.add', 'Add photo'), replace: t('checkinPhoto.replace', 'Replace'), remove: t('checkinPhoto.remove', 'Remove') }}
                         />
                       </div>
-                      <MField label={t('admin.memberDetail.externalId', 'External ID')} hint={t('admin.memberDetail.externalIdDesc', "The code from your gym's existing system (e.g. keypad code, barcode number)")}
+                      <MField label={t('admin.memberDetail.externalId', 'Existing system code')} hint={t('admin.memberDetail.externalIdDesc', "The code from your gym's existing system (e.g. keypad code, barcode number)")}
                         action={
                           <button onClick={handleSaveExternalId} disabled={externalIdSaving || externalId === originalExternalIdRef.current}
                             className="inline-flex items-center gap-1 text-[11px] font-semibold disabled:opacity-40" style={{ color: externalIdSaved ? 'var(--color-success)' : 'var(--color-accent)' }}>
@@ -959,16 +959,16 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
                         <MInput value={externalId} onChange={e => setExternalId(e.target.value)} placeholder={t('admin.memberDetail.externalIdPlaceholder', 'e.g. 4821 or MBR-0042')} mono />
                       </MField>
                       {member.qr_code_payload && (
-                        <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-admin-text)' }}>
-                          <QrCode size={18} style={{ color: '#fff' }} />
+                        <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)' }}>
+                          <QrCode size={18} style={{ color: 'var(--color-accent)' }} />
                           <div className="flex-1 min-w-0">
-                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.55)' }}>{t('admin.memberDetail.currentQrPayload', 'Current QR payload')}</p>
-                            <p className="text-[14px] font-mono font-bold truncate" style={{ color: '#fff', letterSpacing: '0.08em' }}>{member.qr_code_payload}</p>
+                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.memberDetail.currentQrPayload', 'Check-in code')}</p>
+                            <p className="text-[14px] font-mono font-bold truncate" style={{ color: 'var(--color-admin-text)', letterSpacing: '0.08em' }}>{member.qr_code_payload}</p>
                           </div>
                           <button onClick={() => navigator.clipboard.writeText(member.qr_code_payload).catch(() => {})}
                             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)' }}>
-                            <Copy size={14} style={{ color: '#fff' }} />
+                            style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-admin-border)' }}>
+                            <Copy size={14} style={{ color: 'var(--color-admin-text-muted)' }} />
                           </button>
                         </div>
                       )}

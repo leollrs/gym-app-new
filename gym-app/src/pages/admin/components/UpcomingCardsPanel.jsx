@@ -212,7 +212,7 @@ export default function UpcomingCardsPanel({ gymId }) {
               {t('admin.upcomingCards.title', 'Coming up next')}
             </p>
             <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>
-              {t('admin.upcomingCards.subtitle', "Pre-print + pre-sign so the card is waiting on the member's next visit")}
+              {t('admin.upcomingCards.subtitle', 'Cards coming up soon — print and sign them ahead of time so they are ready for the member’s next visit')}
             </p>
           </div>
         </div>

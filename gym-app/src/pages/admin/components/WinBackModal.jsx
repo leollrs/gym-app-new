@@ -198,7 +198,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
       footer={
         <>
           <button onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/4 text-[#9CA3AF] border border-white/6 hover:text-[#E5E7EB] transition-colors whitespace-nowrap">
+            className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-muted)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors whitespace-nowrap">
             {t('admin.members.cancel')}
           </button>
           <button onClick={handleSend} disabled={sending || !msg.trim() || sent}
@@ -262,14 +262,14 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           ) : (
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setSelectedRewardId(null)}
-                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${!selectedRewardId ? 'bg-white/8 text-[#E5E7EB] border-white/15' : 'bg-white/4 text-[#6B7280] border-white/6 hover:text-[#9CA3AF]'}`}>
+                className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${!selectedRewardId ? 'bg-[var(--color-bg-hover)] text-[var(--color-admin-text)] border-[var(--color-admin-border)]' : 'bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-muted)] border-[var(--color-admin-border)] hover:text-[var(--color-admin-text-sub)]'}`}>
                 {t('admin.churn.noOffer', 'No reward')}
               </button>
               {gymRewards.map(r => {
                 const name = lang === 'es' && r.name_es ? r.name_es : r.name;
                 return (
                   <button key={r.id} onClick={() => setSelectedRewardId(r.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${selectedRewardId === r.id ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30' : 'bg-white/4 text-[#9CA3AF] border-white/6 hover:text-[#E5E7EB]'}`}>
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors whitespace-nowrap ${selectedRewardId === r.id ? 'bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30' : 'bg-[var(--color-bg-subtle)] text-[var(--color-admin-text-muted)] border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)]'}`}>
                     <span style={{ display: 'inline-flex' }}><RewardSymbol value={r.emoji_icon} size={15} /></span>
                     {name}
                   </button>
@@ -299,7 +299,7 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
             <span className="text-[20px]" style={{ color: 'var(--color-accent)' }}><RewardSymbol value={selectedReward.emoji_icon} size={20} color="var(--color-accent)" /></span>
             <div>
               <p className="text-[11px] text-[#D4AF37] font-semibold">{t('admin.churn.rewardAttached', 'Reward will be gifted to member')}</p>
-              <p className="text-[12px] text-[#E5E7EB]">{rewardName}</p>
+              <p className="text-[12px] text-[var(--color-admin-text)]">{rewardName}</p>
               <p className="text-[10px] text-[#6B7280] mt-0.5">{t('admin.churn.rewardClaimNote', 'Member will see a QR in their Rewards page to claim at the gym')}</p>
             </div>
           </div>

@@ -99,17 +99,17 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
           <div className="flex items-center gap-3 mt-2">
             <Avatar name={reporter?.full_name} size="md" variant="accent" />
             <div className="min-w-0">
-              <p className="text-[14px] font-semibold text-[#E5E7EB] truncate">{reporter?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
-              <p className="text-[12px] text-[#6B7280]">@{reporter?.username ?? '—'}</p>
+              <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>{reporter?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</p>
+              <p className="text-[12px]" style={{ color: 'var(--color-admin-text-faint)' }}>@{reporter?.username ?? '—'}</p>
             </div>
-            <span className="ml-auto text-[11px] text-[#6B7280]">{relativeTime(report.created_at, dateFnsOpts)}</span>
+            <span className="ml-auto text-[11px]" style={{ color: 'var(--color-admin-text-faint)' }}>{relativeTime(report.created_at, dateFnsOpts)}</span>
           </div>
         </div>
 
         {/* Reason */}
         <div>
           <SectionLabel>{t('admin.moderation.reason', { defaultValue: 'Reason' })}</SectionLabel>
-          <p className="mt-2 text-[13px] text-[#E5E7EB] leading-relaxed bg-white/[0.03] rounded-xl p-3 border border-white/6">
+          <p className="mt-2 text-[13px] leading-relaxed bg-white/[0.03] rounded-xl p-3 border border-white/6" style={{ color: 'var(--color-admin-text)' }}>
             {getReasonLabel(report.reason, t)}
           </p>
         </div>
@@ -123,7 +123,7 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
                 {author && (
                   <>
                     <Avatar name={author.full_name} size="sm" variant="accent" />
-                    <span className="text-[13px] font-semibold text-[#E5E7EB]">{author.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</span>
+                    <span className="text-[13px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>{author.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}</span>
                   </>
                 )}
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${badge.color}`}>
@@ -136,9 +136,9 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
                 )}
               </div>
               {dataPreview(feedItem.type, feedItem.data, t) && (
-                <p className="text-[12px] text-[#9CA3AF]">{dataPreview(feedItem.type, feedItem.data, t)}</p>
+                <p className="text-[12px]" style={{ color: 'var(--color-admin-text-muted)' }}>{dataPreview(feedItem.type, feedItem.data, t)}</p>
               )}
-              <p className="text-[11px] text-[#6B7280] mt-1">{relativeTime(feedItem.created_at, dateFnsOpts)}</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--color-admin-text-faint)' }}>{relativeTime(feedItem.created_at, dateFnsOpts)}</p>
             </div>
           </div>
         )}
@@ -156,10 +156,10 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
                     variant="accent"
                   />
                   <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-[#E5E7EB] truncate">
+                    <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>
                       {comment.profiles?.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}
                     </p>
-                    <p className="text-[11px] text-[#6B7280]">@{comment.profiles?.username ?? '—'}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-admin-text-faint)' }}>@{comment.profiles?.username ?? '—'}</p>
                   </div>
                   {comment.is_deleted && (
                     <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full text-red-400 bg-red-500/10">
@@ -167,18 +167,18 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
                     </span>
                   )}
                 </div>
-                <p className="text-[12.5px] text-[#E5E7EB] leading-relaxed line-clamp-5 break-words">
+                <p className="text-[12.5px] leading-relaxed line-clamp-5 break-words" style={{ color: 'var(--color-admin-text)' }}>
                   {sanitize(comment.content)}
                 </p>
                 {comment.feed_item_id && (
-                  <p className="text-[11px] text-[#6B7280] mt-2">
+                  <p className="text-[11px] mt-2" style={{ color: 'var(--color-admin-text-faint)' }}>
                     {t('admin.moderation.postedIn', { defaultValue: 'Posted in activity' })}: {comment.feed_item_id.slice(0, 8)}…
                   </p>
                 )}
-                <p className="text-[11px] text-[#6B7280] mt-1">{relativeTime(comment.created_at, dateFnsOpts)}</p>
+                <p className="text-[11px] mt-1" style={{ color: 'var(--color-admin-text-faint)' }}>{relativeTime(comment.created_at, dateFnsOpts)}</p>
               </div>
             ) : (
-              <p className="mt-2 text-[12px] text-[#6B7280] italic">
+              <p className="mt-2 text-[12px] italic" style={{ color: 'var(--color-admin-text-faint)' }}>
                 {t('admin.moderation.commentMissing', { defaultValue: 'Comment no longer exists.' })}
               </p>
             )}
@@ -189,13 +189,13 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
           <div>
             <SectionLabel>{t('admin.moderation.reportedMessage', { defaultValue: 'Reported Message' })}</SectionLabel>
             <div className="mt-2 bg-white/[0.03] rounded-xl p-4 border border-white/6">
-              <div className="flex items-center gap-2 text-[#9CA3AF]">
+              <div className="flex items-center gap-2" style={{ color: 'var(--color-admin-text-muted)' }}>
                 <Lock size={13} />
                 <span className="text-[12px] font-semibold">
                   {t('admin.moderation.messagePrivate', { defaultValue: 'Direct message — content private (encrypted).' })}
                 </span>
               </div>
-              <p className="text-[11.5px] text-[#6B7280] mt-2 leading-relaxed">
+              <p className="text-[11.5px] mt-2 leading-relaxed" style={{ color: 'var(--color-admin-text-faint)' }}>
                 {t('admin.moderation.messageGuidance', { defaultValue: 'DM bodies are encrypted at rest and aren\'t shown here. Use the reporter and reason below to decide whether to suspend the sender or block them via member management.' })}
               </p>
             </div>
@@ -215,18 +215,18 @@ export default function ReportDetailModal({ report, isOpen, onClose, onAction, a
                     variant="accent"
                   />
                   <div className="min-w-0">
-                    <p className="text-[13.5px] font-semibold text-[#E5E7EB] truncate">
+                    <p className="text-[13.5px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>
                       {targetUser.full_name ?? t('admin.moderation.unknownUser', { defaultValue: 'Unknown' })}
                     </p>
-                    <p className="text-[11.5px] text-[#6B7280]">@{targetUser.username ?? '—'}</p>
+                    <p className="text-[11.5px]" style={{ color: 'var(--color-admin-text-faint)' }}>@{targetUser.username ?? '—'}</p>
                   </div>
                 </div>
-                <p className="text-[11px] text-[#6B7280] mt-3">
+                <p className="text-[11px] mt-3" style={{ color: 'var(--color-admin-text-faint)' }}>
                   {t('admin.moderation.profileGuidance', { defaultValue: 'Review the member in the Members admin page to suspend, message, or remove their access.' })}
                 </p>
               </div>
             ) : (
-              <p className="mt-2 text-[12px] text-[#6B7280] italic">
+              <p className="mt-2 text-[12px] italic" style={{ color: 'var(--color-admin-text-faint)' }}>
                 {t('admin.moderation.profileMissing', { defaultValue: 'Profile no longer exists.' })}
               </p>
             )}

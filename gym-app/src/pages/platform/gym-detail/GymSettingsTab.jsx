@@ -65,14 +65,24 @@ export default function GymSettingsTab({
   onBrandingSaved,
   t,
 }) {
-  // Owner candidates: this gym's admins (primary or additional role).
-  const adminCandidates = useMemo(
-    () => members.filter(m =>
-      m.role === 'admin' || m.role === 'super_admin' ||
-      (m.additional_roles ?? []).some(r => r === 'admin' || r === 'super_admin')
-    ),
+  // Owner candidates: ANY non-archived member of this gym (not just admins) —
+  // a gym's owner may be a plain member, so restricting to admins meant the
+  // select was often empty and the owner could never be set. Each option shows
+  // the person's role so the operator can pick the right one.
+  const ownerCandidates = useMemo(
+    () => members
+      .filter(m => m.imported_archived !== true)
+      .slice()
+      .sort((a, b) => (a.full_name || a.username || '').localeCompare(b.full_name || b.username || '')),
     [members]
   );
+  // Human-readable role label for an owner-candidate option.
+  const roleLabel = (m) => {
+    const r = m.role === 'super_admin' || (m.additional_roles ?? []).includes('super_admin')
+      ? 'super_admin'
+      : (m.role || 'member');
+    return t(`platform.gymDetail.roles.${r}`, r);
+  };
   const [ownerDraft, setOwnerDraft] = useState(undefined); // undefined = untouched
   const ownerValue = ownerDraft !== undefined ? ownerDraft : (gym.owner_user_id ?? '');
   const ownerDirty = ownerDraft !== undefined && ownerDraft !== (gym.owner_user_id ?? '');
@@ -265,9 +275,9 @@ export default function GymSettingsTab({
             <Crown className="w-3 h-3 text-[#D4AF37]" />
             {t('platform.gymDetail.settings.ownerLabel')}
           </label>
-          {adminCandidates.length === 0 ? (
+          {ownerCandidates.length === 0 ? (
             <p className="text-[12px] text-[#6B7280]">
-              {currentOwner?.full_name ?? (gym.owner_user_id ? gym.owner_user_id : t('platform.gymDetail.settings.noOwnerCandidates', 'No admins yet — promote someone to admin first, then set them as owner.'))}
+              {currentOwner?.full_name ?? (gym.owner_user_id ? gym.owner_user_id : t('platform.gymDetail.settings.noOwnerCandidatesAny', 'No members yet — add a member first, then set them as owner.'))}
             </p>
           ) : (
             <div className="flex items-center gap-2">
@@ -278,11 +288,11 @@ export default function GymSettingsTab({
                 className="flex-1 bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] outline-none focus:border-[#D4AF37]/40 cursor-pointer"
               >
                 <option value="">{t('platform.gymDetail.settings.noOwner', 'No owner set')}</option>
-                {adminCandidates.map(a => (
-                  <option key={a.id} value={a.id}>{a.full_name || a.username || a.id}</option>
+                {ownerCandidates.map(a => (
+                  <option key={a.id} value={a.id}>{(a.full_name || a.username || a.id)} — {roleLabel(a)}</option>
                 ))}
-                {/* keep a stale owner visible even if no longer an admin */}
-                {gym.owner_user_id && !adminCandidates.some(a => a.id === gym.owner_user_id) && (
+                {/* keep a stale owner visible even if they're no longer a member */}
+                {gym.owner_user_id && !ownerCandidates.some(a => a.id === gym.owner_user_id) && (
                   <option value={gym.owner_user_id}>{currentOwner?.full_name || currentOwner?.username || gym.owner_user_id}</option>
                 )}
               </select>
@@ -499,27 +509,9 @@ export default function GymSettingsTab({
               </div>
             )}
 
-            {/* Display format */}
-            <div>
-              <label className="block text-[11px] text-[#6B7280] font-medium mb-1.5">{t('platform.gymDetail.settings.displayFormat')}</label>
-              <div className="flex gap-2">
-                {[
-                  { key: 'qr_code', label: t('platform.gymDetail.settings.qrCode') },
-                  { key: 'barcode_128', label: t('platform.gymDetail.settings.barcode128') },
-                  { key: 'barcode_39', label: t('platform.gymDetail.settings.barcode39') },
-                ].map(opt => (
-                  <button key={opt.key} onClick={() => setEditingGym(prev => ({ ...prev, qr_display_format: opt.key }))}
-                    className={`flex-1 py-2 rounded-xl text-[12px] font-medium transition-colors ${
-                      editingGym.qr_display_format === opt.key
-                        ? 'text-[#D4AF37]'
-                        : 'border border-white/6 text-[#6B7280]'
-                    }`}
-                    style={{ background: editingGym.qr_display_format === opt.key ? 'rgba(212,175,55,0.15)' : '#111827' }}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Display format selector removed — check-in codes are always
+                rendered as QR codes (barcode_128 / barcode_39 are no longer
+                offered; qr_display_format is hardcoded to 'qr_code' on save). */}
           </div>
         )}
       </div>

@@ -122,11 +122,7 @@ serve(async (req: Request) => {
 
     if (!isServiceRole && !isCronAuth) {
       // Try user auth — only allow if user is requesting their own profile
-      const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-      const authClient = createClient(SUPABASE_URL, ANON_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: { user } } = await authClient.auth.getUser();
+      const { data: { user } } = await createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).auth.getUser(token);
       const body = await req.json();
       if (!user || user.id !== body.profileId) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {

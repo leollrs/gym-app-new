@@ -6,7 +6,39 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
 const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
-const SMS_MONTHLY_CAP = parseInt(Deno.env.get('SMS_MONTHLY_CAP') || '200', 10);
+
+// Per-gym monthly SMS cap. Single source of truth: platform_config
+// 'sms_monthly_cap' (seeded by migration 0597, also DISPLAYED by SmsUsageCard).
+// An explicit SMS_MONTHLY_CAP env var still wins (per-deploy escape hatch);
+// otherwise read platform_config; otherwise fall back to 500.
+const SMS_CAP_FALLBACK = 500;
+const SMS_MONTHLY_CAP_ENV = (() => {
+  const raw = Deno.env.get('SMS_MONTHLY_CAP');
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+})();
+
+// Resolve the cap for a request. Env override > platform_config > fallback.
+// Parses platform_config the same way SmsUsageCard does (strip surrounding
+// quotes off the JSONB value, then parseInt).
+async function getMonthlyCap(supabase: ReturnType<typeof createClient>): Promise<number> {
+  if (SMS_MONTHLY_CAP_ENV !== null) return SMS_MONTHLY_CAP_ENV;
+  try {
+    const { data } = await supabase
+      .from('platform_config')
+      .select('value')
+      .eq('key', 'sms_monthly_cap')
+      .maybeSingle();
+    if (data?.value != null) {
+      const parsed = parseInt(String(data.value).replace(/^"+|"+$/g, ''), 10);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+  } catch (e) {
+    console.warn('getMonthlyCap lookup failed, using fallback:', e);
+  }
+  return SMS_CAP_FALLBACK;
+}
 
 const TWILIO_CONFIGURED = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN);
 
@@ -193,6 +225,7 @@ Deno.serve(async (req) => {
     }
 
     // SMS cap check — best-effort (table may not exist yet)
+    const smsMonthlyCap = await getMonthlyCap(supabase);
     const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
     let newCount: number | null = null;
     try {
@@ -203,15 +236,15 @@ Deno.serve(async (req) => {
       });
       newCount = data;
 
-      if (newCount && newCount > SMS_MONTHLY_CAP) {
+      if (newCount && newCount > smsMonthlyCap) {
         await supabase.rpc('increment_sms_usage', {
           p_gym_id: effectiveGymId,
           p_month: currentMonth,
           p_count: -1,
         });
         return jsonResp({
-          error: `SMS limit reached (${SMS_MONTHLY_CAP}/month). Contact support for extension.`,
-          usage: { used: SMS_MONTHLY_CAP, limit: SMS_MONTHLY_CAP },
+          error: `SMS limit reached (${smsMonthlyCap}/month). Contact support for extension.`,
+          usage: { used: smsMonthlyCap, limit: smsMonthlyCap },
         }, 429);
       }
     } catch (e) {
@@ -307,7 +340,7 @@ Deno.serve(async (req) => {
     return jsonResp({
       success: true,
       messageSid: twilioSid,
-      usage: newCount ? { used: newCount, limit: SMS_MONTHLY_CAP } : null,
+      usage: newCount ? { used: newCount, limit: smsMonthlyCap } : null,
     });
   } catch (err) {
     console.error('send-sms error:', err);

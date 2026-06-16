@@ -9,19 +9,25 @@ import { addPoints, calculatePointsForAction } from './rewardsEngine';
 import logger from './logger';
 import { logAdminAction } from './adminAudit';
 
-// Look up cards waiting to be handed to this member. Used by the check-in
-// flow so the front desk sees "give them this card" the moment a member
-// scans in — the actual moment the whole print-card system exists for.
-// Status='printed' means physically printed + signed, sitting in inventory.
-async function fetchPrintedCardsForMember(supabase, gymId, memberId) {
+// Look up cards waiting for this member at check-in, in ONE query. Used by the
+// check-in flow so the front desk sees what's owed the moment a member scans in
+// — the actual moment the whole print-card system exists for. Split by status:
+//   • printed → physically printed + signed, in inventory: hand it over now.
+//   • pending → generated but not yet printed: a nudge so the desk knows
+//     something is owed even when nobody pre-printed it (go print/grab it).
+async function fetchCardsForMemberCheckin(supabase, gymId, memberId) {
   const { data } = await supabase
     .from('print_cards')
-    .select('id, occasion, headline, subline, reward_label')
+    .select('id, occasion, headline, subline, reward_label, status')
     .eq('gym_id', gymId)
     .eq('profile_id', memberId)
-    .eq('status', 'printed')
+    .in('status', ['printed', 'pending'])
     .order('created_at', { ascending: true });
-  return data || [];
+  const rows = data || [];
+  return {
+    cardsToDeliver: rows.filter((c) => c.status === 'printed'),
+    cardsPending: rows.filter((c) => c.status === 'pending'),
+  };
 }
 
 // Fallback for gyms configured with qr_payload_type = external_id /
@@ -46,7 +52,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
     // → fall through to the generic not-found message.
     if (error || !data || data.success !== true || !data.profile_id) return null;
 
-    const cardsToDeliver = await fetchPrintedCardsForMember(supabase, gymId, data.profile_id);
+    const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, data.profile_id);
     if (data.duplicate) {
       return {
         success: true,
@@ -54,7 +60,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
         memberName: data.member_name,
         memberId: data.profile_id,
         avatarUrl: data.avatar_url,
-        data: { duplicate: true, cardsToDeliver },
+        data: { duplicate: true, cardsToDeliver, cardsPending },
       };
     }
 
@@ -71,7 +77,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
       memberName: data.member_name,
       memberId: data.profile_id,
       avatarUrl: data.avatar_url,
-      data: { pointsEarned: pointsAwarded, cardsToDeliver },
+      data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending },
       externalPayload: { action: 'checkin', memberId: data.profile_id, memberExternalId: data.external_id, memberName: data.member_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
     };
   } catch (err) {
@@ -115,14 +121,14 @@ export async function handleCheckinScan(parsed, ctx) {
     // Cards still need delivering even on duplicate check-in — the member
     // might be back at the desk for another reason and we shouldn't lose
     // the chance to hand off what's in inventory.
-    const cardsToDeliver = await fetchPrintedCardsForMember(supabase, gymId, member.id);
+    const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
     return {
       success: true,
       message: t('admin.scan.alreadyCheckedIn', '{{name}} already checked in today', { name: member.full_name }),
       memberName: member.full_name,
       memberId: member.id,
       avatarUrl: member.avatar_url,
-      data: { duplicate: true, cardsToDeliver },
+      data: { duplicate: true, cardsToDeliver, cardsPending },
     };
   }
 
@@ -172,10 +178,10 @@ export async function handleCheckinScan(parsed, ctx) {
 
   logAdminAction('checkin_scan', 'member', member.id);
 
-  // Fetch printed-but-not-delivered cards so the toast can surface them.
-  // Awaited AFTER points so the check-in feels fast — adds ~1 round trip
-  // but only on success path.
-  const cardsToDeliver = await fetchPrintedCardsForMember(supabase, gymId, member.id);
+  // Fetch the member's cards (printed = hand over now, pending = print nudge)
+  // so the toast can surface them. Awaited AFTER points so the check-in feels
+  // fast — adds ~1 round trip but only on the success path.
+  const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
 
   const msg = pointsAwarded > 0
     ? t('admin.scan.checkinSuccess', '{{name}} checked in! +{{pts}}pts', { name: member.full_name, pts: pointsAwarded })
@@ -187,7 +193,7 @@ export async function handleCheckinScan(parsed, ctx) {
     memberName: member.full_name,
     memberId: member.id,
     avatarUrl: member.avatar_url,
-    data: { pointsEarned: pointsAwarded, cardsToDeliver },
+    data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending },
     externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
   };
 }

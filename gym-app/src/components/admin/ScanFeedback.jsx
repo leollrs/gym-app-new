@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ScanLine, CheckCircle, XCircle, LogIn, ShoppingBag, Gift, Users, Ticket, X, Mail, Trophy } from 'lucide-react';
+import { ScanLine, CheckCircle, XCircle, LogIn, ShoppingBag, Gift, Users, Ticket, X, Mail, Trophy, Printer, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
@@ -91,6 +92,7 @@ export default function ScanFeedback() {
   const { t } = useTranslation('pages');
   const queryClient = useQueryClient();
   const scanClaim = useScanClaimContext();
+  const navigate = useNavigate();
 
   // States: null → pending (approval) → processing → toast (result)
   const [pending, setPending] = useState(null);   // { parsed, member } — waiting for approval
@@ -123,14 +125,24 @@ export default function ScanFeedback() {
     setToast((prev) => {
       if (!prev) return prev;
       const nextCards = (prev.data?.cardsToDeliver || []).filter((c) => c.id !== cardId);
-      // If that was the last card, auto-dismiss; otherwise keep the toast
-      // open so the admin can deliver the rest before scanning next person.
-      if (nextCards.length === 0 && (prev.data?.cardsToDeliver?.length ?? 0) > 0) {
+      const stillPending = (prev.data?.cardsPending?.length ?? 0) > 0;
+      // If that was the last deliverable card AND nothing's still queued to
+      // print, auto-dismiss; otherwise keep the toast open so the admin can
+      // deliver the rest (or read the print nudge) before scanning next person.
+      if (nextCards.length === 0 && !stillPending && (prev.data?.cardsToDeliver?.length ?? 0) > 0) {
         return null;
       }
       return { ...prev, data: { ...prev.data, cardsToDeliver: nextCards } };
     });
   }, [gymId, adminId, queryClient]);
+
+  // Jump to the Print Cards page (lands on the "To print" tab) so the front
+  // desk can print/grab the pending card. Closes the toast on the way out so
+  // it doesn't linger over the page they just navigated to.
+  const goToPrintCards = useCallback(() => {
+    setToast(null);
+    navigate('/admin/print-cards');
+  }, [navigate]);
 
   // ── Handle incoming scan ──────────────────────────────
   const handleScan = useCallback(async (rawText) => {
@@ -249,13 +261,14 @@ export default function ScanFeedback() {
     enabled: !!gymId && !!adminId,
   });
 
-  // Auto-dismiss result toast after 5s — UNLESS cards are queued for delivery.
-  // The whole point of the check-in prompt is for the front desk to actually
-  // hand the card over; an auto-dismiss would yank it before they finish.
-  // Admin closes manually (X tap) or marks all cards delivered.
+  // Auto-dismiss result toast after 5s — UNLESS cards are queued for delivery
+  // OR waiting to be printed. The whole point of the check-in prompt is for the
+  // front desk to act on what's owed; an auto-dismiss would yank it before they
+  // finish. Admin closes manually (X tap) or marks all deliverable cards done.
   useEffect(() => {
     if (!toast) return;
-    const hasCards = (toast.data?.cardsToDeliver?.length ?? 0) > 0;
+    const hasCards = (toast.data?.cardsToDeliver?.length ?? 0) > 0
+      || (toast.data?.cardsPending?.length ?? 0) > 0;
     if (hasCards) return undefined;
     clearTimeout(dismissTimer.current);
     dismissTimer.current = setTimeout(() => setToast(null), 5000);
@@ -397,10 +410,10 @@ export default function ScanFeedback() {
                 ? `color-mix(in srgb, ${toastCfg?.color || 'var(--color-success)'} 25%, transparent)`
                 : 'color-mix(in srgb, var(--color-danger) 25%, transparent)'}`,
             }}
-            // Only the top header dismisses on click; if cards are queued for
-            // delivery the admin needs the toast to stay put while they hand
-            // them out — the inner cards section catches clicks separately.
-            onClick={(toast.data?.cardsToDeliver?.length ?? 0) > 0 ? undefined : () => setToast(null)}
+            // Tap-to-dismiss only when there's nothing to act on; if any card is
+            // queued for delivery OR waiting to print, the toast stays put so the
+            // admin can act — the inner card sections catch clicks separately.
+            onClick={((toast.data?.cardsToDeliver?.length ?? 0) > 0 || (toast.data?.cardsPending?.length ?? 0) > 0) ? undefined : () => setToast(null)}
           >
             <div className="h-1" style={{ background: toast.success ? (toastCfg?.color || 'var(--color-success)') : 'var(--color-danger)' }} />
 
@@ -496,7 +509,7 @@ export default function ScanFeedback() {
                   <div className="flex items-center gap-1.5 mb-2">
                     <Mail size={12} style={{ color: 'var(--color-accent)' }} />
                     <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
-                      {t('admin.scan.cardsToDeliverTitle', { count: toast.data.cardsToDeliver.length, defaultValue: 'Entregar tarjeta' })}
+                      {t('admin.scan.cardsToDeliverTitle', { count: toast.data.cardsToDeliver.length, defaultValue: 'Card to hand over' })}
                     </p>
                   </div>
                   <ul className="space-y-2">
@@ -532,20 +545,78 @@ export default function ScanFeedback() {
                           >
                             {isDelivering
                               ? t('admin.scan.cardDelivering', { defaultValue: '...' })
-                              : t('admin.scan.cardDeliver', { defaultValue: 'Entregada' })}
+                              : t('admin.scan.cardDeliver', { defaultValue: 'Handed over' })}
                           </button>
                         </li>
                       );
                     })}
                   </ul>
-                  <button
-                    onClick={() => setToast(null)}
-                    className="mt-2 w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition-colors"
-                    style={{ color: 'var(--color-text-subtle)' }}
-                  >
-                    {t('admin.scan.cardDismissLater', { defaultValue: 'Cerrar (entregar después)' })}
-                  </button>
                 </div>
+              )}
+
+              {/* Cards waiting to print — generated for an occasion (birthday,
+                  milestone, returning…) but NOT yet printed, so there's nothing
+                  to physically hand over. This is a NUDGE: tell the desk
+                  something is owed so they go print/grab it. No hand-over button
+                  by design — you can't deliver a card that doesn't exist yet. */}
+              {(toast.data?.cardsPending?.length ?? 0) > 0 && (
+                <div
+                  className="mt-3 pt-3"
+                  style={{ borderTop: '1px solid var(--color-border-subtle)' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Printer size={12} style={{ color: 'var(--color-warning)' }} />
+                    <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-warning)' }}>
+                      {t('admin.scan.cardsPendingTitle', { count: toast.data.cardsPending.length, defaultValue: 'Card waiting to print' })}
+                    </p>
+                  </div>
+                  <ul className="space-y-2">
+                    {toast.data.cardsPending.map((card) => (
+                      <li key={card.id}>
+                        <button
+                          type="button"
+                          onClick={goToPrintCards}
+                          className="w-full flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99]"
+                          style={{
+                            background: 'color-mix(in srgb, var(--color-warning) 8%, transparent)',
+                            border: '1px solid color-mix(in srgb, var(--color-warning) 18%, transparent)',
+                          }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-warning)' }}>
+                              {t(`admin.printCards.occasions.${card.occasion}`, card.occasion)}
+                            </p>
+                            <p className="text-[13px] font-semibold leading-snug mt-0.5" style={{ color: 'var(--color-text-primary)' }}>
+                              "{card.headline}"
+                            </p>
+                            {card.reward_label && (
+                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                                + {card.reward_label}
+                              </p>
+                            )}
+                          </div>
+                          <ChevronRight size={16} style={{ color: 'var(--color-warning)', flexShrink: 0, marginTop: 1 }} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10.5px] mt-2 leading-snug" style={{ color: 'var(--color-text-subtle)' }}>
+                    {t('admin.scan.cardsPendingHint', { defaultValue: 'Not printed yet — tap to open the Cards page and print it.' })}
+                  </p>
+                </div>
+              )}
+
+              {/* Shared close — shown whenever any card (deliverable or pending)
+                  is on the toast, since neither auto-dismisses. */}
+              {((toast.data?.cardsToDeliver?.length ?? 0) > 0 || (toast.data?.cardsPending?.length ?? 0) > 0) && (
+                <button
+                  onClick={() => setToast(null)}
+                  className="mt-2 w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition-colors"
+                  style={{ color: 'var(--color-text-subtle)' }}
+                >
+                  {t('admin.scan.cardDismissLater', { defaultValue: 'Close (hand over later)' })}
+                </button>
               )}
             </div>
           </div>
