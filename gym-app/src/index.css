@@ -1408,6 +1408,14 @@ html.android-platform:not(.dark) .bg-\[\#0B0F1A\]\/95 {
   background-color: rgba(255, 255, 255, 0.98) !important;
 }
 
+/* Android disables backdrop-blur (above), so the translucent top/bottom nav
+   bars let page content ghost through them. Force them fully opaque on Android
+   (iOS keeps its frosted-glass blur). */
+html.android-platform .app-top-bar,
+html.android-platform .member-bottom-nav {
+  background-color: var(--color-bg-primary) !important;
+}
+
 /* ── Safe area utility classes ───────────────────────────────────── */
 .pt-safe { padding-top: var(--safe-top); }
 .pb-safe { padding-bottom: var(--safe-bottom); }

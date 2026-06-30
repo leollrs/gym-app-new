@@ -171,16 +171,16 @@ function normalizeCardioData(raw) {
 
 export default function ShareCardioSheet({ open, onClose, data: rawData, accent = '#2EC4C4' }) {
   const { t } = useTranslation('pages');
-  const { user, profile, gymLogoUrl: authGymLogoUrl } = useAuth();
+  const { user, profile, gymName: authGymName, gymLogoUrl: authGymLogoUrl } = useAuth();
   const data = React.useMemo(() => {
     const d = normalizeCardioData(rawData);
     if (!d) return null;
     // Callers historically passed only gymName — fall back to the signed gym
     // logo + name from auth so the logo always renders next to the gym name.
     if (!d.gymLogoUrl && authGymLogoUrl) d.gymLogoUrl = authGymLogoUrl;
-    if (!d.gymName && profile?.gym_name) d.gymName = profile.gym_name;
+    if (!d.gymName && authGymName) d.gymName = authGymName;
     return d;
-  }, [rawData, authGymLogoUrl, profile?.gym_name]);
+  }, [rawData, authGymLogoUrl, authGymName]);
   const [variant, setVariant] = useState('editorial');
   const [format, setFormat] = useState('story');
   const [showGym, setShowGym] = useState(true);
@@ -403,7 +403,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       // app-download landing (never the bare webapp). appShareUrl owns the URL
       // shape (rides the CDN-propagated /invite/* applink).
       const link = appShareUrl('cardio', data?.sessionId || 'run');
-      const text = caption?.trim() || profile?.gym_name || 'TuGymPR';
+      const text = caption?.trim() || authGymName || 'TuGymPR';
       const full = `${text}\n${link}`;
 
       if (dest === 'save') {
@@ -505,7 +505,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       } else {
         try {
           await Share.share({
-            title: profile?.gym_name || 'TuGymPR',
+            title: authGymName || 'TuGymPR',
             text: full,
             url: link,
           });
@@ -1001,7 +1001,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             <Dest active={activeDest === 'fb'} onClick={() => { setActiveDest('fb'); setFormat('square'); }} label="Facebook" color="#1877F2"><FBIcon /></Dest>
             <Dest active={activeDest === 'wa'} onClick={() => { setActiveDest('wa'); setFormat('square'); }} label="WhatsApp" color="#25D366"><WAIcon /></Dest>
             <Dest active={activeDest === 'im'} onClick={() => { setActiveDest('im'); setFormat('square'); }} label="Messages" color="#34C759"><MsgIcon /></Dest>
-            <Dest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('square'); }} label={profile?.gym_name || 'TuGymPR'} color="var(--color-accent)"><TuShareIcon /></Dest>
+            <Dest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('square'); }} label={authGymName || 'TuGymPR'} color="var(--color-accent)"><TuShareIcon /></Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('cardio.share.save', 'Save')} color="#5A6570" light><SaveIcon /></Dest>
           </div>
         </div>
@@ -1012,7 +1012,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             dest={activeDest}
             busy={busy}
             accent={customAccent || accent}
-            gymLabel={profile?.gym_name}
+            gymLabel={authGymName}
             onClick={handleCta}
             t={t}
           />

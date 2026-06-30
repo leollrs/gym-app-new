@@ -24,6 +24,7 @@ class OfflineCacheManager {
         static let streak = "cached_streak"
         static let lastWorkoutDate = "cached_last_workout_date"
         static let lastWorkoutRoutine = "cached_last_workout_routine"
+        static let language = "cached_language"
     }
 
     private init() {
@@ -59,6 +60,10 @@ class OfflineCacheManager {
         let streak = defaults.integer(forKey: Keys.streak)
         return (qr, name, streak)
     }
+
+    func saveLanguage(_ lang: String) { defaults.set(lang, forKey: Keys.language) }
+
+    func loadLanguage() -> String { defaults.string(forKey: Keys.language) ?? "en" }
 
     // MARK: - Last Workout
 

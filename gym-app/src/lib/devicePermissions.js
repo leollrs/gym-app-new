@@ -6,7 +6,6 @@
 // Caller should show the user a button that opens iOS Settings via openAppSettings().
 
 import { Capacitor } from '@capacitor/core';
-import { App as CapApp } from '@capacitor/app';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -116,10 +115,13 @@ export async function requestPermission(type) {
 }
 
 export async function openAppSettings() {
+  if (!isNative()) return;
   try {
-    const platform = Capacitor.getPlatform();
-    if (platform === 'ios') await CapApp.openUrl({ url: 'app-settings:' });
-    else if (platform === 'android') await AppSettings.open();
+    // The native AppSettings plugin opens this app's permission page on BOTH
+    // platforms — iOS: AppSettingsPlugin.swift, Android: AppSettingsPlugin.java.
+    // (@capacitor/app has no openUrl, and `app-settings:` can't be opened from
+    // the WKWebView via JS, so this must go through native code.)
+    await AppSettings.open();
   } catch (err) {
     console.warn('[devicePermissions] openAppSettings failed', err);
   }

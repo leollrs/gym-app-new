@@ -57,19 +57,44 @@ const HARD_RELOAD_AFTER_MS = 3 * 60_000;
 const REMOUNT_AFTER_MS = 15 * 60_000;
 let hiddenAt = null;
 
-/** Non-destructive realtime nudge. disconnect() would tear down channel
- *  bindings (components would rejoin deaf); instead:
- *    • socket closed → connect() rejoins all existing channels
- *    • socket open-but-zombie → sendHeartbeat() notices the unanswered
- *      prior heartbeat and forces a clean reconnect. */
+let rtProbeTimer = null;
+
+/** Non-destructive realtime nudge + fast zombie detection.
+ *
+ *  After a suspend the websocket is often a ZOMBIE: TCP dead, but readyState
+ *  still reads OPEN, so live updates (notifications, DMs, challenges, rewards)
+ *  silently stop. A single heartbeat can't tell — it just sets a pending ref.
+ *  supabase-js only notices on the NEXT heartbeat: seeing the prior one
+ *  unanswered, it closes the conn via the NORMAL onclose path, which fires
+ *  _triggerChanError → every channel errors → its rejoinTimer rejoins on a
+ *  fresh socket. Left to the built-in interval that detection is ~30s away.
+ *
+ *  So we ping NOW, then ping again ~5s later to force that detection fast,
+ *  cutting live-update recovery to ~5s. We deliberately do NOT call
+ *  disconnect(): it OVERRIDES conn.onclose and skips _triggerChanError, leaving
+ *  channels stuck "joined" on a dead socket — i.e. rejoined deaf. The double
+ *  heartbeat is the SDK's own sanctioned recovery and rejoins channels cleanly.
+ *
+ *    • socket closed   → connect() (channels rejoin via their rejoinTimer)
+ *    • socket zombie    → heartbeat now + heartbeat in 5s → clean reconnect
+ *    • socket healthy   → heartbeats are answered; the 5s ping is a harmless ping */
 function wakeRealtime() {
-  try {
-    if (!supabase.realtime.isConnected()) {
-      supabase.realtime.connect();
-    } else {
-      supabase.realtime.sendHeartbeat();
-    }
-  } catch { /* best-effort nudge */ }
+  const nudge = () => {
+    try {
+      if (!supabase.realtime.isConnected()) supabase.realtime.connect();
+      else supabase.realtime.sendHeartbeat();
+    } catch { /* best-effort nudge */ }
+  };
+  nudge();
+  // Collapse the several wakeRealtime() calls per resume into ONE delayed
+  // verification ping. Skip it if we've gone hidden again (don't ping into a
+  // re-suspending socket — the next resume re-runs this anyway).
+  if (rtProbeTimer) clearTimeout(rtProbeTimer);
+  rtProbeTimer = setTimeout(() => {
+    rtProbeTimer = null;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    nudge();
+  }, 5000);
 }
 
 /** Obtain a session whose access token is actually USABLE (≥15s of life),

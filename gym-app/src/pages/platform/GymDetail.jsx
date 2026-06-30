@@ -610,7 +610,23 @@ export default function GymDetail() {
   };
   // A4: each fetcher keeps the previous list on failure (instead of clobbering
   // it with []) and flags the section so the UI can say so honestly.
-  const fetchMembers = async () => { const { data, error } = await supabase.from('profiles').select('id, full_name, username, role, additional_roles, created_at, last_active_at, membership_status, avatar_url, avatar_type, avatar_value, imported_archived').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setMembers(data ?? []); markLoad('members', error); };
+  // Perf: exclude bulk-import "ghost" shells (imported_archived) and hard-bound
+  // the result. An imported gym can hold tens of thousands of these shells, and
+  // fetching every one was the 119s GET /rest/v1/profiles in the error logs.
+  // They're never surfaced as real members here (People/Overview/Settings all
+  // treat imported_archived as non-members) and the authoritative counts come
+  // from the platform_gym_stats RPC, so capping the rendered list is safe.
+  const fetchMembers = async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, username, role, additional_roles, created_at, last_active_at, membership_status, avatar_url, avatar_type, avatar_value, imported_archived')
+      .eq('gym_id', gymId)
+      .not('imported_archived', 'is', true)
+      .order('created_at', { ascending: false })
+      .limit(2000);
+    if (!error) setMembers(data ?? []);
+    markLoad('members', error);
+  };
   const fetchActivity = async () => { const { data: sess, error: sessErr } = await supabase.from('workout_sessions').select('id, profile_id, status, started_at, total_volume_lbs, profiles(full_name)').eq('gym_id', gymId).order('started_at', { ascending: false }).limit(20); if (!sessErr) setSessions(sess ?? []); const { data: ci, error: ciErr } = await supabase.from('check_ins').select('id, profile_id, checked_in_at, profiles(full_name)').eq('gym_id', gymId).order('checked_in_at', { ascending: false }).limit(20); if (!ciErr) setCheckIns(ci ?? []); markLoad('activity', sessErr || ciErr); };
   const fetchInvites = async () => { const { data, error } = await supabase.from('gym_invites').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setInvites(data ?? []); markLoad('invites', error); };
   const fetchChallenges = async () => { const { data, error } = await supabase.from('challenges').select('*, challenge_participants(id)').eq('gym_id', gymId).order('start_date', { ascending: false }); if (!error) setChallenges(data ?? []); markLoad('challenges', error); };

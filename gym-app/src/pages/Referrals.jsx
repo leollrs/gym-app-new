@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Copy, Check, Share2, Gift, Users, Clock,
+  ArrowLeft, Copy, Check, Share2, Gift, Users, Clock, X,
   CheckCircle, UserPlus, QrCode, Coins, CreditCard,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { useTranslation } from 'react-i18next';
-import QRCodeModal from '../components/QRCodeModal';
+import { QRCodeSVG } from 'qrcode.react';
 import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { formatDistanceToNow } from 'date-fns';
@@ -357,7 +357,7 @@ export default function Referrals() {
 
   return (
     <div
-      className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 pt-6 pb-28 md:pb-12 animate-fade-in"
+      className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl px-4 pt-6 pb-36 md:pb-12 animate-fade-in"
       style={{ fontFamily: FONT_BODY }}
     >
       {/* Header */}
@@ -509,7 +509,7 @@ export default function Referrals() {
               <button
                 onClick={handleCopy}
                 disabled={!referralCode}
-                aria-label={copied ? t('referrals.codeCopied') : t('referrals.shareButton')}
+                aria-label={copied ? t('referrals.codeCopied') : t('referrals.copy', 'Copy')}
                 className="px-4 py-3 rounded-2xl flex items-center gap-1.5 transition-all duration-200 active:scale-95 disabled:opacity-40"
                 style={{
                   background: 'var(--color-accent)',
@@ -521,12 +521,12 @@ export default function Referrals() {
                 }}
               >
                 {copied ? <Check size={15} strokeWidth={3} /> : <Copy size={14} strokeWidth={2.5} />}
-                {copied ? t('referrals.statusCompleted') : t('referrals.shareButton').split(' ')[0]}
+                {copied ? t('referrals.statusCompleted') : t('referrals.copy', 'Copy')}
               </button>
             </div>
 
             {/* Channel buttons row */}
-            <div className="grid grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-3 gap-2.5">
               <button
                 onClick={handleShare}
                 disabled={!referralCode}
@@ -544,30 +544,6 @@ export default function Referrals() {
                 </div>
                 <span className="text-[11px]" style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>
                   {t('referrals.shareButton').split(' ')[0]}
-                </span>
-              </button>
-
-              <button
-                onClick={handleCopy}
-                disabled={!referralCode}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all duration-200 active:scale-95 disabled:opacity-40"
-                style={{
-                  background: 'color-mix(in srgb, var(--color-text-primary) 5%, transparent)',
-                  border: '1px solid var(--color-border-subtle)',
-                }}
-              >
-                <div
-                  className="w-11 h-11 rounded-2xl flex items-center justify-center"
-                  style={{ background: 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)' }}
-                >
-                  {copied ? (
-                    <Check size={19} style={{ color: 'var(--color-success)' }} strokeWidth={3} />
-                  ) : (
-                    <Copy size={18} style={{ color: 'var(--color-text-primary)' }} />
-                  )}
-                </div>
-                <span className="text-[11px]" style={{ fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                  {copied ? t('referrals.statusCompleted') : t('referrals.codeCopied').replace('!', '')}
                 </span>
               </button>
 
@@ -798,13 +774,56 @@ export default function Referrals() {
 
       {/* Fullscreen QR modal — portaled to body */}
       {showQRModal && referralQrPayload && createPortal(
-        <QRCodeModal
-          payload={referralQrPayload}
-          memberName={profile?.full_name}
-          displayFormat="qr_code"
-          gymName={gymName}
-          onClose={() => setShowQRModal(false)}
-        />,
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          onClick={() => setShowQRModal(false)}
+        >
+          <div className="absolute inset-0 backdrop-blur-xl bg-black/70" />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('referrals.openQR')}
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-[340px] rounded-[28px] overflow-hidden animate-fade-in"
+            style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 64px rgba(0,0,0,0.55)' }}
+          >
+            <button
+              onClick={() => setShowQRModal(false)}
+              aria-label={t('referrals.close', { defaultValue: 'Close' })}
+              className="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full transition-colors"
+              style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+            >
+              <X size={17} />
+            </button>
+
+            <div className="flex flex-col items-center text-center pt-9 pb-6 px-7">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3"
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 16%, transparent)' }}
+              >
+                <Gift size={28} style={{ color: 'var(--color-accent)' }} />
+              </div>
+              <p className="text-[18px] font-extrabold leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                {t('referrals.scanToJoin', { gym: gymName || 'TuGymPR', defaultValue: 'Scan to join {{gym}}' })}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center px-7">
+              <div className="bg-white rounded-[20px] p-5" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.18)' }}>
+                <QRCodeSVG value={referralQrPayload} size={200} level="H" includeMargin={false} bgColor="#FFFFFF" fgColor="#000000" />
+              </div>
+            </div>
+
+            {referralCode && (
+              <p className="text-center font-mono text-[14px] font-bold tracking-[0.2em] px-7 pt-4" style={{ color: 'var(--color-text-primary)' }}>
+                {referralCode}
+              </p>
+            )}
+            <p className="text-[12.5px] text-center px-7 pt-2 pb-8" style={{ color: 'var(--color-text-muted)' }}>
+              {t('referrals.showQrHint', { defaultValue: 'Have your friend scan this to sign up.' })}
+            </p>
+          </div>
+        </div>,
         document.body
       )}
     </div>

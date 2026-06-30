@@ -38,6 +38,12 @@ const TYPE_META = {
 };
 const DEFAULT_META = { icon: Heart, color: '#F97316' };
 
+// Outdoor / GPS-tracked activities — show the route map even before the first
+// fix arrives (so it mounts + shows an acquiring state instead of staying
+// hidden while the phone is unreachable and route ticks are dropped).
+const OUTDOOR_TYPES = new Set(['running', 'walking', 'cycling', 'hiking']);
+const isOutdoorType = (t) => OUTDOOR_TYPES.has(t);
+
 function fmtTime(total) {
   const t = Math.max(0, Math.floor(total || 0));
   const h = Math.floor(t / 3600);
@@ -210,8 +216,9 @@ export default function WatchCardioMirror() {
         </div>
       </div>
 
-      {/* Route map (outdoor activities once a fix arrives) */}
-      {hasRoute && (
+      {/* Route map — mount eagerly for outdoor/GPS activities (even before the
+          first fix lands), otherwise only once route points actually arrive. */}
+      {(hasRoute || isOutdoorType(type)) && (
         <div style={{ marginBottom: 14 }}>
           <RouteMap points={route} height={240} follow={!ended} />
         </div>

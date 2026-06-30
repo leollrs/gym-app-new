@@ -22,6 +22,7 @@ import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContex
 import { getCached } from './lib/queryCache';
 import { applyCachedBranding } from './lib/branding';
 import { supabase } from './lib/supabase';
+import { safeNavigate } from './lib/navigationRef';
 import { installAppResume, notifyBackground, notifyForeground } from './lib/appResume';
 import { hydrateFromDurable, flushToDurable, whenHydrated } from './lib/durableStorage';
 import i18n, { i18nPrimaryReady } from './i18n/i18n';
@@ -439,7 +440,24 @@ onWatchMessage(async (msg) => {
     const type = encodeURIComponent(String(msg.cardio_type || 'other'));
     const path = `/cardio-watch?type=${type}`;
     window.__watchPendingNav = path;
+    // Persist the pending nav so a cold-started / backgrounded phone can still
+    // surface the mirror once it foregrounds (mirrors the start_workout flow).
+    try { localStorage.setItem('watchPendingNav', path); } catch {}
     window.dispatchEvent(new CustomEvent('watch-navigate', { detail: path }));
+    // Fire notification in case app is in background (phone in pocket on a run).
+    if (isNative) {
+      import('@capacitor/local-notifications').then(({ LocalNotifications }) => {
+        LocalNotifications.schedule({
+          notifications: [{
+            id: 99904,
+            title: 'TuGymPR',
+            body: i18n.t('watch.notifCardioMirror', { defaultValue: 'Tap to follow your watch workout' }),
+            sound: 'default',
+            extra: { action: 'watch_cardio_started', path },
+          }]
+        }).catch(() => {});
+      }).catch(() => {});
+    }
   }
   if (action === 'start_free_lift') {
     // Phone path for "Free lift" is the empty session — same surface the
@@ -623,6 +641,10 @@ if (isNative) {
         window.__watchPendingNav = `/session/${extra.routineId}`;
         window.dispatchEvent(new CustomEvent('watch-navigate', { detail: `/session/${extra.routineId}` }));
       }
+      if (extra?.action === 'watch_cardio_started' && extra?.path) {
+        window.__watchPendingNav = extra.path;
+        window.dispatchEvent(new CustomEvent('watch-navigate', { detail: extra.path }));
+      }
     });
     // Request permission
     LocalNotifications.requestPermissions().catch(() => {});
@@ -672,9 +694,19 @@ if (isNative) {
   }).catch(() => {});
 
   // Keyboard — handle iOS keyboard push behavior
-  import('@capacitor/keyboard').then(({ Keyboard }) => {
+  import('@capacitor/keyboard').then(({ Keyboard, KeyboardResize }) => {
     Keyboard.setAccessoryBarVisible({ isVisible: true });
     Keyboard.setScroll({ isDisabled: false });
+    // Android: the native window-resize mode (capacitor.config) leaves the
+    // WebView stuck at the keyboard-shrunk height on some Samsung/One UI devices
+    // after the keyboard closes → an empty box appears below the fixed bottom
+    // nav. `body` mode resizes the <body> element instead and restores reliably.
+    // iOS keeps the config's native mode (its input handling is tuned for it).
+    try {
+      if (Capacitor.getPlatform() === 'android' && KeyboardResize) {
+        Keyboard.setResizeMode({ mode: KeyboardResize.Body });
+      }
+    } catch { /* older plugin without setResizeMode */ }
     // On iOS, shrink the webview when keyboard opens (prevents content hiding)
     Keyboard.addListener('keyboardWillShow', (info) => {
       document.documentElement.style.setProperty('--keyboard-height', `${info.keyboardHeight}px`);
@@ -694,11 +726,22 @@ if (isNative) {
 
   // App — handle Android hardware back button
   import('@capacitor/app').then(({ App: CapApp }) => {
+    // Android hardware back: navigate back WITHIN the app on sub-pages; only
+    // background the app from a top-level/main page. Previously this minimized
+    // whenever the WebView reported no history (common after deep links / replace
+    // navigations), so the back button felt like it "kicked you out" of the app.
+    const MAIN_PAGES = new Set([
+      '/', '/workouts', '/progress', '/community', // member tabs
+      '/admin', '/trainer', '/platform/attention', // role homes
+    ]);
     CapApp.addListener('backButton', ({ canGoBack }) => {
-      if (canGoBack) {
-        window.history.back();
+      const path = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+      if (MAIN_PAGES.has(path)) {
+        CapApp.minimizeApp();   // top-level page → background the app (Android convention)
+      } else if (canGoBack) {
+        window.history.back();  // sub-page → go back in-app
       } else {
-        CapApp.minimizeApp();
+        safeNavigate('/');      // deep-linked sub-page with no history → home, never exit
       }
     });
 
@@ -786,12 +829,21 @@ if (isNative) {
         // less reliable in the WebView. notifyForeground is a no-op if we
         // weren't backgrounded long enough or already healed via visibility.
         CapacitorUpdater.notifyAppReady();
+        // Resume the token auto-refresh timer on the RELIABLE native signal —
+        // supabase-js keys its own timer off WebView visibility, which is flaky
+        // on iOS, so without this the access token can silently lapse while the
+        // app sits foregrounded.
+        try { supabase.auth.startAutoRefresh(); } catch { /* ignore */ }
         notifyForeground(queryClient);
       } else {
         // App going to background: flush localStorage → preferences NOW so
         // iOS can suspend/kill the WebView without losing recent writes (the
         // workout draft, RQ cache, etc.). Fire-and-forget; the OS will give
         // the JS task a brief window to settle.
+        // Stop auto-refresh so a token refresh can't fire into a suspending
+        // socket — that mid-suspend refresh is what loses the rotated token and
+        // permanently wedges the session (the "had to reinstall" bug).
+        try { supabase.auth.stopAutoRefresh(); } catch { /* ignore */ }
         flushCache();
         notifyBackground();
       }

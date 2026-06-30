@@ -102,6 +102,33 @@ function AutoFit({ positions, follow }) {
   return null;
 }
 
+// Internal helper: Leaflet renders grey/blank when its container had 0 height at
+// mount (common when the map mounts before any GPS fix) or when the first points
+// arrive after mount. invalidateSize() forces a re-measure + tile reload. We call
+// it once the map is ready and again the first time points become non-empty.
+function InvalidateOnReady({ count }) {
+  const map = useMap();
+  const sizedOnceRef = useRef(false);
+
+  // On mount / map ready — re-measure on the next frame (after layout settles).
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      try { map.invalidateSize(); } catch {}
+    });
+    return () => cancelAnimationFrame(id);
+  }, [map]);
+
+  // First time we actually have points, re-measure once more (the container may
+  // have been 0-height while empty, then grown).
+  useEffect(() => {
+    if (sizedOnceRef.current || count < 1) return;
+    sizedOnceRef.current = true;
+    try { map.invalidateSize(); } catch {}
+  }, [count, map]);
+
+  return null;
+}
+
 export default function RouteMap({ points = [], height = 260, follow = true }) {
   // Leaflet wants [lat, lng] tuples, not {lat, lng} objects.
   const positions = useMemo(
@@ -179,6 +206,7 @@ export default function RouteMap({ points = [], height = 260, follow = true }) {
         {start && <Marker position={start} icon={startIcon} />}
         {current && <Marker position={current} icon={pulseIcon} />}
 
+        <InvalidateOnReady count={positions.length} />
         <AutoFit positions={positions} follow={follow} />
       </MapContainer>
     </div>

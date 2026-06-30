@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, recoverDeadSession } from '../lib/supabase';
 import { applyBranding, cacheBranding } from '../lib/branding';
 import { setAppName } from '../lib/appName';
 import { getPalette } from '../lib/palettes';
@@ -720,6 +720,14 @@ export const AuthProvider = ({ children }) => {
     };
     try { window.addEventListener('unhandledrejection', onUnhandledRejection); } catch {}
 
+    // The global fetch interceptor (errorTracker) fires this when the token
+    // refresh endpoint itself rejects a dead refresh token — the one failure
+    // supabase-js emits no event for. Recover: one refresh retry, else purge
+    // the dead token + local sign-out so the next launch is a clean login
+    // (this state previously required a full delete-and-reinstall).
+    const onAuthDead = () => { recoverDeadSession().catch(() => {}); };
+    try { window.addEventListener('tugympr:auth-dead', onAuthDead); } catch {}
+
     // Hard cap on the initial loading gate. On bad/no wifi both
     // supabase.auth.getSession() (it may trigger a token refresh) and
     // fetchProfile()'s get_auth_context RPC can hang indefinitely — which
@@ -846,6 +854,7 @@ export const AuthProvider = ({ children }) => {
     return () => {
       subscription.unsubscribe();
       try { window.removeEventListener('unhandledrejection', onUnhandledRejection); } catch {}
+      try { window.removeEventListener('tugympr:auth-dead', onAuthDead); } catch {}
       if (initLoadTimeoutRef.current) {
         clearTimeout(initLoadTimeoutRef.current);
         initLoadTimeoutRef.current = null;
@@ -956,7 +965,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     if (gymError || !gym) {
-      throw new Error('Gym code not found. Ask your gym for the correct code.');
+      throw new Error("We couldn't find a gym with that short name. Double-check it with your gym, or use an invite code instead.");
     }
 
     // 2. Check if username is already taken (scoped to this gym)

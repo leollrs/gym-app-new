@@ -431,7 +431,7 @@ const Navigation = () => {
     </aside>
 
     {/* ── Desktop Top Navigation (md: only, hidden on lg: where sidebar shows) ── */}
-    <nav aria-label={t('navigation.mainNavigation', { ns: 'pages', defaultValue: 'Main navigation' })} className="hidden md:block lg:hidden sticky top-0 z-50 border-b border-white/6 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
+    <nav aria-label={t('navigation.mainNavigation', { ns: 'pages', defaultValue: 'Main navigation' })} className="app-top-bar hidden md:block lg:hidden sticky top-0 z-50 border-b border-white/6 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
       <div className="container flex justify-between items-center py-3.5">
 
         {/* Brand */}
@@ -541,7 +541,7 @@ const Navigation = () => {
 
     {/* ── Mobile Top Header ───────────────────────────────────────── */}
     <header
-      className="md:hidden fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl border-b border-white/6 px-4 flex items-center justify-between"
+      className="app-top-bar md:hidden fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl border-b border-white/6 px-4 flex items-center justify-between"
       style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)', paddingTop: 'var(--safe-area-top, env(safe-area-inset-top))', height: 'calc(52px + var(--safe-area-top, env(safe-area-inset-top)))', transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}
     >
       {/* Brand on the left */}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { tg } from '../lib/genderText';
 import { useNavigate } from 'react-router-dom';
@@ -326,6 +327,7 @@ const Profile = () => {
   const { user, profile, signOut, deleteAccount, refreshProfile, patchProfile, lifetimePoints: ctxLifetimePoints, gymConfig, availableRoles, gymLogoUrl } = useAuth();
   const hasMultipleViews = Array.isArray(availableRoles) && availableRoles.length > 1;
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
   const posthog = usePostHog();
@@ -887,12 +889,53 @@ const Profile = () => {
             </button>
             <button
               type="button"
-              onClick={signOut}
+              onClick={() => setShowLogoutConfirm(true)}
               className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] transition-colors hover:opacity-80 active:scale-95 bg-red-500/10 text-red-400 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
               aria-label={t('profile.logOut', 'Log out')}
             >
               <LogOut size={15} />
             </button>
+            {showLogoutConfirm && createPortal(
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={() => setShowLogoutConfirm(false)}>
+                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full max-w-[320px] rounded-[24px] p-6 text-center animate-fade-in"
+                  style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 64px rgba(0,0,0,0.55)' }}
+                >
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'rgba(239,68,68,0.12)' }}>
+                    <LogOut size={24} className="text-red-400" />
+                  </div>
+                  <p className="text-[18px] font-extrabold" style={{ color: 'var(--color-text-primary)' }}>
+                    {t('profile.logoutConfirmTitle', 'Log out?')}
+                  </p>
+                  <p className="text-[13px] mt-1.5 mb-5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('profile.logoutConfirmBody', "You'll need to sign in again to use the app.")}
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowLogoutConfirm(false)}
+                      className="flex-1 py-3 rounded-2xl text-[14px] font-bold active:scale-95 transition"
+                      style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
+                    >
+                      {t('profile.cancel', 'Cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowLogoutConfirm(false); signOut(); }}
+                      className="flex-1 py-3 rounded-2xl text-[14px] font-extrabold text-white active:scale-95 transition"
+                      style={{ background: '#EF4444' }}
+                    >
+                      {t('profile.logOut', 'Log out')}
+                    </button>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
           </div>
         </div>
 

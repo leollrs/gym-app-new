@@ -1073,7 +1073,7 @@ export default function AdminMembers() {
         <CreateInviteModal
           gymId={gymId}
           onClose={() => setShowCreateInvite(false)}
-          onCreated={() => refetchInvites()}
+          onCreated={() => { refetchInvites(); refetch(); }}
         />
       )}
 

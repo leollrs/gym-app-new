@@ -1395,9 +1395,17 @@ const Dashboard = () => {
             <p className="text-[15px] font-semibold text-[var(--color-text-primary)] mb-2">
               {t('dashboard.unavailable', 'Dashboard unavailable')}
             </p>
-            <p className="text-[13px] text-[var(--color-text-muted)]">
+            <p className="text-[13px] text-[var(--color-text-muted)] mb-4">
               {loadError}
             </p>
+            <button
+              type="button"
+              onClick={() => setRefreshKey((k) => k + 1)}
+              className="inline-flex items-center justify-center rounded-full px-5 py-2.5 text-[13px] font-bold"
+              style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+            >
+              {t('dashboard.tryAgain', 'Try again')}
+            </button>
           </div>
         ) : (
           <AnimatePresence mode="wait">

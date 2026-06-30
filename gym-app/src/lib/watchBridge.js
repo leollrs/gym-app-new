@@ -1,7 +1,14 @@
 import { CapgoWatch as Watch } from '@capgo/capacitor-watch';
 import { Capacitor } from '@capacitor/core';
+import { localizeRoutineName } from './exerciseName';
 
 const isNative = () => Capacitor.getPlatform() === 'ios';
+
+// iOS retains only ONE application context for the Watch, so the last writer
+// wins. Every sender below stamps the most recently-known language onto its
+// payload (via this module cache) so a streak / nutrition / qr_png update never
+// clobbers the language back to English. Updated by syncUserContextToWatch.
+let _lastLanguage = 'en';
 
 // ── State sync (iPhone → Watch) ──────────────────────────────────────────────
 
@@ -62,7 +69,10 @@ export async function syncRoutinesToWatch(routines) {
     type: 'routines_sync',
     routines: routines.map(r => ({
       id: r.id,
-      name: r.name,
+      // Localize day/routine names (e.g. "OHP Day" → "Press Militar Día") so the
+      // Watch shows a readable, translated name instead of the raw English one
+      // stored in the DB / program templates.
+      name: localizeRoutineName(r.name) || r.name,
       exerciseCount: r.exercises?.length || r.exerciseCount || 0,
       lastUsed: r.lastUsed || '',
       isProgram: r.isProgram || false,
@@ -145,6 +155,9 @@ export async function syncUserContextToWatch({ qrPayload, userName, streak, last
     // a separate Localizable.strings setup.
     language: language || 'en',
   };
+  // Remember the language so the other (language-less) senders can re-attach it
+  // and not clobber the Watch's locale via the single retained app context.
+  _lastLanguage = payload.language;
   // Prefer application context so the watch always has the latest values,
   // even if it was not reachable when the message was sent.
   try {
@@ -173,7 +186,7 @@ export async function syncUserContextToWatch({ qrPayload, userName, streak, last
  */
 export async function syncStreakToWatch(streak) {
   if (!isNative()) return;
-  const payload = { type: 'streak_update', currentStreak: Number(streak) || 0 };
+  const payload = { type: 'streak_update', currentStreak: Number(streak) || 0, language: _lastLanguage };
   // Application context = latest-wins + persisted, so a cold Watch launch
   // reads the corrected value even if it wasn't reachable at push time.
   try { await Watch.updateApplicationContext({ context: payload }); } catch {}
@@ -196,7 +209,7 @@ export async function syncExercisesToWatch(exercises) {
     name: String(e.name || e.title || ''),
     category: String(e.category || e.muscle_group || ''),
   })).filter((e) => e.id && e.name);
-  const payload = { type: 'exercises_sync', exercises: slim };
+  const payload = { type: 'exercises_sync', exercises: slim, language: _lastLanguage };
   try { await Watch.updateApplicationContext({ context: payload }); } catch {}
   try {
     await Watch.sendMessage({ data: payload });
@@ -224,6 +237,7 @@ export async function syncNutritionToWatch(summary = {}) {
     proteinEaten, proteinGoal,
     carbsEaten, carbsGoal,
     fatEaten, fatGoal,
+    language: _lastLanguage,
     updatedAt: Date.now(),
   };
   try { await Watch.updateApplicationContext({ context: payload }); } catch {}
@@ -261,6 +275,7 @@ export async function syncDailySummaryToWatch(summary = {}) {
     exerciseMinutes, exerciseGoal, exerciseProgress,
     standHours, standGoal, standProgress,
     pointsToday, pointsTotal,
+    language: _lastLanguage,
     updatedAt: Date.now(),
   };
   try { await Watch.updateApplicationContext({ context: payload }); } catch {}
@@ -297,7 +312,7 @@ export async function syncQRToWatch(payload) {
   try {
     const base64 = await renderQRToBase64PNG(payload);
     if (!base64) return;
-    const msg = { type: 'qr_png', payload, pngBase64: base64, updatedAt: Date.now() };
+    const msg = { type: 'qr_png', payload, pngBase64: base64, language: _lastLanguage, updatedAt: Date.now() };
     try {
       await Watch.updateApplicationContext({ context: msg });
     } catch {}

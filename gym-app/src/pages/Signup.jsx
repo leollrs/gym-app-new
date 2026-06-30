@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Mail, Lock, User, AlertCircle, CheckCircle, Loader2,
-  Eye, EyeOff, QrCode, ArrowRight, ChevronLeft, Check, Ticket, Gift, Calendar,
+  Eye, EyeOff, QrCode, ArrowRight, ChevronLeft, Check, Ticket, Gift,
 } from 'lucide-react';
 import { useTranslation, Trans } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { validateEmail } from '../lib/validateEmail';
+import { validateEmail, suggestEmailCorrection } from '../lib/validateEmail';
+import DobPicker from '../components/DobPicker';
 
 // ─── Warm-paper design tokens (branded auth, pre-gym-theme) ───────────
 const OB = {
@@ -176,15 +177,6 @@ const composeFullName = (f) =>
 const isMissingColumn = (err) =>
   !!err && (err.code === '42703' || err.code === 'PGRST204' || /column .* does not exist/i.test(err.message || ''));
 
-// Today as YYYY-MM-DD for the date picker `max` attribute.
-const todayISO = () => {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
 // Password strength → 0..4 segments
 const passwordStrength = (pw) => {
   if (!pw) return 0;
@@ -207,7 +199,7 @@ const strengthLabel = (s, t) => {
 const Signup = () => {
   const { signUp } = useAuth();
   const navigate   = useNavigate();
-  const { t }      = useTranslation(['auth', 'common']);
+  const { t, i18n } = useTranslation(['auth', 'common']);
   const [searchParams] = useSearchParams();
 
   const inviteSlug = searchParams.get('gym') ?? '';
@@ -252,6 +244,7 @@ const Signup = () => {
   // Real-time email validation (debounced)
   const [emailValidStatus, setEmailValidStatus] = useState('idle'); // 'idle' | 'valid' | 'invalid'
   const [emailValidReason, setEmailValidReason] = useState('');
+  const [emailSuggestion, setEmailSuggestion] = useState(null); // "did you mean…" full email or null
   const emailDebounceRef = useRef(null);
 
   // HIBP soft warning
@@ -337,6 +330,7 @@ const Signup = () => {
     if (!form.email) {
       setEmailValidStatus('idle');
       setEmailValidReason('');
+      setEmailSuggestion(null);
       return;
     }
     emailDebounceRef.current = setTimeout(() => {
@@ -348,6 +342,9 @@ const Signup = () => {
         setEmailValidStatus('invalid');
         setEmailValidReason(result.reason || t('invalidEmail', { defaultValue: 'Invalid email' }));
       }
+      // Typo nudge — catches well-formed-but-bouncing domains (gmial.com,
+      // gmail.con). Non-blocking; surfaced as a one-tap "did you mean…" chip.
+      setEmailSuggestion(suggestEmailCorrection(form.email));
     }, 300);
     return () => {
       if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
@@ -904,10 +901,10 @@ const Signup = () => {
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 40 }}>
               <button type="button" onClick={() => setEntryMode('invite')} style={primaryBtn(false)}>
                 <Ticket size={18} strokeWidth={2.2} />
-                {t('haveGymCode', 'I Have a Gym Code')}
+                {t('haveGymCode', 'I have a gym invite code')}
               </button>
               <button type="button" onClick={() => setEntryMode('gymcode')} style={darkBtn(false)}>
-                {t('noCodeSignup', 'Sign Up Without Code')}
+                {t('noCodeSignup', "I don't have an invite code")}
               </button>
             </div>
 
@@ -949,7 +946,7 @@ const Signup = () => {
               fontFamily: FONT_DISPLAY, fontWeight: 900, fontSize: 32,
               letterSpacing: -1.2, color: OB.ink, lineHeight: 1.05, margin: 0,
             }}>
-              {t('signup.inviteTitle', 'Got a gym code?')}
+              {t('signup.inviteTitle', 'Enter your invite code')}
             </h1>
             <p style={{ fontSize: 15, color: OB.sub, marginTop: 6, lineHeight: 1.4 }}>
               {t('signup.inviteSubtitle', 'Enter the code from your gym — or scan the QR on the wall at reception.')}
@@ -1114,7 +1111,7 @@ const Signup = () => {
               {t('signup.gymCodeTitle', 'What\'s your gym?')}
             </h1>
             <p style={{ fontSize: 15, color: OB.sub, marginTop: 6, lineHeight: 1.4 }}>
-              {t('gymCodeHint', 'Enter your gym\'s short name (slug). Ask reception if unsure.')}
+              {t('gymCodeHint', 'Enter your gym\'s short name (e.g. "demo") — ask reception if you\'re not sure.')}
             </p>
 
             <div style={{ marginTop: 26 }}>
@@ -1190,7 +1187,7 @@ const Signup = () => {
                   style={darkBtn(false)}
                 >
                   <Ticket size={18} strokeWidth={2.2} />
-                  {t('haveGymCode', 'I Have a Gym Code')}
+                  {t('haveGymCode', 'I have a gym invite code')}
                 </button>
               )}
             </div>
@@ -1380,6 +1377,26 @@ const Signup = () => {
                 {!errors.email && emailValidStatus === 'invalid' && emailValidReason && (
                   <p style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>{emailValidReason}</p>
                 )}
+                {emailSuggestion && (
+                  <p style={{ fontSize: 12, color: OB.sub, marginTop: 6 }}>
+                    {t('emailDidYouMean', { defaultValue: 'Did you mean' })}{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((f) => ({ ...f, email: emailSuggestion }));
+                        setEmailSuggestion(null);
+                      }}
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        color: OB.tealDeep, fontWeight: 600, fontFamily: 'inherit', fontSize: 12,
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      {emailSuggestion}
+                    </button>
+                    ?
+                  </p>
+                )}
               </div>
 
               {/* Password */}
@@ -1511,22 +1528,24 @@ const Signup = () => {
                 )}
               </div>
 
-              {/* Date of Birth — App Store / Play Store / GDPR-K age verification */}
+              {/* Date of Birth — App Store / Play Store / GDPR-K age verification.
+                  Three dropdowns (month / day / year) instead of a native date
+                  input, whose calendar forces month-by-month scrolling to reach a
+                  birth year decades back. */}
               <div>
                 <label htmlFor="su-dob" style={labelStyle}>{t('dobLabel', 'Date of Birth')}</label>
-                <div style={inputWrap(!!dobError)}>
-                  <Calendar size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
-                  <input
-                    id="su-dob"
-                    type="date"
-                    value={dateOfBirth}
-                    max={todayISO()}
-                    onChange={(e) => { setDateOfBirth(e.target.value); if (dobError) setDobError(''); }}
-                    autoComplete="bday"
-                    aria-describedby={dobError ? 'su-dob-error' : undefined}
-                    style={inputStyle}
-                  />
-                </div>
+                <DobPicker
+                  id="su-dob"
+                  value={dateOfBirth}
+                  onChange={(iso) => { setDateOfBirth(iso); if (dobError) setDobError(''); }}
+                  lang={i18n.resolvedLanguage || i18n.language}
+                  maxDate={new Date()}
+                  minYear={1920}
+                  hasError={!!dobError}
+                  labels={{ month: t('dobMonth', 'Month'), day: t('dobDay', 'Day'), year: t('dobYear', 'Year') }}
+                  colors={{ surface: OB.surface, ink: OB.ink, mute: OB.mute, line: OB.line, error: OB.orange }}
+                  fonts={{ body: FONT_BODY }}
+                />
                 {dobError && (
                   <p id="su-dob-error" style={{ fontSize: 12, color: OB.orange, marginTop: 6 }}>
                     {dobError}

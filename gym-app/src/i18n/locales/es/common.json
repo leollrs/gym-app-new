@@ -490,7 +490,8 @@
   "watch": {
     "notifStartWorkout": "Toca para empezar tu entrenamiento",
     "notifShowQR": "Toca para mostrar tu código QR",
-    "notifShowCheckInQR": "Toca para mostrar tu QR de registro"
+    "notifShowCheckInQR": "Toca para mostrar tu QR de registro",
+    "notifCardioMirror": "Toca para seguir tu entreno del reloj"
   },
   "watchCardio": {
     "live": "En vivo",

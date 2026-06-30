@@ -79,7 +79,7 @@ export default function CardioSessionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation('pages');
-  const { profile, user, gymLogoUrl } = useAuth();
+  const { profile, user, gymName, gymLogoUrl } = useAuth();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -338,7 +338,7 @@ export default function CardioSessionDetail() {
           elevationGainM: session.elevation_gain_m,
           route,
           unit,
-          gymName: profile?.gym_name,
+          gymName,
           gymLogoUrl,
         }}
       />

@@ -159,6 +159,7 @@
     "logPastWorkoutHint": "Registra una sesión pasada — no cuenta para tu racha",
     "unavailable": "Inicio no disponible",
     "loadError": "No pudimos cargar tu inicio ahora mismo. Desliza para recargar o inténtalo de nuevo en un momento.",
+    "tryAgain": "Intentar de nuevo",
     "qrError": "No se pudo abrir el QR",
     "scheduleSaveError": "No se pudo guardar tu rutina. Revisa tu conexión e inténtalo de nuevo.",
     "scheduleClearError": "No se pudo limpiar ese día. Revisa tu conexión e inténtalo de nuevo.",
@@ -353,6 +354,9 @@
     "save": "Guardar",
     "settings": "Ajustes",
     "logOut": "Cerrar sesión",
+    "logoutConfirmTitle": "¿Cerrar sesión?",
+    "logoutConfirmBody": "Tendrás que iniciar sesión de nuevo para usar la app.",
+    "cancel": "Cancelar",
     "fullName": "Nombre completo",
     "username": "usuario",
     "editNameUsername": "Editar nombre y usuario",
@@ -1754,7 +1758,7 @@
     "goBack": "Volver",
     "permissions": "Permisos",
     "permNotifications": "Notificaciones",
-    "permHealth": "Salud",
+    "permHealth": "Apple Health",
     "permCamera": "Cámara",
     "permLocation": "Ubicación",
     "permissionsHint": "Toca un permiso para gestionarlo en los ajustes de tu dispositivo.",
@@ -1768,6 +1772,11 @@
   "permissionExplainer": {
     "continue": "Continuar",
     "notNow": "Ahora no",
+    "allow": "Permitir",
+    "manageInSettings": "Gestionar en Ajustes",
+    "openSettings": "Abrir Ajustes",
+    "close": "Cerrar",
+    "changeInSettings": "Puedes cambiar esto cuando quieras en Ajustes de iOS › TuGymPR.",
     "notifications": {
       "title": "Mantente al día",
       "body": "Te enviaremos recordatorios de entrenamiento, alertas de racha, actividad de amigos y anuncios del gimnasio. Puedes ajustar qué tipos recibir en Ajustes de notificaciones."
@@ -1778,7 +1787,7 @@
     },
     "location": {
       "title": "Ubicación para tu cardio",
-      "body": "Se usa para registrar distancia, ritmo y ruta durante tus sesiones de cardio en vivo (correr, caminar, ciclismo). Solo se activa cuando tú inicias una sesión y nunca rastreamos tu ubicación en segundo plano ni la compartimos."
+      "body": "Se usa para registrar distancia, ritmo y ruta durante tus sesiones de cardio (correr, caminar, ciclismo, senderismo). El registro continúa en segundo plano mientras una sesión está activa, para que tu ruta siga siendo precisa con la pantalla apagada. Se detiene en cuanto terminas la sesión y nunca compartimos tu ubicación."
     },
     "health": {
       "title": "Sincronización con Salud",
@@ -9156,7 +9165,7 @@
     "permissionFailed": "No se pudo activar la sincronización de salud.",
     "dataFromAppleHealth": "Datos de Apple Health",
     "dataFromHealthConnect": "Datos de Health Connect",
-    "poweredByHealthKit": "Con tecnología de Apple HealthKit"
+    "poweredByHealthKit": "Funciona con Apple Health"
   },
   "appTour": {
     "step1Title": "Tu Plan Diario",
@@ -9253,6 +9262,10 @@
     "statusExpired": "Expirado",
     "unknownUser": "Amigo invitado",
     "openQR": "Mostrar Código QR",
+    "copy": "Copiar",
+    "scanToJoin": "Escanea para unirte a {{gym}}",
+    "showQrHint": "Pídele a tu amigo que lo escanee para registrarse.",
+    "close": "Cerrar",
     "goBack": "Volver",
     "ptsShort": "pts",
     "ptsLong": "puntos",

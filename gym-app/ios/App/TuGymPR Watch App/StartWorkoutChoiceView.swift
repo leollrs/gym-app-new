@@ -100,11 +100,6 @@ struct StartWorkoutPage: View {
                     }
                     .buttonStyle(.plain)
 
-                    NavigationLink(destination: CardioPickerView()) {
-                        AltRow(icon: "figure.run", color: DS.streakOrange, label: session.tr("Cardio · free", "Cardio · libre"))
-                    }
-                    .buttonStyle(.plain)
-
                     NavigationLink(destination: FreeLiftExercisePickerView()) {
                         AltRow(icon: "dumbbell.fill", color: Color(red: 109/255, green: 95/255, blue: 219/255), label: session.tr("Free lift", "Levantamiento libre"))
                     }

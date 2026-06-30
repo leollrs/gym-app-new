@@ -78,7 +78,7 @@ export default function Progress() {
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 md:px-6 pt-3" data-tour="tour-progress-page">
           <h1
             className="mb-3 truncate"
-            style={{ fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontSize: 28, fontWeight: 800, letterSpacing: -1, lineHeight: 1, color: 'var(--color-text-primary)' }}
+            style={{ fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontSize: 28, fontWeight: 800, letterSpacing: -1, lineHeight: 1.2, paddingBottom: 2, color: 'var(--color-text-primary)' }}
           >
             {t('progress.title')}
           </h1>

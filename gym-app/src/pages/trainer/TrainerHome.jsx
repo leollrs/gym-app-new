@@ -710,7 +710,7 @@ export default function TrainerHome() {
                     {heroClientLastActive && (
                       <div style={{ flex: 1, background: isDark ? TT.surface : 'rgba(255,255,255,0.7)', border: `1px solid ${TT.border}`, borderRadius: 12, padding: '9px 11px' }}>
                         <div style={{ fontSize: 10, color: TT.textMute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>{t('trainerHome.lastActiveLabel', 'Last active')}</div>
-                        <div style={{ fontSize: 13, color: TT.text, fontWeight: 700, marginTop: 3 }}>{format(new Date(heroClientLastActive), 'd MMM', { locale: dateFnsLocale })}</div>
+                        <div style={{ fontSize: 13, color: TT.text, fontWeight: 700, marginTop: 3 }}>{format(new Date(heroClientLastActive), 'd MMMM', { locale: dateFnsLocale })}</div>
                       </div>
                     )}
                   </div>

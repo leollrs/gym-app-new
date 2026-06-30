@@ -27,6 +27,12 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     // in CardioPickerView; cleared when they finish.
     @Published var activeCardio: CardioActivity? = nil
 
+    /// Wall-clock time the user finished a workout ON THE WRIST. A late or
+    /// duplicate `workout_active` application-context can arrive moments after
+    /// finishing and flip `isWorkoutActive` back on ("finish does nothing").
+    /// We ignore such reactivations within a short window of a local finish.
+    private var locallyEndedAt: Date? = nil
+
     // MARK: - Workout ended
     @Published var workoutJustEnded = false
     @Published var endedDuration = 0
@@ -168,6 +174,7 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
         qrPayload = cached.qr
         userName = cached.name
         currentStreak = cached.streak
+        currentLanguage = OfflineCacheManager.shared.loadLanguage()
 
         let cachedRoutines = OfflineCacheManager.shared.loadRoutines()
         if !cachedRoutines.isEmpty {
@@ -206,6 +213,7 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
 
         isWorkoutActive = true
         workoutJustEnded = false
+        locallyEndedAt = nil
         exerciseName = cleanName
         setNumber = 1
         totalSets = (routine?["exerciseCount"] as? Int ?? 1) * 3 // estimate
@@ -379,6 +387,7 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
             self.freeLiftStartedAt = now
             self.isWorkoutActive = true
             self.workoutJustEnded = false
+            self.locallyEndedAt = nil
             self.exerciseName = name
             self.setNumber = 1
             // Free lift has no fixed set count — leave totalSets at 0 and
@@ -552,6 +561,7 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
         DispatchQueue.main.async {
             self.isWorkoutActive = false
             self.workoutJustEnded = true
+            self.locallyEndedAt = Date()
             self.freeLiftEntries = []
             self.currentFreeLiftIdx = 0
             self.freeLiftStartedAt = nil
@@ -693,10 +703,31 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     private func handleMessage(_ ctx: [String: Any]) {
+        // Language ('en' / 'es') can ride on ANY message — iOS retains only a
+        // single application context, so whichever sender wrote last wins. Read
+        // + persist it here so a non-`user_context` payload (streak / nutrition /
+        // qr_png) never silently drops the language back to English. Only update
+        // when the field is PRESENT and non-empty, so an omitting message never
+        // resets it.
+        if let lang = ctx["language"] as? String, !lang.isEmpty {
+            let norm = lang.hasPrefix("es") ? "es" : "en"
+            if norm != currentLanguage {
+                currentLanguage = norm
+                OfflineCacheManager.shared.saveLanguage(norm)
+            }
+        }
+
         guard let type = ctx["type"] as? String else { return }
 
         switch type {
         case "workout_active":
+            // Ignore a stale/duplicate "still active" that lands right after the
+            // user finished on the wrist — otherwise it resurrects the workout
+            // ("finish does nothing" / "back lands in workout").
+            if let endedAt = locallyEndedAt, Date().timeIntervalSince(endedAt) < 8 {
+                break
+            }
+            locallyEndedAt = nil
             isWorkoutActive = true
             workoutJustEnded = false
             exerciseName = ctx["exerciseName"] as? String ?? ""
@@ -742,9 +773,11 @@ class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
             lastWorkoutDate = ctx["lastWorkoutDate"] as? String ?? ""
             weeklyWorkoutCount = ctx["weeklyWorkoutCount"] as? Int ?? 0
             // Language ('en' / 'es') drives `tr(en:es:)` across the watch UI.
-            // Anything other than 'es' is treated as English.
+            // Anything other than 'es' is treated as English. (Also handled +
+            // persisted at the top of handleMessage; kept here for clarity.)
             if let lang = ctx["language"] as? String, !lang.isEmpty {
                 currentLanguage = lang.hasPrefix("es") ? "es" : "en"
+                OfflineCacheManager.shared.saveLanguage(currentLanguage)
             }
             OfflineCacheManager.shared.saveUserContext(qr: qrPayload, name: userName, streak: currentStreak)
             // Also write to shared defaults so QRCheckInView sees it offline

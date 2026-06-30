@@ -85,34 +85,27 @@ serve(async (req: Request) => {
     await supabase.from('ai_rate_limits').insert({ profile_id: user.id, endpoint: 'generate-google-pass' });
 
     // ── Request body ──
-    // `payload` is accepted from the client for back-compat but is NOT trusted —
-    // we always fetch the calling user's own qr_code_payload from the DB and
-    // embed THAT in the pass. Without this, an authed user could pass any QR
-    // string and Google would sign a wallet pass with someone else's identity
-    // (phishing / impersonation vector).
-    const { memberName, gymName } = await req.json();
+    // `payload`/`referralCode` from the client are NOT trusted for the
+    // MEMBERSHIP pass — we always embed the caller's own server-fetched
+    // qr_code_payload there (else an authed user could mint a pass with someone
+    // else's identity QR). Referral codes and punch-card product ids carry no
+    // such impersonation risk, so those kinds may use the client-supplied values.
+    const body = await req.json();
+    const kind = body.kind || 'membership';
+    const memberName = body.memberName || 'Member';
+    const gymName = body.gymName || 'Gym';
 
     // ── Fetch gym + qr payload (server-trusted) ──
     const { data: profile } = await supabase
       .from('profiles')
-      .select('gym_id, qr_code_payload')
+      .select('gym_id, qr_code_payload, created_at, membership_status')
       .eq('id', user.id)
       .single();
 
-    const payload = profile?.qr_code_payload;
-    if (!payload) {
-      return new Response(JSON.stringify({ error: 'No QR payload on profile' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Only the gym LOGO is used for the pass. Pass colors are left to Google
-    // Wallet's default styling (the gym primary color is intentionally not used),
-    // and the barcode is always a QR code, so qr_display_format isn't fetched.
+    // ── Branding: logo + primary color (used to brand the pass) ──
     const { data: branding } = await supabase
       .from('gym_branding')
-      .select('logo_url')
+      .select('logo_url, primary_color')
       .eq('gym_id', profile?.gym_id)
       .single();
 
@@ -126,6 +119,13 @@ serve(async (req: Request) => {
         if (signed?.signedUrl) logoUrl = signed.signedUrl;
       } catch { /* no logo */ }
     }
+
+    // Brand the pass with the gym's primary color when it's a valid 6-digit hex
+    // (Google auto-contrasts the text); otherwise a premium dark default. This
+    // + a proper logo (below) is what makes the pass look intentional instead
+    // of the old stretched-logo-as-hero default.
+    const pc = branding?.primary_color || '';
+    const hexBackgroundColor = /^#[0-9a-fA-F]{6}$/.test(pc) ? pc : '#0A0E12';
 
     // ── Check if Google Wallet is configured ──
     if (!ISSUER_ID || !SERVICE_ACCOUNT_KEY_B64) {
@@ -141,60 +141,94 @@ serve(async (req: Request) => {
     // ── Parse service account key ──
     const serviceAccountKey = JSON.parse(atob(SERVICE_ACCOUNT_KEY_B64));
 
-    // ── Barcode type ──
-    // ALWAYS render a QR code. The barcode option was removed product-wide, so
-    // the gym's qr_display_format setting is intentionally ignored here.
-    const barcodeType = 'QR_CODE';
+    // ── Build the pass content for the requested kind ──
+    // (membership = identity check-in QR · referral = share code · punchcard =
+    // loyalty card whose barcode the admin scans to add a punch.)
+    const sanitizeId = (s: string) => String(s || '').replace(/[^a-zA-Z0-9_]/g, '_');
+    let barcodeValue = '';
+    let cardTitleText = gymName;
+    let headerText = memberName;
+    let textModules: Array<{ id: string; header: string; body: string }> = [];
+    let classSuffix = 'membership';
 
-    // ── Build pass class + object ──
-    const classId = `${ISSUER_ID}.gym_membership_${profile?.gym_id?.replace(/-/g, '_')}`;
-    const objectId = `${ISSUER_ID}.${user.id.replace(/-/g, '_')}_${Date.now()}`;
+    if (kind === 'referral') {
+      const referralCode = String(body.referralCode || body.payload || '').trim();
+      if (!referralCode) {
+        return new Response(JSON.stringify({ error: 'No referral code provided' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      barcodeValue = referralCode;
+      headerText = 'Refer a friend';
+      classSuffix = 'referral';
+      textModules = [
+        { id: 'code', header: 'YOUR CODE', body: referralCode },
+        ...(body.referralReward ? [{ id: 'reward', header: 'YOU EARN', body: String(body.referralReward) }] : []),
+        { id: 'how', header: 'HOW IT WORKS', body: 'Share this code — when a friend joins, you both get rewarded.' },
+      ];
+    } else if (kind === 'punchcard') {
+      const cards = Array.isArray(body.punchCards) ? body.punchCards : [];
+      const top = cards[0] || {};
+      const productName = top.name || body.cardName || 'Loyalty';
+      const punches = Number(top.punches) || 0;
+      const target = Number(top.target) || 10;
+      const productId = top.productId || '';
+      // Same barcode contract as the Apple punch pass: admin scans → auto-fills
+      // member + product in AdminStore.
+      barcodeValue = `gym-purchase:${profile?.gym_id}:${user.id}:${productId}`;
+      headerText = productName;
+      classSuffix = `punch_${sanitizeId(productId) || 'card'}`;
+      textModules = [
+        { id: 'progress', header: 'PUNCHES', body: `${punches} / ${target}${punches >= target ? '  •  Reward unlocked!' : ''}` },
+        ...(top.reward ? [{ id: 'reward', header: 'REWARD', body: String(top.reward) }] : []),
+        { id: 'member', header: 'MEMBER', body: memberName },
+      ];
+    } else {
+      // membership (default) — server-trusted identity QR (never the client value).
+      const payload = profile?.qr_code_payload;
+      if (!payload) {
+        return new Response(JSON.stringify({ error: 'No QR payload on profile' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      barcodeValue = payload;
+      headerText = memberName;
+      classSuffix = 'membership';
+      // Match the Apple pass's richer info: member, status, member-since, code.
+      const memberSince = profile?.created_at
+        ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+        : '';
+      const statusRaw = profile?.membership_status || 'active';
+      const statusLabel = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
+      textModules = [
+        { id: 'member', header: 'MEMBER', body: memberName },
+        { id: 'status', header: 'STATUS', body: statusLabel },
+        ...(memberSince ? [{ id: 'since', header: 'MEMBER SINCE', body: memberSince }] : []),
+        { id: 'code', header: 'CODE', body: payload },
+      ];
+    }
 
-    const passClass = {
-      id: classId,
-      classTemplateInfo: {
-        cardTemplateOverride: {
-          cardRowTemplateInfos: [{
-            twoItems: {
-              startItem: {
-                firstValue: {
-                  fields: [{ fieldPath: 'object.textModulesData["member"]' }],
-                },
-              },
-              endItem: {
-                firstValue: {
-                  fields: [{ fieldPath: 'object.textModulesData["code"]' }],
-                },
-              },
-            },
-          }],
-        },
-      },
-    };
+    const classId = `${ISSUER_ID}.tugympr_${sanitizeId(profile?.gym_id)}_${classSuffix}`;
+    const objectId = `${ISSUER_ID}.${sanitizeId(user.id)}_${classSuffix}_${Date.now()}`;
 
-    const passObject = {
+    const passClass = { id: classId };
+
+    const passObject: Record<string, unknown> = {
       id: objectId,
       classId,
       state: 'ACTIVE',
-      heroImage: logoUrl ? {
+      hexBackgroundColor,
+      logo: logoUrl ? {
         sourceUri: { uri: logoUrl },
-        contentDescription: { defaultValue: { language: 'en', value: gymName || 'Gym' } },
+        contentDescription: { defaultValue: { language: 'en', value: gymName } },
       } : undefined,
-      textModulesData: [
-        { id: 'member', header: 'MEMBER', body: memberName || 'Member' },
-        { id: 'gym', header: 'GYM', body: gymName || 'Gym' },
-        { id: 'code', header: 'CODE', body: payload },
-      ],
+      cardTitle: { defaultValue: { language: 'en', value: cardTitleText } },
+      header: { defaultValue: { language: 'en', value: headerText } },
+      textModulesData: textModules,
       barcode: {
-        type: barcodeType,
-        value: payload,
-        alternateText: payload,
-      },
-      cardTitle: {
-        defaultValue: { language: 'en', value: gymName || 'Gym Membership' },
-      },
-      header: {
-        defaultValue: { language: 'en', value: memberName || 'Member' },
+        type: 'QR_CODE',
+        value: barcodeValue,
+        alternateText: barcodeValue,
       },
     };
 

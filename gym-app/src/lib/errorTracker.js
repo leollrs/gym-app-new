@@ -151,6 +151,9 @@ if (typeof document !== 'undefined') {
   });
 }
 
+// One-shot guard so a burst of failing refresh calls only triggers recovery once.
+let lastAuthDeadAt = 0;
+
 export function installFetchInterceptor() {
   if (typeof window === 'undefined') return;
 
@@ -199,6 +202,23 @@ export function installFetchInterceptor() {
           method: init?.method || 'GET',
           status: response.status,
         });
+      }
+
+      // Permanently-dead refresh token: the token-refresh endpoint ITSELF
+      // rejecting (invalid_grant / "Invalid Refresh Token") means the stored
+      // refresh token is server-side dead — supabase-js replays it and 401s
+      // every request forever, and nothing clears it (the app was stuck until a
+      // reinstall). Signal a one-time recovery (see recoverDeadSession()).
+      if ((response.status === 400 || response.status === 401)
+        && url.includes('/auth/v1/token') && /grant_type=refresh_token/.test(url)
+        && Date.now() - lastAuthDeadAt > 30_000) {
+        try {
+          const body = await response.clone().text();
+          if (/invalid_grant|refresh_token_not_found|invalid refresh token|already used/i.test(body)) {
+            lastAuthDeadAt = Date.now();
+            window.dispatchEvent(new CustomEvent('tugympr:auth-dead'));
+          }
+        } catch { /* body unreadable — ignore */ }
       }
 
       // HTTP errors (400, 500+)

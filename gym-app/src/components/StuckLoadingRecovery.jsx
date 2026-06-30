@@ -7,19 +7,21 @@
 // (the data container is NOT wiped by `devicectl install` — only by a
 // full delete-and-reinstall).
 //
-// Behaviour:
-//   1. After 10 s of the #root element being effectively empty, we
-//      consider the app stuck.
-//   2. FIRST time stuck → auto-recover: resetAppCaches() wipes every
-//      cache layer (keeping auth) and hard-reloads with a
-//      `?reset=<timestamp>` cache-buster.
-//   3. If we come back and we're STILL stuck — detected via that recent
-//      `?reset=` param in the URL — we do NOT auto-recover again (that
-//      would loop). Instead we show a one-tap manual recovery banner.
+// Behaviour (escalating, so the common case never nukes good state):
+//   1. After ~10 s of #root being effectively empty (or the auth splash
+//      hanging) we consider the app stuck.
+//   2. FIRST time stuck → SOFT reload (`?rb=<ts>` cache-buster, no storage
+//      wiped). On iOS the usual cause is a zombie socket / hung token on
+//      resume, which a plain webview reboot fixes — without throwing away the
+//      React Query cache, branding, or drafts.
+//   3. Still stuck after the soft reload (recent `?rb=`) → resetAppCaches():
+//      the nuclear wipe of every cache layer (keeping auth), reloading with
+//      `?reset=<ts>`. Only reached when a clean reboot didn't help.
+//   4. Still stuck after the nuclear reset (recent `?reset=`) → stop
+//      auto-recovering (that would loop) and show a one-tap manual banner.
 //
-// The `?reset=` param lives in the URL, so it survives resetAppCaches()
-// clearing localStorage/sessionStorage — that's why it's a reliable
-// loop guard.
+// The `?rb=` / `?reset=` markers live in the URL, so they survive a storage
+// wipe — that's why they're reliable tier guards.
 //
 // Detection is intentionally conservative: it only fires when #root has
 // essentially no visible text, so a normal slow boot (auth resolve,
@@ -52,7 +54,7 @@ const AUTO_RECOVERY_COOLDOWN_MS = 120_000;
 // socket — the splash then stays up forever and the user has to kill+reopen the
 // app. If the splash is STILL up this long after boot, treat it as stuck and
 // auto-recover (the programmatic equivalent of "close and reopen").
-const LOADING_SCREEN_STUCK_MS = 15_000;
+const LOADING_SCREEN_STUCK_MS = 12_000;
 
 function rootIsEmpty() {
   const root = document.getElementById('root');
@@ -74,18 +76,31 @@ function rootIsEmpty() {
   return false;
 }
 
-// resetAppCaches() reloads with `?reset=<Date.now()>`. If that param is
-// recent, we already auto-recovered once and it didn't take — so a second
-// auto-reset would loop. Read from window.location (survives the storage
-// wipe because it lives in the URL, not localStorage).
-function alreadyAutoRecovered() {
+// Recovery tiers leave a timestamped marker in the URL (survives storage wipes
+// because it lives in the URL): `?rb=` after a soft reload, `?reset=` after the
+// nuclear cache wipe. A marker is "recent" if it landed within the cooldown —
+// meaning that tier already ran and didn't take, so we escalate.
+function recentParam(name) {
   try {
-    const v = new URL(window.location.href).searchParams.get('reset');
+    const v = new URL(window.location.href).searchParams.get(name);
     if (!v) return false;
     const ts = parseInt(v, 10);
     return Number.isFinite(ts) && (Date.now() - ts) < AUTO_RECOVERY_COOLDOWN_MS;
   } catch {
     return false;
+  }
+}
+
+// Tier 1 recovery: a cheap webview reboot that preserves ALL state (no cache
+// wipe). Fixes the common zombie-socket / hung-token-on-resume case the way
+// "close and reopen" would, without the data loss of a nuclear reset.
+function softReload() {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set('rb', String(Date.now()));
+    window.location.replace(u.toString());
+  } catch {
+    window.location.reload();
   }
 }
 
@@ -119,16 +134,21 @@ export default function StuckLoadingRecovery() {
       handledRef.current = true;
       if (pollTimer) clearInterval(pollTimer);
 
-      if (alreadyAutoRecovered()) {
-        // Auto-reset already ran and we're still on an empty screen —
-        // don't loop. Surface the manual one-tap banner instead.
+      if (recentParam('reset')) {
+        // The nuclear reset already ran and we're STILL stuck — a second
+        // auto-recovery would loop. Surface the manual one-tap banner.
         setStuck(true);
-      } else {
-        // First detection — wipe caches and hard-reload automatically.
-        // resetAppCaches() reloads with a `?reset=<ts>` cache-buster, which
-        // is also our loop guard on the next pass.
+      } else if (recentParam('rb')) {
+        // A soft reboot didn't clear it → escalate to the nuclear cache wipe
+        // (keeps auth), which reloads with a `?reset=<ts>` guard.
         setAutoRecovering(true);
         resetAppCaches().catch(() => { window.location.reload(); });
+      } else {
+        // First detection — cheap, state-preserving reboot. The vast majority
+        // of "stuck on resume" is a dead socket a reboot fixes; no need to nuke
+        // caches/drafts/branding for that.
+        setAutoRecovering(true);
+        softReload();
       }
     };
 

@@ -159,6 +159,7 @@
     "logPastWorkoutHint": "Backfill a missed session — doesn't count toward streak",
     "unavailable": "Dashboard unavailable",
     "loadError": "We could not load your dashboard right now. Pull to refresh or try again in a moment.",
+    "tryAgain": "Try again",
     "qrError": "Could not open QR",
     "scheduleSaveError": "Couldn't save your schedule. Check your connection and try again.",
     "scheduleClearError": "Couldn't clear that day. Check your connection and try again.",
@@ -353,6 +354,9 @@
     "save": "Save",
     "settings": "Settings",
     "logOut": "Log out",
+    "logoutConfirmTitle": "Log out?",
+    "logoutConfirmBody": "You'll need to sign in again to use the app.",
+    "cancel": "Cancel",
     "fullName": "Full name",
     "username": "username",
     "editNameUsername": "Edit name & username",
@@ -1754,7 +1758,7 @@
     "goBack": "Go back",
     "permissions": "Permissions",
     "permNotifications": "Notifications",
-    "permHealth": "Health",
+    "permHealth": "Apple Health",
     "permCamera": "Camera",
     "permLocation": "Location",
     "permissionsHint": "Tap a permission to manage it in your device settings.",
@@ -1768,6 +1772,11 @@
   "permissionExplainer": {
     "continue": "Continue",
     "notNow": "Not now",
+    "allow": "Allow",
+    "manageInSettings": "Manage in Settings",
+    "openSettings": "Open Settings",
+    "close": "Close",
+    "changeInSettings": "You can change this anytime in iOS Settings › TuGymPR.",
     "notifications": {
       "title": "Stay in the loop",
       "body": "We'll send you workout reminders, streak alerts, friend activity, and gym announcements. You can fine-tune which kinds you receive in Notification Settings."
@@ -1778,7 +1787,7 @@
     },
     "location": {
       "title": "Location for cardio",
-      "body": "Used to track distance, pace, and route during your live cardio sessions (running, walking, cycling). Only active when you start a session — we never track your location in the background or share it."
+      "body": "Used to track distance, pace, and route during your cardio sessions (running, walking, cycling, hiking). Tracking continues in the background while a session is active so your route stays accurate with the screen off. It stops the moment you end the session, and we never share your location."
     },
     "health": {
       "title": "Health data sync",
@@ -8989,7 +8998,7 @@
     "permissionFailed": "Could not enable Health sync.",
     "dataFromAppleHealth": "Data from Apple Health",
     "dataFromHealthConnect": "Data from Health Connect",
-    "poweredByHealthKit": "Powered by Apple HealthKit"
+    "poweredByHealthKit": "Works with Apple Health"
   },
   "appTour": {
     "step1Title": "Your Daily Plan",
@@ -9086,6 +9095,10 @@
     "statusExpired": "Expired",
     "unknownUser": "Invited friend",
     "openQR": "Show QR Code",
+    "copy": "Copy",
+    "scanToJoin": "Scan to join {{gym}}",
+    "showQrHint": "Have your friend scan this to sign up.",
+    "close": "Close",
     "goBack": "Go back",
     "ptsShort": "pts",
     "ptsLong": "points",

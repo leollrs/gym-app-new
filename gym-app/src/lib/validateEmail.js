@@ -115,3 +115,98 @@ export function validateEmail(email) {
   // (has valid format, not blocked, has at least name.tld)
   return { valid: true };
 }
+
+// ── "Did you mean…?" typo suggestion ────────────────────────────────────────
+// validateEmail() deliberately waves through any well-formed custom domain, so
+// the classic bouncing typos — gmial.com, hotnail.com, yaho.com, gmail.con —
+// all pass as "valid" and then silently fail to deliver (reset / wallet /
+// notification emails). This catches them at the keystroke.
+//
+// NON-BLOCKING by design: the UI shows the result as a one-tap suggestion, never
+// a hard error. It is also SAFE by construction — the suggestion can only ever
+// point AT a known real provider domain in SUGGEST_TARGETS, so we can never
+// propose an address that itself doesn't exist, and we never touch a domain
+// that's already a known-good provider or anything with a subdomain.
+
+// High-volume consumer mailbox providers (incl. ES-locale variants). me.com is
+// intentionally omitted: at 6 chars it generates false matches against legit
+// short domains, and its users almost always type icloud.com anyway.
+const SUGGEST_TARGETS = [
+  'gmail.com', 'googlemail.com',
+  'outlook.com', 'outlook.es', 'hotmail.com', 'hotmail.es', 'live.com', 'msn.com',
+  'yahoo.com', 'yahoo.es', 'ymail.com',
+  'icloud.com', 'aol.com', 'proton.me', 'protonmail.com',
+];
+
+// Obvious .com/.net fat-fingers that an edit-distance pass alone can miss.
+const TLD_TYPOS = {
+  con: 'com', cmo: 'com', ocm: 'com', vom: 'com', xom: 'com', comm: 'com',
+  cm: 'com', om: 'com', coom: 'com', cpm: 'com', con1: 'com',
+  nte: 'net', ner: 'net', orh: 'org', ogr: 'org',
+};
+
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  let curr = new Array(n + 1);
+  for (let i = 1; i <= m; i += 1) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+/**
+ * Suggests a corrected email when the domain looks like a typo of a known
+ * provider. Returns the full corrected email string, or null when there's
+ * nothing confident to suggest.
+ */
+export function suggestEmailCorrection(email) {
+  if (!email || typeof email !== 'string') return null;
+  const trimmed = email.trim().toLowerCase();
+  const at = trimmed.lastIndexOf('@');
+  if (at < 1 || at === trimmed.length - 1) return null;
+
+  const localPart = trimmed.slice(0, at);
+  let domain = trimmed.slice(at + 1);
+  if (!domain.includes('.')) return null;
+
+  // Only simple `label.tld` domains — never second-guess a subdomain or a
+  // multi-label corporate domain (e.g. mail.acme.co.uk), which would risk
+  // mangling a perfectly valid address.
+  if (domain.split('.').length !== 2) return null;
+
+  // Already a known-good provider → nothing to suggest.
+  if (ALLOWED_PROVIDERS.has(domain) || SUGGEST_TARGETS.includes(domain)) return null;
+
+  // 1. Pre-fix an obvious TLD fat-finger so it can match a target exactly.
+  const lastDot = domain.lastIndexOf('.');
+  const tld = domain.slice(lastDot + 1);
+  if (TLD_TYPOS[tld]) {
+    domain = `${domain.slice(0, lastDot)}.${TLD_TYPOS[tld]}`;
+    if (ALLOWED_PROVIDERS.has(domain) || SUGGEST_TARGETS.includes(domain)) {
+      return `${localPart}@${domain}`;
+    }
+  }
+
+  // 2. Otherwise suggest the nearest provider domain within a tight distance.
+  //    Short domains demand an even closer match to avoid false positives.
+  let best = null;
+  let bestDist = 3;
+  for (const target of SUGGEST_TARGETS) {
+    const dist = levenshtein(domain, target);
+    if (dist < bestDist) { bestDist = dist; best = target; }
+  }
+  const maxDist = domain.length <= 7 ? 1 : 2;
+  if (best && best !== domain && bestDist <= maxDist) {
+    return `${localPart}@${best}`;
+  }
+  return null;
+}

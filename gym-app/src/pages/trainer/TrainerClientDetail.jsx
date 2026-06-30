@@ -27,6 +27,7 @@ import { calculateMacros } from '../../lib/macroCalculator';
 import { generateDayPlan } from '../../lib/mealPlanner';
 import { exercises as EXERCISE_CATALOG } from '../../data/exercises';
 import { exName } from '../../lib/exerciseName';
+import { buildStreakCalendar } from '../../lib/streakCalendar';
 import { normalizePhone, openWhatsApp } from '../../lib/whatsapp';
 import TrainerClientRecovery from './components/TrainerClientRecovery';
 import TrainerClientPayment from './components/TrainerClientPayment';
@@ -1515,28 +1516,37 @@ export default function TrainerClientNotes() {
     };
   }, [allSessions, checkIns, dateFnsLocale]);
 
-  // History tab — streaks (current from streak_cache; longest from sessions)
-  const streakStats = useMemo(() => {
-    const current = streak?.current_streak_days || 0;
-    if (!allSessions?.length) return { current, longest: current };
-    // Build set of distinct training days, find longest run
-    const dayKeys = Array.from(
-      new Set(allSessions.map(s => format(new Date(s.started_at), 'yyyy-MM-dd')))
-    ).sort();
-    let longest = 0;
-    let run = 0;
-    let prev = null;
-    for (const k of dayKeys) {
-      if (!prev) { run = 1; }
-      else {
-        const diff = (new Date(k) - new Date(prev)) / 86400000;
-        run = diff === 1 ? run + 1 : 1;
-      }
-      if (run > longest) longest = run;
-      prev = k;
-    }
-    return { current, longest: Math.max(longest, current) };
-  }, [streak, allSessions]);
+  // Streak (snapshot + History tab). streak_cache.current_streak_days DRIFTS —
+  // the same bug we hit on the member CheckIn screen. Derive the real number
+  // from the client's calendar via buildStreakCalendar (the single source of
+  // truth the member side uses via useDerivedStreak) so the trainer sees the
+  // exact streak the member sees.
+  const [derivedStreak, setDerivedStreak] = useState({ current: 0, longest: 0 });
+  useEffect(() => {
+    if (!clientId) return undefined;
+    let cancelled = false;
+    (async () => {
+      const gymId = profile?.gym_id;
+      const [sessionsRes, cardioRes, profRes, gymHoursRes, closuresRes, holidaysRes, freezesRes] = await Promise.all([
+        supabase.from('workout_sessions').select('completed_at').eq('profile_id', clientId).eq('status', 'completed').order('completed_at', { ascending: false }),
+        supabase.from('cardio_sessions').select('completed_at, started_at').eq('profile_id', clientId),
+        supabase.from('profiles').select('preferred_training_days, created_at').eq('id', clientId).maybeSingle(),
+        gymId ? supabase.from('gym_hours').select('day_of_week, is_closed').eq('gym_id', gymId) : Promise.resolve({ data: [] }),
+        gymId ? supabase.from('gym_closures').select('closure_date').eq('gym_id', gymId) : Promise.resolve({ data: [] }),
+        gymId ? supabase.from('gym_holidays').select('date, is_closed').eq('gym_id', gymId) : Promise.resolve({ data: [] }),
+        supabase.from('streak_freezes').select('month, used_count, max_allowed, frozen_dates').eq('profile_id', clientId),
+      ]);
+      if (cancelled) return;
+      const { currentStreak, longestStreak } = buildStreakCalendar({
+        sessions: sessionsRes.data, cardio: cardioRes.data, profile: profRes.data,
+        gymHours: gymHoursRes.data, closures: closuresRes.data, holidays: holidaysRes.data,
+        freezes: freezesRes.data, lang: i18n.language, now: new Date(),
+      });
+      setDerivedStreak({ current: currentStreak, longest: longestStreak });
+    })().catch(() => {});
+    return () => { cancelled = true; };
+  }, [clientId, profile?.gym_id, i18n.language]);
+  const streakStats = derivedStreak;
 
   // Member-declared injuries + excluded exercises (from onboarding) — safety
   // info the member already gave the gym; resolve exercise ids to localized
@@ -1944,7 +1954,7 @@ export default function TrainerClientNotes() {
       <div style={{ padding: '4px 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         {[
           { l: t('trainerClientDetail.snapshot.adherence', 'Adherence'), big: `${adherencePercent}`, unit: '%', tone: TT.accent },
-          { l: t('trainerClientDetail.snapshot.streak', 'Streak'), big: `${streak?.current_streak_days || 0}`, unit: 'd', tone: '#F08A3C' },
+          { l: t('trainerClientDetail.snapshot.streak', 'Streak'), big: `${derivedStreak.current}`, unit: 'd', tone: '#F08A3C' },
           { l: t('trainerClientDetail.snapshot.sessions', 'Sessions'), big: `${workoutsThisWeek}`, unit: `/${stats.count}`, tone: TT.text },
         ].map((s, i) => (
           <TCard key={i} padded={0} style={{ padding: '11px 10px', textAlign: 'center' }}>

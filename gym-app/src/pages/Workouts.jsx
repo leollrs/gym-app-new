@@ -650,7 +650,7 @@ const Workouts = () => {
     if (!user?.id || !profile?.gym_id) return;
     const load = async () => {
       const [gpRes, obRes, lwRes] = await Promise.all([
-        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
+        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, height_inches, initial_weight_lbs, age, sex, height_cm, weight_kg, gender, priority_muscles').eq('profile_id', user.id).maybeSingle(),
         supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
@@ -693,6 +693,41 @@ const Workouts = () => {
     };
     load();
   }, [user?.id, profile?.gym_id]);
+
+  // template_weeks (the heavy multi-week JSONB) is excluded from the programs
+  // list query above for speed — it was the 3.4s generated_programs fetch. The
+  // hero card (active program) and the detail modal still need it, so load it
+  // lazily for just the active program here.
+  useEffect(() => {
+    const gp = generatedProgram;
+    if (!gp?.id || gp.template_weeks !== undefined) return;
+    let cancelled = false;
+    supabase.from('generated_programs').select('template_weeks').eq('id', gp.id).maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const tw = data?.template_weeks ?? null;
+        setGeneratedProgram(cur => (cur && cur.id === gp.id ? { ...cur, template_weeks: tw } : cur));
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedProgram?.id, generatedProgram?.template_weeks === undefined]);
+
+  // Open the program-detail modal, lazy-loading the tapped program's
+  // template_weeks first (also omitted from the list query). We need it to tell
+  // a template program from a personal one, so fetch before opening to avoid a
+  // wrong first render; already-loaded programs open instantly.
+  const openMyProgram = async (prog) => {
+    if (!prog) return;
+    setMyProgWeek('1');
+    if (prog.template_weeks === undefined) {
+      const { data } = await supabase.from('generated_programs').select('template_weeks').eq('id', prog.id).maybeSingle();
+      const tw = data?.template_weeks ?? null;
+      setAllPrograms(list => list.map(p => (p.id === prog.id ? { ...p, template_weeks: tw } : p)));
+      setSelectedMyProgram({ ...prog, template_weeks: tw });
+    } else {
+      setSelectedMyProgram(prog);
+    }
+  };
 
   // Load workout schedule (routine -> day mapping)
   useEffect(() => {
@@ -1032,7 +1067,7 @@ const Workouts = () => {
       try { localStorage.removeItem(`qs_cache_v1_${user.id}`); } catch {}
       // Refetch programs + routines so the UI reflects the new program.
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
         .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
@@ -1079,7 +1114,7 @@ const Workouts = () => {
         return;
       }
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
         .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
@@ -1119,7 +1154,7 @@ const Workouts = () => {
       await supabase.from('generated_programs').delete().eq('id', id);
     }
     const { data: allGp } = await supabase.from('generated_programs')
-      .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+      .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
       .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
     const programs = allGp || [];
     setAllPrograms(programs);
@@ -1329,7 +1364,7 @@ const Workouts = () => {
         await supabase.from('generated_programs').delete().in('id', ids);
       }
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
         .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
@@ -1686,7 +1721,7 @@ const Workouts = () => {
       // 4. Refresh state — programs, routines, AND workout schedule
       const [{ data: allGp }, { data: schedData }] = await Promise.all([
         supabase.from('generated_programs')
-          .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified')
+          .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
           .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('workout_schedule')
           .select('routine_id, day_of_week')
@@ -1719,7 +1754,7 @@ const Workouts = () => {
       {/* ── Header ─────────────────────────────────────────── */}
       {workoutsView === 'hub' ? (
       <div className="flex items-center justify-between mb-6 gap-2 min-w-0" data-tour="tour-workouts-page">
-        <h1 className="min-w-0 truncate flex-shrink" style={{ fontFamily: TU_DISPLAY, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>{t('workouts.title')}</h1>
+        <h1 className="min-w-0 truncate flex-shrink" style={{ fontFamily: TU_DISPLAY, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1.2, paddingBottom: 2 }}>{t('workouts.title')}</h1>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <Link
             to="/exercises"
@@ -2465,7 +2500,7 @@ const Workouts = () => {
                 }}>
                   <button onClick={() => {
                     if (programSelectMode) { if (!isActive) toggleProgramSel(prog.id); return; }
-                    loadExerciseNames(); setSelectedMyProgram(prog); setMyProgWeek('1');
+                    loadExerciseNames(); openMyProgram(prog);
                   }} className="w-full text-left p-5" aria-label={`View program: ${gpName(prog)}`}>
                     <div className="flex items-center justify-between mb-2.5">
                       <div className="flex items-center gap-2.5 flex-1 min-w-0">
@@ -3365,7 +3400,7 @@ const Workouts = () => {
         onCreateManual={() => { setBuilderProgram(null); setShowBuilder(true); }}
         onGenerated={() => {
           if (user?.id) {
-            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
+            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
               .then(({ data }) => {
                 const programs = data || [];
                 setAllPrograms(programs);
@@ -3386,7 +3421,7 @@ const Workouts = () => {
           setShowBuilder(false);
           setBuilderProgram(null);
           if (user?.id) {
-            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, template_weeks, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
+            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
               .then(({ data }) => {
                 const programs = data || [];
                 setAllPrograms(programs);

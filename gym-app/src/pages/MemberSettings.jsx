@@ -15,7 +15,6 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { getConsentStatus, revokeAIConsent, recordAIConsent } from '../lib/aiConsent';
 import AIConsentDialog from '../components/AIConsentDialog';
 import { App as CapApp } from '@capacitor/app';
-import { Capacitor } from '@capacitor/core';
 import { checkPermission, ensurePermission } from '../lib/devicePermissions';
 import PermissionExplainerModal from '../components/PermissionExplainerModal';
 import CancellationSaveModal from '../components/profile/CancellationSaveModal';
@@ -215,18 +214,22 @@ export default function MemberSettings() {
   }, []);
 
   const handlePermissionTap = useCallback(async (type) => {
+    // ALWAYS show the purpose card first — even when the permission is already
+    // granted or denied. iOS only ever surfaces its own permission dialog once,
+    // so without this the user (and App Review) could tap a row and see nothing
+    // explaining what we're asking for. (Guideline 5.1.1) For already-decided
+    // permissions the card is purely informational (it tells the user to change
+    // it in iOS Settings) and resolves to `false`, so we stop here.
+    const agreed = await openExplainer(type);
+    if (!agreed) return;
+
+    // Only reached for the not-yet-decided ('prompt') state — run the real OS
+    // request flow. No explainer arg; we already showed it above.
     let result = null;
     try {
-      result = await ensurePermission(type, ({ type: tp }) => openExplainer(tp));
+      result = await ensurePermission(type, null);
     } catch (err) {
       console.warn('[Settings] permission tap failed', type, err);
-    }
-    // HealthKit: once iOS has a stored "denied", it never re-shows the picker.
-    // Deep-link to iOS Settings so the user can flip it back on. We can't
-    // jump directly to Privacy → Health, but app-settings: is the next-best.
-    if (type === 'health' && result === 'denied') {
-      showToast(t('settings.healthOpenSettings', 'Enable in iOS Settings → Privacy & Security → Health → TuGymPR'), 'info');
-      try { await CapApp.openUrl({ url: 'app-settings:' }); } catch {}
     }
     // Persist the canonical opt-in flag when health is newly granted from
     // Settings, so Onboarding's prefill flow + Recovery's connect CTA both
@@ -237,27 +240,7 @@ export default function MemberSettings() {
       }, () => {});
     }
     refreshPermissions();
-  }, [openExplainer, refreshPermissions, showToast, t, user?.id, refreshProfile]);
-
-  // Deep-link into the OS settings app for the current app. We can't grant
-  // permissions from JS once a user has denied them — only iOS/Android
-  // settings can. On web this is a no-op with toast.
-  const openAppSettings = useCallback(async () => {
-    try {
-      const platform = Capacitor.getPlatform();
-      if (platform === 'ios') {
-        await CapApp.openUrl({ url: 'app-settings:' });
-      } else if (platform === 'android') {
-        // Best-effort: open the app's settings page via package: scheme.
-        await CapApp.openUrl({ url: 'package:com.tugympr.app' });
-      } else {
-        showToast(t('settings.openSettingsFailed'), 'error');
-      }
-    } catch (err) {
-      console.error('[Settings] openAppSettings failed:', err);
-      showToast(t('settings.openSettingsFailed'), 'error');
-    }
-  }, [showToast, t]);
+  }, [openExplainer, refreshPermissions, user?.id, refreshProfile]);
 
   return (
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
@@ -637,9 +620,9 @@ export default function MemberSettings() {
             />
             <PermissionRow
               icon={Heart}
-              label={t('settings.permHealth')}
+              label={t('settings.permHealth', 'Apple Health')}
               status={permStatuses.health}
-              onClick={() => handlePermissionTap('health')}
+              onClick={() => navigate('/health-sync')}
             />
             <PermissionRow
               icon={CameraIcon}
@@ -786,6 +769,7 @@ export default function MemberSettings() {
       <PermissionExplainerModal
         open={!!permExplainerType}
         type={permExplainerType}
+        status={permExplainerType ? permStatuses[permExplainerType] : null}
         onAgree={handleExplainerAgree}
         onCancel={handleExplainerCancel}
       />

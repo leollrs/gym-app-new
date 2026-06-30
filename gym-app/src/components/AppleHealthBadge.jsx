@@ -52,8 +52,8 @@ export const AppleHealthSyncedChip = ({ label = 'Saved to Apple Health' }) => (
   </div>
 );
 
-/* ── "Powered by HealthKit" footer ─────────────────────────────────── */
-export const PoweredByHealthKit = ({ label = 'Powered by Apple HealthKit' }) => (
+/* ── "Works with Apple Health" footer (Apple-sanctioned wording) ─────── */
+export const PoweredByHealthKit = ({ label = 'Works with Apple Health' }) => (
   <div className="flex items-center justify-center gap-2 py-3">
     <AppleHealthIcon size={14} />
     <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>

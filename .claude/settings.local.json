@@ -11,7 +11,9 @@
       "Bash(ls /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/0260* /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/0261*)",
       "Bash(grep -l \"CREATE TABLE\" /Users/leollorens/Downloads/gym-app-new-main/gym-app/supabase/migrations/*.sql)",
       "WebFetch(domain:api.anthropic.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(ls -la ~/Downloads/tugympr-ceb888d11687.json 2>&1)",
+      "Read(//Users/leollorens/Downloads/**)"
     ]
   }
 }

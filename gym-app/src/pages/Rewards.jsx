@@ -698,63 +698,72 @@ const EarnedRewardQRModal = ({ reward, onClose, t, isEs }) => {
   }, []);
 
   const label = (isEs && reward.reward_label_es) ? reward.reward_label_es : reward.reward_label;
+  // reward_emoji is sometimes a plain word ("gift") rather than an emoji glyph —
+  // only show it if it's a real (non-ASCII) emoji, else fall back to 🎁.
+  const emoji = (reward.reward_emoji && [...String(reward.reward_emoji)].some((c) => c.codePointAt(0) > 0x7F)) ? reward.reward_emoji : '🎁';
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ fontFamily: FONT_BODY }}>
-      <div className="absolute inset-0 backdrop-blur-xl bg-black/60" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ fontFamily: FONT_BODY }}>
+      <div className="absolute inset-0 backdrop-blur-xl bg-black/70" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t('rewards.earnedRewardQRCode', 'Earned reward QR code')}
-        className="relative w-full max-w-sm mx-4 rounded-[22px] overflow-hidden animate-fade-in"
+        className="relative w-full max-w-[340px] rounded-[28px] overflow-hidden animate-fade-in"
+        style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 64px rgba(0,0,0,0.55)' }}
       >
         <button
           onClick={onClose}
           aria-label={t('rewards.closeQR', { defaultValue: 'Close QR' })}
-          className="absolute top-4 right-4 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-black/20 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+          className="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full transition-colors focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
+          style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
         >
-          <X size={18} />
+          <X size={17} />
         </button>
 
-        <div className="bg-[var(--color-accent)]/10 flex items-center justify-center gap-2 py-3">
-          <span className="text-[20px]">{reward.reward_emoji || '🎁'}</span>
-          <span
-            className="text-[13px] font-extrabold text-[var(--color-accent)]"
-            style={{ fontFamily: FONT_DISPLAY, letterSpacing: '0.3px', textTransform: 'uppercase' }}
+        {/* Header — emoji badge + reward name */}
+        <div className="flex flex-col items-center text-center pt-9 pb-6 px-7">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3"
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 16%, transparent)' }}
           >
+            <span className="text-[30px]" aria-hidden="true">{emoji}</span>
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--color-accent)' }}>
+            {t('rewards.rewardLabel', 'Reward')}
+          </p>
+          <p className="text-[19px] font-extrabold leading-tight mt-1" style={{ color: 'var(--color-text-primary)', fontFamily: FONT_DISPLAY }}>
             {label}
-          </span>
+          </p>
         </div>
 
-        <div className="bg-white flex flex-col items-center p-8" role="img" aria-label={t('rewards.earnedRewardQRCode', 'Earned reward QR code')}>
-          {signPending ? (
-            <div className="flex items-center justify-center" style={{ width: 220, height: 220 }} role="status">
-              <div
-                className="w-8 h-8 rounded-full animate-spin"
-                style={{ border: '3px solid #E5E7EB', borderTopColor: '#111827' }}
+        {/* QR on a clean white tile (white bg = reliable scanning) */}
+        <div className="flex items-center justify-center px-7" role="img" aria-label={t('rewards.earnedRewardQRCode', 'Earned reward QR code')}>
+          <div className="bg-white rounded-[20px] p-5" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.18)' }}>
+            {signPending ? (
+              <div className="flex items-center justify-center" style={{ width: 200, height: 200 }} role="status">
+                <div
+                  className="w-8 h-8 rounded-full animate-spin"
+                  style={{ border: '3px solid #E5E7EB', borderTopColor: '#111827' }}
+                />
+              </div>
+            ) : (
+              <QRCodeSVG
+                value={signedPayload || payload}
+                size={200}
+                level="H"
+                includeMargin={false}
+                bgColor="#FFFFFF"
+                fgColor="#000000"
               />
-            </div>
-          ) : (
-            <QRCodeSVG
-              value={signedPayload || payload}
-              size={220}
-              level="H"
-              includeMargin={false}
-              bgColor="#FFFFFF"
-              fgColor="#000000"
-            />
-          )}
-          <p className="text-[14px] font-mono font-bold text-gray-800 mt-4 tracking-widest">{reward.qr_code}</p>
+            )}
+          </div>
         </div>
 
-        <div className="bg-[var(--color-bg-card)] border-t border-[var(--color-border-subtle)] p-5">
-          <p className="text-[16px] font-extrabold text-[var(--color-text-primary)] text-center" style={{ fontFamily: FONT_DISPLAY }}>
-            {label}
-          </p>
-          <p className="text-[12px] text-[var(--color-text-muted)] text-center mt-1">
-            {t('rewards.showQrToStaff', 'Show this QR to staff to redeem.')}
-          </p>
-        </div>
+        {/* Footer */}
+        <p className="text-[12.5px] text-center px-7 pt-5 pb-8" style={{ color: 'var(--color-text-muted)' }}>
+          {t('rewards.showQrToStaff', 'Show this QR to staff to redeem.')}
+        </p>
       </div>
     </div>,
     document.body
@@ -1222,14 +1231,13 @@ const PunchPassHero = ({ card, payload, caption, t, onAddToWallet, walletLoading
             </button>
           )}
 
-          {/* Wallet button — punch-card passes are Apple .pkpass ONLY
-              (generate-punch-card-pass produces no Google pass), so only
-              offer it on iOS. On Android/web the member uses Show QR instead. */}
-          {platform === 'ios' && (
+          {/* Wallet button — iOS adds an Apple .pkpass, Android adds a Google
+              Wallet pass (both backed by the punch-card pass generators). */}
+          {(platform === 'ios' || platform === 'android') && (
             <button
               onClick={() => onAddToWallet(card)}
               disabled={walletLoading}
-              aria-label={t('rewards.appleWallet', 'Apple Wallet')}
+              aria-label={platform === 'ios' ? t('rewards.appleWallet', 'Apple Wallet') : t('rewards.googleWallet', 'Google Wallet')}
               className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-extrabold transition active:scale-95 disabled:opacity-40"
               style={{
                 background: 'rgba(255,255,255,0.08)',
@@ -1244,7 +1252,7 @@ const PunchPassHero = ({ card, payload, caption, t, onAddToWallet, walletLoading
               ) : (
                 <CreditCard size={13} />
               )}
-              {walletLoading ? t('rewards.adding') : t('rewards.appleWallet')}
+              {walletLoading ? t('rewards.adding') : (platform === 'ios' ? t('rewards.appleWallet', 'Apple Wallet') : t('rewards.googleWallet', 'Google Wallet'))}
             </button>
           )}
         </div>
@@ -1439,18 +1447,21 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
           completed: c.total_completed || 0,
         }));
 
-      const { data, error } = await supabase.functions.invoke(
-        'generate-punch-card-pass',
-        {
-          body: {
-            memberName: profile?.full_name || 'Member',
-            gymName: profile?.gym_name || 'TuGymPR',
-            punchCards: [thisCard, ...otherCards],
-            cardName: thisCard.name,
-          },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }
-      );
+      // iOS gets a native Apple .pkpass; Android/web gets a Google Wallet pass.
+      // generate-punch-card-pass is Apple-only, so route Android through the
+      // Google pass generator with the same punch-card data (kind: 'punchcard').
+      const fnName = platform === 'ios' ? 'generate-punch-card-pass' : 'generate-google-pass';
+      const reqBody = {
+        memberName: profile?.full_name || 'Member',
+        gymName: profile?.gym_name || 'TuGymPR',
+        punchCards: [thisCard, ...otherCards],
+        cardName: thisCard.name,
+        ...(platform === 'ios' ? {} : { kind: 'punchcard' }),
+      };
+      const { data, error } = await supabase.functions.invoke(fnName, {
+        body: reqBody,
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
 
       if (error) {
         // The supabase functions client wraps non-2xx responses; pull the body
