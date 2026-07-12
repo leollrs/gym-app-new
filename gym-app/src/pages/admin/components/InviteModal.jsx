@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
+import { inviteUrl as buildInviteUrl } from '../../../lib/appUrls';
 import { supabase } from '../../../lib/supabase';
 import AdminModal from '../../../components/admin/AdminModal';
 import PhoneInput from '../../../components/admin/PhoneInput';
@@ -37,7 +38,7 @@ export default function InviteModal({ gymId, onClose }) {
   const [sentVia, setSentVia] = useState(null);  // 'email' | 'phone'
 
   const inviteCode = result?.invite_code || '';
-  const inviteUrl = inviteCode ? `https://tugympr.app/invite/${inviteCode}` : '';
+  const inviteUrl = inviteCode ? buildInviteUrl(inviteCode) : '';
 
   const [sendMethod, setSendMethod] = useState('email'); // 'email' | 'phone'
   const fullName = composeFullName(nameParts);
@@ -104,7 +105,7 @@ export default function InviteModal({ gymId, onClose }) {
       // generated code (state isn't updated yet). Prefer the chosen channel, but
       // fall back to whichever contact was actually provided.
       const code = data?.invite_code || '';
-      const url = code ? `https://tugympr.app/invite/${code}` : '';
+      const url = code ? buildInviteUrl(code) : '';
       const autoChannel = (sendMethod === 'email' && email.trim()) || (sendMethod === 'phone' && phone.trim())
         ? sendMethod
         : (email.trim() ? 'email' : (phone.trim() ? 'phone' : null));

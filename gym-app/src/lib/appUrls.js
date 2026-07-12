@@ -29,6 +29,17 @@ export function trainerShareUrl(id) {
   return `${PROD_WEB_URL}/invite/t/${id || ''}`;
 }
 
+// Member invite link. Rides the `/invite/:code` universal link + web fallback,
+// both served from app.tugympr.com — the ONLY host in the app's iOS
+// associated-domains and Android assetlinks. Earlier builds hardcoded a dead
+// `tugympr.app` host, which is not app-link-associated, so those links never
+// opened the app AND never reached the working web /invite handler. Always
+// build invite links from PROD_WEB_URL so they deep-link (or web-fallback)
+// correctly.
+export function inviteUrl(code) {
+  return `${PROD_WEB_URL}/invite/${code || ''}`;
+}
+
 // Download-oriented share link. When a member shares a poster (workout, PR,
 // achievement, streak, monthly recap, cardio…) the link in the caption should
 // point a NON-user at downloading the app — not at the bare web app. This lands
