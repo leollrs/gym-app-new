@@ -6,6 +6,7 @@ import {
   ArrowLeft, AlertTriangle, TrendingUp, TrendingDown, Minus, ChevronRight, MoreHorizontal, MessageSquare,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
@@ -35,11 +36,14 @@ const fetchTrainerData = async (gymId) => {
 
   const results = await Promise.allSettled([
     supabase.from('profiles').select('id, full_name, username, created_at, checkin_photo_path, phone_number').eq('gym_id', gymId).eq('role', 'trainer'),
-    supabase.from('trainer_clients').select('trainer_id, client_id, is_active, notes, assigned_at').eq('gym_id', gymId),
+    // Page the growing per-gym sets — plain queries clamp at the ~1000-row
+    // max_rows cap, so the assign-member dropdown/search went blind past 1000
+    // members and per-trainer activity/retention math truncated. (Audit P2.)
+    selectAllRows((from, to) => supabase.from('trainer_clients').select('trainer_id, client_id, is_active, notes, assigned_at').eq('gym_id', gymId).range(from, to)),
     // 8-week (56d) completed-session history — drives the activity sparkbars/sparkline.
-    supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', fiftySixDaysAgo),
-    supabase.from('profiles').select('id, full_name, username').eq('gym_id', gymId).eq('role', 'member'),
-    supabase.from('churn_risk_scores').select('profile_id, score, risk_tier').eq('gym_id', gymId),
+    selectAllRows((from, to) => supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', fiftySixDaysAgo).range(from, to)),
+    selectAllRows((from, to) => supabase.from('profiles').select('id, full_name, username').eq('gym_id', gymId).eq('role', 'member').range(from, to)),
+    selectAllRows((from, to) => supabase.from('churn_risk_scores').select('profile_id, score, risk_tier').eq('gym_id', gymId).range(from, to)),
   ]);
 
   const extract = (r) => (r.status === 'fulfilled' ? r.value?.data ?? [] : []);
