@@ -4,6 +4,7 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { FadeIn, AdminPageShell } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import ProductsTab from './components/ProductsTab';
@@ -55,7 +56,7 @@ export default function AdminStore() {
       const [ordersRes, redemptionsRes, salesRes] = await Promise.all([
         supabase.from('member_purchases').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('is_free_reward', false).eq('status', 'approved'),
         supabase.from('member_purchases').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('is_free_reward', true).eq('status', 'approved'),
-        supabase.from('member_purchases').select('total_price').eq('gym_id', gymId).eq('is_free_reward', false).eq('status', 'approved').limit(2000),
+        selectAllRows((from, to) => supabase.from('member_purchases').select('total_price').eq('gym_id', gymId).eq('is_free_reward', false).eq('status', 'approved').range(from, to)),
       ]);
       const totalSales = (salesRes.data || []).reduce((sum, row) => {
         const n = parseFloat(row?.total_price);
