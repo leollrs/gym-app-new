@@ -9278,6 +9278,9 @@
   },
   "goals": {
     "title": "Metas",
+    "achievedToast": "Meta alcanzada",
+    "milestoneHitToast": "Hito alcanzado",
+    "milestoneBadge": "Hito",
     "addGoal": "Agregar Meta",
     "noGoalsYet": "Aún no hay metas",
     "setYourFirstGoal": "Establece tu primera meta",

@@ -9111,6 +9111,9 @@
   },
   "goals": {
     "title": "Goals",
+    "achievedToast": "Goal achieved",
+    "milestoneHitToast": "Milestone hit",
+    "milestoneBadge": "Milestone",
     "addGoal": "Add Goal",
     "noGoalsYet": "No goals set yet",
     "setYourFirstGoal": "Set your first goal",

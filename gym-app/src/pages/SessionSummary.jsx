@@ -17,6 +17,7 @@ import { localizeRoutineName } from '../lib/exerciseName';
 import { formatStatNumber } from '../lib/formatStatValue';
 import { analyzeAndAdapt, saveAdaptationSuggestions } from '../lib/programAdaptation';
 import { updateGoalsAfterWorkout } from '../lib/goalUpdater';
+import Confetti from '../components/Confetti';
 import { updateWorkoutSchedulePattern } from '../lib/workoutScheduleTracker';
 import { useDerivedStreak } from '../hooks/useDerivedStreak';
 
@@ -78,6 +79,24 @@ const SessionSummary = () => {
   const { t, i18n } = useTranslation('pages');
   const [visible, setVisible] = useState(false);
   const [newAchievements, setNewAchievements] = useState([]);
+  const [goalConfetti, setGoalConfetti] = useState(false);
+
+  // Celebrate goals/milestones that a workout just completed — confetti + a
+  // toast the moment it lands (the completion push fires separately via the
+  // fire_member_goal_completed DB trigger). Previously the achieved[] return
+  // was discarded, so a completed goal had no in-app moment.
+  const celebrateAchievedGoals = (achieved) => {
+    if (!achieved?.length) return;
+    setGoalConfetti(true);
+    setTimeout(() => setGoalConfetti(false), 3200);
+    achieved.forEach((g) => {
+      const isMs = g.is_milestone;
+      const label = isMs
+        ? t('goals.milestoneHitToast', { defaultValue: 'Milestone hit' })
+        : t('goals.achievedToast', { defaultValue: 'Goal achieved' });
+      showToast(`${isMs ? '🎯' : '🎉'} ${label}: ${g.title || ''}`.trim(), 'success');
+    });
+  };
   const [healthSynced, setHealthSynced] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // Per-PR share: holds the pr object for the currently-shareable PR.
@@ -415,6 +434,7 @@ const SessionSummary = () => {
           .then(adaptations => { if (adaptations) saveAdaptationSuggestions(adaptations); })
           .catch(() => {}),
         updateGoalsAfterWorkout(user.id, profile.gym_id, { totalVolume: totalVolume ?? 0, sessionPRs: prData })
+          .then(celebrateAchievedGoals)
           .catch(() => {}),
         updateWorkoutSchedulePattern(user.id, profile.gym_id)
           .catch(() => {}),
@@ -482,6 +502,7 @@ const SessionSummary = () => {
         paddingTop: 'env(safe-area-inset-top)',
       }}
     >
+      <Confetti active={goalConfetti} particleCount={90} duration={3200} />
       {newAchievements.length > 0 && (
         <AchievementToast
           achievements={newAchievements}

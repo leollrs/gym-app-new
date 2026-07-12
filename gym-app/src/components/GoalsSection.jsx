@@ -423,6 +423,11 @@ function GoalCard({ goal, onTap }) {
             : <Icon size={15} style={{ color }} strokeWidth={2.2} />}
         </div>
         <div className="flex-1 min-w-0">
+          {goal.is_milestone && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 8.5, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--color-accent)', marginBottom: 1 }}>
+              🎯 {t('goals.milestoneBadge', { defaultValue: 'Milestone' })}
+            </span>
+          )}
           <p className="text-[12px] leading-tight line-clamp-2" style={{ fontFamily: OB_DISPLAY, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>
             {goal.title}
           </p>

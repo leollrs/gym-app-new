@@ -145,32 +145,70 @@ export function detectConflicts(selections, { primaryGoal } = {}) {
  * NULL exercise_id as DISTINCT, so a plain upsert would DUPLICATE body_weight /
  * body_fat goals on a re-run. We match NULL-safely and update-or-insert per goal.
  */
+// NULL-safe upsert of one member_goals row keyed on
+// (profile_id, goal_type, exercise_id, is_milestone). Returns the row id so a
+// milestone can link to its parent. Idempotent — re-running updates in place.
+async function upsertMemberGoal(row) {
+  let q = supabase.from('member_goals').select('id')
+    .eq('profile_id', row.profile_id)
+    .eq('goal_type', row.goal_type)
+    .eq('is_milestone', row.is_milestone);
+  q = row.exercise_id ? q.eq('exercise_id', row.exercise_id) : q.is('exercise_id', null);
+  const { data: existing } = await q.maybeSingle();
+  if (existing?.id) {
+    const { error } = await supabase.from('member_goals').update(row).eq('id', existing.id);
+    return { id: existing.id, error };
+  }
+  const { data, error } = await supabase.from('member_goals').insert(row).select('id').maybeSingle();
+  return { id: data?.id || null, error };
+}
+
+// Clean value title — the is_milestone badge in the UI conveys "milestone",
+// and the completion/deadline notifications frame it in context.
+const milestoneTitle = (g) => `${g.milestone.value}${g.unit ? ` ${g.unit}` : ''}`;
+
 export async function persistOnboardingGoals(builtGoals, priorityMuscles, { profileId, gymId }) {
   if (!profileId || !gymId) return { error: new Error('missing profile/gym') };
   let firstError = null;
 
   for (const g of (builtGoals || [])) {
-    const row = {
+    const base = {
       profile_id: profileId,
       gym_id: gymId,
       exercise_id: g.exerciseId ?? null,
       goal_type: g.goalType,
-      target_value: g.targetValue,
-      current_value: g.startValue,
-      start_value: g.startValue,
       unit: g.unit ?? null,
-      title: g.title,
-      target_date: g.targetDate ?? null,
     };
     try {
-      let q = supabase.from('member_goals').select('id')
-        .eq('profile_id', profileId).eq('goal_type', g.goalType);
-      q = g.exerciseId ? q.eq('exercise_id', g.exerciseId) : q.is('exercise_id', null);
-      const { data: existing } = await q.maybeSingle();
-      const res = existing?.id
-        ? await supabase.from('member_goals').update(row).eq('id', existing.id)
-        : await supabase.from('member_goals').insert(row);
-      if (res.error && !firstError) firstError = res.error;
+      // Long-term (parent) goal.
+      const { id: parentId, error: pErr } = await upsertMemberGoal({
+        ...base,
+        is_milestone: false,
+        parent_goal_id: null,
+        target_value: g.targetValue,
+        current_value: g.startValue,
+        start_value: g.startValue,
+        title: g.title,
+        target_date: g.targetDate ?? null,
+      });
+      if (pErr && !firstError) firstError = pErr;
+
+      // Near-term milestone, linked to the parent (only for big goals — goalRealism
+      // returns null when the honest timeline is already short). Its own target +
+      // date, so goalUpdater completes it independently of the long-term goal.
+      if (g.milestone && parentId) {
+        const { error: mErr } = await upsertMemberGoal({
+          ...base,
+          is_milestone: true,
+          parent_goal_id: parentId,
+          target_value: g.milestone.value,
+          current_value: g.startValue,
+          start_value: g.startValue,
+          title: milestoneTitle(g),
+          target_date: g.milestone.date ?? null,
+        });
+        if (mErr && !firstError) firstError = mErr;
+      }
     } catch (err) {
       if (!firstError) firstError = err;
     }
