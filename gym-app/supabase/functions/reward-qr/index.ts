@@ -68,6 +68,35 @@ Deno.serve(async (req) => {
   // Service-role client for trusted lookups
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // ── Rate limit ─────────────────────────────────────────────
+  // Gate the 3-4 sequential DB round-trips below behind a per-caller cap so
+  // this endpoint can't be hammered. Generous (a member re-opening their reward
+  // QR is normal). Fail-OPEN on infra error — unlike the paid AI endpoints,
+  // blocking a member from their own QR on a transient error is worse than the
+  // rare abuse it would prevent.
+  try {
+    const RATE_LIMIT = 60; // per hour
+    const ENDPOINT = 'reward-qr';
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { error: rlErr } = await supabase.from('ai_rate_limits').insert({ profile_id: callerId, endpoint: ENDPOINT });
+    if (!rlErr) {
+      const { count } = await supabase
+        .from('ai_rate_limits')
+        .select('*', { count: 'exact', head: true })
+        .eq('profile_id', callerId)
+        .eq('endpoint', ENDPOINT)
+        .gte('created_at', oneHourAgo);
+      if ((count ?? 0) > RATE_LIMIT) {
+        return new Response(renderError('Too many requests. Try again later.'), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
+    }
+  } catch (rlEx) {
+    console.error('reward-qr rate-limit check failed (proceeding):', rlEx);
+  }
+
   // Look up the redemption
   const { data: redemption, error } = await supabase
     .from('reward_redemptions')
