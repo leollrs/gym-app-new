@@ -176,7 +176,13 @@ Deno.serve(async (req) => {
   const rawPayload = `gym-reward:${redemption.gym_id}:${redemption.profile_id}:${redemption.id}`;
   const timestamped = rawPayload + ':' + Date.now();
   const sig = await hmacSign(timestamped);
-  const qrValue = timestamped + ':' + sig;
+  // Signature MUST be joined with '|' (not ':') — the scanner (scanRouter.js)
+  // splits the signed payload on the last '|' as `payload:timestamp|signature`.
+  // Joining with ':' produced `gym-reward:...:sig` with no '|', which the router
+  // treated as an unsigned/failed QR and rejected ("Invalid QR — please refresh
+  // in the app"), so every emailed win-back reward QR was categorically
+  // unscannable. Check-in QRs already use '|' correctly.
+  const qrValue = timestamped + '|' + sig;
 
   const gymName = gym?.name || 'Your Gym';
   const format = url.searchParams.get('format');
