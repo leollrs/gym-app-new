@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { format, subDays, formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { exportCSV } from '../../lib/csvExport';
 import ChartTooltip from '../../components/ChartTooltip';
 import FadeIn from '../../components/platform/FadeIn';
@@ -83,14 +84,16 @@ export default function FeatureAdoption() {
       // per (gym, feature) with ever/recent counts. No more per-table reads,
       // no more silent RLS empties, no 5000-row caps.
       const [gymRes, adoptionRes, presenceRes, adminRes] = await Promise.all([
-        supabase.from('gyms').select('id, name, slug, is_active, created_at'),
+        selectAllRows((from, to) => supabase.from('gyms').select('id, name, slug, is_active, created_at').range(from, to)),
         supabase.rpc('platform_feature_adoption'),
-        supabase
+        // Paged — .limit(5000) clamped to 1000 by max_rows silently truncated
+        // fleet admin-presence, understating adoption aggregates.
+        selectAllRows((from, to) => supabase
           .from('admin_presence')
           .select('gym_id, profile_id, current_page, last_seen_at')
           .gte('last_seen_at', thirtyDaysAgo)
           .order('last_seen_at', { ascending: false })
-          .limit(5000),
+          .range(from, to)),
         supabase
           .from('profiles')
           .select('id, full_name, gym_id, role')
