@@ -278,7 +278,59 @@
     "programMeta": "{{days}}-day · {{minutes}} min · {{weeks}}-week program",
     "goToDashboard": "Let's go",
     "skip": "I'll set up later",
-    "weekN": "Week {{n}}"
+    "weekN": "Week {{n}}",
+    "programNameLabel": "Program name",
+    "programNamePlaceholder": "Name your program",
+    "resetName": "Reset"
+  },
+  "onboardingTargets": {
+    "title": "Your Targets",
+    "subtitle": "Pick what matters — we tailor your plan to it. Optional.",
+    "trigger": "Set specific targets",
+    "triggerSet": "Targets set — tap to edit",
+    "triggerSub": "Optional — tailor your plan to a weight, lift or muscle",
+    "current": "Current",
+    "target": "Target",
+    "skip": "Skip",
+    "save": "Save targets",
+    "band": {
+      "steady": "Steady",
+      "moderate": "Moderate",
+      "aggressive": "Aggressive"
+    },
+    "muscle": {
+      "chest": "Chest",
+      "back": "Back",
+      "shoulders": "Shoulders",
+      "arms": "Arms",
+      "legs": "Legs",
+      "glutes": "Glutes",
+      "core": "Core"
+    },
+    "emphasis": {
+      "title": "Muscle emphasis",
+      "sub": "Extra volume where you want it"
+    },
+    "bodyWeight": {
+      "title": "Target body weight",
+      "sub": "Where you want to be"
+    },
+    "bodyFat": {
+      "title": "Body fat %",
+      "sub": "If you track it"
+    },
+    "lifts": {
+      "title": "Target lifts",
+      "sub": "Numbers you want to hit"
+    },
+    "conflict": {
+      "fatLossButGaining": "Heads up: your goal is fat loss but your target weight is higher than now.",
+      "muscleGainButLosing": "Heads up: your goal is muscle gain but your target weight is lower than now."
+    },
+    "caption": {
+      "extra": "extra {{muscles}}",
+      "toward": "toward {{n}} lb"
+    }
   },
   "mealPlan": {
     "askTitle": "Want a weekly meal plan?",

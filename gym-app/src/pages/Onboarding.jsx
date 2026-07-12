@@ -15,7 +15,7 @@ import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
 import { generateProgramName, generateRoutineName } from '../lib/programNaming';
-import { buildOnboardingGoals, persistOnboardingGoals, mapGoalsForProgramGenerator, goalAnchoredName, whyThisPlanCaption } from '../lib/onboardingGoals';
+import { buildOnboardingGoals, persistOnboardingGoals, mapGoalsForProgramGenerator, goalAnchoredName } from '../lib/onboardingGoals';
 import { useOnboardingTargetsEnabled } from '../hooks/usePlatformFlags';
 import OnboardingTargets from '../components/OnboardingTargets';
 import { calculateMacros } from '../lib/macroCalculator';
@@ -876,6 +876,20 @@ const Onboarding = () => {
   // user see the program they were promised in the meta line, not just
   // "Week A / Week B".
   const [previewWeekIdx, setPreviewWeekIdx] = useState(0);
+
+  // Editable program name (Onboarding v2). `programName` is what the preview
+  // shows/edits; `generatedName` is the auto-name for the reset button;
+  // `programId` targets the generated_programs row for the persist-on-finish.
+  // A ref (not state) tracks "user edited it" so a background regeneration
+  // never clobbers a hand-typed name, and closures in async handlers stay fresh.
+  const [programName, setProgramName] = useState('');
+  const [generatedName, setGeneratedName] = useState('');
+  const [programId, setProgramId] = useState(null);
+  // `nameEdited` drives the reset button (reactive); `nameEditedRef` mirrors it
+  // for fresh reads inside async handlers (no stale closure). Set both together.
+  const [nameEdited, setNameEdited] = useState(false);
+  const nameEditedRef = useRef(false);
+  const markNameEdited = (v) => { nameEditedRef.current = v; setNameEdited(v); };
 
   const [showMealPlan, setShowMealPlan] = useState(false);
   const [mealPlanError, setMealPlanError] = useState('');
@@ -1748,7 +1762,7 @@ const Onboarding = () => {
       total_calendar_weeks: totalCalendarWeeks,
     };
 
-    const { error: progErr } = await supabase.from('generated_programs').insert({
+    const { data: insertedProg, error: progErr } = await supabase.from('generated_programs').insert({
       profile_id:       user.id,
       gym_id:           gymId,
       split_type:       result.split,
@@ -1757,7 +1771,7 @@ const Onboarding = () => {
       routines_a_count: N,
       duration_weeks:   DURATION_WEEKS,
       schedule_map:     scheduleMapData,
-    });
+    }).select('id').maybeSingle();
     if (progErr) console.warn('generated_programs insert failed:', progErr.message);
 
     // Seed workout_schedule with variant A only. The Workouts page resolves
@@ -1798,7 +1812,16 @@ const Onboarding = () => {
     return {
       routinesA: enrich(result.routinesA),
       routinesB: enrich(result.routinesB),
+      programId: insertedProg?.id || null,      // for editable-name persistence
+      programName: displayName,                  // generated (goal-anchored or creative)
     };
+  };
+
+  // Capture the generated program's id + name; keep a hand-edited name intact.
+  const applyGeneratedMeta = (r) => {
+    setProgramId(r.programId || null);
+    setGeneratedName(r.programName || '');
+    if (!nameEditedRef.current) setProgramName(r.programName || '');
   };
 
   // Consumer: applies UI state from the (possibly pre-warmed) cache.
@@ -1814,6 +1837,7 @@ const Onboarding = () => {
         setGeneratedRoutinesB(cached.routinesB);
         setPreviewRoutineIdx(0);
         setPreviewWeekIdx(0);
+        applyGeneratedMeta(cached);
         setShowGeneratePlan('done');
         return;
       }
@@ -1832,6 +1856,7 @@ const Onboarding = () => {
       setGeneratedRoutinesB(result.routinesB);
       setPreviewRoutineIdx(0);
       setPreviewWeekIdx(0);
+      applyGeneratedMeta(result);
       setShowGeneratePlan('done');
     } catch (err) {
       planCacheRef.current = { key: null, promise: null, result: null, error: err };
@@ -1922,6 +1947,23 @@ const Onboarding = () => {
   const formatIngredient = (ing) =>
     ing.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+  // Persist a hand-edited program name onto the generated program's
+  // schedule_map.display_name. No-op unless the user actually changed it.
+  // Non-fatal — a failure must never block finishing onboarding.
+  const persistProgramName = async () => {
+    const name = (programName || '').trim();
+    if (!nameEditedRef.current || !programId || !name || name === generatedName) return;
+    try {
+      const { data: row } = await supabase
+        .from('generated_programs').select('schedule_map').eq('id', programId).maybeSingle();
+      if (row?.schedule_map) {
+        await supabase.from('generated_programs')
+          .update({ schedule_map: { ...row.schedule_map, display_name: name.slice(0, 60) } })
+          .eq('id', programId);
+      }
+    } catch (e) { console.warn('persist program name failed (non-fatal)', e); }
+  };
+
   const handleSkipMealPlan = async () => {
     // See handleMealPlanDone — same ordering: DB write → optimistic local
     // flip via markOnboarded() (synchronous) → navigate → background
@@ -1934,6 +1976,7 @@ const Onboarding = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
+    await persistProgramName();
     navigate(consumeOnboardingRedirect(), { replace: true });
     refreshProfile?.()?.catch(() => {});
   };
@@ -2087,6 +2130,7 @@ const Onboarding = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
+    await persistProgramName();
     navigate(consumeOnboardingRedirect(), { replace: true });
     refreshProfile?.()?.catch(() => {});
   };
@@ -3900,13 +3944,59 @@ const Onboarding = () => {
               })}
             </div>
 
+            {/* Onboarding v2 editable program name — pre-filled with the goal-
+                anchored/creative name, editable, with a reset-to-suggested. */}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: OB.sub }}>
+                  {t('generatePlan.programNameLabel', 'Program name')}
+                </span>
+                {nameEdited && generatedName && (
+                  <button
+                    type="button"
+                    onClick={() => { setProgramName(generatedName); markNameEdited(false); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 800, color: OB.teal, padding: 0 }}
+                  >
+                    {t('generatePlan.resetName', 'Reset')}
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={programName}
+                maxLength={60}
+                onChange={(e) => { setProgramName(e.target.value); markNameEdited(true); }}
+                onBlur={() => { if (!(programName || '').trim()) { setProgramName(generatedName); markNameEdited(false); } }}
+                placeholder={generatedName || t('generatePlan.programNamePlaceholder', 'Name your program')}
+                aria-label={t('generatePlan.programNameLabel', 'Program name')}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: 12,
+                  background: OB.surface, border: `1.5px solid ${OB.line}`,
+                  fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 18,
+                  color: OB.ink, outline: 'none', letterSpacing: -0.3,
+                }}
+              />
+            </div>
+
             {/* Onboarding v2 "why this plan" caption — makes the tailoring visible
-                (the core retention lever). Only shows when targets were set. */}
+                (the core retention lever). Only shows when targets were set.
+                Assembled with t() so it's fully bilingual (goal · emphasis · toward). */}
             {(() => {
+              const sel = targetSelections;
+              if (!sel) return null;
               const goalKey = GOALS.find(g => g.value === data.primary_goal)?.key;
-              const caption = whyThisPlanCaption(targetSelections, {
-                primaryGoalLabel: goalKey ? t(`goal.${goalKey}.label`) : null,
-              });
+              const parts = [];
+              if (goalKey) parts.push(t(`goal.${goalKey}.label`));
+              const pm = sel.priorityMuscles || [];
+              if (pm.length) {
+                const muscles = pm.slice(0, 2).map(m => t(`onboardingTargets.muscle.${m.toLowerCase()}`, m).toLowerCase()).join(' & ');
+                parts.push(t('onboardingTargets.caption.extra', { defaultValue: 'extra {{muscles}}', muscles }));
+              }
+              const bwT = parseFloat(sel.bodyWeight?.target);
+              const topLift = (sel.lifts || []).map(l => parseFloat(l.target)).filter(n => Number.isFinite(n) && n > 0).sort((a, b) => b - a)[0];
+              const towardN = Number.isFinite(bwT) && bwT > 0 ? bwT : topLift;
+              if (towardN) parts.push(t('onboardingTargets.caption.toward', { defaultValue: 'toward {{n}} lb', n: towardN }));
+              const caption = parts.filter(Boolean).join(' · ');
               if (!caption) return null;
               return (
                 <div style={{
