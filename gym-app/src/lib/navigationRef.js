@@ -11,6 +11,38 @@ export function setNavigateFn(fn) {
   navigateFn = fn;
 }
 
+// ── Router-truth path + in-app back-stack depth ───────────────
+// On native the app runs under MemoryRouter, which never updates
+// `window.location` or `window.history`. So the Android hardware-back handler
+// in main.jsx cannot read the current route from window.location (it's frozen
+// at the static base → every page looked like a "main page" and the app
+// minimized on every back press), and `window.history.back()` was a no-op.
+// <NavBridge> in App.jsx feeds the live route + navigation type here so the
+// back handler can tell a sub-page from a tab and go back via the router.
+let currentPath = '/';
+let navDepth = 0;
+
+export function setCurrentPath(path) {
+  if (typeof path === 'string' && path) currentPath = path;
+}
+
+export function getCurrentPath() {
+  return currentPath;
+}
+
+// Called on every navigation with react-router's navigation type. Tracks how
+// deep we are in the in-app stack so back can distinguish "go back" from
+// "nothing to go back to → home".
+export function noteNavigation(navigationType) {
+  if (navigationType === 'PUSH') navDepth += 1;
+  else if (navigationType === 'POP') navDepth = Math.max(0, navDepth - 1);
+  // REPLACE leaves depth unchanged (it swaps the top of the stack).
+}
+
+export function canGoBackInApp() {
+  return navDepth > 0;
+}
+
 export function safeNavigate(to, options) {
   if (typeof navigateFn === 'function') {
     try {

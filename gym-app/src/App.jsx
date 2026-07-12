@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams, useNavigationType } from 'react-router-dom';
 import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
 import QRCodeModal from './components/QRCodeModal';
 import UpdateRequiredModal from './components/UpdateRequiredModal';
 import MaintenanceGate from './components/MaintenanceGate';
 import { startVersionCheck } from './lib/appVersionCheck';
-import { resolveAppSection } from './lib/appUrls';
+import { resolveAppSection, resolveSiriRoute } from './lib/appUrls';
 import './App.css';
 
 import { useAuth } from './contexts/AuthContext';
@@ -19,7 +19,7 @@ import { supabase } from './lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { WifiOff } from 'lucide-react';
 import { getQueue } from './lib/offlineQueue';
-import { setNavigateFn, safeReload } from './lib/navigationRef';
+import { setNavigateFn, safeReload, setCurrentPath, noteNavigation } from './lib/navigationRef';
 import useResumeEpoch from './hooks/useResumeEpoch';
 import { useFeatureEnabled } from './hooks/usePlatformFlags';
 
@@ -1133,6 +1133,17 @@ function App() {
     return () => setNavigateFn(null);
   }, [navigate]);
 
+  // ── Feed the live route + navigation type to navigationRef so the Android
+  // hardware-back handler (main.jsx) knows the REAL current path and in-app
+  // stack depth. Under MemoryRouter (native) window.location/window.history
+  // never update, so without this the back button backgrounded the app on
+  // every screen. ────────────────────────────────────────────
+  const navigationType = useNavigationType();
+  useEffect(() => {
+    setCurrentPath(location.pathname);
+    noteNavigation(navigationType);
+  }, [location, navigationType]);
+
   // ── App-version gate ────────────────────────────────────────
   // Fires the first RPC immediately on mount and then polls every 15 min.
   // The UpdateRequiredModal subscribes independently and paints a hard
@@ -1477,16 +1488,9 @@ function App() {
         return;
       }
 
-      const siriRoutes = {
-        'start-workout': '/record',
-        'check-in':      '/checkin',
-        // /checkin owns the member QR display — Profile never implemented showQR
-        'gym-card':      '/checkin',
-        'streak':        '/profile',
-        'log-food':      '/progress?tab=nutrition',
-      };
-
-      const target = siriRoutes[siriAction] || '/';
+      // Shared action→route map (SIRI_ROUTES in appUrls.js) — same source the
+      // native tugympr://siri/* handler uses, so web and native never drift.
+      const target = resolveSiriRoute(siriAction) || '/';
       navigate(target, { replace: true });
       return;
     }

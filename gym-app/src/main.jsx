@@ -9,7 +9,7 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 // with the real <PostHogProvider> once the @posthog/react chunk has loaded.
 import { Capacitor } from '@capacitor/core';
 import App from './App.jsx';
-import { resolveAppSection } from './lib/appUrls';
+import { resolveAppSection, resolveSiriRoute } from './lib/appUrls';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
@@ -22,7 +22,7 @@ import { initWatchListeners, onWatchMessage, syncRoutinesToWatch, syncUserContex
 import { getCached } from './lib/queryCache';
 import { applyCachedBranding } from './lib/branding';
 import { supabase } from './lib/supabase';
-import { safeNavigate } from './lib/navigationRef';
+import { safeNavigate, getCurrentPath, canGoBackInApp } from './lib/navigationRef';
 import { installAppResume, notifyBackground, notifyForeground } from './lib/appResume';
 import { hydrateFromDurable, flushToDurable, whenHydrated } from './lib/durableStorage';
 import i18n, { i18nPrimaryReady } from './i18n/i18n';
@@ -734,12 +734,17 @@ if (isNative) {
       '/', '/workouts', '/progress', '/community', // member tabs
       '/admin', '/trainer', '/platform/attention', // role homes
     ]);
-    CapApp.addListener('backButton', ({ canGoBack }) => {
-      const path = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+    CapApp.addListener('backButton', () => {
+      // Read the route from navigationRef (router truth), NOT window.location —
+      // under MemoryRouter (native) window.location is frozen at the static base,
+      // so every page looked like a main page and the app minimized on every back
+      // press. Likewise go back via the router (safeNavigate(-1)); window.history
+      // is never populated by MemoryRouter so history.back() was a no-op.
+      const path = (getCurrentPath() || '/').replace(/\/+$/, '') || '/';
       if (MAIN_PAGES.has(path)) {
         CapApp.minimizeApp();   // top-level page → background the app (Android convention)
-      } else if (canGoBack) {
-        window.history.back();  // sub-page → go back in-app
+      } else if (canGoBackInApp()) {
+        safeNavigate(-1);       // sub-page → go back in-app via the router
       } else {
         safeNavigate('/');      // deep-linked sub-page with no history → home, never exit
       }
@@ -816,6 +821,23 @@ if (isNative) {
         if (parsed.protocol === 'tugympr:' && parsed.host === 't') {
           const tid = parsed.pathname.replace(/^\/+/, '').split('/')[0];
           if (tid) window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/trainers/${tid}` } }));
+        }
+        // Siri Shortcuts (iOS AppIntents) open tugympr://siri/<action>. Map each
+        // action to its in-app route so the voice command actually lands
+        // somewhere — previously nothing handled these, so "Hey Siri, start my
+        // workout" just opened the app to the last screen and did nothing.
+        if (parsed.protocol === 'tugympr:' && parsed.host === 'siri') {
+          const action = parsed.pathname.replace(/^\/+/, '').split('/')[0];
+          const dest = resolveSiriRoute(action);
+          if (dest) window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: dest } }));
+        }
+        // tugympr://get?c=SECTION&id=ID — the "Open it" button on the public
+        // /get share-landing hands a shared item back to an installed app. Route
+        // the content-kind slug to its section (unknown → home) so an existing
+        // user lands inside the app instead of nowhere.
+        if (parsed.protocol === 'tugympr:' && parsed.host === 'get') {
+          const c = (parsed.searchParams.get('c') || '').toLowerCase();
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: resolveAppSection(c) } }));
         }
       } catch {}
     });

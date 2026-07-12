@@ -85,6 +85,25 @@ export function resolveAppSection(key) {
   return APP_SECTIONS[key] || APP_SECTIONS.home;
 }
 
+// ── Siri Shortcuts (iOS AppIntents) ─────────────────────────────────────────
+// Each Siri intent opens tugympr://siri/<action>. Single source of truth for
+// the action→route map, shared by the native URL handler (main.jsx appUrlOpen)
+// and the web reactive handler (App.jsx /siri/* path). Keep in sync with the
+// intents declared in ios/App/App/AppIntents.swift.
+export const SIRI_ROUTES = {
+  'start-workout': '/record',                 // PhoneStartWorkoutIntent
+  'check-in':      '/checkin',                 // PhoneCheckInIntent
+  'gym-card':      '/checkin',                 // PhoneShowGymCardIntent (QR card lives on /checkin)
+  'streak':        '/profile',                 // PhoneCheckStreakIntent (streak on profile header)
+  'log-food':      '/progress?tab=nutrition',  // PhoneLogNutritionIntent
+};
+
+// Resolve a Siri action slug to its in-app route. Unknown/blank → null so the
+// caller can decide (native no-ops; web falls back to home).
+export function resolveSiriRoute(action) {
+  return SIRI_ROUTES[action] || null;
+}
+
 // Smart deep link for emails/marketing that opens the native app on `section`.
 // Rides the already-CDN-propagated `/invite/*` applink (a fresh path prefix
 // would wait on Apple's ~daily AASA re-crawl), and the two-segment `/invite/go/*`

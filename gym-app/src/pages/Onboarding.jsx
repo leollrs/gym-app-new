@@ -454,6 +454,23 @@ function getDefaultDays(freq, closedDays) {
 const CORE_STEPS = 11;   // steps 0-10: invite → social (phone inserted at step 9)
 const TOTAL_STEPS = 13;  // + step 11 (Program) + step 12 (Nutrition)
 
+// A deep-link destination stashed before signup (a challenge/class/section QR
+// scanned while logged out, etc.) is saved in sessionStorage as
+// `postLoginRedirect`. PublicRoute only consumes it for ALREADY-onboarded
+// users — a brand-new signup routes to /onboarding first, so without this the
+// destination is dropped when onboarding finishes and sends the user home.
+// Validate + consume it here (same rules as PublicRoute); fall back to home.
+function consumeOnboardingRedirect() {
+  try {
+    const dest = sessionStorage.getItem('postLoginRedirect');
+    if (dest && dest.startsWith('/') && !dest.startsWith('//') && !dest.startsWith('/login')) {
+      sessionStorage.removeItem('postLoginRedirect');
+      return dest;
+    }
+  } catch { /* noop */ }
+  return '/';
+}
+
 // Step labels (for OB progress "SECTION" tag) + analytics names. The labels
 // here are i18n keys (under the `onboarding.stepLabels.*` namespace) — kept
 // in array order so STEP_LABELS[step] continues to work.
@@ -1875,7 +1892,7 @@ const Onboarding = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
-    navigate('/', { replace: true });
+    navigate(consumeOnboardingRedirect(), { replace: true });
     refreshProfile?.()?.catch(() => {});
   };
 
@@ -2028,7 +2045,7 @@ const Onboarding = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
-    navigate('/', { replace: true });
+    navigate(consumeOnboardingRedirect(), { replace: true });
     refreshProfile?.()?.catch(() => {});
   };
 
