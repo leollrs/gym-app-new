@@ -1,0 +1,199 @@
+/**
+ * onboardingGoals.js — turn the onboarding "Your Targets" selections into valid,
+ * trackable member_goals rows, and normalize them for the workout generator.
+ *
+ * Keeps all goal-construction logic OUT of the (already huge) Onboarding.jsx:
+ *   • buildOnboardingGoals(selections, context)   → pure: baselines, direction,
+ *       realistic target dates, near-term milestone (for display), titles.
+ *   • detectConflicts(selections, context)        → pure: inline coaching warnings.
+ *   • persistOnboardingGoals(goals, muscles, ctx) → idempotent DB write.
+ *   • mapGoalsForProgramGenerator(goals)          → shape the generator expects.
+ *
+ * Baselines at signup come from what the member just entered — their onboarding
+ * body weight and the current values captured per target — so this stays pure
+ * (no DB reads). A goal with NO baseline is NOT created (no misleading 0→target
+ * progress); the Targets UI collects current+target so a baseline always exists.
+ */
+
+import { supabase } from './supabase';
+import { realisticBand, milestone, DEFAULT_BAND } from './goalRealism';
+
+const UNIT = { body_weight: 'lb', body_fat: '%', lift_1rm: 'lb' };
+
+const numOrNull = (v) => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+function titleFor(goalType, { targetValue, startValue, exerciseName }) {
+  const up = targetValue > startValue;
+  if (goalType === 'body_weight') return up ? `Reach ${targetValue} lb` : `Cut to ${targetValue} lb`;
+  if (goalType === 'body_fat')    return `Reach ${targetValue}% body fat`;
+  if (goalType === 'lift_1rm')    return `${exerciseName || 'Lift'}: ${targetValue} lb`;
+  return `Goal: ${targetValue}`;
+}
+
+// Build one goal from a {current, target, band} selection + type/exercise.
+function buildOne({ goalType, exerciseId, exerciseName, current, target, band, fitnessLevel }) {
+  const startValue = numOrNull(current);
+  const targetValue = numOrNull(target);
+  // No baseline OR no target → don't create a tracked goal (would show a
+  // misleading percentage). The caller/UI is responsible for collecting both.
+  if (startValue == null || targetValue == null || startValue === targetValue) return null;
+
+  const selBand = band || DEFAULT_BAND;
+  const gap = targetValue - startValue;
+  const bands = realisticBand({ goalType, gap, fitnessLevel, exerciseName });
+  const targetDate = bands?.[selBand]?.date || null;
+  const ms = milestone({ goalType, startValue, targetValue, fitnessLevel, exerciseName, band: selBand });
+
+  return {
+    goalType,
+    exerciseId: exerciseId || null,
+    exerciseName: exerciseName || null,
+    title: titleFor(goalType, { targetValue, startValue, exerciseName }),
+    startValue,
+    targetValue,
+    currentValue: startValue,
+    unit: UNIT[goalType] || null,
+    band: selBand,
+    direction: gap > 0 ? 'up' : 'down',
+    targetDate,
+    milestone: ms, // display-only (near-term proximal target); not a separate DB row
+  };
+}
+
+/**
+ * selections shape (all optional — "pick what matters"):
+ *   {
+ *     priorityMuscles: string[],                        // muscle emphasis
+ *     bodyWeight: { current, target, band } | null,
+ *     bodyFat:    { current, target, band } | null,
+ *     lifts: [{ exerciseId, exerciseName, current, target, band }],
+ *   }
+ * context: { fitnessLevel, onboardingWeightLbs, primaryGoal }
+ *
+ * Returns an array of built goals (baseline-valid only).
+ */
+export function buildOnboardingGoals(selections, context = {}) {
+  const { fitnessLevel = 'intermediate', onboardingWeightLbs } = context;
+  const out = [];
+  if (!selections) return out;
+
+  if (selections.bodyWeight) {
+    const g = buildOne({
+      goalType: 'body_weight',
+      // Fall back to the weight they just entered in onboarding as the baseline.
+      current: selections.bodyWeight.current ?? onboardingWeightLbs,
+      target: selections.bodyWeight.target,
+      band: selections.bodyWeight.band,
+      fitnessLevel,
+    });
+    if (g) out.push(g);
+  }
+
+  if (selections.bodyFat) {
+    const g = buildOne({
+      goalType: 'body_fat',
+      current: selections.bodyFat.current,
+      target: selections.bodyFat.target,
+      band: selections.bodyFat.band,
+      fitnessLevel,
+    });
+    if (g) out.push(g);
+  }
+
+  for (const lift of (selections.lifts || [])) {
+    if (!lift?.exerciseId) continue;
+    const g = buildOne({
+      goalType: 'lift_1rm',
+      exerciseId: lift.exerciseId,
+      exerciseName: lift.exerciseName,
+      current: lift.current,
+      target: lift.target,
+      band: lift.band,
+      fitnessLevel,
+    });
+    if (g) out.push(g);
+  }
+
+  return out;
+}
+
+/**
+ * Lightweight coaching warnings for contradictory combos. Specific numeric
+ * targets still win (we don't block); the UI just surfaces the warning.
+ * Returns an array of stable i18n-friendly keys.
+ */
+export function detectConflicts(selections, { primaryGoal } = {}) {
+  const warnings = [];
+  const bw = selections?.bodyWeight;
+  const cur = numOrNull(bw?.current);
+  const tgt = numOrNull(bw?.target);
+  if (cur != null && tgt != null && cur !== tgt) {
+    const gaining = tgt > cur;
+    if (primaryGoal === 'fat_loss' && gaining) warnings.push('fatLossButGaining');
+    if (primaryGoal === 'muscle_gain' && !gaining) warnings.push('muscleGainButLosing');
+  }
+  return warnings;
+}
+
+/**
+ * Persist built goals to member_goals (idempotent) + save priority_muscles.
+ *
+ * Idempotency: member_goals' UNIQUE(profile_id, goal_type, exercise_id) treats a
+ * NULL exercise_id as DISTINCT, so a plain upsert would DUPLICATE body_weight /
+ * body_fat goals on a re-run. We match NULL-safely and update-or-insert per goal.
+ */
+export async function persistOnboardingGoals(builtGoals, priorityMuscles, { profileId, gymId }) {
+  if (!profileId || !gymId) return { error: new Error('missing profile/gym') };
+  let firstError = null;
+
+  for (const g of (builtGoals || [])) {
+    const row = {
+      profile_id: profileId,
+      gym_id: gymId,
+      exercise_id: g.exerciseId ?? null,
+      goal_type: g.goalType,
+      target_value: g.targetValue,
+      current_value: g.startValue,
+      start_value: g.startValue,
+      unit: g.unit ?? null,
+      title: g.title,
+      target_date: g.targetDate ?? null,
+    };
+    try {
+      let q = supabase.from('member_goals').select('id')
+        .eq('profile_id', profileId).eq('goal_type', g.goalType);
+      q = g.exerciseId ? q.eq('exercise_id', g.exerciseId) : q.is('exercise_id', null);
+      const { data: existing } = await q.maybeSingle();
+      const res = existing?.id
+        ? await supabase.from('member_goals').update(row).eq('id', existing.id)
+        : await supabase.from('member_goals').insert(row);
+      if (res.error && !firstError) firstError = res.error;
+    } catch (err) {
+      if (!firstError) firstError = err;
+    }
+  }
+
+  // priority_muscles (additive TEXT[] column on member_onboarding). Empty → null.
+  if (Array.isArray(priorityMuscles)) {
+    const { error } = await supabase
+      .from('member_onboarding')
+      .update({ priority_muscles: priorityMuscles.length ? priorityMuscles : null })
+      .eq('profile_id', profileId);
+    if (error && !firstError) firstError = error;
+  }
+
+  return { error: firstError };
+}
+
+/**
+ * Normalize built goals to the minimal shape generateProgram(onboarding, goals)
+ * reads: it only looks at goal_type === 'lift_1rm' && exercise_id to boost the
+ * matching lifts (+1 set / prefer the exercise). Body-comp goals correctly pass
+ * through as no-ops for the generator; muscle emphasis rides priority_muscles.
+ */
+export function mapGoalsForProgramGenerator(builtGoals) {
+  return (builtGoals || []).map((g) => ({ goal_type: g.goalType, exercise_id: g.exerciseId ?? null }));
+}

@@ -16,7 +16,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
-export const PLATFORM_FLAG_KEYS = ['referrals', 'classes', 'social', 'messaging', 'qr', 'challenges', 'nutrition', 'ai'];
+export const PLATFORM_FLAG_KEYS = ['referrals', 'classes', 'social', 'messaging', 'qr', 'challenges', 'nutrition', 'ai', 'onboarding_targets'];
 
 const ALL_ENABLED = Object.freeze(
   Object.fromEntries(PLATFORM_FLAG_KEYS.map((k) => [k, true]))
@@ -67,4 +67,17 @@ export function useFeatureEnabled(key) {
   const { flags, isLoading } = usePlatformFlags();
   if (isLoading) return true;
   return flags?.[key] !== false;
+}
+
+/**
+ * Onboarding v2 "Your Targets" gate — fail-CLOSED (dark launch), unlike the
+ * fail-open kill switches above. OFF while flags load AND unless explicitly
+ * enabled (migration 0615 seeds feature_onboarding_targets=false), so this
+ * unproven, high-stakes first-impression step never flashes on before the
+ * founder turns it on from Operations. (A total flags-RPC failure still falls
+ * back to ALL_ENABLED like every flag — acceptable for a skippable step.)
+ */
+export function useOnboardingTargetsEnabled() {
+  const { flags, isLoading } = usePlatformFlags();
+  return !isLoading && flags?.onboarding_targets === true;
 }
