@@ -1764,7 +1764,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
           <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.08em' }}>
             {t('nutrition.yourTargets', 'Your targets')}
           </div>
-          <div className="rounded-[18px] p-4 mb-3" style={{ background: `${TU.accent}08`, border: `1px solid ${TU.accent}18` }}>
+          <div className="rounded-[18px] p-4 mb-3" style={{ background: `color-mix(in srgb, ${TU.accent} 3%, transparent)`, border: `1px solid color-mix(in srgb, ${TU.accent} 9%, transparent)` }}>
             <div className="flex items-baseline justify-between mb-3.5">
               <div className="flex items-baseline gap-2">
                 <span style={{ fontFamily: TU.display, fontSize: 40, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -2, lineHeight: 1 }}>{kcal}</span>

@@ -213,7 +213,7 @@ export default function CheckIn() {
                   <div key={c.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-[var(--color-surface-hover)] transition-colors duration-200">
                     <div
                       className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: `${METHOD_COLORS[c.method] ?? 'var(--color-text-muted)'}18` }}
+                      style={{ background: `color-mix(in srgb, ${METHOD_COLORS[c.method] ?? 'var(--color-text-muted)'} 9%, transparent)` }}
                     >
                       <MapPin size={14} style={{ color: METHOD_COLORS[c.method] ?? 'var(--color-text-muted)' }} />
                     </div>
