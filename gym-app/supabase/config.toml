@@ -407,6 +407,18 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.health-check]
 verify_jwt = false
 
+# Account deletion is a PUBLIC, no-login flow (Google Play "delete your account
+# without signing in" requirement). Both functions secure themselves internally
+# via an emailed confirmation token — they must NOT sit behind the JWT gate, or
+# the public deletion form gets a 401. Without these stanzas a `supabase
+# functions deploy` re-gates them behind verify_jwt=true and silently breaks the
+# flow (Audit-2, Phase A + E).
+[functions.request-account-deletion]
+verify_jwt = false
+
+[functions.confirm-account-deletion]
+verify_jwt = false
+
 # [experimental.pgdelta]
 # When enabled, pg-delta becomes the active engine for supported schema flows.
 # enabled = false
