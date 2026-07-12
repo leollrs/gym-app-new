@@ -197,3 +197,48 @@ export async function persistOnboardingGoals(builtGoals, priorityMuscles, { prof
 export function mapGoalsForProgramGenerator(builtGoals) {
   return (builtGoals || []).map((g) => ({ goal_type: g.goalType, exercise_id: g.exerciseId ?? null }));
 }
+
+/**
+ * A short, goal-anchored program name from the member's targets — the MISSION,
+ * not the split. "The 160 Build" / "Cut to 175" / "225 Club" / "Arms Build".
+ * Feels personal in a way "1RM Push/Pull/Legs" never does. Returns null when
+ * there's no specific signal (caller falls back to the creative name pool).
+ */
+export function goalAnchoredName(selections, { primaryGoal } = {}) {
+  if (!selections) return null;
+  const bwT = numOrNull(selections.bodyWeight?.target);
+  const bwC = numOrNull(selections.bodyWeight?.current);
+  if (bwT != null) {
+    const up = bwC != null ? bwT > bwC : primaryGoal !== 'fat_loss';
+    return up ? `The ${bwT} Build` : `Cut to ${bwT}`;
+  }
+  const topLift = (selections.lifts || [])
+    .map((l) => numOrNull(l.target)).filter(Boolean).sort((a, b) => b - a)[0];
+  if (topLift) return `${topLift} Club`;
+  const bfT = numOrNull(selections.bodyFat?.target);
+  if (bfT != null) return `Lean ${bfT}%`;
+  const m = (selections.priorityMuscles || [])[0];
+  if (m) return `${m} Build`;
+  return null;
+}
+
+/**
+ * One-line "why this plan" caption for the program preview — makes the tailoring
+ * VISIBLE (the plan's core retention lever). e.g. "Muscle gain · extra arms &
+ * chest · toward 160 lb". Returns null when there's nothing specific to say.
+ */
+export function whyThisPlanCaption(selections, { primaryGoalLabel } = {}) {
+  if (!selections) return null;
+  const parts = [];
+  if (primaryGoalLabel) parts.push(primaryGoalLabel);
+  if (selections.priorityMuscles?.length) {
+    parts.push(`extra ${selections.priorityMuscles.slice(0, 2).map((m) => m.toLowerCase()).join(' & ')}`);
+  }
+  const bwT = numOrNull(selections.bodyWeight?.target);
+  if (bwT != null) parts.push(`toward ${bwT} lb`);
+  else {
+    const topLift = (selections.lifts || []).map((l) => numOrNull(l.target)).filter(Boolean).sort((a, b) => b - a)[0];
+    if (topLift) parts.push(`toward ${topLift} lb`);
+  }
+  return parts.length ? parts.join(' · ') : null;
+}

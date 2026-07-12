@@ -5,6 +5,7 @@ import {
   Sun, Sunrise, Moon, Sparkles, Trophy, Pin, Camera, Activity,
   Shield, BarChart3, Gift, X, Users, AlertTriangle, Loader2,
   UtensilsCrossed, Search, ExternalLink, Sprout, Smartphone, ChevronDown, LogOut,
+  Target,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
@@ -14,6 +15,9 @@ import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
 import { generateProgramName, generateRoutineName } from '../lib/programNaming';
+import { buildOnboardingGoals, persistOnboardingGoals, mapGoalsForProgramGenerator, goalAnchoredName } from '../lib/onboardingGoals';
+import { useOnboardingTargetsEnabled } from '../hooks/usePlatformFlags';
+import OnboardingTargets from '../components/OnboardingTargets';
 import { calculateMacros } from '../lib/macroCalculator';
 import { generateWeekPlan } from '../lib/mealPlanner';
 // MEALS (~280 KB raw across 6 meal-category files) is lazy-loaded on first
@@ -672,6 +676,12 @@ const Onboarding = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const [onboardingDone, setOnboardingDone] = useState(false);
+  // Onboarding v2 "Your Targets" (dark feature flag). Additive overlay off the
+  // Primary-Goal step — no step renumbering. targetSelections feeds the goal
+  // service + generator at handleFinish.
+  const targetsEnabled = useOnboardingTargetsEnabled();
+  const [targetSelections, setTargetSelections] = useState(null);
+  const [showTargets, setShowTargets] = useState(false);
   // Age is derived from profiles.date_of_birth (mandatory at signup) — when
   // present the age input is locked to the computed value.
   const [ageFromDob, setAgeFromDob] = useState(false);
@@ -894,6 +904,8 @@ const Onboarding = () => {
     age: data.age,
     workout_duration_min: data.workout_duration_min,
     preferred_training_days: data.preferred_training_days,
+    initial_weight_lbs: data.initial_weight_lbs,          // lb baseline for goal building
+    target_selections: targetSelections,                  // Onboarding v2 "Your Targets"
   });
 
   // Input key for cache invalidation — any change here invalidates.
@@ -901,6 +913,7 @@ const Onboarding = () => {
     data.fitness_level, data.primary_goal, data.training_days_per_week,
     data.available_equipment, data.injury_areas, data.sex, data.age,
     data.workout_duration_min, data.preferred_training_days,
+    targetSelections,  // regenerate when the member changes their Targets
   ]);
 
   const buildMealSnapshot = () => ({
@@ -1553,9 +1566,31 @@ const Onboarding = () => {
       sex: snapshot.sex || 'male',
       age: snapshot.age ? parseInt(snapshot.age) : 30,
       workout_duration_min: snapshot.workout_duration_min || 60,
+      // Onboarding v2: muscle emphasis biases slot selection + gives +1 set.
+      priority_muscles: snapshot.target_selections?.priorityMuscles || [],
     };
 
-    const result = generateProgram(onboardingForGenerator);
+    // Onboarding v2: turn the member's specific targets into real, trackable
+    // member_goals (+ priority_muscles) and feed the lift goals into the
+    // generator so the plan visibly reflects them. Non-fatal — a failure here
+    // must never block plan generation (goals are a bonus on top of the plan).
+    let genGoals = [];
+    const targets = snapshot.target_selections;
+    if (targets && gymId) {
+      const builtGoals = buildOnboardingGoals(targets, {
+        fitnessLevel: onboardingForGenerator.fitness_level,
+        onboardingWeightLbs: snapshot.initial_weight_lbs ? parseFloat(snapshot.initial_weight_lbs) : undefined,
+        primaryGoal: onboardingForGenerator.primary_goal,
+      });
+      try {
+        await persistOnboardingGoals(builtGoals, targets.priorityMuscles || [], { profileId: user.id, gymId });
+      } catch (e) {
+        console.warn('persistOnboardingGoals failed (non-fatal)', e);
+      }
+      genGoals = mapGoalsForProgramGenerator(builtGoals);
+    }
+
+    const result = generateProgram(onboardingForGenerator, genGoals);
 
     const startDate = new Date();
     startDate.setSeconds(startDate.getSeconds() - 5);
@@ -1682,11 +1717,18 @@ const Onboarding = () => {
     const usedProgramNames = (priorPrograms || [])
       .map((p) => p.schedule_map?.display_name)
       .filter(Boolean);
-    const displayName = generateProgramName(
-      result.split,
-      snapshot.primary_goal || 'general_fitness',
-      usedProgramNames,
-    );
+    // Onboarding v2: prefer a short, goal-anchored name ("The 160 Build") when
+    // the member set a specific target — feels personal vs. "1RM Push/Pull/Legs".
+    // Fall back to the creative pool when there's no specific goal or the anchored
+    // name collides with a program they already have.
+    const anchored = goalAnchoredName(snapshot.target_selections, { primaryGoal: snapshot.primary_goal });
+    const displayName = (anchored && !usedProgramNames.includes(anchored))
+      ? anchored
+      : generateProgramName(
+          result.split,
+          snapshot.primary_goal || 'general_fitness',
+          usedProgramNames,
+        );
 
     const scheduleMapData = {
       display_name:    displayName,
@@ -2529,6 +2571,39 @@ const Onboarding = () => {
               );
             })}
           </div>
+        )}
+
+        {/* Onboarding v2 "Your Targets" trigger — flag-gated, shows once a goal
+            is picked. Opens the skippable Targets overlay. */}
+        {step === 3 && targetsEnabled && !!data.primary_goal && (
+          <button
+            type="button"
+            onClick={() => setShowTargets(true)}
+            style={{
+              marginTop: 12, width: '100%', padding: '14px 16px', borderRadius: 16,
+              background: targetSelections ? 'rgba(46,196,196,0.10)' : OB.surface,
+              border: `1.5px dashed ${targetSelections ? OB.teal : OB.line}`,
+              display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <div style={{
+              width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+              background: 'rgba(46,196,196,0.14)', color: OB.teal,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Target size={20} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14.5, color: OB.ink }}>
+                {targetSelections
+                  ? t('onboardingTargets.triggerSet', 'Targets set — tap to edit')
+                  : t('onboardingTargets.trigger', 'Set specific targets')}
+              </div>
+              <div style={{ fontSize: 12, color: OB.sub, marginTop: 1 }}>
+                {t('onboardingTargets.triggerSub', 'Optional — tailor your plan to a weight, lift or muscle')}
+              </div>
+            </div>
+          </button>
         )}
 
         {/* ══════════════════════════════════════════════════════
@@ -4477,6 +4552,23 @@ const Onboarding = () => {
         )}
 
       </div>{/* /container */}
+
+      {/* Onboarding v2 "Your Targets" overlay (top-level so its fixed position
+          is viewport-relative). Flag-gated at the trigger. */}
+      {showTargets && (
+        <OnboardingTargets
+          t={t}
+          initial={targetSelections}
+          context={{
+            fitnessLevel: data.fitness_level || 'intermediate',
+            onboardingWeightLbs: data.initial_weight_lbs ? parseFloat(data.initial_weight_lbs) : undefined,
+            primaryGoal: data.primary_goal,
+            liftBaselines: data.known_maxes || {},
+          }}
+          onClose={() => setShowTargets(false)}
+          onSave={(sel) => { setTargetSelections(sel); setShowTargets(false); }}
+        />
+      )}
 
       {/* Privacy Policy Modal */}
       {showPrivacyModal && (
