@@ -12,6 +12,7 @@ import EmptyState from '../../components/EmptyState';
 // recharts removed — using CSS bar chart
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { getUserPoints } from '../../lib/rewardsEngine';
@@ -123,12 +124,15 @@ export default function ProgressOverview() {
           .select('id', { count: 'exact', head: true })
           .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
           .eq('status', 'accepted'),
-        // Total volume
-        supabase
+        // Total volume — page the full set (an uncapped select understates the
+        // lifetime sum once a member crosses the ~1000-row PostgREST cap).
+        selectAllRows((from, to) => supabase
           .from('workout_sessions')
           .select('total_volume_lbs')
           .eq('profile_id', user.id)
-          .eq('status', 'completed'),
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: true })
+          .range(from, to)),
         // This week's cardio sessions (counted toward Sessions stat + cardio summary)
         supabase
           .from('cardio_sessions')

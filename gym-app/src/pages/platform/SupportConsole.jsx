@@ -230,11 +230,15 @@ export default function SupportConsole() {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const [sessionsRes, recentSessionsRes, checkInsRes, streakRes, churnRes] = await Promise.all([
-      supabase
+      // Page the full set — Total Sessions / Total Volume are counted/summed
+      // in-memory, so an uncapped select read wrong (capped ~1000) for power users.
+      selectAllRows((from, to) => supabase
         .from('workout_sessions')
         .select('id, started_at, duration_seconds, total_volume_lbs, status')
         .eq('profile_id', member.id)
-        .eq('status', 'completed'),
+        .eq('status', 'completed')
+        .order('started_at', { ascending: true })
+        .range(from, to)),
       supabase
         .from('workout_sessions')
         .select('id, started_at, duration_seconds, total_volume_lbs')
