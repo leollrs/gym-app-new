@@ -1189,11 +1189,14 @@ function TemplatePreview({ templateId, t }) {
   const { data: exercises = [], isLoading } = useQuery({
     queryKey: ['trainer', 'template-exercises', templateId],
     queryFn: async () => {
+      // Columns are target_sets/target_reps/position — NOT sets/reps/order_index.
+      // The old names errored in PostgREST, so this preview silently returned []
+      // (trainer saw an empty template every time).
       const { data } = await supabase
         .from('routine_exercises')
-        .select('id, sets, reps, exercises(name)')
+        .select('id, target_sets, target_reps, exercises(name)')
         .eq('routine_id', templateId)
-        .order('order_index');
+        .order('position');
       return data || [];
     },
     enabled: !!templateId,
@@ -1209,7 +1212,7 @@ function TemplatePreview({ templateId, t }) {
         <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: TT.surface, borderRadius: 10, border: `1px solid ${TT.border}` }}>
           <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute, width: 16, textAlign: 'right' }}>{i + 1}.</span>
           <span style={{ flex: 1, fontSize: 12, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ex.exercises?.name || t('trainerClasses.unknown')}</span>
-          <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute }}>{ex.sets}x{ex.reps}</span>
+          <span style={{ fontFamily: TFont.mono, fontSize: 10, color: TT.textMute }}>{ex.target_sets}x{ex.target_reps}</span>
         </div>
       ))}
       {exercises.length === 0 && (

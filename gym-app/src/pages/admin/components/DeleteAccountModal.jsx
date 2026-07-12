@@ -9,7 +9,7 @@ import logger from '../../../lib/logger';
  * Delete-account confirmation modal for AdminProfile. Owns its own input,
  * deleting-state, and body-scroll-lock effect so the parent doesn't have to
  * thread them through. Guards against the last admin deleting themselves by
- * counting remaining admins in the gym before calling `delete_own_account`.
+ * counting remaining admins in the gym before calling `delete_user_account`.
  */
 export default function DeleteAccountModal({ isOpen, onClose, gymId, signOut }) {
   const { t, i18n } = useTranslation('pages');
@@ -56,7 +56,12 @@ export default function DeleteAccountModal({ isOpen, onClose, gymId, signOut }) 
         setDeleting(false);
         return;
       }
-      await supabase.rpc('delete_own_account');
+      // delete_user_account() erases the CALLER's own account + all their data
+      // (operates on auth.uid(), role-agnostic) — the same working RPC the
+      // member flow uses. The previous `delete_own_account` RPC never existed,
+      // so admin self-deletion silently failed (an Apple/Google store requirement).
+      const { error: delErr } = await supabase.rpc('delete_user_account');
+      if (delErr) throw delErr;
       await signOut();
     } catch (err) {
       logger.error('Account deletion failed', err);
