@@ -1233,7 +1233,7 @@ export default function AdminChurn() {
                                 {t('admin.churn.lastAttempt', 'Last attempt')}: {formatDistanceToNow(new Date(row.last.created_at), { addSuffix: true, ...dateFnsLocaleOpt })}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap" style={{ color: lastOutcomeCfg.color, background: lastOutcomeCfg.bg, borderColor: `${lastOutcomeCfg.color}33` }}>
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap" style={{ color: lastOutcomeCfg.color, background: lastOutcomeCfg.bg, borderColor: `color-mix(in srgb, ${lastOutcomeCfg.color} 20%, transparent)` }}>
                                   {t(lastOutcomeCfg.i18nKey)}
                                 </span>
                                 {row.returned > 0 && (
@@ -1505,7 +1505,7 @@ export default function AdminChurn() {
                           </div>
                         )}
                       </div>
-                      <span className="text-[10px] font-semibold px-2 py-1 rounded-full border whitespace-nowrap flex-shrink-0" style={{ color: outcomeCfg.color, background: outcomeCfg.bg, borderColor: `${outcomeCfg.color}33` }}>
+                      <span className="text-[10px] font-semibold px-2 py-1 rounded-full border whitespace-nowrap flex-shrink-0" style={{ color: outcomeCfg.color, background: outcomeCfg.bg, borderColor: `color-mix(in srgb, ${outcomeCfg.color} 20%, transparent)` }}>
                         {t(outcomeCfg.i18nKey)}
                       </span>
                     </div>
