@@ -2149,6 +2149,7 @@
     "viewMode": "View mode",
     "viewBody": "Visual",
     "viewList": "List",
+    "viewCompact": "Names list",
     "muscle": "Muscle",
     "allOfGroup": "All of",
     "countExercises": "{{count}} exercises",

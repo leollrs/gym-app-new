@@ -10,7 +10,7 @@ import ExerciseMuscleHighlight from '../components/ExerciseMuscleHighlight';
 import MuscleGroupPicker from '../components/MuscleGroupPicker';
 import { MUSCLE_BUCKET_BY_ID, bucketGroup } from '../lib/muscleBuckets';
 import { goalAdjustedDefaults, formatRest } from '../lib/goalAdjustedDefaults';
-import { LayoutList, User } from 'lucide-react';
+import { LayoutList, User, AlignJustify } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
@@ -1185,13 +1185,18 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
   // Persist the user's last choice between sessions so power users who
   // prefer the list aren't fighting the toggle every visit.
   const [viewMode, setViewMode] = useState(() => {
-    try { return localStorage.getItem('exerciseLibrary.viewMode') === 'body' ? 'body' : 'list'; }
-    catch { return 'list'; }
+    try {
+      const saved = localStorage.getItem('exerciseLibrary.viewMode');
+      return (saved === 'body' || saved === 'compact') ? saved : 'list';
+    } catch { return 'list'; }
   });
   useEffect(() => {
     try { localStorage.setItem('exerciseLibrary.viewMode', viewMode); } catch {}
   }, [viewMode]);
   const [pickedBucket, setPickedBucket] = useState(null);
+  // Compact (names-only) view: tapping a name opens the same detail modal the
+  // card view uses (ExerciseCard in modalOnly mode).
+  const [compactDetailEx, setCompactDetailEx] = useState(null);
   const [expandToGroup, setExpandToGroup] = useState(false);
 
   useEffect(() => {
@@ -1349,6 +1354,19 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             </button>
             <button
               type="button"
+              onClick={() => setViewMode('compact')}
+              aria-label={t('exerciseLibrary.viewCompact', 'Names list')}
+              aria-pressed={viewMode === 'compact'}
+              className="px-2.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
+              style={{
+                background: viewMode === 'compact' ? 'var(--color-bg-card)' : 'transparent',
+                color: viewMode === 'compact' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+              }}
+            >
+              <AlignJustify size={13} />
+            </button>
+            <button
+              type="button"
               onClick={() => setViewMode('body')}
               aria-label={t('exerciseLibrary.viewBody', 'Body view')}
               aria-pressed={viewMode === 'body'}
@@ -1430,6 +1448,57 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
           </div>
         )}
       </div>
+      )}
+
+      {/* Compact names-only view — dense tappable rows, no video/cards. Tapping a
+          name opens the same detail modal the card view uses (or selects it in
+          routine-builder pick mode). */}
+      {viewMode === 'compact' && (
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border-subtle)' }}>
+          {sorted.map((ex, i) => (
+            <button
+              key={ex.id}
+              type="button"
+              onClick={() => { if (selectable) onSelect?.(ex); else setCompactDetailEx(ex); }}
+              className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition-colors active:opacity-70"
+              style={{
+                background: 'var(--color-bg-card)',
+                borderTop: i > 0 ? '1px solid var(--color-border-subtle)' : 'none',
+              }}
+            >
+              <span className="text-[14px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+                {exName(ex)}
+              </span>
+              <span className="text-[11px] font-semibold flex-shrink-0" style={{ color: getMuscleColor(ex.muscle) }}>
+                {t(`muscleGroups.${ex.muscle}`, ex.muscle)}
+              </span>
+            </button>
+          ))}
+
+          {sorted.length === 0 && (
+            <div className="text-center py-20" style={{ background: 'var(--color-bg-card)' }}>
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+                   style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                <Dumbbell size={28} className="text-[var(--color-text-muted)]" />
+              </div>
+              <p className="text-[15px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('exerciseLibrary.noExercisesFound')}</p>
+              <p className="text-[13px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('exerciseLibrary.tryDifferentSearch')}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Detail modal for a tapped name in compact view (reuses ExerciseCard). */}
+      {compactDetailEx && (
+        <ExerciseCard
+          key={compactDetailEx.id}
+          exercise={compactDetailEx}
+          modalOnly
+          initiallyOpen
+          onExternalClose={() => setCompactDetailEx(null)}
+          isFavorite={favoriteIds.has(compactDetailEx.id)}
+          onToggleFavorite={onToggleFavorite}
+        />
       )}
 
       {/* Body-mode: muscle-region sheet (opens when picker selection is set).

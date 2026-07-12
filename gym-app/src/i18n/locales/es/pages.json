@@ -2155,6 +2155,7 @@
     "viewMode": "Modo de vista",
     "viewBody": "Visual",
     "viewList": "Lista",
+    "viewCompact": "Lista de nombres",
     "muscle": "Músculo",
     "allOfGroup": "Todos de",
     "countExercises": "{{count}} ejercicios",
