@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { format, isPast, isFuture } from 'date-fns';
@@ -243,10 +244,11 @@ export default function AdminChallenges() {
           .select('*')
           .eq('gym_id', gymId)
           .order('start_date', { ascending: false }),
-        supabase
+        selectAllRows((from, to) => supabase
           .from('challenge_participants')
           .select('challenge_id')
-          .eq('gym_id', gymId),
+          .eq('gym_id', gymId)
+          .range(from, to)),
         supabase
           .from('challenge_prizes')
           .select('challenge_id')
