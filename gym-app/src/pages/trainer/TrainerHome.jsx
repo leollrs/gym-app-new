@@ -13,7 +13,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
-import { selectInBatches } from '../../lib/churn/batchedSelect';
+import { selectInBatches, selectAllInBatches } from '../../lib/churn/batchedSelect';
 import { exName } from '../../lib/exerciseName';
 import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
@@ -237,10 +237,14 @@ export default function TrainerHome() {
             .in('profile_id', ids).order('computed_at', { ascending: false }),
           clientIds,
         ),
-        selectInBatches(
-          (ids) => supabase.from('workout_sessions')
+        // Page each id-chunk to completion — a plain selectInBatches truncates a
+        // chunk at ~1000 rows, undercounting weekly activity/adherence for a
+        // trainer with many active clients.
+        selectAllInBatches(
+          (ids, from, to) => supabase.from('workout_sessions')
             .select('id, profile_id, name, started_at, total_volume_lbs, duration_seconds')
-            .in('profile_id', ids).eq('status', 'completed').gte('started_at', weekStart),
+            .in('profile_id', ids).eq('status', 'completed').gte('started_at', weekStart)
+            .order('id', { ascending: true }).range(from, to),
           clientIds,
         ),
         selectInBatches(
