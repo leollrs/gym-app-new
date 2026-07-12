@@ -15,7 +15,7 @@ import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
 import { generateProgramName, generateRoutineName } from '../lib/programNaming';
-import { buildOnboardingGoals, persistOnboardingGoals, mapGoalsForProgramGenerator, goalAnchoredName } from '../lib/onboardingGoals';
+import { buildOnboardingGoals, persistOnboardingGoals, mapGoalsForProgramGenerator, goalAnchoredName, whyThisPlanCaption } from '../lib/onboardingGoals';
 import { useOnboardingTargetsEnabled } from '../hooks/usePlatformFlags';
 import OnboardingTargets from '../components/OnboardingTargets';
 import { calculateMacros } from '../lib/macroCalculator';
@@ -1928,7 +1928,7 @@ const Onboarding = () => {
     // refreshProfile. Awaiting refreshProfile inline used to race the
     // navigate on slow networks and bounce the user back to step 0.
     await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
-    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
+    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS, targets_set: !!targetSelections });
     setOnboardingDone(true);
     markOnboarded();
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -2081,7 +2081,7 @@ const Onboarding = () => {
     // next render of ProtectedRoute always sees is_onboarded=true. The
     // background refreshProfile then reconciles with the server.
     await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
-    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
+    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS, targets_set: !!targetSelections });
     setOnboardingDone(true);
     markOnboarded();
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -2578,7 +2578,7 @@ const Onboarding = () => {
         {step === 3 && targetsEnabled && !!data.primary_goal && (
           <button
             type="button"
-            onClick={() => setShowTargets(true)}
+            onClick={() => { setShowTargets(true); try { posthog?.capture('onboarding_targets_viewed'); } catch {} }}
             style={{
               marginTop: 12, width: '100%', padding: '14px 16px', borderRadius: 16,
               background: targetSelections ? 'rgba(46,196,196,0.10)' : OB.surface,
@@ -3900,6 +3900,26 @@ const Onboarding = () => {
               })}
             </div>
 
+            {/* Onboarding v2 "why this plan" caption — makes the tailoring visible
+                (the core retention lever). Only shows when targets were set. */}
+            {(() => {
+              const goalKey = GOALS.find(g => g.value === data.primary_goal)?.key;
+              const caption = whyThisPlanCaption(targetSelections, {
+                primaryGoalLabel: goalKey ? t(`goal.${goalKey}.label`) : null,
+              });
+              if (!caption) return null;
+              return (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10,
+                  padding: '7px 12px', borderRadius: 999,
+                  background: 'rgba(46,196,196,0.10)', border: `1px solid ${OB.teal}`,
+                }}>
+                  <Target size={13} color={OB.teal} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: OB.ink, textTransform: 'capitalize' }}>{caption}</span>
+                </div>
+              );
+            })()}
+
             {/* 12-week strip. The underlying program is a 2-variant rotation
                 (Week A / Week B) that alternates across 12 calendar weeks —
                 odd weeks run Variant A, even weeks run Variant B. We surface
@@ -4565,8 +4585,23 @@ const Onboarding = () => {
             primaryGoal: data.primary_goal,
             liftBaselines: data.known_maxes || {},
           }}
-          onClose={() => setShowTargets(false)}
-          onSave={(sel) => { setTargetSelections(sel); setShowTargets(false); }}
+          onClose={() => {
+            setShowTargets(false);
+            if (!targetSelections) { try { posthog?.capture('onboarding_targets_skipped'); } catch {} }
+          }}
+          onSave={(sel) => {
+            setTargetSelections(sel);
+            setShowTargets(false);
+            try {
+              posthog?.capture('onboarding_targets_set', {
+                priority_muscle_count: sel.priorityMuscles?.length || 0,
+                has_body_weight: !!sel.bodyWeight,
+                has_body_fat: !!sel.bodyFat,
+                lift_count: sel.lifts?.length || 0,
+                goal_count: (sel.bodyWeight ? 1 : 0) + (sel.bodyFat ? 1 : 0) + (sel.lifts?.length || 0),
+              });
+            } catch { /* analytics best-effort */ }
+          }}
         />
       )}
 
