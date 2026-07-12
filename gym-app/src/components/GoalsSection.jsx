@@ -1122,10 +1122,11 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
       title: title.trim(),
       target_date: targetDate || null,
       exercise_id: needsExercise ? exerciseId : null,
+      is_milestone: false,  // manual goals are always long-term (0616 re-keyed the unique constraint)
     };
 
     let { error } = await supabase.from('member_goals').upsert(payload, {
-      onConflict: 'profile_id,goal_type,exercise_id',
+      onConflict: 'profile_id,goal_type,exercise_id,is_milestone',
     });
     // start_value ships in migration 0557, which may not be applied yet. If the
     // column is missing, retry without the baseline so goal creation still works
@@ -1134,7 +1135,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     if (error && (error.code === '42703' || error.code === 'PGRST204' || /column .* does not exist/i.test(error.message || ''))) {
       const { start_value, ...base } = payload;
       ({ error } = await supabase.from('member_goals').upsert(base, {
-        onConflict: 'profile_id,goal_type,exercise_id',
+        onConflict: 'profile_id,goal_type,exercise_id,is_milestone',
       }));
     }
 
