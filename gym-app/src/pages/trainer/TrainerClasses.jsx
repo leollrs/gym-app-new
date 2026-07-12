@@ -1564,15 +1564,16 @@ export default function TrainerClasses() {
       const data = [...(owned || []), ...viaJunction]
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-      // Resolve signed image URLs
-      for (const cls of data) {
+      // Resolve signed image URLs in parallel — a serial per-class loop added
+      // one storage round-trip of latency per class to the page load.
+      await Promise.all(data.map(async (cls) => {
         if (cls.image_url && cls.image_url.startsWith('class-images/')) {
           const { data: signedData } = await supabase.storage
             .from('class-images')
             .createSignedUrl(cls.image_url.replace('class-images/', ''), 3600);
           if (signedData?.signedUrl) cls.image_url = signedData.signedUrl;
         }
-      }
+      }));
 
       cacheSet(CK_classes, data); // write-through for instant load next visit
       return data;
