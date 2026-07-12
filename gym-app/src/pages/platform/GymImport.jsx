@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
-import { selectInBatches } from '../../lib/churn/batchedSelect';
+import { selectInBatches, selectAllRows } from '../../lib/churn/batchedSelect';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { logAdminAction } from '../../lib/adminAudit';
@@ -221,12 +221,17 @@ export default function GymImport() {
     // signup). Phone is the durable bridge between the imported profile
     // (profiles.phone_number, 0080/0466) and the invite (gym_invites.phone)
     // the front desk needs to hand over.
-    const { data, error } = await supabase
+    // Page the batch — a single import can exceed the ~1000 PostgREST response
+    // cap, which would silently drop codes for members past the first 1000 and
+    // leave the front desk unable to hand those members their invite.
+    const { data, error } = await selectAllRows((lo, hi) => supabase
       .from('profiles')
       .select('id, full_name, phone_number')
       .eq('gym_id', gymId)
       .eq('import_batch_id', importResult.batch_id)
-      .eq('imported_archived', false);
+      .eq('imported_archived', false)
+      .order('id', { ascending: true })
+      .range(lo, hi));
 
     if (error || !data) {
       logger.error('Codes sheet fetch failed:', error);

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { AdminPageShell, FadeIn } from '../../components/admin';
-import { fetchPosts, fetchComments, fetchReports } from '../../lib/admin/moderationQueries';
+import { fetchPosts, fetchComments, fetchReports, fetchPendingReportCount } from '../../lib/admin/moderationQueries';
 import { TK, FK, Ico, Card, MIC, ModTabs } from './components/moderationKit';
 import PostsTab from './components/PostsTab';
 import CommentsTab from './components/CommentsTab';
@@ -38,7 +38,17 @@ export default function AdminModeration() {
     enabled: !!gymId,
   });
 
-  const pendingReports = reports.filter(r => r.status === 'pending').length;
+  // True pending count via a head-only COUNT — fetchReports is capped at 50, so
+  // filtering that list would undercount pending reports on a busy gym.
+  const { data: pendingReportCount = 0 } = useQuery({
+    queryKey: [...adminKeys.moderation(gymId), 'pendingCount'],
+    queryFn: () => fetchPendingReportCount(gymId),
+    enabled: !!gymId,
+  });
+
+  // Fall back to the list-derived count only until the head-count resolves, so
+  // the badge never shows a value larger than what the count query will confirm.
+  const pendingReports = pendingReportCount || reports.filter(r => r.status === 'pending').length;
 
   const tabs = [
     { key: 'reports',  label: t('admin.moderation.reports', { defaultValue: 'Reports' }),    icon: MIC.flag,  count: pendingReports || null },

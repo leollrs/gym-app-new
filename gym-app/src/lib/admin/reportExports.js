@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { downloadCSV } from '../exportData';
+import { selectAllRows } from '../churn/batchedSelect';
 import {
   Users, Dumbbell, Trophy, CalendarCheck, Scale, Swords, ShoppingBag, CalendarDays,
 } from 'lucide-react';
@@ -134,14 +135,20 @@ export async function exportMembers(gymId, from, to, t) {
   // NOTE on column homes: fitness_level + primary_goal live on member_onboarding
   // (NOT profiles); the login email lives on auth.users (read via the admin RPC
   // below); there is no profiles.last_workout_at, so we report last_active_at.
-  let query = supabase
-    .from('profiles')
-    .select('id, full_name, role, created_at, last_active_at, member_onboarding(fitness_level, primary_goal), streak_cache(current_streak_days)')
-    .eq('gym_id', gymId)
-    .order('full_name', { ascending: true })
-    .limit(10000);
-  query = applyDateFilter(query, 'created_at', from, to);
-  const { data, error } = await query;
+  // Page the full roster — .limit(10000) is a false safeguard (PostgREST caps
+  // the response at ~1000), so a gym past 1000 members silently exported a
+  // truncated list. Order by full_name then id (stable tiebreaker) so OFFSET
+  // paging can't skip/duplicate members who share a name.
+  const { data, error } = await selectAllRows((lo, hi) => applyDateFilter(
+    supabase
+      .from('profiles')
+      .select('id, full_name, role, created_at, last_active_at, member_onboarding(fitness_level, primary_goal), streak_cache(current_streak_days)')
+      .eq('gym_id', gymId)
+      .order('full_name', { ascending: true })
+      .order('id', { ascending: true })
+      .range(lo, hi),
+    'created_at', from, to,
+  ));
   if (error) throw error;
 
   // Churn score + tier (nightly precompute written by compute-churn-scores).
@@ -194,15 +201,17 @@ export async function exportMembers(gymId, from, to, t) {
 }
 
 export async function exportWorkouts(gymId, from, to, t) {
-  let query = supabase
-    .from('workout_sessions')
-    .select('profile_id, name, completed_at, duration_seconds, total_volume_lbs, status, profiles!inner(full_name, gym_id), session_exercises(id)')
-    .eq('gym_id', gymId)
-    .eq('status', 'completed')
-    .order('completed_at', { ascending: false })
-    .limit(10000);
-  query = applyDateFilter(query, 'completed_at', from, to);
-  const { data, error } = await query;
+  const { data, error } = await selectAllRows((lo, hi) => applyDateFilter(
+    supabase
+      .from('workout_sessions')
+      .select('id, profile_id, name, completed_at, duration_seconds, total_volume_lbs, status, profiles!inner(full_name, gym_id), session_exercises(id)')
+      .eq('gym_id', gymId)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(lo, hi),
+    'completed_at', from, to,
+  ));
   if (error) throw error;
 
   const header = [
@@ -226,14 +235,16 @@ export async function exportWorkouts(gymId, from, to, t) {
 }
 
 export async function exportPRs(gymId, from, to, t) {
-  let query = supabase
-    .from('personal_records')
-    .select('weight_lbs, reps, estimated_1rm, achieved_at, profiles!inner(full_name, gym_id), exercises(name)')
-    .eq('profiles.gym_id', gymId)
-    .order('estimated_1rm', { ascending: false })
-    .limit(10000);
-  query = applyDateFilter(query, 'achieved_at', from, to);
-  const { data, error } = await query;
+  const { data, error } = await selectAllRows((lo, hi) => applyDateFilter(
+    supabase
+      .from('personal_records')
+      .select('id, weight_lbs, reps, estimated_1rm, achieved_at, profiles!inner(full_name, gym_id), exercises(name)')
+      .eq('profiles.gym_id', gymId)
+      .order('estimated_1rm', { ascending: false })
+      .order('id', { ascending: true })
+      .range(lo, hi),
+    'achieved_at', from, to,
+  ));
   if (error) throw error;
 
   const header = [
@@ -255,14 +266,16 @@ export async function exportPRs(gymId, from, to, t) {
 }
 
 export async function exportAttendance(gymId, from, to, t, locale) {
-  let query = supabase
-    .from('check_ins')
-    .select('profile_id, checked_in_at, method, profiles!inner(full_name, gym_id)')
-    .eq('profiles.gym_id', gymId)
-    .order('checked_in_at', { ascending: false })
-    .limit(10000);
-  query = applyDateFilter(query, 'checked_in_at', from, to);
-  const { data, error } = await query;
+  const { data, error } = await selectAllRows((lo, hi) => applyDateFilter(
+    supabase
+      .from('check_ins')
+      .select('id, profile_id, checked_in_at, method, profiles!inner(full_name, gym_id)')
+      .eq('profiles.gym_id', gymId)
+      .order('checked_in_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(lo, hi),
+    'checked_in_at', from, to,
+  ));
   if (error) throw error;
 
   const header = [
@@ -288,22 +301,24 @@ export async function exportAttendance(gymId, from, to, t, locale) {
 
 export async function exportBodyMetrics(gymId, from, to, t) {
   const [{ data: weights, error: wErr }, { data: measurements, error: mErr }] = await Promise.all([
-    applyDateFilter(
+    selectAllRows((lo, hi) => applyDateFilter(
       supabase.from('body_weight_logs')
-        .select('weight_lbs, logged_at, profiles!inner(full_name, gym_id)')
+        .select('id, weight_lbs, logged_at, profiles!inner(full_name, gym_id)')
         .eq('profiles.gym_id', gymId)
         .order('logged_at', { ascending: true })
-        .limit(10000),
+        .order('id', { ascending: true })
+        .range(lo, hi),
       'logged_at', from, to,
-    ),
-    applyDateFilter(
+    )),
+    selectAllRows((lo, hi) => applyDateFilter(
       supabase.from('body_measurements')
-        .select('measured_at, body_fat_pct, chest_cm, waist_cm, hips_cm, left_arm_cm, right_arm_cm, left_thigh_cm, right_thigh_cm, profiles!inner(full_name, gym_id)')
+        .select('id, measured_at, body_fat_pct, chest_cm, waist_cm, hips_cm, left_arm_cm, right_arm_cm, left_thigh_cm, right_thigh_cm, profiles!inner(full_name, gym_id)')
         .eq('profiles.gym_id', gymId)
         .order('measured_at', { ascending: true })
-        .limit(10000),
+        .order('id', { ascending: true })
+        .range(lo, hi),
       'measured_at', from, to,
-    ),
+    )),
   ]);
   if (wErr) throw wErr;
   if (mErr) throw mErr;
@@ -344,14 +359,16 @@ export async function exportBodyMetrics(gymId, from, to, t) {
 }
 
 export async function exportChallenges(gymId, from, to, t) {
-  let query = supabase
-    .from('challenge_participants')
-    .select('score, joined_at, challenges!inner(id, name, type, status, gym_id), profiles!inner(full_name)')
-    .eq('challenges.gym_id', gymId)
-    .order('score', { ascending: false })
-    .limit(10000);
-  query = applyDateFilter(query, 'joined_at', from, to);
-  const { data, error } = await query;
+  const { data, error } = await selectAllRows((lo, hi) => applyDateFilter(
+    supabase
+      .from('challenge_participants')
+      .select('id, score, joined_at, challenges!inner(id, name, type, status, gym_id), profiles!inner(full_name)')
+      .eq('challenges.gym_id', gymId)
+      .order('score', { ascending: false })
+      .order('id', { ascending: true })
+      .range(lo, hi),
+    'joined_at', from, to,
+  ));
   if (error) throw error;
 
   const header = [
@@ -376,14 +393,16 @@ export async function exportPurchases(gymId, from, to, t) {
   // member_purchases has TWO FKs to profiles (member_id + recorded_by) — embed the
   // buyer explicitly via member_id to avoid PGRST201 ambiguity. gym_id is a column
   // on member_purchases, so scope there (no embedded-profiles filter needed).
-  let query = supabase
-    .from('member_purchases')
-    .select('quantity, total_price, created_at, profiles:member_id(full_name), gym_products:product_id(name, category)')
-    .eq('gym_id', gymId)
-    .order('created_at', { ascending: false })
-    .limit(10000);
-  query = applyDateFilter(query, 'created_at', from, to);
-  const { data, error } = await query;
+  const { data, error } = await selectAllRows((lo, hi) => applyDateFilter(
+    supabase
+      .from('member_purchases')
+      .select('id, quantity, total_price, created_at, profiles:member_id(full_name), gym_products:product_id(name, category)')
+      .eq('gym_id', gymId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(lo, hi),
+    'created_at', from, to,
+  ));
   if (error) throw error;
 
   const header = [
@@ -405,14 +424,16 @@ export async function exportPurchases(gymId, from, to, t) {
 }
 
 export async function exportClassBookings(gymId, from, to, t) {
-  let query = supabase
-    .from('gym_class_bookings')
-    .select('status, booked_at, attended_at, rating, gym_class_schedules!inner(day_of_week, start_time, gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
-    .eq('gym_class_schedules.gym_classes.gym_id', gymId)
-    .order('booked_at', { ascending: false })
-    .limit(10000);
-  query = applyDateFilter(query, 'booked_at', from, to);
-  const { data, error } = await query;
+  const { data, error } = await selectAllRows((lo, hi) => applyDateFilter(
+    supabase
+      .from('gym_class_bookings')
+      .select('id, status, booked_at, attended_at, rating, gym_class_schedules!inner(day_of_week, start_time, gym_classes!inner(name, gym_id)), profiles!inner(full_name)')
+      .eq('gym_class_schedules.gym_classes.gym_id', gymId)
+      .order('booked_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(lo, hi),
+    'booked_at', from, to,
+  ));
   if (error) throw error;
 
   const header = [

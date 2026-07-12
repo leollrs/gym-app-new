@@ -9,6 +9,7 @@ import { format, differenceInCalendarMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { exportCSV } from '../../lib/csvExport';
 import FadeIn from '../../components/platform/FadeIn';
 
@@ -69,12 +70,16 @@ export default function GymDiagnostic() {
   const { data: members = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['platform-gym-diagnostic', gymId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Page the full member set — .limit(10000) is a false safeguard (PostgREST
+      // caps the response at ~1000), so every diagnostic chart silently omitted
+      // members past 1000 for large gyms.
+      const { data, error } = await selectAllRows((lo, hi) => supabase
         .from('profiles')
         .select('id, created_at, membership_started_at, membership_status, membership_status_updated_at, legacy_cancellation_date, imported_archived, admin_note')
         .eq('gym_id', gymId)
         .eq('role', 'member')
-        .limit(10000);
+        .order('id', { ascending: true })
+        .range(lo, hi));
       if (error) throw error;
       return data || [];
     },
