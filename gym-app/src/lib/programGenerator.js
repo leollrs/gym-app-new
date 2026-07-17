@@ -3,7 +3,8 @@
 // muscle-coverage scores.  No API calls, no external imports.
 // Runs in <100 ms for any configuration.
 
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { INJURY_EXCLUSIONS } from './exerciseConstants';
 
 // ── Constants ────────────────────────────────────────────────────────────────

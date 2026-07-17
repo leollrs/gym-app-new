@@ -5,7 +5,7 @@ import {
   Building2, BarChart3, Settings, LogOut,
   ScrollText, MoreHorizontal, X, Shield, Bug, Bell,
   Activity, HeadphonesIcon, AlertTriangle, HeartPulse, Puzzle, Printer, ListChecks, Repeat,
-  UtensilsCrossed,
+  UtensilsCrossed, QrCode,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,6 +26,7 @@ const NAV_SECTIONS = [
       { to: '/platform/gym-health',  labelKey: 'platformNav.gymHealth',  icon: HeartPulse },
       { to: '/platform/adoption',    labelKey: 'platformNav.adoption',   icon: Puzzle },
       { to: '/platform/cards',       labelKey: 'platformNav.cardQueue',  icon: Printer },
+      { to: '/platform/equipment-qr', labelKey: 'platformNav.equipmentQr', icon: QrCode },
     ],
   },
   {

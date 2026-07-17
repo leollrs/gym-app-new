@@ -241,21 +241,21 @@ export default function UpcomingCardsPanel({ gymId }) {
                 && materializeMutation.variables?.profile_id === row.profile_id
                 && materializeMutation.variables?.occasion === row.occasion;
 
-              // Explicit `_plural` key selection — i18next's auto-pluralization
+              // Explicit `_other` key selection — i18next's auto-pluralization
               // isn't reliable across this app, so we pick the variant by hand.
               const whenLabel =
                 row.unit_type === 'workouts'
-                  ? t(row.units_away === 1 ? 'admin.upcomingCards.inWorkouts' : 'admin.upcomingCards.inWorkouts_plural', { count: row.units_away, defaultValue: row.units_away === 1 ? 'in {{count}} workout' : 'in {{count}} workouts' })
+                  ? t(row.units_away === 1 ? 'admin.upcomingCards.inWorkouts' : 'admin.upcomingCards.inWorkouts_other', { count: row.units_away, defaultValue: row.units_away === 1 ? 'in {{count}} workout' : 'in {{count}} workouts' })
                   : row.units_away === 0
                     ? t('admin.upcomingCards.today', 'today')
                     : row.units_away === 1
                       ? t('admin.upcomingCards.tomorrow', 'tomorrow')
-                      : t('admin.upcomingCards.inDays_plural', { count: row.units_away, defaultValue: 'in {{count}} days' });
+                      : t('admin.upcomingCards.inDays_other', { count: row.units_away, defaultValue: 'in {{count}} days' });
 
               const dateLabel = row.unit_type === 'days' && row.predicted_at
                 ? format(new Date(row.predicted_at), 'EEEE, MMM d', dateLocale)
                 : row.unit_type === 'workouts' && row.current_value != null
-                  ? t(row.current_value === 1 ? 'admin.upcomingCards.currentWorkouts' : 'admin.upcomingCards.currentWorkouts_plural', { count: row.current_value, defaultValue: row.current_value === 1 ? 'Currently {{count}} workout' : 'Currently {{count}} workouts' })
+                  ? t(row.current_value === 1 ? 'admin.upcomingCards.currentWorkouts' : 'admin.upcomingCards.currentWorkouts_other', { count: row.current_value, defaultValue: row.current_value === 1 ? 'Currently {{count}} workout' : 'Currently {{count}} workouts' })
                   : null;
 
               return (

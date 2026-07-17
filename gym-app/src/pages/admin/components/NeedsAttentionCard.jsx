@@ -56,11 +56,11 @@ export default function NeedsAttentionCard({
     staleTime: 30_000,
   });
 
-  // i18next v3-compat plural inference (`{ count }` → auto `_plural` lookup)
+  // i18next v3-compat plural inference (`{ count }` → auto `_other` lookup)
   // wasn't reliably selecting the plural form here in production, leaving
   // strings like "32 miembro en riesgo crítico de baja". We pick the key
   // explicitly so the right variant always wins regardless of i18next config.
-  const plural = (base, n) => `${base}${n === 1 ? '' : '_plural'}`;
+  const plural = (base, n) => `${base}${n === 1 ? '' : '_other'}`;
 
   const items = [];
 

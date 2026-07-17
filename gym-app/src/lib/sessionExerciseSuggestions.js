@@ -14,7 +14,8 @@
 // Sorts candidates by muscle-score peak so the suggestions are quality
 // picks, not the alphabetical first thing in the library.
 
-import { exercises as DEFAULT_LIBRARY } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const DEFAULT_LIBRARY = getExercises();
 
 const ANTAGONISTS = {
   Chest:      'Back',

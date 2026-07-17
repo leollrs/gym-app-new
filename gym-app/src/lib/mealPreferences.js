@@ -12,7 +12,8 @@
  */
 
 import { supabase } from './supabase';
-import { MEALS } from '../data/meals';
+import { getMeals } from './mealStore';
+const MEALS = getMeals();
 
 // ── Ingredient → Allergy / Dietary Restriction Mappings ─────
 

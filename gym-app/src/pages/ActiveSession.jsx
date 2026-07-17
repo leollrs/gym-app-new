@@ -25,7 +25,9 @@ import { useToast } from '../contexts/ToastContext';
 import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
-import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT } from '../data/exercises';
+import { MUSCLE_GROUPS, EQUIPMENT } from '../data/exercises';
+import { getExercises } from '../lib/exerciseStore';
+const localExercises = getExercises();
 import Confetti from '../components/Confetti';
 
 import SessionHeader from './active-session/SessionHeader';
@@ -4727,7 +4729,7 @@ const ActiveSession = () => {
             role="dialog"
             aria-label={t('activeSession.swapTitle', { exercise: exName(swapTargetExercise) })}
           >
-            <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 pt-4 pb-3">
               <div className="flex-1 min-w-0">
                 <h3 className="text-[18px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
                   {t('activeSession.swapTitle', { exercise: exName(swapTargetExercise) })}
@@ -4818,7 +4820,7 @@ const ActiveSession = () => {
             {/* Results — same-muscle picks first as a 2-col tile grid, then
                 an "Other muscles" grid. Same video-tile style as the Add
                 Exercise modal so the experience stays consistent. */}
-            <div className="flex-1 overflow-y-auto px-4 pb-6">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
               {filteredSwapExercises.sameMuscle.length > 0 && swapTargetMuscle && (
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] pb-2" style={{ color: 'var(--color-text-subtle)' }}>
                   {t('activeSession.swapSameMuscle', { defaultValue: '{{muscle}} alternatives', muscle: t(`muscleGroups.${swapTargetMuscle}`, swapTargetMuscle) })}

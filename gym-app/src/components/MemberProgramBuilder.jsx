@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Plus, Trash2, GripVertical, Dumbbell, Search, Calendar, Loader2, ChevronLeft } from 'lucide-react';
+import { X, Plus, Trash2, GripVertical, Dumbbell, Search, Calendar, Loader2, ChevronLeft, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from '../lib/exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { exName } from '../lib/exerciseName';
+import ExerciseVideoThumb from './ExerciseVideoThumb';
 
 // ── Member Program Builder ───────────────────────────────────────────────────
 // "Crear programa" — build your own multi-day program WITHOUT auto-generation,
@@ -21,6 +23,9 @@ const REST_OPTS = [30, 45, 60, 90, 120, 180];
 const DURATIONS = [4, 6, 8, 12];
 // DB day_of_week: Sunday=0 … Saturday=6
 const DOW_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+// Clear 3-letter day labels (common.json days.mon = "Mon"/"Lun") — the lone
+// weekdaysShort initials (M/T/W…, L/M/X…) are ambiguous, so use these instead.
+const DOW_SHORT_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 // Pointer drag-to-reorder (same hook the trainer plan builder + routine editor use).
 const DRAG_GAP = 10;
@@ -150,16 +155,24 @@ function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTransl
         ...(isDragging ? { transform: `translateY(${draggedTranslate()}px)`, zIndex: 30, position: 'relative', boxShadow: '0 14px 30px rgba(0,0,0,0.3)' } : {}),
       }}
     >
-      <div className="flex items-center gap-1.5 px-3 py-2.5">
+      <div className="flex items-center gap-2.5 px-3 py-2.5">
         <button
           type="button" aria-label={t('workoutBuilder.ariaDragReorder', 'Drag to reorder')}
           onPointerDown={onGripDown}
-          className="w-6 h-10 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing"
+          className="w-6 h-10 -ml-1 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing"
           style={{ color: 'var(--color-text-subtle)', touchAction: 'none' }}
         >
           <GripVertical size={17} />
         </button>
-        <p className="flex-1 min-w-0 text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{ex ? exName(ex) : item.id}</p>
+        <ExerciseVideoThumb exercise={{ videoUrl: ex?.videoUrl, muscle: ex?.muscle }} size={38} radius={10} />
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{ex ? exName(ex) : item.id}</p>
+          {ex?.muscle && (
+            <p className="text-[11.5px] truncate mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+              {t(`muscleGroups.${ex.muscle}`, ex.muscle)}{ex.equipment ? ` · ${t(`exerciseLibrary.equipmentNames.${ex.equipment}`, ex.equipment)}` : ''}
+            </p>
+          )}
+        </div>
         <button type="button" onClick={onRemove} aria-label={t('workoutBuilder.ariaRemove', 'Remove')} className="w-9 h-9 flex items-center justify-center shrink-0" style={{ color: 'var(--color-text-muted)' }}>
           <Trash2 size={15} />
         </button>
@@ -195,9 +208,19 @@ function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTransl
 // ── A day card (name + day-of-week + exercises with drag) ──
 function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, onChangeEx, onRemoveEx, reorderEx, usedDows, t, lang }) {
   const { dragId, draggedTranslate, start } = useDragSort(day.exercises.map(e => e._uid), reorderEx);
+  const [open, setOpen] = useState(false); // collapsible day — default closed
+  const dowLabel = t(`days.${DOW_SHORT_KEYS[day.dow]}`, { ns: 'common' });
+  // Estimated minutes for the day — same model as the routine sheet
+  // (sets × (rest + ~45s work) / 60).
+  const dayMinutes = day.exercises.length
+    ? Math.max(1, Math.round(day.exercises.reduce((s, ex) => s + ((Number(ex.sets) || 0) * ((Number(ex.restSeconds) || 60) + 45)), 0) / 60))
+    : 0;
   return (
     <div className="rounded-2xl p-4" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setOpen(o => !o)} aria-label={open ? t('common.collapse', 'Collapse') : t('common.expand', 'Expand')} className="w-8 h-8 -ml-1 flex items-center justify-center shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+          <ChevronDown size={18} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .18s ease' }} />
+        </button>
         <input
           value={day.name} onChange={(e) => onName(e.target.value)}
           placeholder={t('programBuilder.dayNamePlaceholder', { n: index + 1, defaultValue: `Day ${index + 1}` })}
@@ -210,20 +233,29 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
           </button>
         )}
       </div>
+      {/* Collapsed summary — tap to expand */}
+      {!open && (
+        <button type="button" onClick={() => setOpen(true)} className="w-full text-left mt-1.5 pl-7 text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
+          {t('programBuilder.exercisesShort', { count: day.exercises.length, defaultValue: `${day.exercises.length} exercises` })}
+          {dayMinutes ? ` · ~${dayMinutes} ${t('dashboard.min', 'min')}` : ''}
+          {dowLabel ? ` · ${dowLabel}` : ''}
+        </button>
+      )}
+      {open && (<>
       {/* Day of week selector */}
-      <div className="flex gap-1.5 mb-3 flex-wrap">
+      <div className="flex gap-1.5 mb-3 mt-3 flex-wrap">
         {DOW_KEYS.map((key, dow) => {
           const selected = day.dow === dow;
           const taken = !selected && usedDows.has(dow);
           return (
             <button
               key={dow} type="button" disabled={taken} onClick={() => onDow(dow)}
-              className="w-9 h-9 rounded-lg text-[12px] font-bold disabled:opacity-30 transition-colors"
+              className="h-9 px-2.5 min-w-[2.75rem] rounded-lg text-[11.5px] font-bold disabled:opacity-30 transition-colors"
               style={selected
                 ? { background: 'var(--color-accent)', color: 'var(--color-text-on-accent,#fff)' }
                 : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
             >
-              {t(`weekdaysShort.${key}`, key.slice(0, 1).toUpperCase())}
+              {t(`days.${DOW_SHORT_KEYS[dow]}`, { ns: 'common' })}
             </button>
           );
         })}
@@ -249,6 +281,7 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
       >
         <Plus size={16} /> {t('programBuilder.addExercise', 'Add exercise')}
       </button>
+      </>)}
     </div>
   );
 }
@@ -266,6 +299,17 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
   const [loadingEdit, setLoadingEdit] = useState(!!editProgram);
   const [pickerDayUid, setPickerDayUid] = useState(null);
   const [error, setError] = useState('');
+  // Shown when the user shortens an in-progress program on edit: choose whether
+  // to shorten the current run (keep its start + progress) or start fresh.
+  const [lowerPrompt, setLowerPrompt] = useState(false);
+
+  // Edit context: is this an ACTIVE program (in progress), how long was it, and
+  // which week is the user currently on. Used to guard shortening the duration.
+  const isEditingActive = !!editProgram && new Date(editProgram.expires_at) > new Date();
+  const originalWeeks = editProgram ? (editProgram.duration_weeks || editProgram.schedule_map?.total_calendar_weeks || 6) : 0;
+  const elapsedWeeks = isEditingActive
+    ? Math.max(1, Math.min(originalWeeks, Math.floor((Date.now() - new Date(editProgram.program_start).getTime()) / (7 * 86400000)) + 1))
+    : 0;
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -293,15 +337,23 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         (exRows || []).forEach((r) => { (byRoutine[r.routine_id] ||= []).push(r); });
         const loadedDays = ids.map((rid, i) => {
           const r = (routs || []).find(x => x.id === rid);
+          if (!r) return null; // routine deleted (a newer program cleared it) — skip, don't show an empty day
           const exs = (byRoutine[rid] || []).sort((a, b) => a.position - b.position).map((re) => ({
             _uid: uid('ex'), id: re.exercise_id, sets: re.target_sets || 3, reps: String(re.target_reps || '8-12'), restSeconds: re.rest_seconds || 90,
           }));
-          return { _uid: uid('day'), name: (r?.name || '').replace(/^Auto:\s*/, ''), dow: dayMap[i] ?? ((i + 1) % 7), exercises: exs };
+          return { _uid: uid('day'), name: (r.name || '').replace(/^Auto:\s*/, ''), dow: dayMap[i] ?? ((i + 1) % 7), exercises: exs };
         }).filter(Boolean);
-        if (!cancelled && loadedDays.length) {
-          setName(sm.display_name || editProgram.name || '');
-          setWeeks(editProgram.duration_weeks || sm.total_calendar_weeks || 6);
-          setDays(loadedDays);
+        if (!cancelled) {
+          if (loadedDays.length) {
+            setName(sm.display_name || editProgram.name || '');
+            setWeeks(editProgram.duration_weeks || sm.total_calendar_weeks || 6);
+            setDays(loadedDays);
+          } else {
+            // Every routine was cleared when a newer program started — nothing to
+            // reconstruct, so surface it instead of an all-empty builder.
+            showToast(t('programBuilder.editUnavailable', "This program's workouts are no longer available to edit. Resume it or start a new one."), 'error');
+            onClose?.();
+          }
         }
       } catch { /* fall back to a blank builder */ }
       finally { if (!cancelled) setLoadingEdit(false); }
@@ -329,23 +381,42 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
     return { ...d, exercises: orderedUids.map(u => byUid.get(u)).filter(Boolean) };
   }));
 
-  const handleSave = async () => {
+  const handleSave = async (modeArg) => {
     if (!user?.id || !profile?.gym_id) return;
     if (!name.trim()) { setError(t('programBuilder.errName', 'Name your program')); return; }
     const validDays = days.filter(d => d.exercises.length > 0);
     if (validDays.length === 0) { setError(t('programBuilder.errEmpty', 'Add at least one exercise to a day')); return; }
+    // Shortening an in-progress program: block going below the week already
+    // reached, and otherwise ask whether to shorten the current run (keep its
+    // start + progress) or start a fresh program from today.
+    const lowering = isEditingActive && weeks < originalWeeks;
+    if (lowering && weeks < elapsedWeeks) {
+      setError(t('programBuilder.errWeeksBelowElapsed', { week: elapsedWeeks, defaultValue: `You're on week ${elapsedWeeks} — the program can't be shorter than that.` }));
+      return;
+    }
+    if (lowering && modeArg !== 'current' && modeArg !== 'new') { setLowerPrompt(true); return; }
+    // Editing an in-progress program updates it in place (keeps its start date and
+    // progress). Only an explicit "start new" from the shorten prompt, a brand-new
+    // program, or editing a past/expired one writes a fresh row starting today.
+    const editInPlace = isEditingActive && modeArg !== 'new';
     setError('');
+    setLowerPrompt(false);
     setSaving(true);
     try {
       const sorted = [...validDays].sort((a, b) => a.dow - b.dow);
       // Snapshot old Auto: routines (the previous active program) for cleanup AFTER.
       const { data: oldAuto } = await supabase.from('routines').select('id').eq('created_by', user.id).like('name', 'Auto:%');
       const oldIds = (oldAuto || []).map(r => r.id);
-      // Expire any currently-active program so this becomes the active one.
-      await supabase.from('generated_programs')
-        .update({ expires_at: new Date().toISOString() })
-        .eq('profile_id', user.id)
-        .gt('expires_at', new Date().toISOString());
+      // Expire any currently-active program so this becomes the active one. When
+      // shortening the current program in place, keep it active (expire others).
+      {
+        let expireQ = supabase.from('generated_programs')
+          .update({ expires_at: new Date().toISOString() })
+          .eq('profile_id', user.id)
+          .gt('expires_at', new Date().toISOString());
+        if (editInPlace) expireQ = expireQ.neq('id', editProgram.id);
+        await expireQ;
+      }
 
       const startDate = new Date(); startDate.setHours(0, 0, 0, 0);
       const routineIds = [];
@@ -383,13 +454,25 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         total_calendar_weeks: weeks,
         display_name: name.trim(),
       };
-      const expiresAt = new Date(startDate); expiresAt.setDate(expiresAt.getDate() + weeks * 7);
-      const { error: gpErr } = await supabase.from('generated_programs').insert({
-        profile_id: user.id, gym_id: profile.gym_id, split_type: 'custom',
-        program_start: startDate.toISOString(), expires_at: expiresAt.toISOString(),
-        routines_a_count: sorted.length, duration_weeks: weeks, schedule_map: scheduleMap,
-      });
-      if (gpErr) throw gpErr;
+      if (editInPlace) {
+        // Shorten the current run: keep the original start date + progress, just
+        // swap in the rebuilt routines and pull the end date back to the new length.
+        const origStart = new Date(editProgram.program_start);
+        const expiresAt = new Date(origStart); expiresAt.setDate(expiresAt.getDate() + weeks * 7);
+        scheduleMap.start_dow = origStart.getDay();
+        const { error: gpErr } = await supabase.from('generated_programs').update({
+          routines_a_count: sorted.length, duration_weeks: weeks, schedule_map: scheduleMap, expires_at: expiresAt.toISOString(),
+        }).eq('id', editProgram.id);
+        if (gpErr) throw gpErr;
+      } else {
+        const expiresAt = new Date(startDate); expiresAt.setDate(expiresAt.getDate() + weeks * 7);
+        const { error: gpErr } = await supabase.from('generated_programs').insert({
+          profile_id: user.id, gym_id: profile.gym_id, split_type: 'custom',
+          program_start: startDate.toISOString(), expires_at: expiresAt.toISOString(),
+          routines_a_count: sorted.length, duration_weeks: weeks, schedule_map: scheduleMap,
+        });
+        if (gpErr) throw gpErr;
+      }
 
       // Clean up the previous program's Auto: routines now that the new ones exist.
       const newSet = new Set(routineIds);
@@ -401,7 +484,7 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
       }
 
       try { window.dispatchEvent(new CustomEvent('tugympr:programs-changed')); } catch { /* ignore */ }
-      showToast(t('programBuilder.saved', 'Program created'), 'success');
+      showToast(editInPlace ? t('programBuilder.updated', 'Program updated') : t('programBuilder.saved', 'Program created'), 'success');
       onSaved?.();
     } catch (e) {
       console.error('[program builder] save failed:', e);
@@ -422,7 +505,7 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
           {editProgram ? t('programBuilder.editTitle', 'Edit program') : t('programBuilder.title', 'Create program')}
         </h1>
         <button
-          onClick={handleSave} disabled={saving}
+          onClick={() => handleSave()} disabled={saving}
           className="px-4 h-10 rounded-xl text-[14px] font-bold disabled:opacity-50 flex items-center gap-2"
           style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent,#fff)' }}
         >
@@ -510,6 +593,28 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
           onAdd={(ex) => { addExerciseToDay(pickerDayUid, ex); }}
           onClose={() => setPickerDayUid(null)}
         />
+      )}
+
+      {/* Shorten-in-progress choice — shortening the current run keeps its start
+          date and progress; starting new resets the clock from today. */}
+      {lowerPrompt && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('cancel', { ns: 'common' })} onClick={() => setLowerPrompt(false)} onKeyDown={(e) => { if (e.key === 'Escape') setLowerPrompt(false); }}>
+          <div className="rounded-[20px] w-full max-w-sm p-6" role="dialog" aria-modal="true" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
+            <h3 className="text-[17px] font-extrabold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: "'Familjen Grotesk','Archivo',system-ui" }}>{t('programBuilder.shortenTitle', 'Shorten this program?')}</h3>
+            <p className="text-[13px] mb-5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{t('programBuilder.shortenDesc', { weeks, defaultValue: `You set the length to ${weeks} weeks. Keep your current program and just end it sooner, or start a fresh ${weeks}-week program from today?` })}</p>
+            <div className="flex flex-col gap-2.5">
+              <button onClick={() => handleSave('current')} disabled={saving} className="w-full py-3 rounded-xl text-[14px] font-bold disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent,#fff)' }}>
+                {saving ? <Loader2 size={15} className="animate-spin" /> : null}{t('programBuilder.shortenCurrent', 'Shorten current program')}
+              </button>
+              <button onClick={() => handleSave('new')} disabled={saving} className="w-full py-3 rounded-xl text-[14px] font-bold disabled:opacity-50" style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-default)' }}>
+                {t('programBuilder.shortenNew', 'Start a new program')}
+              </button>
+              <button onClick={() => setLowerPrompt(false)} className="w-full py-2.5 text-[13px] font-semibold" style={{ color: 'var(--color-text-subtle)' }}>
+                {t('cancel', { ns: 'common' })}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

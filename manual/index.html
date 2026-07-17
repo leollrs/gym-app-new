@@ -1,0 +1,46 @@
+<!doctype html>
+<html data-theme="dossier" data-lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>TuGymPR · Manual de la App</title>
+<link rel="stylesheet" href="manual.css"/>
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <a href="#/" class="sidebar-brand">
+      <div class="mark">T</div>
+      <div>
+        <div class="name">TuGym<em>PR</em></div>
+        <div class="sub">App Manual</div>
+      </div>
+    </a>
+    <nav id="sidebar-nav"></nav>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb" id="crumb"></div>
+      <div class="topbar-controls">
+        <div class="seg pilot-only" title="Pilot only — pick a direction, then this control goes away">
+          <button data-theme-btn="dossier">Dossier</button>
+          <button data-theme-btn="field">Field Guide</button>
+        </div>
+        <div class="seg">
+          <button data-lang-btn="es">ES</button>
+          <button data-lang-btn="en">EN</button>
+        </div>
+      </div>
+    </div>
+    <div class="page-root" id="page-root"></div>
+  </div>
+</div>
+
+<div id="print-doc"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

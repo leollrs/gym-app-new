@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { UtensilsCrossed, ChevronDown, CalendarPlus, ShoppingCart, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { MEALS } from '../data/meals';
+import { getMeals } from '../lib/mealStore';
+const MEALS = getMeals();
 import { foodImageUrl } from '../lib/imageUrl';
 import logger from '../lib/logger';
 

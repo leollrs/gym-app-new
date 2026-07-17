@@ -38,6 +38,9 @@ export default function MealMacroCard({
   ];
   return (
     <div className="rounded-[22px] p-4" style={{ background, boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
+      <div className="text-[11px] font-bold uppercase mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
+        {t('nutrition.total', 'Total')}
+      </div>
       <div className="flex items-baseline gap-1 mb-3.5">
         {editing ? (
           <input

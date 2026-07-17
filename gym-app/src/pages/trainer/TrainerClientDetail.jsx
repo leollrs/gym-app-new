@@ -25,7 +25,8 @@ import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
 import ChartTooltip from '../../components/ChartTooltip';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateDayPlan } from '../../lib/mealPlanner';
-import { exercises as EXERCISE_CATALOG } from '../../data/exercises';
+import { getExercises } from '../../lib/exerciseStore';
+const EXERCISE_CATALOG = getExercises();
 import { exName } from '../../lib/exerciseName';
 import { buildStreakCalendar } from '../../lib/streakCalendar';
 import { normalizePhone, openWhatsApp } from '../../lib/whatsapp';

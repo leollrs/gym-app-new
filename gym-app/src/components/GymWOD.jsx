@@ -6,7 +6,7 @@ import posthogClient from 'posthog-js';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { generateGymWOD } from '../lib/wodGenerator';
-import { getExerciseById } from '../data/exercises';
+import { getExerciseById } from '../lib/exerciseStore';
 
 // ── Difficulty badge colors ────────────────────────────────────────────────────
 const DIFFICULTY_STYLES = {

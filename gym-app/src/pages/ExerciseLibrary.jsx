@@ -1,8 +1,11 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, X, ChevronDown, ChevronLeft, ChevronRight, Dumbbell, Plus, Bookmark, Check, Users, SlidersHorizontal, ArrowUpDown, Star, Pencil, Edit3, Sparkles, Play, Minus, Heart, MoreHorizontal, Trophy, Flame } from 'lucide-react';
-import { exercises as localExercises, MUSCLE_GROUPS, EQUIPMENT, CATEGORIES } from '../data/exercises';
+import { MUSCLE_GROUPS, EQUIPMENT, CATEGORIES } from '../data/exercises';
+import { useExercises } from '../hooks/useContentStores';
+import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
+import { mistakesFor } from '../data/exerciseMistakes';
 import BodyMusclePicker from '../components/BodyMusclePicker';
 import MuscleExercisesSheet from '../components/MuscleExercisesSheet';
 import AllExercisesModal from '../components/AllExercisesModal';
@@ -10,7 +13,7 @@ import ExerciseMuscleHighlight from '../components/ExerciseMuscleHighlight';
 import MuscleGroupPicker from '../components/MuscleGroupPicker';
 import { MUSCLE_BUCKET_BY_ID, bucketGroup } from '../lib/muscleBuckets';
 import { goalAdjustedDefaults, formatRest } from '../lib/goalAdjustedDefaults';
-import { LayoutList, User, AlignJustify } from 'lucide-react';
+import { LayoutList, User, AlignJustify, ScanLine } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
@@ -563,8 +566,8 @@ const HistorySpark = ({ sessions, emptyLabel, emptySub }) => {
 };
 
 /* ── Premium Exercise Card ──────────────────────────────────────────────────── */
-const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite, onEdit, onDelete, onSave, onUnsave, isMine, isSaved, modalOnly = false, initiallyOpen = false, onExternalClose }) => {
-  const { t } = useTranslation('pages');
+export const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, onToggleFavorite, onEdit, onDelete, onSave, onUnsave, isMine, isSaved, modalOnly = false, initiallyOpen = false, onExternalClose }) => {
+  const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
   const { profile } = useAuth();
   // Re-cast the static defaultSets/Reps/restSeconds into the rep range /
@@ -575,6 +578,11 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
   const goalAdjusted = React.useMemo(
     () => goalAdjustedDefaults(exercise, userGoal),
     [exercise, userGoal]
+  );
+  // Common form mistakes: prefer a DB-provided list (future), else the static map.
+  const mistakes = React.useMemo(
+    () => exercise.commonMistakes || mistakesFor(exercise.id, i18n.language),
+    [exercise, i18n.language]
   );
   const [expanded, setExpanded] = useState(initiallyOpen);
   const [detailTab, setDetailTab] = useState('overview');
@@ -672,12 +680,7 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
         onClick={openModal}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(); } }}
       >
-        <div
-          className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
-          style={{ background: `${tint}12`, border: `1px solid ${tint}18` }}
-        >
-          <Dumbbell size={18} strokeWidth={2} style={{ color: tint }} />
-        </div>
+        <ExerciseVideoThumb exercise={exercise} size={46} radius={13} />
 
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em] truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -995,6 +998,21 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
                   {showFullDescription ? t('exerciseLibrary.showLess') : t('exerciseLibrary.readMore')}
                 </button>
               )}
+              {mistakes?.length > 0 && (
+                <div className="rounded-[18px] p-3.5" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-subtle)', marginBottom: 8 }}>
+                    {t('exerciseLibrary.commonMistakes', 'Common Mistakes')}
+                  </div>
+                  <ul style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: 0, padding: 0, listStyle: 'none' }}>
+                    {mistakes.map((m, i) => (
+                      <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13.5, color: 'var(--color-text-primary)' }}>
+                        <span style={{ color: '#e5484d', fontWeight: 800, flexShrink: 0, lineHeight: 1.45 }}>✗</span>
+                        <span>{m}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* MUSCLES panel */}
@@ -1175,6 +1193,9 @@ const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavorite, o
 /* ── Exercise Library (browseable list with search + filters) ────────────────── */
 const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extraExercises = [], favoriteIds = new Set(), onToggleFavorite }) => {
   const { t } = useTranslation('pages');
+  // Live library — re-renders when the DB copy hydrates so counts/lists follow
+  // the server without an app rebuild.
+  const localExercises = useExercises();
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [activeMuscle, setActiveMuscle] = useState('All');
@@ -1227,7 +1248,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
         : e
     );
     return [...uniqueLocal, ...dbWithFallback];
-  }, [extraExercises]);
+  }, [extraExercises, localExercises]);
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -1450,9 +1471,9 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
       </div>
       )}
 
-      {/* Compact names-only view — dense tappable rows, no video/cards. Tapping a
-          name opens the same detail modal the card view uses (or selects it in
-          routine-builder pick mode). */}
+      {/* Compact list view — dense tappable rows WITH a video preview thumbnail so
+          you can see the movement at a glance. Tapping opens the same detail modal
+          the card view uses (or selects it in routine-builder pick mode). */}
       {viewMode === 'compact' && (
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border-subtle)' }}>
           {sorted.map((ex, i) => (
@@ -1460,18 +1481,20 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
               key={ex.id}
               type="button"
               onClick={() => { if (selectable) onSelect?.(ex); else setCompactDetailEx(ex); }}
-              className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition-colors active:opacity-70"
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors active:opacity-70"
               style={{
                 background: 'var(--color-bg-card)',
                 borderTop: i > 0 ? '1px solid var(--color-border-subtle)' : 'none',
               }}
             >
-              <span className="text-[14px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+              <ExerciseVideoThumb exercise={ex} size={40} radius={11} />
+              <span className="flex-1 min-w-0 text-[14px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
                 {exName(ex)}
               </span>
               <span className="text-[11px] font-semibold flex-shrink-0" style={{ color: getMuscleColor(ex.muscle) }}>
                 {t(`muscleGroups.${ex.muscle}`, ex.muscle)}
               </span>
+              <ChevronRight size={15} className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }} />
             </button>
           ))}
 
@@ -1673,12 +1696,7 @@ const CustomExerciseCard = ({ exercise, isMine, isSaved, onSave, onDelete, onUns
         onClick={() => setExpanded(e => !e)}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
       >
-        <div
-          className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
-          style={{ background: `${tint}12`, border: `1px solid ${tint}18` }}
-        >
-          <Dumbbell size={18} strokeWidth={2} style={{ color: tint }} />
-        </div>
+        <ExerciseVideoThumb exercise={exercise} size={46} radius={13} />
 
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[15px] leading-snug tracking-[-0.01em] truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -2595,8 +2613,14 @@ const EditExerciseForm = ({ exercise, onSave, onCancel }) => {
 export const ExerciseLibraryPage = () => {
   const { t } = useTranslation('pages');
   const navigate = useNavigate();
+  const location = useLocation();
+  // This page is kept-alive (display-toggled), so the portaled FAB must only
+  // render while /exercises is the active route or it would leak onto others.
+  const isExercisesActive = location.pathname === '/exercises';
   const { user, profile } = useAuth();
   const posthog = usePostHog();
+  // Live library — the "All" count + list follow DB hydration (no rebuild).
+  const localExercises = useExercises();
   const [tab, setTab]               = useState('all');
   const [customExercises, setCustom] = useState([]);
   const [globalDbExercises, setGlobalDb] = useState([]);
@@ -2669,33 +2693,36 @@ export const ExerciseLibraryPage = () => {
     setLoading(true);
 
     try {
-      // Fetch global exercises
-      const [globalsRes, customsRes, savedRes, fshipsRes, favsRes] = await Promise.all([
+      // Custom exercises are OWNER + FRIENDS only. Fetch friendships FIRST, then
+      // pull customs created ONLY by the user or a friend — never every gym
+      // member's (that leaked personal "Mine" exercises into All + search gym-wide).
+      // SECURITY: user.id comes from supabase.auth context, not user input; UUID-
+      // validated before interpolating into the .or() filter (defense in depth).
+      const fshipsRes = await (/^[0-9a-f-]{36}$/i.test(user.id)
+        ? supabase.from('friendships')
+            .select('requester_id, addressee_id, status')
+            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+            .eq('status', 'accepted')
+        : Promise.resolve({ data: [] }));
+      const fships = fshipsRes.data ?? [];
+      const fIds = new Set(fships.map(f =>
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      ));
+      const ownerIds = [user.id, ...fIds]; // whose custom exercises I'm allowed to see
+
+      const [globalsRes, customsRes, savedRes, favsRes] = await Promise.all([
         supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').is('gym_id', null).eq('is_active', true),
         profile.gym_id
-          ? supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').eq('gym_id', profile.gym_id).eq('is_active', true)
+          ? supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').eq('gym_id', profile.gym_id).in('created_by', ownerIds).eq('is_active', true)
           : Promise.resolve({ data: [] }),
         supabase.from('user_saved_exercises').select('exercise_id').eq('user_id', user.id),
-        // SECURITY: user.id comes from supabase.auth context, not user input.
-        // Validate UUID format as a defense-in-depth measure before interpolating into .or() filter.
-        (/^[0-9a-f-]{36}$/i.test(user.id)
-          ? supabase.from('friendships')
-              .select('requester_id, addressee_id, status')
-              .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-              .eq('status', 'accepted')
-          : Promise.resolve({ data: [] })),
         supabase.from('exercise_favorites').select('exercise_id').eq('user_id', user.id),
       ]);
 
       const globals = globalsRes.data ?? [];
       const customs = customsRes.data ?? [];
       const saved   = savedRes.data ?? [];
-      const fships  = fshipsRes.data ?? [];
       const favs    = favsRes.data ?? [];
-
-      const fIds = new Set(fships.map(f =>
-        f.requester_id === user.id ? f.addressee_id : f.requester_id
-      ));
       setFavoriteIds(new Set(favs.map(f => f.exercise_id)));
 
       // Separately fetch profile names for custom exercises that have a created_by
@@ -2961,7 +2988,7 @@ export const ExerciseLibraryPage = () => {
   const { dbIds, totalCount } = useMemo(() => {
     const ids = new Set([...globalDbExercises, ...customExercises].map(e => e.id));
     return { dbIds: ids, totalCount: localExercises.filter(e => !ids.has(e.id)).length + ids.size };
-  }, [globalDbExercises, customExercises]);
+  }, [globalDbExercises, customExercises, localExercises]);
 
   const tabs = [
     { key: 'all',     label: t('exerciseLibrary.tabAll'),     count: totalCount },
@@ -3020,7 +3047,7 @@ export const ExerciseLibraryPage = () => {
       };
     });
     return [...uniqueLocal, ...dbFallback];
-  }, [tab, mineExercises, friendExercises, globalDbExercises, customExercises, dbIds, user?.id]);
+  }, [tab, mineExercises, friendExercises, globalDbExercises, customExercises, dbIds, user?.id, localExercises]);
 
   // Apply search + chip + advanced filters + sort
   const filteredRows = useMemo(() => {
@@ -3199,27 +3226,55 @@ export const ExerciseLibraryPage = () => {
         })}
       </div>
 
-      {/* ── Search bar — tappable trigger that opens the fullscreen
-          AllExercisesModal. The actual input lives inside the modal. */}
-      <button
-        type="button"
-        onClick={() => setShowAllExercises(true)}
-        className="mb-3 w-full flex items-center gap-2.5 rounded-[14px] px-3.5 py-3 text-left active:scale-[0.99] transition-transform"
-        style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)' }}
-      >
-        <Search size={16} strokeWidth={2} style={{ color: 'var(--color-text-subtle)' }} />
-        <span
-          className="flex-1 truncate"
-          style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-muted)', letterSpacing: '-0.2px' }}
+      {/* ── Search bar + Equipment side-button (Nutrition-style row) ─────────
+          Search opens the fullscreen AllExercisesModal; the scan button jumps to
+          the equipment browser (scan a machine → what you can do on it). */}
+      <div className="mb-3 flex items-stretch gap-2">
+        <button
+          type="button"
+          onClick={() => setShowAllExercises(true)}
+          className="flex-1 flex items-center gap-2.5 rounded-[14px] px-3.5 py-3 text-left active:scale-[0.99] transition-transform"
+          style={{ background: 'var(--color-bg-card)', border: '1.5px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(15,20,25,0.03)' }}
         >
-          {t('exerciseLibrary.searchPlaceholder', 'Search exercises, muscles, gear…')}
-        </span>
-      </button>
+          <Search size={16} strokeWidth={2} style={{ color: 'var(--color-text-subtle)' }} />
+          <span
+            className="flex-1 truncate"
+            style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-muted)', letterSpacing: '-0.2px' }}
+          >
+            {t('exerciseLibrary.searchPlaceholder', 'Search exercises, muscles, gear…')}
+          </span>
+        </button>
+      </div>
+
+      {/* Equipment scan — floating bottom-right FAB, matching the Nutrition scan
+          FAB. Opens the equipment browser (scan a machine → its exercises).
+          Portaled to body so it's never clipped; gated on the active route so
+          it can't leak onto other kept-alive pages. */}
+      {isExercisesActive && createPortal(
+        <button
+          onClick={() => navigate('/equipment')}
+          aria-label={t('exerciseLibrary.equipmentEntry', 'Scan equipment')}
+          className="flex items-center justify-center active:scale-90 transition-all"
+          style={{
+            position: 'fixed', zIndex: 50, right: 18,
+            bottom: 'calc(90px + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+            width: 58, height: 58, borderRadius: 999, border: 'none',
+            background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)',
+            boxShadow: '0 8px 24px color-mix(in srgb, var(--color-accent) 38%, transparent), 0 2px 6px rgba(0,0,0,0.15)',
+            cursor: 'pointer',
+          }}
+        >
+          <ScanLine size={24} strokeWidth={2.2} />
+        </button>,
+        document.body
+      )}
 
       {/* ── Filter chips (scrollable) — tap to highlight muscles + open sheet,
           or open the All Exercises modal for non-muscle chips. */}
-      <div className="mb-3 -mx-4 px-4 overflow-x-auto no-scrollbar">
-        <div className="flex gap-1.5 whitespace-nowrap">
+      <div className="mb-3 -mx-4 pl-4 overflow-x-auto no-scrollbar">
+        {/* pr-4 lives on the flex row (not the scroll container) so mobile WebKit
+            keeps the trailing whitespace after the last chip instead of collapsing it. */}
+        <div className="flex gap-1.5 whitespace-nowrap pr-4">
           {chipDefs.map((c) => (
             <FilterChip key={c.id} active={c.id === activeChip} onClick={() => handleChipTap(c.id)}>
               {c.label}

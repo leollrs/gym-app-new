@@ -78,6 +78,5 @@ export function useFeatureEnabled(key) {
  * back to ALL_ENABLED like every flag — acceptable for a skippable step.)
  */
 export function useOnboardingTargetsEnabled() {
-  const { flags, isLoading } = usePlatformFlags();
-  return !isLoading && flags?.onboarding_targets === true;
+  return true; // Founder decision: the "Your Targets" onboarding step is ALWAYS ON.
 }

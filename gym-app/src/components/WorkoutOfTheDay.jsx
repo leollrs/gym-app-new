@@ -6,7 +6,7 @@ import posthogClient from 'posthog-js';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { generateAdaptiveWorkout } from '../lib/adaptiveWorkout';
-import { getExerciseById } from '../data/exercises';
+import { getExerciseById } from '../lib/exerciseStore';
 
 // ── Pill colors by muscle group ─────────────────────────────────────────────
 const MUSCLE_COLORS = {

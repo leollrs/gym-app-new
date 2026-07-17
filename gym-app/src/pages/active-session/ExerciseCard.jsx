@@ -3,7 +3,8 @@ import {
   Check, Trophy, Plus, Minus, Clock, Play, X, MessageSquare,
   ArrowLeftRight, SkipForward, TrendingUp, Pencil, ChevronDown,
 } from 'lucide-react';
-import { exercises as exerciseLibrary } from '../../data/exercises';
+import { getExercises } from '../../lib/exerciseStore';
+const exerciseLibrary = getExercises();
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import CoachMark from '../../components/CoachMark';

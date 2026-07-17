@@ -37,6 +37,10 @@ i18n
       es: { common: esCommon, auth: esAuth, onboarding: esOnboarding },
     },
     lng: earlyLng,
+    // i18next v25 resolves plurals via CLDR v4 (suffix `_one`/`_other`) regardless
+    // of this flag, so ALL plural keys use the `_other` suffix — the legacy v3
+    // `_plural` suffix is silently ignored (falls back to singular). Keep keys as
+    // `<key>` (count===1 fallback) + `<key>_other` (count!==1).
     compatibilityJSON: 'v3',
     fallbackLng: 'en',
     supportedLngs: ['en', 'es'],

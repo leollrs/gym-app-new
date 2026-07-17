@@ -1,4 +1,5 @@
-import { MEALS } from '../data/meals';
+import { getMeals } from './mealStore';
+const MEALS = getMeals();
 import {
   isMealAllergenSafe,
   isMealDietaryCompliant,

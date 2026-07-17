@@ -31,8 +31,9 @@ const loadMeals = async () => {
   mealsCache = mod.MEALS;
   return mealsCache;
 };
-import { getExerciseById } from '../data/exercises';
+import { getExerciseById } from '../lib/exerciseStore';
 import { foodImageUrl } from '../lib/imageUrl';
+import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 import RewardPicker from '../components/RewardPicker';
 
 // ── DESIGN TOKENS ──────────────────────────────────────────
@@ -1806,7 +1807,7 @@ const Onboarding = () => {
       name: generateRoutineName(r.slotsKey, r.variantIndex, nameSeed),
       exercises: r.exercises.map((ex) => {
         const info = getExerciseById(ex.exerciseId);
-        return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '' };
+        return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '', videoUrl: info?.videoUrl || null };
       }),
     }));
     return {
@@ -2040,19 +2041,35 @@ const Onboarding = () => {
       affinities: {},
     });
 
+    // Seed a FULL MONTH, not a one-week cliff. A member who opens their plan and
+    // sees only seven days quits after seven days — so we persist 4 weeks up
+    // front (week 1 is the active/current one; weeks 2-4 are ready and waiting
+    // when they navigate forward). Each is its own generated_meal_plans row.
+    // Best-effort: only week 1 gates the visible preview.
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    const { error: planErr } = await supabase
-      .from('generated_meal_plans')
-      .upsert({
-        profile_id: user.id,
-        gym_id: gymId,
-        week_start: startOfWeek.toISOString().split('T')[0],
-        plan_data: weekPlan,
-        macro_targets: macros,
-        is_active: true,
-      }, { onConflict: 'profile_id,week_start' });
-    if (planErr) console.warn('[onboarding] generated meal plan save failed:', planErr.message);
+    const PLAN_WEEKS = 4;
+    for (let w = 0; w < PLAN_WEEKS; w++) {
+      const ws = new Date(startOfWeek);
+      ws.setDate(ws.getDate() + w * 7);
+      // Week 1 reuses the already-generated preview plan; later weeks get fresh
+      // variety so the month doesn't repeat the same seven days.
+      const wkPlan = w === 0 ? weekPlan : generateWeekPlan({
+        targets: macros, favorites: [],
+        allergies: snapshot.foodAllergies, restrictions: snapshot.dietaryRestrictions, affinities: {},
+      });
+      const { error: planErr } = await supabase
+        .from('generated_meal_plans')
+        .upsert({
+          profile_id: user.id,
+          gym_id: gymId,
+          week_start: ws.toISOString().split('T')[0],
+          plan_data: wkPlan,
+          macro_targets: macros,
+          is_active: w === 0, // only the current week is the "active" one
+        }, { onConflict: 'profile_id,week_start' });
+      if (planErr) { console.warn('[onboarding] generated meal plan save failed:', planErr.message); break; }
+    }
 
     // Column names per 0001 schema (daily_*) — the bare calories/protein_g
     // names 42703'd silently here, so onboarding never persisted targets and
@@ -4145,14 +4162,7 @@ const Onboarding = () => {
                       border: `1px solid ${OB.line}`,
                       display: 'flex', alignItems: 'center', gap: 12,
                     }}>
-                      <div style={{
-                        width: 38, height: 38, borderRadius: 10,
-                        background: c.bg, color: c.fg,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0,
-                      }}>
-                        <Dumbbell size={20} color={c.fg} />
-                      </div>
+                      <ExerciseVideoThumb exercise={ex} size={44} radius={11} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
                           fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14,

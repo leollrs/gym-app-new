@@ -648,9 +648,10 @@ export default function MemberSettings() {
           <button
             type="button"
             onClick={() => setShowSaveAttempt(true)}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-red-500/20 text-red-400 text-[14px] font-semibold hover:bg-red-500/10 transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-white text-[14px] font-bold active:scale-[0.98] transition-transform"
+            style={{ background: 'var(--color-danger, #DC2626)', boxShadow: '0 4px 14px rgba(220,38,38,0.3)' }}
           >
-            <Trash2 size={15} /> {t('settings.deleteAccount')}
+            <Trash2 size={16} strokeWidth={2.4} /> {t('settings.deleteAccount')}
           </button>
         </div>
       </div>

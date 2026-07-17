@@ -13,7 +13,8 @@
       "WebFetch(domain:api.anthropic.com)",
       "WebSearch",
       "Bash(ls -la ~/Downloads/tugympr-ceb888d11687.json 2>&1)",
-      "Read(//Users/leollorens/Downloads/**)"
+      "Read(//Users/leollorens/Downloads/**)",
+      "Bash(node -e ' *)"
     ]
   }
 }

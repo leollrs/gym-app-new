@@ -735,6 +735,12 @@ if (isNative) {
       '/admin', '/trainer', '/platform/attention', // role homes
     ]);
     CapApp.addListener('backButton', () => {
+      // Let an in-page overlay (e.g. a category results view, a full-screen sheet)
+      // claim the back press first via a cancelable event. If a listener calls
+      // preventDefault(), dispatchEvent returns false → we stop here and don't
+      // navigate/minimize, so back closes the overlay instead of the whole page.
+      const claimed = !window.dispatchEvent(new CustomEvent('app:hardwareback', { cancelable: true }));
+      if (claimed) return;
       // Read the route from navigationRef (router truth), NOT window.location —
       // under MemoryRouter (native) window.location is frozen at the static base,
       // so every page looked like a main page and the app minimized on every back
@@ -838,6 +844,12 @@ if (isNative) {
         if (parsed.protocol === 'tugympr:' && parsed.host === 'get') {
           const c = (parsed.searchParams.get('c') || '').toLowerCase();
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: resolveAppSection(c) } }));
+        }
+        // tugympr://equipment/<slug> — a printed equipment QR scanned by the
+        // phone's own camera opens the app straight to that station's exercises.
+        if (parsed.protocol === 'tugympr:' && parsed.host === 'equipment') {
+          const slug = parsed.pathname.replace(/^\/+/, '').split('/')[0];
+          if (slug) window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/equipment/${slug}` } }));
         }
       } catch {}
     });

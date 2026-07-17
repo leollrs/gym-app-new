@@ -9,7 +9,8 @@ import logger from '../lib/logger';
 import { generateProgram } from '../lib/workoutGenerator';
 import { generateRoutineName } from '../lib/programNaming';
 import useFocusTrap from '../hooks/useFocusTrap';
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from '../lib/exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { exName, localizeRoutineName } from '../lib/exerciseName';
 
 const exerciseNameMap = Object.fromEntries(ALL_EXERCISES.map(e => [e.id, e]));

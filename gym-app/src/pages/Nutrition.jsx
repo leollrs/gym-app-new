@@ -1,16 +1,18 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { MEALS } from '../data/meals';
+import { getMeals, mealImageById } from '../lib/mealStore';
+import SwipeableTabView from '../components/SwipeableTabView';
+const MEALS = getMeals();
 import {
-  Plus, Search, X, Clock, ChevronRight, Flame, Trash2,
+  Plus, Search, X, Clock, ChevronRight, Flame, Trash2, Home,
   Heart, Check, Bookmark, ShoppingCart, ChevronLeft,
   Dumbbell, Zap, TrendingDown, TrendingUp, DollarSign,
   Star, Edit2, Circle, CheckCircle, UtensilsCrossed,
   Sunrise, Sun, Moon, Apple, Camera, CheckCircle2, AlertCircle,
   SlidersHorizontal, Sparkles, RefreshCw, BarChart2, ChevronDown, ChevronUp,
   Calendar, ScanLine, ScanBarcode, Loader, ArrowUp, ArrowDown,
-  BookOpen, Utensils, ArrowRight, ThumbsUp, ThumbsDown,
+  BookOpen, Utensils, ArrowRight, ThumbsUp, ThumbsDown, Bell, Minus,
 } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { List as VirtualList } from 'react-window';
@@ -23,7 +25,13 @@ import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
 import { getFoodImage } from '../lib/foodImages';
-import { foodImageUrl } from '../lib/imageUrl';
+import { foodImageUrl, handleMealImgError, MEAL_IMG_FALLBACK } from '../lib/imageUrl';
+import { ingredientImageSlug } from '../lib/ingredientImages';
+import { plannerSlotKeys, slotTypeOf, slotLabelFor, loadMealSchedule, saveMealSchedule, syncMealReminders, ensureMealNotifPermission, MEAL_SLOT_MIN, MEAL_SLOT_MAX } from '../lib/mealNotifications';
+
+// Realistic bound on how many weeks "Generate" fills ahead in one tap.
+const PLAN_WEEKS_MAX = 8;
+import { validateImageFile } from '../lib/validateImage';
 // Note: the old takePhoto helper opened an HTML file input which on iOS
 // presented the photo-library picker. The nutrition scan overlay now captures
 // frames directly from the live html5-qrcode <video> stream (see
@@ -32,6 +40,7 @@ import { foodImageUrl } from '../lib/imageUrl';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { useMeals } from '../hooks/useContentStores';
 import { suggestMeals, generateDayPlan, generateWeekPlan, suggestPostWorkoutMeal } from '../lib/mealPlanner';
 import { loadAffinities, rateMeal, rebuildAffinities } from '../lib/mealPreferences';
 import FoodScanResultModal, { cleanFoodName } from '../components/nutrition/FoodScanResultModal';
@@ -77,6 +86,28 @@ const MacroSegBar = ({ p = 0, c = 0, f = 0, height = 4 }) => {
   );
 };
 
+// How well a recipe fits the member's macro GOALS, as a 0–100%. Compares the
+// recipe against a single meal's share of the daily targets (targets/3), the
+// same per-meal basis "Fits your macros" uses. Protein + calories are weighted
+// highest (that's what a member's goal hinges on). Returns null when there are
+// no meaningful targets, so the card just omits the badge.
+function goalMatchPct(recipe, targets) {
+  if (!recipe || !targets) return null;
+  const cal = Number(targets.daily_calories) || 0;
+  const pro = Number(targets.daily_protein_g) || 0;
+  if (!cal || !pro) return null;
+  const mealCal = cal / 3, mealPro = pro / 3;
+  const mealCarb = (Number(targets.daily_carbs_g) || 0) / 3;
+  const mealFat = (Number(targets.daily_fat_g) || 0) / 3;
+  const gap = (v, t) => (t > 0 ? Math.min(1, Math.abs((Number(v) || 0) - t) / t) : 0);
+  const score = 1
+    - 0.35 * gap(recipe.calories, mealCal)
+    - 0.35 * gap(recipe.protein, mealPro)
+    - 0.15 * gap(recipe.carbs, mealCarb)
+    - 0.15 * gap(recipe.fat, mealFat);
+  return Math.max(0, Math.min(100, Math.round(score * 100)));
+}
+
 // ── FOOD TILE (gradient initial) ────────────────────────────
 const TILE_PALETTES = [
   ['#FFB86B', '#FF7A3D'], ['#7FE3C4', '#2EC4C4'], ['#FFD166', '#F2A23A'],
@@ -96,6 +127,39 @@ const FoodTile = ({ name, size = 48, seed = 0 }) => {
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.15)',
     }}>{initial}</div>
   );
+};
+
+// Food thumbnail with graceful fallback: when the image is missing or 404s
+// (e.g. branded foods whose photo was never uploaded), drop to the generated
+// FoodTile instead of rendering a broken <img>.
+const FoodThumb = ({ src, name, size = 44, seed = 0, className = '' }) => {
+  const [broken, setBroken] = useState(false);
+  if (!src || broken) return <FoodTile name={name} size={size} seed={seed} />;
+  return (
+    <img src={src} alt={name} loading="lazy" onError={() => setBroken(true)}
+      className={className} style={{ background: 'var(--color-border-subtle)' }} />
+  );
+};
+
+// Recipes are logged BY NAME (no food_item row), so a recipe log/scan carries no
+// image and falls back to a letter tile. Resolve one by matching the logged name
+// to the recipe library (which has the images). Memoized; rebuilds only when the
+// library size changes (e.g. after DB hydration). Returns a ready public URL.
+let _recipeImgMap = null, _recipeImgMapN = -1;
+const recipeImageByName = (name) => {
+  if (!name) return null;
+  const lib = getMeals();
+  if (_recipeImgMapN !== lib.length) {
+    _recipeImgMap = new Map();
+    for (const m of lib) {
+      if (!m?.image) continue;
+      if (m.title) _recipeImgMap.set(String(m.title).trim().toLowerCase(), m.image);
+      if (m.title_es) _recipeImgMap.set(String(m.title_es).trim().toLowerCase(), m.image);
+    }
+    _recipeImgMapN = lib.length;
+  }
+  const path = _recipeImgMap.get(String(name).trim().toLowerCase());
+  return path ? foodImageUrl(path) : null;
 };
 
 // ── NUTRI-SCORE (0-100) ──────────────────────────────────────
@@ -161,6 +225,16 @@ const MEAL_TYPES = [
   { key: 'snack',     labelKey: 'nutrition.meals.snack',     icon: Apple,   color: 'var(--color-success)' },
 ];
 
+// Time-of-day default for the meal-type picker. ALWAYS returns a valid MEAL_TYPES
+// key (never 'late') so a logged item is never left uncategorized.
+const defaultMealSlot = () => {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) return 'breakfast';
+  if (h >= 11 && h < 15) return 'lunch';
+  if (h >= 17 && h < 22) return 'dinner';
+  return 'snack';
+};
+
 // ── RECIPE DATA (300 meals — imported from src/data/meals.js) ──
 const RECIPES = MEALS;
 const CATEGORIES = [
@@ -174,28 +248,46 @@ const CATEGORIES = [
   { id: 'post_workout', label: 'Post-Workout', Icon: Flame,        color: 'var(--color-danger)' },
 ];
 
+// Weekly collections are theme-based (a predicate), NOT hardcoded recipe ids —
+// so they (a) survive the recipe library growing/changing and (b) rotate their
+// picks every week for variety. See collectionRecipes() below.
 const WEEKLY_COLLECTIONS = [
   {
     id: 'wc1', title: '5 High-Protein Dinners',
-    subtitle: 'Build muscle with every meal',
-    recipeIds: ['r1', 'r2', 'r3', 'r10', 'r25'], accent: 'var(--color-success)',
+    subtitle: 'Build muscle with every meal', accent: 'var(--color-success)',
+    pick: (r) => (r.protein || 0) >= 30,
   },
   {
     id: 'wc2', title: 'Easy Meal Prep Sunday',
-    subtitle: 'Cook once, eat all week',
-    recipeIds: ['r1', 'r9', 'r101', 'r108'], accent: 'var(--color-accent)',
+    subtitle: 'Cook once, eat all week', accent: 'var(--color-accent)',
+    pick: (r) => (r.prepTime || r.prep_time || 99) <= 20 || r.category === 'quick_budget',
   },
   {
     id: 'wc3', title: 'Cutting Week Meals',
-    subtitle: 'Stay in deficit without starving',
-    recipeIds: ['r51', 'r62', 'r68', 'r75', 'r80'], accent: '#F472B6',
+    subtitle: 'Stay in deficit without starving', accent: '#F472B6',
+    pick: (r) => (r.calories || 0) <= 420 && (r.protein || 0) >= 25,
   },
   {
     id: 'wc4', title: 'Bulk Up This Week',
-    subtitle: 'Serious calories for serious gains',
-    recipeIds: ['r151', 'r155', 'r161', 'r170', 'r180'], accent: '#F97316',
+    subtitle: 'Serious calories for serious gains', accent: '#F97316',
+    pick: (r) => (r.calories || 0) >= 600,
   },
 ];
+
+// Whole weeks since the epoch — a stable index that ticks once per week. Powers
+// the weekly rotation of collections + "fits your macros" so both vary each week
+// but stay put within a week.
+const weekIndex = () => Math.floor(Date.now() / 604800000);
+
+// Recipes for a collection THIS week: filter by the theme, order deterministically,
+// then slide a `count`-sized window by the week index so the picks rotate weekly.
+const collectionRecipes = (col, recipes, count = 5) => {
+  const pool = (recipes || []).filter((r) => r?.ingredients && col.pick?.(r));
+  if (pool.length <= count) return pool;
+  const sorted = [...pool].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const start = (weekIndex() * count) % sorted.length;
+  return Array.from({ length: count }, (_, i) => sorted[(start + i) % sorted.length]);
+};
 
 const INGREDIENT_CATEGORIES = {
   Proteins: [
@@ -365,7 +457,7 @@ const RecipeCard = ({ recipe, saved, onSave, onOpen, size = 'md', lang = 'en' })
     >
       <div className={`relative overflow-hidden ${isLg ? 'h-[120px]' : 'h-[100px]'}`}>
         <img
-          src={foodImageUrl(recipe.image)} alt={title}
+          src={(foodImageUrl(recipe.image) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={title}
           className="w-full h-full object-cover"
           loading="lazy"
         />
@@ -436,6 +528,9 @@ const CategoryRow = ({ category, recipes, savedIds, onSave, onOpen, lang = 'en' 
 // ── RECIPE DETAIL MODAL ─────────────────────────────────────
 const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onLogMeal, groceryAdded, lang = 'en', rating = 0, onRate }) => {
   const { t } = useTranslation('pages');
+  // Ingredients / Instructions are swipeable tabs (not a long scroll).
+  const [detailTab, setDetailTab] = useState('ingredients');
+  useEffect(() => { setDetailTab('ingredients'); }, [recipe?.id]);
   if (!recipe) return null;
   const mealTitle = (lang === 'es' && recipe.title_es) ? recipe.title_es : recipe.title;
   const mealTag = (lang === 'es' && recipe.tag_es) ? recipe.tag_es : recipe.tag;
@@ -455,7 +550,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
       >
         {/* ── Hero image ── */}
         <div className="relative flex-shrink-0 overflow-hidden w-full" style={{ height: 260 }}>
-          <img src={foodImageUrl(recipe.image)} alt={mealTitle} className="w-full h-full object-cover" loading="lazy" />
+          <img src={(foodImageUrl(recipe.image) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={mealTitle} className="w-full h-full object-cover" loading="lazy" />
           {/* close */}
           <button onClick={onClose}
             className="absolute top-4 left-4 min-w-[44px] min-h-[44px] w-10 h-10 rounded-full flex items-center justify-center focus:outline-none"
@@ -523,53 +618,90 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
             />
           </div>
 
-          {/* ── Ingredients ── */}
-          <div className="px-5 pt-5">
-            <div style={{ fontFamily: TU.display, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.4, marginBottom: 12 }}>
-              {t('nutrition.ingredients')}
-            </div>
-          </div>
-          <div className="px-4 mb-4">
-            <div className="rounded-[22px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-              {recipe.ingredients.map((ing, i) => {
-                const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
-                const match = allIngredients.find(item => item.id === ing);
-                const ingLabel = t(`nutrition_ingredients.items.${ing}`, match?.label || ing.replace(/_/g, ' '));
-                return (
-                  <div key={ing} className="flex items-center px-4 py-3" style={{
-                    borderBottom: i < recipe.ingredients.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
-                  }}>
-                    {match?.emoji && <span className="text-[15px] mr-3">{match.emoji}</span>}
-                    <span className="flex-1 text-[15px] font-medium" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{ingLabel}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {/* ── Ingredients / Instructions — swipeable tabs (no long scroll) ── */}
+          {(() => {
+            const hasSteps = mealSteps && mealSteps.length > 0;
+            const tabList = hasSteps
+              ? [{ id: 'ingredients', label: t('nutrition.ingredients') }, { id: 'instructions', label: t('nutrition.instructions') }]
+              : [{ id: 'ingredients', label: t('nutrition.ingredients') }];
+            const activeIdx = Math.max(0, tabList.findIndex(tb => tb.id === detailTab));
+            // Hold both tab panels to the same height (sized to the taller of the
+            // two) so switching/swiping doesn't compress or jump the view.
+            const panelMin = Math.max(
+              240,
+              (recipe.ingredients?.length || 0) * 46 + 44,
+              hasSteps ? (mealSteps.length * 88 + 76) : 0,
+            );
 
-          {/* ── Instructions ── */}
-          {mealSteps && mealSteps.length > 0 && (
-            <>
-              <div className="px-5 pt-2">
-                <div style={{ fontFamily: TU.display, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.4, marginBottom: 14 }}>
-                  {t('nutrition.instructions')}
-                </div>
-              </div>
-              <div className="px-5 pb-4">
-                <div className="flex flex-col gap-4">
-                  {mealSteps.map((step, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <div className="flex-shrink-0 w-[24px] h-[24px] rounded-[8px] flex items-center justify-center mt-[1px]"
-                        style={{ background: `${TU.accent}15` }}>
-                        <span className="text-[11px] font-bold" style={{ color: TU.accent }}>{i + 1}</span>
+            const ingredientsPanel = (
+              <div className="px-4 pt-4 pb-2" style={{ minHeight: panelMin }}>
+                <div className="rounded-[22px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
+                  {recipe.ingredients.map((ing, i) => {
+                    const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
+                    const match = allIngredients.find(item => item.id === ing);
+                    const ingLabel = t(`nutrition_ingredients.items.${ing}`, match?.label || ing.replace(/_/g, ' '));
+                    return (
+                      <div key={ing} className="flex items-center px-4 py-3" style={{
+                        borderBottom: i < recipe.ingredients.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
+                      }}>
+                        <span className="flex-1 text-[15px] font-medium" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{ingLabel}</span>
+                        {recipe.ingredientAmounts?.[i] && (
+                          <span className="text-[13px] font-semibold ml-3 flex-shrink-0 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                            {recipe.ingredientAmounts[i]}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-[13px] flex-1" style={{ color: 'var(--color-text-primary)', lineHeight: 1.65 }}>{step}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
-            </>
-          )}
+            );
+
+            const instructionsPanel = hasSteps ? (
+              <div className="px-4 pt-4 pb-2" style={{ minHeight: panelMin }}>
+                {/* Original numbered list, wrapped in one card so it reads as a panel */}
+                <div className="rounded-[22px] px-4 py-4" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
+                  <div className="flex flex-col gap-4">
+                    {mealSteps.map((step, i) => (
+                      <div key={i} className="flex gap-3 items-start">
+                        <div className="flex-shrink-0 w-[24px] h-[24px] rounded-[8px] flex items-center justify-center mt-[1px]"
+                          style={{ background: `${TU.accent}15` }}>
+                          <span className="text-[11px] font-bold" style={{ color: TU.accent }}>{i + 1}</span>
+                        </div>
+                        <p className="text-[13px] flex-1" style={{ color: 'var(--color-text-primary)', lineHeight: 1.65 }}>{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null;
+
+            return (
+              <div className="pt-4">
+                {/* Tab bar (underline) */}
+                <div className="flex px-5" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                  {tabList.map((tb, i) => {
+                    const active = i === activeIdx;
+                    return (
+                      <button key={tb.id} type="button" onClick={() => setDetailTab(tb.id)}
+                        className="flex-1 text-center pt-1 pb-2.5 relative focus:outline-none"
+                        style={{ fontFamily: TU.display, fontSize: 14, fontWeight: active ? 800 : 600, color: active ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                        {tb.label}
+                        {active && <div style={{ position: 'absolute', bottom: -1, left: 12, right: 12, height: 2, borderRadius: 2, background: TU.accent }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Swipeable panels */}
+                {hasSteps ? (
+                  <SwipeableTabView activeIndex={activeIdx} onChangeIndex={(idx) => setDetailTab(tabList[idx]?.id || 'ingredients')} tabKeys={tabList.map(tb => tb.id)}>
+                    {ingredientsPanel}
+                    {instructionsPanel}
+                  </SwipeableTabView>
+                ) : ingredientsPanel}
+              </div>
+            );
+          })()}
         </div>
 
         {/* ── Sticky CTAs ── */}
@@ -622,6 +754,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
 const MealLogSheet = ({ meal, onClose, onLog, lang = 'en' }) => {
   const { t } = useTranslation('pages');
   const [portion, setPortion] = useState(1);
+  const [mealType, setMealType] = useState(defaultMealSlot);
   const [saving, setSaving] = useState(false);
 
   if (!meal) return null;
@@ -651,6 +784,7 @@ const MealLogSheet = ({ meal, onClose, onLog, lang = 'en' }) => {
         carbs_g: scaled.carbs_g,
         fat_g: scaled.fat_g,
         servings: portion,
+        mealType,
         image: meal.image || null,
         image_url: meal.image_url || null,
       });
@@ -703,23 +837,23 @@ const MealLogSheet = ({ meal, onClose, onLog, lang = 'en' }) => {
         <div className="px-4 mb-3 flex items-center gap-3">
           {meal.image ? (
             <img
-              src={foodImageUrl(meal.image)}
+              src={(foodImageUrl(meal.image) || MEAL_IMG_FALLBACK)} onError={handleMealImgError}
               alt={title}
-              className="w-[56px] h-[56px] rounded-[14px] object-cover flex-shrink-0"
+              className="w-[64px] h-[64px] rounded-[18px] object-cover flex-shrink-0"
               style={{ background: 'var(--color-border-subtle)' }}
               loading="lazy"
             />
           ) : (
             <div
-              className="w-[56px] h-[56px] rounded-[14px] flex items-center justify-center flex-shrink-0"
+              className="w-[64px] h-[64px] rounded-[18px] flex items-center justify-center flex-shrink-0"
               style={{ background: 'var(--color-bg-surface)' }}
             >
-              <Utensils size={20} style={{ color: 'var(--color-text-muted)' }} />
+              <Utensils size={24} style={{ color: 'var(--color-text-muted)' }} />
             </div>
           )}
           <h3
-            className="text-[16px] font-bold leading-tight"
-            style={{ color: 'var(--color-text-primary)', fontFamily: TU.display, letterSpacing: -0.3 }}
+            className="flex-1 min-w-0 truncate"
+            style={{ fontFamily: '"Archivo", system-ui, sans-serif', fontSize: 26, fontWeight: 900, color: 'var(--color-text-primary)', letterSpacing: -0.6, lineHeight: 1.05 }}
           >
             {title}
           </h3>
@@ -749,8 +883,8 @@ const MealLogSheet = ({ meal, onClose, onLog, lang = 'en' }) => {
                 onClick={() => setPortion(p)}
                 className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold transition-all active:scale-95"
                 style={{
-                  background: portion === p ? TU.coach : 'var(--color-bg-surface)',
-                  color: portion === p ? '#fff' : 'var(--color-text-primary)',
+                  background: portion === p ? TU.accent : 'var(--color-bg-surface)',
+                  color: portion === p ? 'var(--color-text-on-accent, #fff)' : 'var(--color-text-primary)',
                   border: '1px solid var(--color-border-subtle)',
                   fontFamily: TU.display,
                 }}
@@ -758,6 +892,36 @@ const MealLogSheet = ({ meal, onClose, onLog, lang = 'en' }) => {
                 {p}×
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Meal type — so the log lands in the right slot (breakfast/lunch/dinner/snack)
+            instead of everything defaulting to one bucket. Defaults to the current
+            time of day. */}
+        <div className="px-4 mb-4">
+          <div className="text-[11px] font-bold uppercase mb-2" style={{ color: 'var(--color-text-muted)', letterSpacing: 0.5 }}>
+            {t('nutrition.mealTypeLabel', 'Meal')}
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {MEAL_TYPES.map((m) => {
+              const active = mealType === m.key;
+              return (
+                <button
+                  key={m.key}
+                  onClick={() => setMealType(m.key)}
+                  className="flex flex-col items-center gap-1 py-2.5 rounded-[12px] transition-all active:scale-95"
+                  style={{
+                    background: active ? `color-mix(in srgb, ${m.color} 15%, transparent)` : 'var(--color-bg-surface)',
+                    border: `1.5px solid ${active ? m.color : 'var(--color-border-subtle)'}`,
+                  }}
+                >
+                  <m.icon size={16} style={{ color: active ? m.color : 'var(--color-text-faint)' }} />
+                  <span className="text-[10.5px] font-bold" style={{ color: active ? m.color : 'var(--color-text-muted)', fontFamily: TU.display }}>
+                    {t(m.labelKey, m.key)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -770,8 +934,8 @@ const MealLogSheet = ({ meal, onClose, onLog, lang = 'en' }) => {
             style={{
               height: 52,
               borderRadius: 18,
-              background: TU.coach,
-              color: '#fff',
+              background: TU.accent,
+              color: 'var(--color-text-on-accent, #fff)',
               fontFamily: TU.display,
               fontWeight: 800,
               fontSize: 15,
@@ -935,35 +1099,110 @@ const BarcodeResultModal = ({ product, onClose, onLog }) => {
 };
 
 // ── FOOD SEARCH MODAL ───────────────────────────────────────
-const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, onBarcodeResult, favorites = [], recentFoods = [], onToggleFavorite, lang = 'en' }) => {
+const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, onBarcodeResult, favorites = [], recentFoods = [], onToggleFavorite, lang = 'en' }) => {
   const { t } = useTranslation('pages');
   const isEs = lang === 'es';
   const foodName = (food) => (isEs && food.name_es) ? food.name_es : food.name;
+  const recipeTitle = (m) => (isEs && m.title_es) ? m.title_es : (m.title || m.name || '');
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [tab, setTab] = useState('search');
+  const [mealResults, setMealResults] = useState([]);
+  const [tab, setTab] = useState('ingredients');       // ingredients | recent | favorites
+  const [ingredients, setIngredients] = useState([]);  // curated is_ingredient rows (the palette)
+  const [ingCat, setIngCat] = useState('protein');
+  const [ingQuery, setIngQuery] = useState(''); // filter the ingredient palette by name
+  const [ingLoading, setIngLoading] = useState(false);
 
-  useEffect(() => { if (!open) { setQuery(''); setResults([]); setTab('search'); } }, [open]);
+  useEffect(() => { if (!open) { setQuery(''); setMealResults([]); setTab('ingredients'); setIngCat('protein'); } }, [open]);
 
+  // The SEARCH box searches MEALS (recipes), which live in-memory (getMeals), so
+  // the match is instant — no DB round-trip. Ingredients are NOT typed here; they
+  // are picked from the palette below. That way "search a database" only ever
+  // means one thing (meals) and never competes with the ingredient list.
   useEffect(() => {
-    if (query.length < 2) { setResults([]); return; }
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      // Sanitize query to prevent PostgREST filter injection
-      const safeQuery = query.replace(/[%_\\,()."']/g, '');
-      if (!safeQuery) { setResults([]); setSearching(false); return; }
-      const { data } = await supabase.from('food_items').select('id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g')
-        .or(`name.ilike.%${safeQuery}%,name_es.ilike.%${safeQuery}%`).limit(20);
-      setResults(data || []);
-      setSearching(false);
-    }, 300);
-    return () => clearTimeout(timer);
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) { setMealResults([]); return; }
+    const hits = [];
+    for (const m of getMeals()) {
+      if (!m) continue;
+      if (String(m.title || '').toLowerCase().includes(q) || String(m.title_es || '').toLowerCase().includes(q)) hits.push(m);
+      if (hits.length >= 30) break;
+    }
+    setMealResults(hits);
   }, [query]);
+
+  // Load the ingredient palette once per open (small, ~120 curated rows).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      setIngLoading(true);
+      const { data } = await supabase.from('food_items')
+        .select('id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g, ingredient_category')
+        .eq('is_ingredient', true).order('name', { ascending: true }).limit(300);
+      if (!cancelled) { setIngredients(data || []); setIngLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
 
   if (!open) return null;
   const favIds = new Set(favorites.map(f => f.food_item_id));
-  const displayList = tab === 'recent' ? recentFoods : tab === 'favorites' ? favorites.map(f => f.food_item) : results;
+  const searchingMeals = query.trim().length >= 2;
+  const ING_CATS = [
+    { id: 'protein', label: t('nutrition.ingCat.protein', 'Protein') },
+    { id: 'carb',    label: t('nutrition.ingCat.carb', 'Carbs') },
+    { id: 'veg',     label: t('nutrition.ingCat.veg', 'Veggies') },
+    { id: 'fruit',   label: t('nutrition.ingCat.fruit', 'Fruit') },
+    { id: 'dairy',   label: t('nutrition.ingCat.dairy', 'Dairy') },
+    { id: 'fat',     label: t('nutrition.ingCat.fat', 'Fats & Nuts') },
+  ];
+  // Ingredient palette: while typing, filter by name across ALL categories (so
+  // search works even if category data is missing); otherwise by the selected
+  // category. Cap the rendered count so a large library (100s → 1000s) never
+  // renders every row at once.
+  const ingQ = ingQuery.trim().toLowerCase();
+  const ingMatches = ingQ
+    ? ingredients.filter(i => `${i.name || ''} ${i.name_es || ''}`.toLowerCase().includes(ingQ))
+    : ingredients.filter(i => (i.ingredient_category || 'protein') === ingCat);
+  const foodRows = tab === 'recent' ? recentFoods
+    : tab === 'favorites' ? favorites.map(f => f.food_item)
+    : ingMatches.slice(0, 40);
+
+  // A single food/ingredient row (palette, Recent, Favorites). Logs via onSelect.
+  const renderFoodRow = (food) => {
+    if (!food) return null;
+    // Curated ingredient rows carry image_url = /ingredients/<slug>.jpg. Route the
+    // slug through the resolver so we never request a non-uploaded image (no 400s)
+    // and can borrow a close photo via alias. Regular food photos pass through.
+    const isIng = food.image_url && /\/ingredients\//.test(food.image_url);
+    const ingSlug = isIng ? ingredientImageSlug(food.image_url.split('/').pop().replace(/\.[a-z]+$/i, '')) : null;
+    const rowImg = isIng
+      ? (ingSlug ? foodImageUrl(`/ingredients/${ingSlug}.jpg`) : getFoodImage(food.name, food.brand))
+      : (foodImageUrl(food.image_url) || getFoodImage(food.name, food.brand));
+    return (
+    <div key={food.id} role="button" tabIndex={0} onClick={() => onSelect(food)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(food); } }}
+      className="w-full flex items-center gap-3 p-3 rounded-[14px] text-left active:scale-[0.975] transition-all cursor-pointer"
+      style={{ background: 'var(--color-bg-card)' }}>
+      <FoodThumb src={rowImg} name={foodName(food)} size={44} seed={food.id?.charCodeAt?.(0) || 0} className="w-11 h-11 rounded-[12px] object-cover flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-[14px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{foodName(food)}</p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] font-bold tabular-nums">
+          <span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>{food.serving_size}{food.serving_unit}</span>
+          <span style={{ color: 'var(--color-text-primary)' }}>{Math.round(food.calories)} kcal</span>
+          <span style={{ color: TU.macroP }}>{Math.round(food.protein_g)}g P</span>
+          <span style={{ color: TU.macroC }}>{Math.round(food.carbs_g || 0)}g C</span>
+          <span style={{ color: TU.macroF }}>{Math.round(food.fat_g || 0)}g F</span>
+        </div>
+      </div>
+      <NutriScoreBadge score={nutriScore(food.calories, food.protein_g, food.carbs_g, food.fat_g, food.serving_size || 100)} />
+      <button onClick={e => { e.stopPropagation(); onToggleFavorite(food.id); }}
+        className="min-w-[44px] min-h-[44px] w-7 h-7 flex items-center justify-center flex-shrink-0 focus:outline-none"
+        aria-label={favIds.has(food.id) ? t('nutrition.removeFromFavorites', 'Remove from favorites') : t('nutrition.addToFavorites', 'Add to favorites')}>
+        <Heart size={14} style={{ color: favIds.has(food.id) ? '#FFC24A' : 'var(--color-border-subtle)' }} fill={favIds.has(food.id) ? '#FFC24A' : 'none'} />
+      </button>
+    </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center px-4">
@@ -983,15 +1222,21 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, onBarcodeRes
             </button>
           </div>
 
-          {/* Search bar */}
+          {/* Search bar — searches your MEALS (recipes). Ingredients are picked
+              from the palette below, never typed here, so the two never blur. */}
           <div className="flex items-center gap-2.5 rounded-[14px] px-3.5 py-3 mb-3"
             style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
             <Search size={18} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
-            <input type="text" value={query} onChange={e => { setQuery(e.target.value); setTab('search'); }}
-              placeholder={t('nutrition.searchFoods', 'Search foods...')}
-              aria-label={t('nutrition.searchFoods')}
+            <input type="text" value={query} onChange={e => setQuery(e.target.value)}
+              placeholder={t('nutrition.searchMeals', 'Search meals…')}
+              aria-label={t('nutrition.searchMeals', 'Search meals…')}
               className="w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--color-text-muted)]"
               style={{ color: 'var(--color-text-primary)' }} />
+            {query && (
+              <button onClick={() => setQuery('')} className="flex-shrink-0 focus:outline-none" aria-label={t('common.clear', 'Clear')}>
+                <X size={15} style={{ color: 'var(--color-text-muted)' }} />
+              </button>
+            )}
           </div>
 
           {/* Scan button — single unified button that opens camera view */}
@@ -1005,64 +1250,304 @@ const FoodSearchModal = ({ open, onClose, onSelect, onPhotoCapture, onBarcodeRes
             </button>
           )}
 
-          {/* Tab pills — 33/33/33 grid */}
-          <div className="grid grid-cols-3 gap-1.5">
-            {[{ key: 'search', label: t('nutrition.searchTab', 'Search'), Icon: Search }, { key: 'recent', label: t('nutrition.recentTab', 'Recent'), Icon: Clock }, { key: 'favorites', label: t('nutrition.favoritesTab', 'Favorites'), Icon: Heart }]
-              .map(tb => (
-                <button key={tb.key} onClick={() => setTab(tb.key)}
-                  className="inline-flex items-center justify-center gap-1.5 py-2.5 rounded-full text-[12px] font-bold transition-colors whitespace-nowrap"
-                  style={{
-                    background: tab === tb.key ? 'var(--color-text-primary)' : 'var(--color-bg-card)',
-                    color: tab === tb.key ? 'var(--color-bg-primary)' : 'var(--color-text-primary)',
-                    border: tab === tb.key ? 'none' : '1px solid var(--color-border-subtle)',
-                    letterSpacing: -0.1,
-                  }}>
-                  <tb.Icon size={13} strokeWidth={2.2} />{tb.label}
-                </button>
-              ))}
-          </div>
+          {/* Browse tabs — hidden while a meal search is active (results take over). */}
+          {!searchingMeals && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {[{ key: 'ingredients', label: t('nutrition.ingredientsTab', 'Ingredients'), Icon: Utensils }, { key: 'recent', label: t('nutrition.recentTab', 'Recent'), Icon: Clock }, { key: 'favorites', label: t('nutrition.favoritesTab', 'Favorites'), Icon: Heart }]
+                .map(tb => (
+                  <button key={tb.key} onClick={() => setTab(tb.key)}
+                    className="inline-flex items-center justify-center gap-1.5 py-2.5 rounded-full text-[12px] font-bold transition-colors whitespace-nowrap"
+                    style={{
+                      background: tab === tb.key ? 'var(--color-text-primary)' : 'var(--color-bg-card)',
+                      color: tab === tb.key ? 'var(--color-bg-primary)' : 'var(--color-text-primary)',
+                      border: tab === tb.key ? 'none' : '1px solid var(--color-border-subtle)',
+                      letterSpacing: -0.1,
+                    }}>
+                    <tb.Icon size={13} strokeWidth={2.2} />{tb.label}
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
 
-        {/* Results */}
+        {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 pb-5 pt-3">
-          {searching && (
-            <div className="py-8 text-center" aria-busy={true}>
-              <div className="w-6 h-6 rounded-full animate-spin mx-auto" style={{ border: `2px solid var(--color-border-subtle)`, borderTopColor: TU.accent }} role="status"><span className="sr-only">{t('common.loading', 'Loading')}</span></div>
-            </div>
-          )}
-          {!searching && displayList.length === 0 && (
-            <div className="py-8 text-center">
-              <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
-                {tab === 'search' && query.length < 2 ? t('nutrition.typeToSearch', 'Type to search foods') : tab === 'recent' ? t('nutrition.noRecentFoods', 'No recent foods') : tab === 'favorites' ? t('nutrition.noFavoritesYet', 'No favorites yet') : t('nutrition.noResultsFound', 'No results found')}
-              </p>
-            </div>
-          )}
-          <div className="space-y-1.5">
-            {displayList.map(food => food && (
-              <button key={food.id} onClick={() => onSelect(food)}
-                className="w-full flex items-center gap-3 p-3 rounded-[14px] text-left active:scale-[0.975] transition-all"
-                style={{ background: 'var(--color-bg-card)' }}>
-                {(getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)) ? (
-                  <img src={getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)} alt={foodName(food)} className="w-11 h-11 rounded-[12px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
-                ) : (
-                  <FoodTile name={foodName(food)} size={44} seed={food.id?.charCodeAt?.(0) || 0} />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{foodName(food)}</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{food.serving_size}{food.serving_unit} {'\u00B7'} {food.calories} cal {'\u00B7'} {food.protein_g}g P</p>
+          {searchingMeals ? (
+            /* Meal (recipe) search results -> log via onLogMeal */
+            mealResults.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.noMealsMatch', 'No meals match')} &ldquo;{query.trim()}&rdquo;</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {mealResults.map(m => (
+                  <button key={m.id} onClick={() => onLogMeal?.(m)}
+                    className="w-full flex items-center gap-3 p-3 rounded-[14px] text-left active:scale-[0.975] transition-all"
+                    style={{ background: 'var(--color-bg-card)' }}>
+                    <FoodThumb src={foodImageUrl(m.image || mealImageById(m.id))} name={recipeTitle(m)} size={44} seed={m.id?.charCodeAt?.(1) || 0} className="w-11 h-11 rounded-[12px] object-cover flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{recipeTitle(m)}</p>
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{Math.round(m.calories || 0)} cal {'\u00B7'} {Math.round(m.protein || 0)}g P{m.prepTime ? `${' \u00B7 '}${m.prepTime}` : ''}</p>
+                    </div>
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${TU.accent}18` }}>
+                      <Plus size={15} style={{ color: TU.accent }} strokeWidth={2.4} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )
+          ) : (
+            /* Browse: ingredient palette / Recent / Favorites -> log via onSelect */
+            <>
+              {tab === 'ingredients' && (
+                <>
+                  <div className="flex items-center gap-2 rounded-[12px] px-3 py-2 mb-2.5" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                    <Search size={15} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                    <input value={ingQuery} onChange={e => setIngQuery(e.target.value)}
+                      placeholder={t('nutrition.searchIngredients', 'Search ingredients…')}
+                      aria-label={t('nutrition.searchIngredients', 'Search ingredients…')}
+                      className="w-full bg-transparent text-[13px] outline-none placeholder:text-[var(--color-text-muted)]"
+                      style={{ color: 'var(--color-text-primary)' }} />
+                    {ingQuery && (
+                      <button onClick={() => setIngQuery('')} className="flex-shrink-0 focus:outline-none" aria-label={t('common.clear', 'Clear')}>
+                        <X size={14} style={{ color: 'var(--color-text-muted)' }} />
+                      </button>
+                    )}
+                  </div>
+                  {!ingQuery && (
+                    <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-2.5 -mx-1 px-1">
+                      {ING_CATS.map(c => {
+                        const active = ingCat === c.id;
+                        return (
+                          <button key={c.id} onClick={() => setIngCat(c.id)}
+                            className="px-3 py-1.5 rounded-full text-[12px] font-bold flex-shrink-0 transition-colors"
+                            style={{
+                              background: active ? TU.accent : 'var(--color-bg-card)',
+                              color: active ? 'var(--color-text-on-accent, #001512)' : 'var(--color-text-muted)',
+                              border: active ? 'none' : '1px solid var(--color-border-subtle)',
+                            }}>
+                            {c.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {ingLoading && tab === 'ingredients' ? (
+                <div className="py-8 text-center" aria-busy={true}>
+                  <div className="w-6 h-6 rounded-full animate-spin mx-auto" style={{ border: `2px solid var(--color-border-subtle)`, borderTopColor: TU.accent }} role="status"><span className="sr-only">{t('common.loading', 'Loading')}</span></div>
                 </div>
-                <NutriScoreBadge score={nutriScore(food.calories, food.protein_g, food.carbs_g, food.fat_g, food.serving_size || 100)} />
-                <button onClick={e => { e.stopPropagation(); onToggleFavorite(food.id); }}
-                  className="min-w-[44px] min-h-[44px] w-7 h-7 flex items-center justify-center flex-shrink-0 focus:outline-none"
-                  aria-label={favIds.has(food.id) ? t('nutrition.removeFromFavorites', 'Remove from favorites') : t('nutrition.addToFavorites', 'Add to favorites')}>
-                  <Heart size={14} style={{ color: favIds.has(food.id) ? '#FFC24A' : 'var(--color-border-subtle)' }} fill={favIds.has(food.id) ? '#FFC24A' : 'none'} />
-                </button>
-              </button>
-            ))}
-          </div>
+              ) : foodRows.length === 0 ? (
+                <div className="py-8 text-center">
+                  <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+                    {tab === 'recent' ? t('nutrition.noRecentFoods', 'No recent foods') : tab === 'favorites' ? t('nutrition.noFavoritesYet', 'No favorites yet') : t('nutrition.noResultsFound', 'No results found')}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {foodRows.map(renderFoodRow)}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
+  );
+};
+
+// ── CUSTOM MEAL BUILDER ──────────────────────────────────────
+// Member builds a reusable meal from real foods: name + optional photo + a list
+// of foods (from food_items), each with a portion. Macros auto-total from the
+// picked foods (no manual math). Saved to custom_meals — by-value totals so it
+// drops straight into plans/logs, plus items[] (migration 0632) so the food
+// list is kept and stays editable.
+const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' }) => {
+  const { t } = useTranslation('pages');
+  const { showToast } = useToast();
+  const isEs = lang === 'es';
+  const foodName = (f) => (isEs && f.name_es) ? f.name_es : f.name;
+  const [name, setName] = useState('');
+  const [rows, setRows] = useState([]);        // [{ food, servings }]
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
+
+  useEffect(() => { if (!open) { setName(''); setRows([]); setQuery(''); setResults([]); setPhotoUrl(''); } }, [open]);
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      const safe = query.replace(/[%_\\,()."']/g, '');
+      if (!safe) { setResults([]); setSearching(false); return; }
+      // Meal builder = INGREDIENTS only (migrations 0633/0634). You build a meal
+      // from single foods, so search the curated `is_ingredient` partition — the
+      // same clean list Log Food uses — never the old branded/meal junk.
+      const { data } = await supabase.from('food_items')
+        .select('id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g')
+        .eq('is_ingredient', true)
+        .or(`name.ilike.%${safe}%,name_es.ilike.%${safe}%`).limit(20);
+      setResults(data || []);
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  if (!open) return null;
+
+  // Keep the search + results after adding, so you can add several from one query
+  // (e.g. multiple cheeses) without re-typing. Tapping an already-added food is a
+  // no-op (deduped); the results mark it with a check.
+  const addFood = (food) => { setRows(prev => prev.some(r => r.food.id === food.id) ? prev : [...prev, { food, servings: 1 }]); };
+  const bump = (id, d) => setRows(prev => prev.map(r => r.food.id === id ? { ...r, servings: Math.max(0.5, Math.round((r.servings + d) * 2) / 2) } : r));
+  const drop = (id) => setRows(prev => prev.filter(r => r.food.id !== id));
+
+  const totals = rows.reduce((a, { food, servings }) => ({
+    cal: a.cal + (food.calories || 0) * servings, p: a.p + (food.protein_g || 0) * servings,
+    c: a.c + (food.carbs_g || 0) * servings, f: a.f + (food.fat_g || 0) * servings,
+  }), { cal: 0, p: 0, c: 0, f: 0 });
+  const r1 = (n) => Math.round(n * 10) / 10;
+
+  const pickPhoto = async (e) => {
+    const file = e.target.files?.[0]; if (e.target) e.target.value = '';
+    if (!file || !userId) return;
+    const check = await validateImageFile(file);
+    if (!check?.valid) { showToast(check?.error || t('nutrition.photoUploadFailed', 'Could not upload photo'), 'error'); return; }
+    setUploading(true);
+    try {
+      const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const path = `${userId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('meal-photos').upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from('meal-photos').getPublicUrl(path);
+      setPhotoUrl(data?.publicUrl || '');
+    } catch { showToast(t('nutrition.photoUploadFailed', 'Could not upload photo'), 'error'); }
+    finally { setUploading(false); }
+  };
+
+  const save = async () => {
+    if (!name.trim() || rows.length === 0 || saving || !userId) return;
+    setSaving(true);
+    const items = rows.map(({ food, servings }) => ({ food_item_id: food.id, name: food.name, servings, calories: r1((food.calories || 0) * servings), protein_g: r1((food.protein_g || 0) * servings), carbs_g: r1((food.carbs_g || 0) * servings), fat_g: r1((food.fat_g || 0) * servings) }));
+    const { data, error } = await supabase.from('custom_meals').insert({
+      created_by: userId, gym_id: gymId || null, name: name.trim(),
+      calories: Math.round(totals.cal), protein_g: r1(totals.p), carbs_g: r1(totals.c), fat_g: r1(totals.f),
+      category: 'custom', image_url: photoUrl || null, items,
+    }).select('*').single();
+    setSaving(false);
+    if (error) { showToast(t('nutrition.addMealFailed', 'Could not save meal'), 'error'); return; }
+    showToast(t('nutrition.mealSaved', 'Meal saved'), 'success');
+    onSaved?.(data); onClose?.();
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} role="presentation" />
+      <div className="relative w-full max-w-md flex flex-col rounded-[24px] overflow-hidden" style={{ background: 'var(--color-bg-primary)', maxHeight: '88vh', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}>
+        <div className="px-5 pt-3 pb-3 shrink-0 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+          <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.createMeal', 'Create meal')}</div>
+          <button onClick={onClose} className="w-[34px] h-[34px] rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common.close', 'Close')}><X size={16} style={{ color: 'var(--color-text-primary)' }} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {/* Name + photo */}
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="w-[56px] h-[56px] rounded-[16px] flex items-center justify-center flex-shrink-0 overflow-hidden"
+              style={{ background: 'var(--color-bg-card)', border: '1px dashed var(--color-border-subtle)' }} aria-label={t('nutrition.addPhoto', 'Add photo')}>
+              {photoUrl ? <img src={photoUrl} alt="" className="w-full h-full object-cover" /> : uploading ? <Loader size={18} className="animate-spin" style={{ color: 'var(--color-text-muted)' }} /> : <Camera size={20} style={{ color: 'var(--color-text-muted)' }} />}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder={t('nutrition.mealNamePlaceholder', 'Meal name')}
+              className="flex-1 text-[16px] font-bold outline-none rounded-[12px] px-3 py-3"
+              style={{ color: 'var(--color-text-primary)', background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', fontFamily: TU.display }} />
+          </div>
+
+          {/* Live totals */}
+          <div className="grid grid-cols-4 gap-2">
+            {[['CAL', Math.round(totals.cal), ''], ['P', r1(totals.p), 'g'], ['C', r1(totals.c), 'g'], ['F', r1(totals.f), 'g']].map(([lab, val, u]) => (
+              <div key={lab} className="rounded-[14px] py-2.5 text-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                <div style={{ fontFamily: TU.display, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)' }}>{val}{u}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>{lab}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Add-food search — pinned ABOVE the picked foods, always visible.
+              Adding does not clear it, so you can add several from one query. */}
+          <div>
+            <div className="flex items-center gap-2.5 rounded-[14px] px-3.5 py-3" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+              <Search size={18} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('nutrition.addFoodPlaceholder', 'Add a food…')}
+                className="w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--color-text-muted)]" style={{ color: 'var(--color-text-primary)' }} />
+              {searching && <Loader size={15} className="animate-spin" style={{ color: 'var(--color-text-muted)' }} />}
+              {query && !searching && (
+                <button onClick={() => { setQuery(''); setResults([]); }} className="flex-shrink-0 focus:outline-none" aria-label={t('common.clear', 'Clear')}>
+                  <X size={15} style={{ color: 'var(--color-text-muted)' }} />
+                </button>
+              )}
+            </div>
+            {results.length > 0 && (
+              <div className="mt-1.5 space-y-1">
+                {results.map(food => {
+                  const added = rows.some(r => r.food.id === food.id);
+                  return (
+                    <button key={food.id} onClick={() => addFood(food)} className="w-full flex items-center gap-2.5 p-2.5 rounded-[12px] text-left" style={{ background: 'var(--color-bg-card)' }}>
+                      <FoodThumb src={foodImageUrl(food.image_url) || getFoodImage(food.name, food.brand)} name={foodName(food)} size={34} seed={food.id?.charCodeAt?.(0) || 0} className="w-[34px] h-[34px] rounded-[9px] object-cover flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{foodName(food)}</p>
+                        <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{food.serving_size}{food.serving_unit} {'·'} {food.calories} cal</p>
+                      </div>
+                      {added
+                        ? <Check size={16} strokeWidth={2.6} style={{ color: TU.accent, flexShrink: 0 }} />
+                        : <Plus size={16} style={{ color: TU.accent, flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Picked foods */}
+          {rows.length > 0 && (
+            <div className="space-y-1.5">
+              {rows.map(({ food, servings }) => (
+                <div key={food.id} className="flex items-center gap-2.5 p-2.5 rounded-[14px]" style={{ background: 'var(--color-bg-card)' }}>
+                  <FoodThumb src={foodImageUrl(food.image_url) || getFoodImage(food.name, food.brand)} name={foodName(food)} size={38} seed={food.id?.charCodeAt?.(0) || 0} className="w-[38px] h-[38px] rounded-[10px] object-cover flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{foodName(food)}</p>
+                    <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{Math.round((food.calories || 0) * servings)} cal {'·'} {r1((food.protein_g || 0) * servings)}g P</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => bump(food.id, -0.5)} className="w-6 h-6 rounded-full flex items-center justify-center text-[14px] font-bold" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>{'−'}</button>
+                    <span className="min-w-[28px] text-center text-[12px] font-bold" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{servings}{'×'}</span>
+                    <button onClick={() => bump(food.id, 0.5)} className="w-6 h-6 rounded-full flex items-center justify-center text-[14px] font-bold" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>+</button>
+                  </div>
+                  <button onClick={() => drop(food.id)} className="w-7 h-7 flex items-center justify-center flex-shrink-0" aria-label={t('common.remove', 'Remove')}><Trash2 size={14} style={{ color: 'var(--color-text-muted)' }} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 py-3 shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+          <button onClick={save} disabled={!name.trim() || rows.length === 0 || saving || uploading}
+            className="w-full py-3.5 rounded-[14px] font-bold text-[15px] flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.98] transition-all"
+            style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', fontFamily: TU.display }}>
+            {saving ? <Loader size={16} className="animate-spin" /> : <Check size={16} />}
+            {t('nutrition.saveMeal', 'Save meal')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 };
 
@@ -1096,13 +1581,10 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
 
         {/* Header: food tile + name */}
         <div className="flex items-center gap-3.5 px-5 pt-3 pb-4" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          {(getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)) ? (
-            <img src={getFoodImage(food.name, food.brand) || foodImageUrl(food.image_url)} alt={displayName} className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
-          ) : (
-            <FoodTile name={displayName} size={52} seed={food.id?.charCodeAt?.(0) || 0} />
-          )}
+          <FoodThumb src={foodImageUrl(food.image_url) || getFoodImage(food.name, food.brand)} name={displayName} size={64} seed={food.id?.charCodeAt?.(0) || 0} className="w-[64px] h-[64px] rounded-[18px] object-cover flex-shrink-0" />
+
           <div className="flex-1 min-w-0">
-            <div style={{ fontFamily: TU.display, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3, lineHeight: 1.2 }} className="truncate">
+            <div className="truncate" style={{ fontFamily: '"Archivo", system-ui, sans-serif', fontSize: 26, fontWeight: 900, color: 'var(--color-text-primary)', letterSpacing: -0.6, lineHeight: 1.05 }}>
               {displayName}
             </div>
             <div className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
@@ -1138,21 +1620,18 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
                   style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}>+</button>
               </div>
             </div>
-            {/* Macro grid */}
-            <div className="grid grid-cols-3 gap-2.5">
+            {/* Macro proportion line + inline numbers — matches the app card style */}
+            <div className="mb-2.5"><MacroSegBar p={pro} c={carb} f={fat} height={8} /></div>
+            <div className="flex items-center justify-between">
               {[
                 { l: t('nutrition.protein'), v: pro, c: TU.macroP },
                 { l: t('nutrition.carbs'), v: carb, c: TU.macroC },
                 { l: t('nutrition.fat'), v: fat, c: TU.macroF },
               ].map(m => (
-                <div key={m.l} className="rounded-[12px] p-2.5" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-sm" style={{ background: m.c }} />
-                    <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>{m.l}</span>
-                  </div>
-                  <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.6, lineHeight: 1 }}>
-                    {m.v}<span className="text-[11px] font-medium ml-0.5" style={{ color: 'var(--color-text-muted)' }}>g</span>
-                  </div>
+                <div key={m.l} className="flex items-center gap-1.5 min-w-0">
+                  <div className="w-1.5 h-1.5 rounded-sm flex-shrink-0" style={{ background: m.c }} />
+                  <span style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{m.v}<span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>g</span></span>
+                  <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.04em' }}>{m.l}</span>
                 </div>
               ))}
             </div>
@@ -1499,6 +1978,8 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
   const { t } = useTranslation('pages');
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState({});
+  const [editServings, setEditServings] = useState(1);
+  const [editMealType, setEditMealType] = useState('snack');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1509,6 +1990,8 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
         carbs_g: log.carbs_g,
         fat_g: log.fat_g,
       });
+      setEditServings(Number(log.servings) || 1);
+      setEditMealType(log.meal_type || 'snack');
       setEditing(false);
     }
   }, [log]);
@@ -1518,8 +2001,11 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
   const displayName = log.food_item
     ? ((lang === 'es' && log.food_item.name_es) ? log.food_item.name_es : log.food_item.name)
     : (log.custom_name || t('nutrition.foodFallback', 'Food'));
-  const isAiLogged = !log.food_item_id;
-  const photoSrc = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url);
+  // Only a genuine AI-photo estimate gets the "estimated, edit it" note — NOT a
+  // recipe logged from our library (which also has no food_item_id). Legacy rows
+  // (source null) are treated as non-AI.
+  const isAiLogged = log.source === 'ai';
+  const photoSrc = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url) || recipeImageByName(log.custom_name || log.food_item?.name);
   const loggedAt = new Date(log.created_at);
   const timeStr = loggedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -1530,6 +2016,8 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
       protein_g: parseFloat(editValues.protein_g) || 0,
       carbs_g: parseFloat(editValues.carbs_g) || 0,
       fat_g: parseFloat(editValues.fat_g) || 0,
+      servings: Math.max(0.5, parseFloat(editServings) || 1),
+      meal_type: editMealType,
     });
     setSaving(false);
     setEditing(false);
@@ -1599,7 +2087,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
                 <AlertCircle size={11} className="text-[#F59E0B]/70" />
               </div>
               <p className="text-[10px] text-[#9CA3AF] leading-[1.6]">
-                {t('nutrition.aiLoggedDisclaimer', 'Logged via AI photo analysis. Values are estimates —')} <button onClick={() => setEditing(true)} className="text-[#D4AF37] font-semibold">{t('nutrition.tapToEdit', 'tap to edit')}</button>.
+                {t('nutrition.estimateDisclaimer', 'Estimated values —')} <button onClick={() => setEditing(true)} className="text-[#D4AF37] font-semibold">{t('nutrition.tapToEdit', 'tap to edit')}</button>.
               </p>
             </div>
           )}
@@ -1629,11 +2117,43 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
             />
           </div>
 
-          {/* Servings */}
-          <div className="flex items-center justify-between px-1 mb-6">
+          {/* Servings — editable stepper in edit mode */}
+          <div className="flex items-center justify-between px-1 mb-5">
             <span className="text-[11px] font-medium text-[#9CA3AF]">{t('nutrition.servings', 'Servings')}</span>
-            <span className="text-[14px] font-black text-[#E5E7EB] tabular-nums">{log.servings}</span>
+            {editing ? (
+              <div className="flex items-center gap-2 p-1 rounded-full" style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.05))' }}>
+                <button onClick={() => setEditServings(v => Math.max(0.5, Math.round((v - 0.5) * 2) / 2))}
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[15px] font-bold active:scale-90"
+                  style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} aria-label={t('nutrition.decreaseServings', 'Decrease servings')}>−</button>
+                <span className="min-w-[32px] text-center text-[13px] font-black tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{editServings}×</span>
+                <button onClick={() => setEditServings(v => Math.round((v + 0.5) * 2) / 2)}
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[15px] font-bold active:scale-90"
+                  style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} aria-label={t('nutrition.increaseServings', 'Increase servings')}>+</button>
+              </div>
+            ) : (
+              <span className="text-[14px] font-black text-[#E5E7EB] tabular-nums">{log.servings}</span>
+            )}
           </div>
+
+          {/* Meal slot — editable in edit mode (breakfast / lunch / dinner / snack) */}
+          {editing && (
+            <div className="mb-6">
+              <span className="block text-[11px] font-medium text-[#9CA3AF] mb-2 px-1">{t('nutrition.mealTypeLabel', 'Meal')}</span>
+              <div className="grid grid-cols-4 gap-2">
+                {MEAL_TYPES.map(m => {
+                  const active = editMealType === m.key;
+                  return (
+                    <button key={m.key} onClick={() => setEditMealType(m.key)}
+                      className="flex flex-col items-center gap-1 py-2.5 rounded-[12px] transition-all active:scale-95"
+                      style={{ background: active ? `color-mix(in srgb, ${m.color} 15%, transparent)` : 'var(--color-bg-deep)', border: `1.5px solid ${active ? m.color : 'var(--color-border-subtle)'}` }}>
+                      <m.icon size={15} style={{ color: active ? m.color : 'var(--color-text-faint)' }} />
+                      <span className="text-[10px] font-bold" style={{ color: active ? m.color : 'var(--color-text-muted)' }}>{t(m.labelKey, m.key)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           {editing && (
@@ -1976,11 +2496,6 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
           >
             <RefreshCw size={13} style={{ color: 'var(--color-text-muted)' }} />
           </button>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold uppercase"
-            style={{ background: `${TU.coach}15`, color: TU.coach, letterSpacing: 0.5 }}>
-            <Sparkles size={11} style={{ color: TU.coach }} />
-            AI
-          </span>
         </div>
       </div>
 
@@ -1990,6 +2505,10 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
         const idx = meals.findIndex(m => m != null);
         if (idx < 0) return null;
         const meal = meals[idx];
+        // Recover the image from the live library by id when the meal object
+        // itself carries none (DB pointer still null pre-0631) — same reason as
+        // the planner rows.
+        const suggImg = meal.image || mealImageById(meal.id);
         const isRemoved = removedIdx === idx;
 
         if (isRemoved) {
@@ -2013,28 +2532,9 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
                   style={{ background: `${TU.coach}12`, color: TU.coach, border: `1px dashed ${TU.coach}55` }}>
                   <Plus size={14} /> {t('nutrition.addCustomMeal', 'Add your own meal')}
                 </button>
-                {showAddMeal && (
-                  <div className="mt-2 rounded-[12px] p-3 space-y-2" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
-                    <input value={newMeal.name} onChange={e => setNewMeal(n => ({ ...n, name: e.target.value }))}
-                      placeholder={t('nutrition.mealName', 'Meal name')}
-                      className="w-full rounded-[10px] px-3 py-2 text-[16px] outline-none"
-                      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                    <div className="grid grid-cols-4 gap-2">
-                      {[['calories', 'Cal'], ['protein', 'P'], ['carbs', 'C'], ['fat', 'F']].map(([k, labk]) => (
-                        <input key={k} type="number" inputMode="numeric" min="0" value={newMeal[k]} onChange={e => setNewMeal(n => ({ ...n, [k]: e.target.value }))}
-                          placeholder={labk}
-                          className="w-full rounded-[10px] px-2 py-2 text-[14px] text-center outline-none"
-                          style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                      ))}
-                    </div>
-                    <button type="button" onClick={addCustomMeal} disabled={!newMeal.name.trim() || savingNewMeal}
-                      className="w-full py-2 rounded-[10px] text-[13px] font-bold disabled:opacity-40 flex items-center justify-center gap-1.5"
-                      style={{ background: TU.coach, color: '#fff' }}>
-                      {savingNewMeal ? <Loader size={14} className="animate-spin" /> : <Plus size={14} />}
-                      {t('nutrition.saveAndUseMeal', 'Save & use')}
-                    </button>
-                  </div>
-                )}
+                <CustomMealBuilder open={showAddMeal} onClose={() => setShowAddMeal(false)}
+                  onSaved={(m) => { const mm = customMealToMeal(m); setCustomMeals(prev => [mm, ...prev]); if (removedIdx != null) handleReplace(removedIdx, mm); }}
+                  userId={userId} gymId={gymId} lang={lang} />
               </div>
               <div className="px-3 py-3 space-y-2 max-h-[280px] overflow-y-auto">
                 {/* The member's custom meals first (Custom tag), then the AI suggestions. */}
@@ -2043,7 +2543,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
                     className="w-full flex items-center gap-3 p-2.5 rounded-[14px] text-left transition-all active:scale-[0.975]"
                     style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
                     {rMeal.image ? (
-                      <img src={foodImageUrl(rMeal.image)} alt={mealTitle(rMeal)} className="w-[44px] h-[44px] rounded-[12px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+                      <img src={foodImageUrl(rMeal.image)} onError={handleMealImgError} alt={mealTitle(rMeal)} className="w-[44px] h-[44px] rounded-[12px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                     ) : (
                       <FoodTile name={mealTitle(rMeal)} size={44} seed={rMeal.id?.charCodeAt?.(1) || 0} />
                     )}
@@ -2080,8 +2580,8 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
             style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)', border: `1px solid ${TU.coach}22` }}>
             <button onClick={() => onOpenRecipe(meal)}
               className="w-full flex items-center gap-3.5 p-4 text-left">
-              {meal.image ? (
-                <img src={foodImageUrl(meal.image)} alt={mealTitle(meal)} className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0"
+              {suggImg ? (
+                <img src={(foodImageUrl(suggImg) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={mealTitle(meal)} className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0"
                   style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
               ) : (
                 <FoodTile name={mealTitle(meal)} size={52} seed={idx} />
@@ -2574,7 +3074,39 @@ const getWeekDates = () => {
 
 const PLANNER_SLOT_KEYS = ['breakfast', 'lunch', 'dinner'];
 
-const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false, onAddRecipeToGrocery }) => {
+// Display a stored 24h "HH:MM" as 12h (en) or 24h (es).
+const fmtMealTime = (hhmm, lang) => {
+  if (!hhmm) return '';
+  const [h, m] = String(hhmm).split(':').map(Number);
+  if (Number.isNaN(h)) return '';
+  const mm = String(m || 0).padStart(2, '0');
+  if (lang === 'es') return `${String(h).padStart(2, '0')}:${mm}`;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${mm} ${ampm}`;
+};
+
+// −/+ stepper for a bounded integer (plan length, meals per day).
+const Stepper = ({ value, min, max, onChange, label }) => (
+  <div className="flex items-center justify-between rounded-[12px] p-1.5" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+    <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min}
+      className="w-12 h-10 rounded-[10px] flex items-center justify-center active:scale-90 transition-transform disabled:opacity-30"
+      style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} aria-label="decrease">
+      <Minus size={16} strokeWidth={2.6} />
+    </button>
+    <div className="flex items-baseline gap-1.5">
+      <span style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{value}</span>
+      <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{label}</span>
+    </div>
+    <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max}
+      className="w-12 h-10 rounded-[10px] flex items-center justify-center active:scale-90 transition-transform disabled:opacity-30"
+      style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} aria-label="increase">
+      <Plus size={16} strokeWidth={2.6} />
+    </button>
+  </div>
+);
+
+const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false, onAddRecipeToGrocery, onRemoveRecipeFromGrocery, onMarkMealEaten, groceryList = [] }) => {
   // Full-screen planner only mounts when showPlanner is true, so lock unconditionally.
   useScrollLock(true);
   const { t, i18n } = useTranslation('pages');
@@ -2584,9 +3116,24 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   const [toast, setToast] = useState('');
   const [removingSlot, setRemovingSlot] = useState(null);
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current, -1 = past, +1 = next
+  const [planWeeks, setPlanWeeks] = useState(1); // how many weeks "Generate" fills at once
   const { profile } = useAuth();
   const [showPrefs, setShowPrefs] = useState(false);
+  const [showPlanConfig, setShowPlanConfig] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  // Meal-schedule config: how many meals/day (3–5) + optional per-slot times.
+  // Drives the planner's slots AND meal-time reminders. Persisted per user.
+  const [mealSchedule, setMealSchedule] = useState(() => loadMealSchedule(userId));
+  const slotKeys = useMemo(() => plannerSlotKeys(mealSchedule.count), [mealSchedule.count]);
+  useEffect(() => { saveMealSchedule(userId, mealSchedule); }, [userId, mealSchedule]);
+  const setSlotTime = useCallback((slotKey, time) => {
+    setMealSchedule(prev => {
+      const times = { ...prev.times };
+      if (time) times[slotKey] = time; else delete times[slotKey];
+      return { ...prev, times };
+    });
+    if (time) ensureMealNotifPermission(); // user gesture → OK to prompt
+  }, []);
   // Food prefs (allergies / dietary restrictions / foods-to-avoid + learned
   // affinities) — loaded once and fed into generation so the planner
   // hard-excludes unsafe/avoided meals and leans toward learned likes.
@@ -2625,33 +3172,51 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   const weekStart = weekDates[0];
   const isPastWeek = weekOffset < 0;
 
+  // Keep meal-time reminders in sync with the plan + schedule. No-op on web and
+  // when no times are set; never prompts (permission is asked on time-set).
+  useEffect(() => {
+    syncMealReminders({ userId, schedule: mealSchedule, t });
+  }, [userId, mealSchedule, plan, t]);
+
   const storageKey = `meal_plan_${userId || 'anon'}_${weekStart}`;
   const legacyStorageKey = `meal_plan_${userId || 'anon'}`;
 
-  // Load plan from localStorage
-  useEffect(() => {
+  // Load the week's plan SYNCHRONOUSLY when the week changes (localStorage is
+  // sync). Doing this in an effect made `plan` lag one frame behind weekStart,
+  // so weekHasMeals/filledSlots were briefly wrong and the clear buttons flashed
+  // in after "Regenerate week" rendered full-width. Adjusting state during
+  // render (guarded by loadedKey) keeps everything consistent on the first frame.
+  const [loadedKey, setLoadedKey] = useState(null);
+  if (loadedKey !== storageKey) {
+    setLoadedKey(storageKey);
+    let days = {};
     try {
-      // Try week-specific key first
       let raw = localStorage.getItem(storageKey);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        setPlan(parsed.days || {});
-        return;
-      }
-      // Fallback: legacy key (only for current week)
-      if (weekOffset === 0) {
+        days = JSON.parse(raw).days || {};
+      } else if (weekOffset === 0) {
         raw = localStorage.getItem(legacyStorageKey);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed.weekStart === weekStart) {
-            setPlan(parsed.days || {});
-            return;
-          }
+          if (parsed.weekStart === weekStart) days = parsed.days || {};
         }
       }
-      setPlan({});
-    } catch { setPlan({}); }
-  }, [storageKey, legacyStorageKey, weekStart, weekOffset]);
+    } catch { /* ignore */ }
+    setPlan(days);
+  }
+
+  // Re-read when another surface (e.g. a collection's "Add to week") mutates the
+  // same localStorage key while this planner is already mounted.
+  useEffect(() => {
+    const reload = () => {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        setPlan(raw ? (JSON.parse(raw).days || {}) : {});
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('tugympr:meal-plan-changed', reload);
+    return () => window.removeEventListener('tugympr:meal-plan-changed', reload);
+  }, [storageKey]);
 
   // Persist plan
   const savePlan = useCallback((newPlan) => {
@@ -2682,47 +3247,108 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     }
   }, [storageKey, legacyStorageKey, weekStart, userId, weekOffset]);
 
-  const handleAutoplan = useCallback(() => {
-    if (isPastWeek) return;
+  // Build one week's day→slot meal map from a fresh generation, merged onto a
+  // base (so we never overwrite meals the user already placed).
+  const buildWeekDays = useCallback((dates, isCurrentActual, base = {}) => {
     const macroTargets = {
       calories: targets?.daily_calories || 2000,
       protein: targets?.daily_protein_g || 150,
       carbs: targets?.daily_carbs_g || 200,
       fat: targets?.daily_fat_g || 65,
     };
-    posthogPlanner?.capture('meal_plan_generated', { plan_type: 'week' });
-    const weekPlan = generateWeekPlan({ targets: macroTargets, favorites: [], lang, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
+    // Generate with as many slots as the member's schedule (snacks between
+    // lunch and dinner). Snack keys (snack1/snack2) map to the 'snack' type and
+    // resolve positionally below since the generator labels them all 'snack'.
+    const weekPlan = generateWeekPlan({ targets: macroTargets, slots: slotKeys.length, favorites: [], lang, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
     const ts = todayStr();
-    const newPlan = { ...plan };
-    weekDates.forEach((date, i) => {
-      // Current week: only fill the days that haven't happened yet (today→Sat);
-      // never plan into the past.
-      if (weekOffset === 0 && date < ts) return;
-      if (!newPlan[date]) newPlan[date] = {};
+    const out = { ...base };
+    dates.forEach((date, i) => {
+      if (isCurrentActual && date < ts) return; // never plan into the past
+      if (!out[date]) out[date] = {};
       const dayMeals = weekPlan[i]?.meals || [];
-      PLANNER_SLOT_KEYS.forEach((slot, si) => {
-        // Prefer the meal the generator tagged for this slot; index fallback
-        // for safety. Keeps breakfast dishes in the breakfast row.
+      slotKeys.forEach((slot, si) => {
         const match = dayMeals.find(m => m?.slot === slot) || dayMeals[si];
-        if (!newPlan[date][slot] && match) {
-          newPlan[date][slot] = match;
-        }
+        if (!out[date][slot] && match) out[date][slot] = match;
       });
     });
-    savePlan(newPlan);
-    setToast(t('nutrition.planGenerated', 'Plan generated!'));
-    setTimeout(() => setToast(''), 2000);
-  }, [targets, plan, weekDates, weekOffset, prefs, savePlan, lang, t, isPastWeek]);
+    return out;
+  }, [targets, prefs, lang, slotKeys]);
+
+  // Compute the 7 date strings for an arbitrary week-start (YYYY-MM-DD).
+  const weekDatesFrom = useCallback((ws) => {
+    const start = new Date(ws + 'T12:00:00');
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return toLocalDateStr(d);
+    });
+  }, []);
+
+  // Read/write a plan for a week OTHER than the one in React state (used when
+  // "Generate" fills several weeks ahead — future weeks are persisted directly
+  // so they're waiting when the user navigates to them).
+  const readWeekDays = useCallback((ws) => {
+    try {
+      const raw = localStorage.getItem(`meal_plan_${userId || 'anon'}_${ws}`);
+      if (!raw) return {};
+      return JSON.parse(raw).days || {};
+    } catch { return {}; }
+  }, [userId]);
+
+  const writeWeekDays = useCallback((ws, days) => {
+    const planJson = JSON.stringify({ weekStart: ws, days });
+    if (planJson.length <= 500000) {
+      try { localStorage.setItem(`meal_plan_${userId || 'anon'}_${ws}`, planJson); } catch { /* quota */ }
+    }
+    if (userId) {
+      supabase.from('meal_plans').upsert({
+        profile_id: userId, week_start: ws, plan_data: days, updated_at: new Date().toISOString(),
+      }, { onConflict: 'profile_id,week_start' }).then(() => {}, () => {});
+    }
+  }, [userId]);
+
+  // Generate the plan for the viewed week AND the next (numWeeks-1) weeks in one
+  // tap. Longer commitments are the retention play — a member with a month of
+  // meals mapped out doesn't quit after seven days.
+  const handleAutoplan = useCallback((numWeeks = 1) => {
+    if (isPastWeek) return;
+    const n = Math.max(1, numWeeks | 0);
+    posthogPlanner?.capture('meal_plan_generated', { plan_type: n > 1 ? 'multi_week' : 'week', weeks: n });
+    for (let w = 0; w < n; w++) {
+      let dates;
+      if (w === 0) {
+        dates = weekDates;
+      } else {
+        const s = new Date(weekStart + 'T12:00:00');
+        s.setDate(s.getDate() + w * 7);
+        dates = weekDatesFrom(toLocalDateStr(s));
+      }
+      const isCurrentActual = (weekOffset + w) === 0;
+      if (w === 0) {
+        savePlan(buildWeekDays(dates, isCurrentActual, plan));
+      } else {
+        const ws = dates[0];
+        writeWeekDays(ws, buildWeekDays(dates, isCurrentActual, readWeekDays(ws)));
+      }
+    }
+    setToast(n > 1
+      ? t('nutrition.planGeneratedWeeks', { count: n, defaultValue: '{{count}}-week plan generated!' })
+      : t('nutrition.planGenerated', 'Plan generated!'));
+    setTimeout(() => setToast(''), 2200);
+  }, [isPastWeek, weekDates, weekStart, weekOffset, plan, savePlan, buildWeekDays, weekDatesFrom, readWeekDays, writeWeekDays, posthogPlanner, t]);
 
   const handleRemoveMeal = useCallback((date, slot) => {
     if (isPastWeek) return;
+    const removed = plan[date]?.[slot];
     const newPlan = { ...plan };
     if (newPlan[date]) {
       delete newPlan[date][slot];
     }
     savePlan(newPlan);
     setRemovingSlot(null);
-  }, [plan, savePlan, isPastWeek]);
+    // Pull this meal's items back off the grocery list.
+    if (removed?.id) onRemoveRecipeFromGrocery?.(removed.id, date);
+  }, [plan, savePlan, isPastWeek, onRemoveRecipeFromGrocery]);
 
   const handleTapSlot = useCallback((date, slot, meal) => {
     if (meal) {
@@ -2742,11 +3368,11 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
       fat: targets?.daily_fat_g || 65,
     };
     const dayData = plan[date] || {};
-    const usedIds = PLANNER_SLOT_KEYS.map(k => dayData[k]?.id).filter(Boolean);
-    const emptySlots = PLANNER_SLOT_KEYS.filter(k => !dayData[k]);
+    const usedIds = slotKeys.map(k => dayData[k]?.id).filter(Boolean);
+    const emptySlots = slotKeys.filter(k => !dayData[k]);
     if (emptySlots.length === 0) return;
     // Calculate already planned macros
-    const planned = PLANNER_SLOT_KEYS.reduce((acc, k) => ({
+    const planned = slotKeys.reduce((acc, k) => ({
       calories: acc.calories + (dayData[k]?.calories || 0),
       protein: acc.protein + (dayData[k]?.protein || 0),
       carbs: acc.carbs + (dayData[k]?.carbs || 0),
@@ -2758,16 +3384,17 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
       carbs: Math.max(macroTargets.carbs - planned.carbs, 10),
       fat: Math.max(macroTargets.fat - planned.fat, 5),
     };
-    // slotTypes: the NAMED empty slots — an empty breakfast gets a breakfast
-    // dish, an empty dinner gets a dinner-appropriate one.
-    const fillPlan = generateDayPlan({ targets: remainingTargets, slots: emptySlots.length, slotTypes: emptySlots, excludeIds: usedIds, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
+    // slotTypes: the NAMED empty slots mapped to generator types — an empty
+    // breakfast gets a breakfast dish, an empty dinner a dinner one, a snack a
+    // light quick pick (snack1/snack2 → 'snack').
+    const fillPlan = generateDayPlan({ targets: remainingTargets, slots: emptySlots.length, slotTypes: emptySlots.map(slotTypeOf), excludeIds: usedIds, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
     const newPlan = { ...plan };
     if (!newPlan[date]) newPlan[date] = {};
     emptySlots.forEach((slot, i) => {
       if (fillPlan.meals[i]) newPlan[date][slot] = fillPlan.meals[i];
     });
     savePlan(newPlan);
-  }, [plan, savePlan, targets, prefs, isPastWeek]);
+  }, [plan, savePlan, targets, prefs, isPastWeek, slotKeys]);
 
   // Clear every meal in the displayed week.
   const handleClearWeek = useCallback(() => {
@@ -2778,6 +3405,19 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     setToast(t('nutrition.weekCleared', 'Week cleared'));
     setTimeout(() => setToast(''), 2000);
   }, [plan, weekDates, savePlan, t]);
+
+  // Clear just the active day (and pull its meals off the grocery list).
+  const [clearDayArmed, setClearDayArmed] = useState(false);
+  const handleClearDay = useCallback((date) => {
+    if (isPastWeek) return;
+    const newPlan = { ...plan };
+    Object.values(newPlan[date] || {}).forEach(m => { if (m?.id) onRemoveRecipeFromGrocery?.(m.id, date); });
+    delete newPlan[date];
+    savePlan(newPlan);
+    setClearDayArmed(false);
+    setToast(t('nutrition.dayCleared', 'Day cleared'));
+    setTimeout(() => setToast(''), 2000);
+  }, [plan, savePlan, isPastWeek, onRemoveRecipeFromGrocery, t]);
 
   const calTarget = targets?.daily_calories || 2000;
   const proteinTarget = targets?.daily_protein_g || 150;
@@ -2815,6 +3455,8 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
 
   const activeDateStr = weekDates[activeDay] || weekDates[0];
   const activeDayData = plan[activeDateStr] || {};
+  // Disarm the day-clear confirm whenever the viewed day/week changes.
+  useEffect(() => { setClearDayArmed(false); }, [activeDay, weekOffset]);
 
   // Resolve a planned meal to its full RECIPES record (which carries the
   // ingredient list the grocery handler needs). Match by id first, then by
@@ -2831,7 +3473,10 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   // "Add to list" for the whole active day — push every planned meal's recipe
   // through the parent grocery handler (which dedupes + categorises). Per-meal
   // version below shares the same resolver.
-  const addMealsToGrocery = useCallback((meals) => {
+  // `day` defaults to the day currently shown in the planner — both callers add
+  // the active day's meals — so the ingredients land in that day's grocery
+  // section instead of "Anytime".
+  const addMealsToGrocery = useCallback((meals, day = activeDateStr) => {
     if (!onAddRecipeToGrocery) {
       setToast(t('nutrition.fillFromMealsError', 'Could not add to list'));
       setTimeout(() => setToast(''), 2000);
@@ -2843,22 +3488,26 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
       const recipe = resolvePlannerRecipe(meal);
       if (!recipe || seen.has(recipe.id)) return;
       seen.add(recipe.id);
-      onAddRecipeToGrocery(recipe);
+      onAddRecipeToGrocery(recipe, { day });
       added++;
     });
     setToast(added > 0
       ? t('nutrition.addedToGroceryList', 'Added to Grocery List')
       : t('nutrition.fillFromMealsEmpty', 'No active meal plan to pull from'));
     setTimeout(() => setToast(''), 2000);
-  }, [onAddRecipeToGrocery, resolvePlannerRecipe, t]);
-  const activeDayCal = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.calories || 0), 0);
-  const activeDayP = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.protein || 0), 0);
-  const activeDayC = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.carbs || 0), 0);
-  const activeDayF = PLANNER_SLOT_KEYS.reduce((s, k) => s + (activeDayData[k]?.fat || 0), 0);
+  }, [onAddRecipeToGrocery, resolvePlannerRecipe, activeDateStr, t]);
+  // Is this meal's shopping already on the grocery list (for its day, or undated)?
+  const mealInList = useCallback((meal, day) => !!meal?.id && groceryList.some(i => i.recipeId === meal.id && (i.day === day || i.day == null)), [groceryList]);
+  const activeDayPlannedKeys = slotKeys.filter(k => activeDayData[k]);
+  const dayAllListed = activeDayPlannedKeys.length > 0 && activeDayPlannedKeys.every(k => mealInList(activeDayData[k], activeDateStr));
+  const activeDayCal = slotKeys.reduce((s, k) => s + (activeDayData[k]?.calories || 0), 0);
+  const activeDayP = slotKeys.reduce((s, k) => s + (activeDayData[k]?.protein || 0), 0);
+  const activeDayC = slotKeys.reduce((s, k) => s + (activeDayData[k]?.carbs || 0), 0);
+  const activeDayF = slotKeys.reduce((s, k) => s + (activeDayData[k]?.fat || 0), 0);
   const activePct = calTarget > 0 ? activeDayCal / calTarget : 0;
-  const filledSlots = PLANNER_SLOT_KEYS.filter(k => activeDayData[k]).length;
+  const filledSlots = slotKeys.filter(k => activeDayData[k]).length;
   // Any meals anywhere this week ⇒ the week button reads "Regenerate"; none ⇒ "Generate".
-  const weekHasMeals = weekDates.some(d => PLANNER_SLOT_KEYS.some(k => plan[d]?.[k]));
+  const weekHasMeals = weekDates.some(d => slotKeys.some(k => plan[d]?.[k]));
 
   const dayShorts = lang === 'es'
     ? ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
@@ -2884,10 +3533,16 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             {t('nutrition.myPlan', 'My Plan')}
           </div>
         </div>
-        <button onClick={() => setShowPrefs(true)} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-          style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('nutrition.prefsTitle', 'Preferences')}>
-          <SlidersHorizontal size={18} style={{ color: 'var(--color-text-muted)' }} />
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={() => setShowPlanConfig(true)} className="w-10 h-10 rounded-full flex items-center justify-center focus:outline-none"
+            style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('nutrition.planConfig', 'Plan setup')}>
+            <Calendar size={18} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+          <button onClick={() => setShowPrefs(true)} className="w-10 h-10 rounded-full flex items-center justify-center focus:outline-none"
+            style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('nutrition.prefsTitle', 'Preferences')}>
+            <SlidersHorizontal size={18} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable content */}
@@ -2916,6 +3571,44 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             <ChevronRight size={18} style={{ color: 'var(--color-text-primary)' }} />
           </button>
         </div>
+
+        {/* Regenerate / fill this week — the week-level actions live with the week */}
+        {!isPastWeek && (
+          <div className="px-4 mb-4">
+            {confirmClear ? (
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setConfirmClear(false)}
+                  className="flex-1 py-3 rounded-[14px] text-[12.5px] font-bold active:scale-95"
+                  style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                  {t('nutrition.keepPlan', 'Keep')}
+                </button>
+                <button type="button" onClick={handleClearWeek}
+                  className="flex-1 py-3 rounded-[14px] text-[12.5px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                  style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
+                  <Trash2 size={13} />{t('nutrition.clearWeek', 'Clear week')}
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button onClick={() => handleAutoplan(planWeeks)}
+                  className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+                  style={{ background: TU.coach, color: '#fff', letterSpacing: -0.2 }}>
+                  <Sparkles size={15} style={{ flexShrink: 0 }} />
+                  <span className="truncate">{planWeeks > 1
+                    ? t('nutrition.generateNWeeks', { count: planWeeks, defaultValue: 'Generate {{count}} weeks' })
+                    : (weekHasMeals ? t('nutrition.regenerateWeek', 'Regenerate week') : t('nutrition.generateWeek', 'Generate week'))}</span>
+                </button>
+                {weekHasMeals && (
+                  <button type="button" onClick={() => setConfirmClear(true)} aria-label={t('nutrition.clearWeek', 'Clear week')}
+                    className="flex-shrink-0 w-12 py-3 rounded-[14px] flex items-center justify-center active:scale-95"
+                    style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Day strip */}
         <div className="flex gap-1.5 px-3 pb-4">
@@ -2958,7 +3651,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold"
                 style={{ background: `${TU.accent}12`, color: TU.accent }}>
                 <Check size={11} strokeWidth={2.8} />
-                {filledSlots}/{PLANNER_SLOT_KEYS.length}
+                {filledSlots}/{slotKeys.length}
               </span>
             </div>
             <div className="rounded-full overflow-hidden mb-3.5" style={{ height: 6, background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
@@ -2966,18 +3659,26 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             </div>
             <div className="flex gap-2.5">
               {[
-                { l: 'P', v: activeDayP, c: TU.macroP },
-                { l: 'C', v: activeDayC, c: TU.macroC },
-                { l: 'F', v: activeDayF, c: TU.macroF },
-              ].map(m => (
-                <div key={m.l} className="flex-1 flex items-baseline justify-between px-3 py-2 rounded-[10px]" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-sm" style={{ background: m.c }} />
-                    <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{m.l}</span>
+                { l: 'P', v: activeDayP, tg: proteinTarget, c: TU.macroP },
+                { l: 'C', v: activeDayC, tg: carbsTarget, c: TU.macroC },
+                { l: 'F', v: activeDayF, tg: fatTarget, c: TU.macroF },
+              ].map(m => {
+                const pct = m.tg > 0 ? Math.min(100, (m.v / m.tg) * 100) : 0;
+                return (
+                <div key={m.l} className="flex-1 px-2.5 py-2 rounded-[10px]" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-sm" style={{ background: m.c }} />
+                      <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{m.l}</span>
+                    </div>
+                    <span style={{ fontFamily: TU.display, fontSize: 13, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{Math.round(m.v)}<span className="text-[9px] font-medium" style={{ color: 'var(--color-text-muted)' }}>/{Math.round(m.tg)}g</span></span>
                   </div>
-                  <span style={{ fontFamily: TU.display, fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{m.v}<span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>g</span></span>
+                  <div className="rounded-full overflow-hidden" style={{ height: 3, background: 'var(--color-border-subtle)' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: m.c, borderRadius: 999 }} />
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2989,18 +3690,62 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           </div>
           <button
             type="button"
-            onClick={() => addMealsToGrocery(PLANNER_SLOT_KEYS.map(k => activeDayData[k]).filter(Boolean))}
+            onClick={() => { if (!dayAllListed) addMealsToGrocery(activeDayPlannedKeys.map(k => activeDayData[k])); }}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold focus:outline-none active:scale-95"
-            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-            <ShoppingCart size={12} />{t('nutrition.addToList', 'Add to list')}
+            style={dayAllListed
+              ? { background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: 'var(--color-success)' }
+              : { background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+            {dayAllListed ? <><Check size={12} strokeWidth={2.8} />{t('nutrition.added', 'Added')}</> : <><ShoppingCart size={12} />{t('nutrition.addToList', 'Add to list')}</>}
           </button>
         </div>
 
+        {/* Day-level actions — regenerate / clear THIS day, beside its meals */}
+        {!isPastWeek && (
+          <div className="px-4 mb-3">
+            {clearDayArmed ? (
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setClearDayArmed(false)}
+                  className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold active:scale-95"
+                  style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                  {t('nutrition.keepPlan', 'Keep')}
+                </button>
+                <button type="button" onClick={() => handleClearDay(activeDateStr)}
+                  className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                  style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
+                  <Trash2 size={12} />{t('nutrition.clearDay', 'Clear day')}
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button onClick={() => handleCompleteDay(activeDateStr)}
+                  className="flex-1 min-w-0 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                  style={{ background: `${TU.coach}12`, border: `1px solid ${TU.coach}33`, color: TU.coach }}>
+                  <Sparkles size={13} style={{ flexShrink: 0 }} />
+                  <span className="truncate">{filledSlots > 0 ? t('nutrition.regenerateDay', 'Regenerate this day') : t('nutrition.generateDay', 'Generate this day')}</span>
+                </button>
+                {filledSlots > 0 && (
+                  <button type="button" onClick={() => setClearDayArmed(true)} aria-label={t('nutrition.clearDay', 'Clear day')}
+                    className="flex-shrink-0 w-11 py-2.5 rounded-[12px] flex items-center justify-center active:scale-95"
+                    style={{ background: 'transparent', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Meal rows for active day */}
         <div className="px-4 flex flex-col gap-2.5 pb-4">
-          {PLANNER_SLOT_KEYS.map((slot, si) => {
+          {slotKeys.map((slot, si) => {
             const meal = activeDayData[slot];
-            const slotLabel = SLOT_LABELS[slot] || slot;
+            const slotLabel = slotLabelFor(slot, mealSchedule.count, t);
+            const slotTime = mealSchedule.times[slot];
+            // Re-resolve the image from the live library by id. Plans are stored
+            // in localStorage as a snapshot, so a plan generated before a recipe
+            // had an image would keep showing a letter tile forever otherwise.
+            const mealImg = meal && (meal.image || mealImageById(meal.id));
+            const listed = mealInList(meal, activeDateStr);
 
             if (!meal) {
               return (
@@ -3011,7 +3756,10 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                     <Plus size={18} style={{ color: 'var(--color-text-muted)' }} />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{slotLabel}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{slotLabel}</span>
+                      {slotTime && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold" style={{ color: TU.coach }}><Clock size={10} />{fmtMealTime(slotTime, lang)}</span>}
+                    </span>
                     <p className="text-[13px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.tapToAdd', 'Tap to add')}</p>
                   </div>
                 </button>
@@ -3021,14 +3769,15 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             return (
               <div key={slot} className="rounded-[18px] p-3" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
                 <button type="button" onClick={() => onOpenRecipe(meal)} className="w-full flex gap-3 items-center mb-2.5 text-left active:scale-[0.985] transition-transform">
-                  {meal.image ? (
-                    <img src={foodImageUrl(meal.image)} alt="" className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+                  {mealImg ? (
+                    <img src={(foodImageUrl(mealImg) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt="" className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                   ) : (
                     <FoodTile name={mealTitle(meal)} size={52} seed={si} />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{slotLabel}</span>
+                      {slotTime && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold" style={{ color: TU.coach }}><Clock size={10} />{fmtMealTime(slotTime, lang)}</span>}
                     </div>
                     <div className="truncate mb-1" style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{mealTitle(meal)}</div>
                     <div className="flex gap-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
@@ -3046,12 +3795,14 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                     style={{ color: 'var(--color-danger)', background: 'transparent', border: 'none' }}>
                     <Trash2 size={12} />{t('nutrition.removeMeal', 'Remove')}
                   </button>
-                  <button type="button" onClick={() => addMealsToGrocery([meal])}
+                  <button type="button" onClick={() => { if (!listed) addMealsToGrocery([meal]); }}
                     className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                    style={{ color: 'var(--color-text-muted)', background: 'transparent', border: 'none' }}>
-                    <ShoppingCart size={12} />{t('nutrition.list', 'List')}
+                    style={listed
+                      ? { color: 'var(--color-success)', background: 'rgba(16,185,129,0.12)', border: 'none' }
+                      : { color: 'var(--color-text-muted)', background: 'transparent', border: 'none' }}>
+                    {listed ? <><Check size={12} strokeWidth={2.8} />{t('nutrition.added', 'Added')}</> : <><ShoppingCart size={12} />{t('nutrition.list', 'List')}</>}
                   </button>
-                  <button onClick={() => onOpenRecipe(meal)}
+                  <button onClick={() => { onMarkMealEaten?.(meal.id, activeDateStr); onOpenRecipe(meal); }}
                     className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
                     style={{ color: TU.accent, background: `${TU.accent}12`, border: 'none' }}>
                     <Check size={12} strokeWidth={2.8} />{t('nutrition.eaten', 'Eaten')}
@@ -3062,54 +3813,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           })}
         </div>
 
-        {/* Auto-plan / regenerate */}
-        {!isPastWeek && (
-          <div className="px-4 pb-2">
-            <button onClick={() => handleCompleteDay(activeDateStr)}
-              className="w-full py-3.5 rounded-[14px] text-[13px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
-              style={{ background: 'transparent', border: '1.5px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-              <Sparkles size={14} style={{ color: TU.coach }} />
-              {filledSlots > 0 ? t('nutrition.regenerateDay', 'Regenerate this day') : t('nutrition.generateDay', 'Generate this day')}
-            </button>
-          </div>
-        )}
-
-        {/* Regenerate week CTA */}
-        {!isPastWeek && (
-          <div className="px-4 pb-6">
-            <button onClick={handleAutoplan}
-              className="w-full py-3.5 rounded-[14px] text-[14px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
-              style={{ background: TU.coach, color: '#fff', letterSpacing: -0.2 }}>
-              <Sparkles size={15} />
-              {weekHasMeals ? t('nutrition.regenerateWeek', 'Regenerate week') : t('nutrition.generateWeek', 'Generate week')}
-            </button>
-            {weekHasMeals && (
-              <div className="mt-2">
-                {confirmClear ? (
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setConfirmClear(false)}
-                      className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold active:scale-95"
-                      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                      {t('nutrition.keepPlan', 'Keep')}
-                    </button>
-                    <button type="button" onClick={handleClearWeek}
-                      className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                      style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
-                      <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => setConfirmClear(true)}
-                    className="w-full py-2.5 text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                    style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)' }}>
-                    <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
+        <div className="pb-6" />
       </div>{/* end scrollable */}
 
       <MealPrefsSheet
@@ -3128,6 +3832,70 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           loadPrefs();
         }}
       />
+
+      {/* Plan setup — length, meals/day, and optional per-meal times + reminders */}
+      {showPlanConfig && (
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPlanConfig(false)} role="presentation" />
+          <div className="relative w-full sm:max-w-[460px] max-h-[88dvh] flex flex-col overflow-hidden rounded-t-[24px] sm:rounded-[24px]"
+            style={{ background: 'var(--color-bg-primary)', boxShadow: '0 -8px 40px rgba(0,0,0,0.3)' }}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
+              <div style={{ fontFamily: TU.display, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.planConfig', 'Plan setup')}</div>
+              <button onClick={() => setShowPlanConfig(false)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common.close', 'Close')}>
+                <X size={17} style={{ color: 'var(--color-text-muted)' }} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 pb-4 pt-1 space-y-6" style={{ overscrollBehavior: 'contain' }}>
+              {/* Plan length — how many weeks Generate fills in one tap */}
+              <div>
+                <div className="text-[11px] font-bold uppercase mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.planLength', 'Plan length')}</div>
+                <Stepper value={planWeeks} min={1} max={PLAN_WEEKS_MAX}
+                  onChange={(v) => setPlanWeeks(v)}
+                  label={planWeeks === 1 ? t('nutrition.weekUnit', 'week') : t('nutrition.weeksUnit', 'weeks')} />
+              </div>
+              {/* Meals per day */}
+              <div>
+                <div className="text-[11px] font-bold uppercase mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.mealsPerDay', 'Meals per day')}</div>
+                <Stepper value={mealSchedule.count} min={MEAL_SLOT_MIN} max={MEAL_SLOT_MAX}
+                  onChange={(v) => setMealSchedule(prev => ({ ...prev, count: v }))}
+                  label={t('nutrition.mealsUnit', 'meals')} />
+                <p className="mt-1.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.mealsPerDayHint', 'Extra meals are added as snacks between lunch and dinner.')}</p>
+              </div>
+              {/* Meal times */}
+              <div>
+                <div className="text-[11px] font-bold uppercase mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.mealTimes', 'Meal times')}</div>
+                <p className="mb-2.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.mealTimesHint', 'Optional — set a time to see it on your meals and get a reminder.')}</p>
+                <div className="space-y-2">
+                  {slotKeys.map((k) => (
+                    <div key={k} className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-[14px]" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                      <span className="text-[13.5px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{slotLabelFor(k, mealSchedule.count, t)}</span>
+                      <div className="flex items-center gap-2">
+                        <input type="time" value={mealSchedule.times[k] || ''} onChange={(e) => setSlotTime(k, e.target.value)}
+                          className="text-[13.5px] font-semibold px-2 py-1 rounded-[9px] focus:outline-none"
+                          style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)', colorScheme: 'light dark' }} />
+                        {mealSchedule.times[k] && (
+                          <button onClick={() => setSlotTime(k, '')} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90" style={{ background: 'var(--color-surface-hover)' }} aria-label={t('nutrition.clearTime', 'Clear time')}>
+                            <X size={13} style={{ color: 'var(--color-text-muted)' }} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2.5 flex items-start gap-1.5">
+                  <Bell size={12} style={{ color: TU.coach, marginTop: 2, flexShrink: 0 }} />
+                  <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.mealNotifyNote', 'We remind you on your phone near each meal time — only for meals you’ve planned.')}</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-5 pt-2.5 pb-5 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              <button onClick={() => setShowPlanConfig(false)} className="w-full py-3 rounded-[14px] text-[14px] font-bold active:scale-[0.97]" style={{ background: TU.coach, color: '#fff' }}>
+                {t('nutrition.done', 'Done')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -3167,15 +3935,15 @@ const fetchSummaryWeekData = async (userId, weeksBack = 0) => {
   });
   const { data: logs } = await supabase
     .from('food_logs')
-    .select('log_date, calories, protein_g, carbs_g, fat_g')
+    .select('log_date, calories, protein_g, carbs_g, fat_g, meal_type, custom_name, food_item:food_items(name, name_es)')
     .eq('profile_id', userId)
     .gte('log_date', dates[0])
     .lte('log_date', dates[6]);
   const byDate = {};
-  for (const date of dates) byDate[date] = { calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0 };
+  for (const date of dates) byDate[date] = { calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0, logs: [] };
   for (const log of (logs || [])) {
     const d = byDate[log.log_date];
-    if (d) { d.calories += log.calories || 0; d.protein += log.protein_g || 0; d.carbs += log.carbs_g || 0; d.fat += log.fat_g || 0; d.meals++; }
+    if (d) { d.calories += log.calories || 0; d.protein += log.protein_g || 0; d.carbs += log.carbs_g || 0; d.fat += log.fat_g || 0; d.meals++; d.logs.push(log); }
   }
   return { dates, byDate };
 };
@@ -3186,6 +3954,8 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
   // weeksBack: 0 = this week, 1 = last week… Past weeks are fetched on
   // demand and cached for the life of the modal so ‹ › flips are instant.
   const [weeksBack, setWeeksBack] = useState(0);
+  const [expandedDay, setExpandedDay] = useState(null); // which day's logged meals are shown
+  useEffect(() => { setExpandedDay(null); }, [weeksBack]);
   const weekCache = useRef(new Map(prefetchedData ? [[0, prefetchedData]] : []));
   const [weekData, setWeekData] = useState(prefetchedData || null);
   const calTarget = targets?.daily_calories || 2000;
@@ -3224,8 +3994,9 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
   // Compute stats
   const days = weekData ? weekData.dates.map((date, i) => {
     const d = weekData.byDate[date];
-    return { d: dayKeys[i], kcal: d.calories, goal: calTarget, today: date === todayStr(), protein: d.protein, carbs: d.carbs, fat: d.fat, meals: d.meals };
+    return { d: dayKeys[i], date, kcal: d.calories, goal: calTarget, today: date === todayStr(), protein: d.protein, carbs: d.carbs, fat: d.fat, meals: d.meals, logs: d.logs || [] };
   }) : [];
+  const expanded = expandedDay ? days.find(d => d.date === expandedDay) : null;
 
   const trackedDays = days.filter(d => d.meals > 0);
   const avg = trackedDays.length > 0 ? Math.round(trackedDays.reduce((s, d) => s + d.kcal, 0) / trackedDays.length) : 0;
@@ -3235,6 +4006,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
   const adherence = trackedDays.length > 0 ? Math.round(trackedDays.filter(d => Math.abs(d.kcal - calTarget) / calTarget <= 0.1).length / trackedDays.length * 100) : 0;
   const streak = trackedDays.length;
   const maxBar = Math.max(calTarget, ...days.map(d => d.kcal)) * 1.05 || 1;
+  const totalMeals = days.reduce((s, d) => s + (d.meals || 0), 0); // meals logged this week
 
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center px-4" style={{ paddingTop: 'env(safe-area-inset-top)' }} onClick={onClose}>
@@ -3298,19 +4070,20 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
 
               {/* Bar chart */}
               <div className="rounded-[18px] p-5 mb-5" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-                <div className="text-[11px] font-bold uppercase tracking-wider mb-4" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
-                  {t('nutrition.dailyCalories', 'Daily calories')}
+                <div className="text-[11px] font-bold uppercase tracking-wider mb-4 flex items-center justify-between gap-2" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
+                  <span>{t('nutrition.dailyCalories', 'Daily calories')}</span>
+                  <span style={{ textTransform: 'none', letterSpacing: 0, color: TU.accent }}>{t('nutrition.mealsLogged', { count: totalMeals, defaultValue: `${totalMeals} meals logged` })}</span>
                 </div>
                 <div className="relative" style={{ height: 160 }}>
-                  {/* Goal line */}
-                  <div className="absolute left-0 right-0" style={{ bottom: `${(calTarget / maxBar) * 100}%`, borderTop: '1.5px dashed var(--color-text-muted)', opacity: 0.4 }} />
-                  <div className="absolute right-0 text-[9px] font-bold uppercase" style={{ bottom: `${(calTarget / maxBar) * 100 + 1}%`, color: 'var(--color-text-muted)', letterSpacing: 0.5 }}>
+                  {/* Goal line (px, matched to the bar scale below) */}
+                  <div className="absolute left-0 right-0" style={{ bottom: (calTarget / maxBar) * 142, borderTop: '1.5px dashed var(--color-text-muted)', opacity: 0.4 }} />
+                  <div className="absolute right-0 text-[9px] font-bold uppercase" style={{ bottom: (calTarget / maxBar) * 142 + 3, color: 'var(--color-text-muted)', letterSpacing: 0.5 }}>
                     {t('nutrition.goal', 'Goal')} {calTarget}
                   </div>
                   {/* Bars */}
                   <div className="absolute inset-0 flex items-end gap-1.5">
                     {days.map((day, i) => {
-                      const h = day.kcal > 0 ? Math.max(4, (day.kcal / maxBar) * 100) : 2;
+                      const h = day.kcal > 0 ? Math.max(4, (day.kcal / maxBar) * 142) : 2; // px within the 160-tall chart
                       const over = day.kcal > calTarget * 1.1;
                       const under = day.kcal < calTarget * 0.9;
                       const barColor = day.meals === 0 ? 'var(--color-border-subtle)' : over ? TU.hot : under ? TU.macroC : TU.accent;
@@ -3318,7 +4091,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
                         <div key={i} className="flex-1 flex flex-col items-center gap-1">
                           <span className="text-[9px] font-bold tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{day.kcal || ''}</span>
                           <div style={{
-                            width: '100%', height: `${h}%`, background: barColor,
+                            width: '100%', height: h, background: barColor,
                             borderRadius: 6, opacity: day.meals === 0 ? 0.3 : (day.today ? 1 : 0.75),
                             border: day.today ? '2px solid var(--color-text-primary)' : 'none',
                           }} />
@@ -3327,13 +4100,53 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
                     })}
                   </div>
                 </div>
-                {/* Day labels */}
+                {/* Day labels + per-day meal count — tap a day to see what was logged */}
                 <div className="flex gap-1.5 mt-2">
-                  {days.map((day, i) => (
-                    <div key={i} className="flex-1 text-center text-[10px] font-bold" style={{ color: day.today ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>{day.d}</div>
-                  ))}
+                  {days.map((day, i) => {
+                    const isExp = day.date === expandedDay;
+                    const has = day.meals > 0;
+                    return (
+                      <button key={i} type="button" disabled={!has}
+                        onClick={() => setExpandedDay(isExp ? null : day.date)}
+                        className="flex-1 text-center rounded-[8px] py-1 active:scale-95 transition-transform focus:outline-none"
+                        style={{ background: isExp ? `${TU.accent}16` : 'transparent', cursor: has ? 'pointer' : 'default' }}>
+                        <div className="text-[10px] font-bold" style={{ color: day.today ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>{day.d}</div>
+                        <div className="text-[9px] font-bold mt-0.5 tabular-nums" style={{ color: has ? TU.accent : 'var(--color-text-muted)', opacity: has ? 1 : 0.35 }}>
+                          {has ? day.meals : '·'}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
+                {!expanded && totalMeals > 0 && (
+                  <div className="text-[10px] text-center mt-2.5" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.tapDayForMeals', 'Tap a day to see what you logged')}</div>
+                )}
               </div>
+
+              {/* Expanded day — the actual meals logged that day, by name */}
+              {expanded && expanded.meals > 0 && (
+                <div className="rounded-[18px] overflow-hidden mb-5" style={{ background: 'var(--color-bg-card)', border: `1px solid ${TU.accent}40` }}>
+                  <div className="px-4 py-3.5">
+                    <div className="flex items-baseline justify-between gap-2 mb-2.5">
+                      <span className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                        {expanded.d} · {t('nutrition.mealsLogged', { count: expanded.meals, defaultValue: `${expanded.meals} meals logged` })}
+                      </span>
+                      <span className="text-[11px] font-bold flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>{expanded.kcal} kcal</span>
+                    </div>
+                    <div>
+                      {expanded.logs.map((log, i) => {
+                        const name = (lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || t('nutrition.foodFallback', 'Food'));
+                        return (
+                          <div key={i} className="flex items-center justify-between gap-2 py-2" style={{ borderTop: i > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}>
+                            <span className="text-[12.5px] truncate flex-1" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>{name}</span>
+                            <span className="text-[11px] font-semibold tabular-nums flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>{log.calories} kcal</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Macro averages */}
               <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
@@ -3506,6 +4319,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       userId={userId}
       embedded={embedded}
       onAddRecipeToGrocery={onAddRecipeToGrocery}
+      groceryList={groceryList}
     />
   );
 
@@ -3754,14 +4568,14 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
               // Prefer the actual stored image (AI photo / barcode product image)
               // BEFORE the name-based fallback — getFoodImage can match a generic
               // image of a similarly named food and show the wrong picture.
-              const recentImg = foodImageUrl(r.image_url) || r.image_url || getFoodImage(r.name, r.brand);
+              const recentImg = foodImageUrl(r.image_url) || r.image_url || getFoodImage(r.name, r.brand) || recipeImageByName(r.name);
               return (
               <button
                 key={`${r.name}_${i}`}
                 onClick={() => onRepeatScan?.(r)}
                 className="flex-shrink-0 flex flex-col items-start gap-2 rounded-[16px] p-2.5 active:scale-[0.97] transition-transform"
                 style={{
-                  width: 132,
+                  width: 150,
                   background: 'var(--color-bg-card)',
                   border: '1px solid var(--color-border-subtle)',
                   boxShadow: '0 2px 6px rgba(60,40,10,0.06)',
@@ -3784,8 +4598,11 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                 )}
                 <div className="w-full min-w-0">
                   <div className="text-[12px] font-bold truncate" style={{ color: 'var(--color-text-primary)', fontFamily: TU.display, letterSpacing: -0.2 }}>{r.name}</div>
-                  <div className="text-[10px] font-semibold mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
-                    {Math.round(r.calories)} kcal
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-bold tabular-nums">
+                    <span style={{ color: 'var(--color-text-primary)' }}>{Math.round(r.calories)} cal</span>
+                    <span style={{ color: TU.macroP }}>{Math.round(r.protein_g || 0)}P</span>
+                    <span style={{ color: TU.macroC }}>{Math.round(r.carbs_g || 0)}C</span>
+                    <span style={{ color: TU.macroF }}>{Math.round(r.fat_g || 0)}F</span>
                   </div>
                 </div>
               </button>
@@ -3803,13 +4620,6 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       <div className="mb-8 px-4">
         <div className="flex items-center justify-between mb-4">
           <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.todaysMeals')}</div>
-          {todayLogs.length > 0 && (
-            <button onClick={() => setLogViewMode(v => v === 'list' ? 'timeline' : 'list')}
-              className="text-[13px] font-bold"
-              style={{ color: TU.accent }}>
-              {t('nutrition.seeAll', 'See all')}
-            </button>
-          )}
         </div>
 
         {/* ── Timeline View ── */}
@@ -3820,7 +4630,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
               const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const mt = MEAL_TYPES.find(m => m.key === log.meal_type) || MEAL_TYPES[3];
               const Icon = mt.icon;
-              const logImg = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url);
+              const logImg = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url) || recipeImageByName(log.custom_name || log.food_item?.name);
               const isLast = i === arr.length - 1;
               return (
                 <div key={log.id} className="flex gap-3 pl-1">
@@ -3850,6 +4660,11 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                           {(lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || t('nutrition.foodFallback', 'Food'))}
                         </p>
                         <MacroSegBar p={log.protein_g || 0} c={log.carbs_g || 0} f={log.fat_g || 0} height={4} />
+                        <div className="flex items-center gap-2.5 mt-1.5 text-[11px] font-bold" style={{ fontFamily: TU.display }}>
+                          <span style={{ color: TU.macroP }}>{Math.round(log.protein_g || 0)}P</span>
+                          <span style={{ color: TU.macroC }}>{Math.round(log.carbs_g || 0)}C</span>
+                          <span style={{ color: TU.macroF }}>{Math.round(log.fat_g || 0)}F</span>
+                        </div>
                       </div>
                       <div className="text-right flex-shrink-0 ml-1">
                         <div style={{ fontFamily: TU.display, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1 }}>{log.calories ?? 0}</div>
@@ -3866,14 +4681,14 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
         <div className="space-y-2.5">
           {todayLogs.length === 0 ? (
             <button onClick={onOpenSearch}
-              className="w-full py-4 rounded-[18px] text-[13px] font-semibold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
-              style={{ background: 'transparent', border: '1.5px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-              <Plus size={16} style={{ color: 'var(--color-text-muted)' }} />
+              className="w-full py-3.5 rounded-[16px] text-[14px] font-bold transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+              style={{ background: TU.accent, color: 'var(--color-text-on-accent, #fff)', boxShadow: '0 2px 12px rgba(0,0,0,0.14)' }}>
+              <Plus size={17} strokeWidth={2.6} style={{ color: 'var(--color-text-on-accent, #fff)' }} />
               {t('nutrition.startLogging', 'Start logging meals')}
             </button>
           ) : todayLogs.slice(0, 10).map((log, li) => {
             const mt = MEAL_TYPES.find(m => m.key === log.meal_type) || MEAL_TYPES[3];
-            const logImg = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url);
+            const logImg = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url) || recipeImageByName(log.custom_name || log.food_item?.name);
             const logName = (lang === 'es' && log.food_item?.name_es) ? log.food_item.name_es : (log.food_item?.name || log.custom_name || t('nutrition.foodFallback', 'Food'));
             const logTime = new Date(log.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             return (
@@ -3895,6 +4710,11 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
                   </div>
                   <p className="text-[14px] font-bold truncate leading-snug mb-1" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{logName}</p>
                   <MacroSegBar p={log.protein_g || 0} c={log.carbs_g || 0} f={log.fat_g || 0} height={4} />
+                  <div className="flex items-center gap-2.5 mt-1.5 text-[11px] font-bold" style={{ fontFamily: TU.display }}>
+                    <span style={{ color: TU.macroP }}>{Math.round(log.protein_g || 0)}P</span>
+                    <span style={{ color: TU.macroC }}>{Math.round(log.carbs_g || 0)}C</span>
+                    <span style={{ color: TU.macroF }}>{Math.round(log.fat_g || 0)}F</span>
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-1">
                   <div style={{ fontFamily: TU.display, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1 }}>{log.calories ?? 0}</div>
@@ -3912,8 +4732,27 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
   );
 };
 
+// Relative "last opened" label for the Recent list. Bare ES/EN strings (no
+// t()) — matches how mealTitle picks language inline. Returns null when there's
+// no timestamp (legacy entries / brand-new-member suggestions).
+function relOpenedLabel(ts, lang) {
+  if (!ts) return null;
+  const day = 86400000;
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(ts); d1.setHours(0, 0, 0, 0);
+  const diff = Math.round((d0.getTime() - d1.getTime()) / day);
+  const es = lang === 'es';
+  if (diff <= 0) return es ? 'Hoy' : 'Today';
+  if (diff === 1) return es ? 'Ayer' : 'Yesterday';
+  if (diff < 7) return es ? `hace ${diff} d` : `${diff}d ago`;
+  try { return new Date(ts).toLocaleDateString(es ? 'es' : 'en', { month: 'short', day: 'numeric' }); }
+  catch { return null; }
+}
+
 // ── DISCOVER VIEW ───────────────────────────────────────────
-const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollection }) => {
+const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollection, targets }) => {
+  // Live recipe library — category counts + grids follow DB hydration (no rebuild).
+  const RECIPES = useMeals();
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
   const mealTitle = (r) => (lang === 'es' && r.title_es) ? r.title_es : r.title;
@@ -3924,6 +4763,41 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
   const [showResults, setShowResults] = useState(false);
   const [ingredientQuery, setIngredientQuery] = useState('');
   const [showRecipeFilters, setShowRecipeFilters] = useState(false);
+  const [macrosSeed, setMacrosSeed] = useState(0); // manual "regenerate" offset for Fits-your-macros
+  const [showAllRecent, setShowAllRecent] = useState(false); // Recent "See all" toggle
+  const [visibleCount, setVisibleCount] = useState(30); // results grid: how many cards shown (Load more raises it)
+  const [recentTick, setRecentTick] = useState(0); // bump to re-read the recents cache
+
+  // Track the recipes the member actually opens (persisted, deduped, newest-first)
+  // so "Recent" reflects real activity instead of a frozen slice — and "See all"
+  // has something to expand.
+  const RECENT_KEY = 'nutrition.recentRecipes';
+  const openRecipe = (r) => {
+    if (r?.id) {
+      try {
+        // Back-compat: older entries were bare ids; normalize to {id, ts} so we
+        // can show *when* each recipe was last opened.
+        const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+        const prev = raw
+          .map(x => (typeof x === 'string' ? { id: x, ts: 0 } : x))
+          .filter(x => x && x.id !== r.id);
+        prev.unshift({ id: r.id, ts: Date.now() });
+        localStorage.setItem(RECENT_KEY, JSON.stringify(prev.slice(0, 30)));
+      } catch { /* quota/parse — ignore */ }
+      setRecentTick(t => t + 1);
+    }
+    onOpenRecipe(r);
+  };
+
+  // Close the results sub-view first — makes a category feel like a PAGE you back
+  // out of, not a filter that leaves you stuck (device back used to exit Meals).
+  const closeResults = () => { setShowResults(false); setActiveFilter('all'); setSelectedIngredients([]); };
+  useEffect(() => {
+    if (!showResults) return;
+    const onBack = (e) => { e.preventDefault(); closeResults(); };
+    window.addEventListener('app:hardwareback', onBack);
+    return () => window.removeEventListener('app:hardwareback', onBack);
+  }, [showResults]);
 
   // Lock body scroll when recipe filter modal is open
   useEffect(() => {
@@ -3933,11 +4807,17 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
     }
   }, [showRecipeFilters]);
 
+  // A new search (different ingredients / filter) starts the grid back at 30.
+  useEffect(() => { setVisibleCount(30); }, [selectedIngredients, activeFilter]);
+
   const toggleIngredient = (id) => {
-    setSelectedIngredients(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-    setShowResults(false);
+    // Results show the moment you pick an ingredient — no separate "Find Recipes"
+    // button. Deselecting the last one drops back to browse.
+    setSelectedIngredients(prev => {
+      const next = prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id];
+      setShowResults(next.length > 0);
+      return next;
+    });
   };
 
   const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
@@ -3956,49 +4836,104 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
         .filter(recipe => recipe?.ingredients && recipe.category === activeFilter)
         .map(recipe => ({ ...recipe, matchCount: 0, missing: 0 }));
     }
-    return (RECIPES || []).filter(recipe => {
-      if (!recipe?.ingredients) return false;
-      if (activeFilter !== 'all' && recipe.category !== activeFilter) return false;
-      const matchCount = recipe.ingredients.filter(ing => selectedIngredients.includes(ing)).length;
-      return matchCount > 0;
-    }).map(recipe => {
-      const matchCount = recipe.ingredients.filter(ing => selectedIngredients.includes(ing)).length;
-      return { ...recipe, matchCount, missing: recipe.ingredients.length - matchCount };
-    }).sort((a, b) => a.missing - b.missing);
-  }, [selectedIngredients, activeFilter]);
-
-  // Top macro-matched suggestions (computed from RECIPES)
-  const fitsYourMacros = useMemo(() => {
-    // Pick top protein recipes as "fits your macros" suggestions
+    // The chips are generic (`salmon`, `lean_beef`) but recipes store specific
+    // tokens (`salmon_fillet`, `lean_beef_strips`), so exact-equality matched
+    // almost nothing — picking Salmon surfaced random recipes that merely shared
+    // one other chip. Match on whole-word token SUBSET instead (singular/plural
+    // tolerant): a chip matches an ingredient when all of the chip's tokens appear
+    // in that ingredient's tokens.
+    const norm = (tok) => String(tok).toLowerCase().replace(/s$/, '');
+    const ingMatches = (chipId, recipeIng) => {
+      const rt = String(recipeIng).split('_').map(norm);
+      return String(chipId).split('_').map(norm).every(tok => rt.includes(tok));
+    };
     return (RECIPES || [])
-      .filter(r => r?.protein >= 20)
-      .sort((a, b) => (b.protein / Math.max(b.calories, 1)) - (a.protein / Math.max(a.calories, 1)))
-      .slice(0, 6);
-  }, []);
+      .filter(recipe => {
+        if (!recipe?.ingredients) return false;
+        if (activeFilter !== 'all' && recipe.category !== activeFilter) return false;
+        return true;
+      })
+      .map(recipe => {
+        // matchCount = how many of the user's picks this recipe actually uses;
+        // missing = how many of the recipe's ingredients the user still needs.
+        const matchCount = selectedIngredients.filter(sel =>
+          recipe.ingredients.some(ing => ingMatches(sel, ing))
+        ).length;
+        const missing = recipe.ingredients.filter(ing =>
+          !selectedIngredients.some(sel => ingMatches(sel, ing))
+        ).length;
+        return { ...recipe, matchCount, missing };
+      })
+      .filter(recipe => recipe.matchCount > 0)
+      // Most of the user's ingredients first, then fewest still-needed.
+      .sort((a, b) => (b.matchCount - a.matchCount) || (a.missing - b.missing));
+  }, [selectedIngredients, activeFilter, RECIPES]);
 
-  // Recent recipes (show 3 on page, "See all" links to saved)
+  // "Fits your macros" — scored against the user's ACTUAL per-meal targets
+  // (not just raw protein density), then a 6-item window rotated by the week so
+  // it's varied instead of showing the same six every single day.
+  const fitsYourMacros = useMemo(() => {
+    const mealCal = (targets?.daily_calories || 2000) / 3;
+    const mealPro = (targets?.daily_protein_g || 150) / 3;
+    const pool = (RECIPES || [])
+      .filter(r => r?.ingredients && (r.protein || 0) >= 20)
+      .map(r => {
+        const calGap = Math.abs((r.calories || 0) - mealCal) / Math.max(mealCal, 1);
+        const proGap = Math.abs((r.protein || 0) - mealPro) / Math.max(mealPro, 1);
+        const density = (r.protein || 0) / Math.max(r.calories || 1, 1);
+        return { r, score: density - 0.4 * calGap - 0.3 * proGap };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 40)
+      .map(x => x.r);
+    if (pool.length <= 6) return pool;
+    // weekly rotation + a manual "regenerate" offset so tapping the button reshuffles.
+    const start = ((weekIndex() + macrosSeed) * 6) % pool.length;
+    return Array.from({ length: 6 }, (_, i) => pool[(start + i) % pool.length]);
+  }, [RECIPES, targets, macrosSeed]);
+
+  // Recently-opened recipes (persisted, newest-first). Falls back to a few
+  // suggestions for a brand-new member who hasn't opened anything yet.
   const recentRecipes = useMemo(() => {
-    return (RECIPES || []).slice(0, 3);
-  }, []);
+    let raw = [];
+    try { raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { raw = []; }
+    const entries = raw.map(x => (typeof x === 'string' ? { id: x, ts: 0 } : x)).filter(x => x && x.id);
+    const byId = new Map((RECIPES || []).map(r => [r.id, r]));
+    const list = entries.map(e => { const r = byId.get(e.id); return r ? { ...r, _openedAt: e.ts } : null; }).filter(Boolean);
+    return list.length ? list : (RECIPES || []).slice(0, 6);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [RECIPES, recentTick]);
 
   return (
     <div className="pb-28 md:pb-12" >
       {/* Header — "Meals" */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <button onClick={() => setView('home')} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
+          <button onClick={() => { if (showResults) closeResults(); else setView('home'); }} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
             style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common.back', 'Go back')}>
             <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
           </button>
           <div>
             <div style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
-              {t('nutrition.meals.title', 'Meals')}
+              {showResults && activeFilter !== 'all'
+                ? t(`nutrition.categories.${activeFilter}`, DISCOVER_FILTERS.find(f => f.id === activeFilter)?.label || 'Meals')
+                : t('nutrition.meals.title', 'Meals')}
             </div>
             <div className="text-[13px] mt-1.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              {format(new Date(), 'EEEE, MMM d', { locale: lang === 'es' ? esLocale : undefined })}
+              {showResults && activeFilter !== 'all'
+                ? `${matchedRecipes.length} ${t('nutrition.recipesPlural', 'recipes')}`
+                : format(new Date(), 'EEEE, MMM d', { locale: lang === 'es' ? esLocale : undefined })}
             </div>
           </div>
         </div>
+        {!showResults && (
+          <button onClick={() => setView('saved')}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-bold active:scale-95 transition-transform flex-shrink-0"
+            style={{ background: TU.accent, color: 'var(--color-text-on-accent)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>
+            <UtensilsCrossed size={15} style={{ color: 'var(--color-text-on-accent)' }} />
+            {t('nutrition.myMeals', 'My meals')}
+          </button>
+        )}
       </div>
 
       {/* Search bar */}
@@ -4018,53 +4953,37 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
         </div>
       </div>
 
-      {/* Search results (inline, when typing) */}
-      {ingredientQuery.length > 0 && (
-        <div className="px-5 mb-4">
+      {/* Ingredient chips — ONE row, tap to toggle (activate / deactivate).
+          Selected show filled + check; matches while typing show as outlined
+          pills. Each ingredient appears once — no separate X-list. */}
+      {(selectedIngredients.length > 0 || ingredientQuery.length > 0) && (
+        <div className="px-5 mb-5">
           <div className="flex flex-wrap gap-2">
-            {filteredForQuery.length === 0 ? (
-              <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.noIngredientsMatch', 'No ingredients match')} &ldquo;{ingredientQuery}&rdquo;</p>
-            ) : filteredForQuery.map(item => {
-              const selected = selectedIngredients.includes(item.id);
+            {selectedIngredients.map(id => {
+              const item = allIngredients.find(i => i.id === id);
+              if (!item) return null;
               return (
-                <button key={item.id} onClick={() => toggleIngredient(item.id)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-[10px] border transition-all text-[12px] font-medium active:scale-95"
-                  style={{
-                    background: selected ? `${TU.accent}15` : 'var(--color-surface-hover)',
-                    border: `1px solid ${selected ? `${TU.accent}40` : 'var(--color-border-subtle)'}`,
-                    color: selected ? TU.accent : 'var(--color-text-muted)',
-                    fontWeight: selected ? 600 : 500,
-                  }}>
-                  <span className="text-[14px] leading-none">{item.emoji}</span>
+                <button key={id} onClick={() => toggleIngredient(id)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[14px] font-bold active:scale-95 transition-all"
+                  style={{ background: `color-mix(in srgb, ${TU.accent} 14%, transparent)`, color: TU.accent, border: `1px solid ${TU.accent}` }}>
+                  <Check size={13} strokeWidth={3} style={{ color: TU.accent }} />
                   {t(`nutrition_ingredients.items.${item.id}`, item.label)}
-                  {selected && <Check size={10} />}
                 </button>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Selected ingredients pills + find CTA */}
-      {selectedIngredients.length > 0 && (
-        <div className="px-5 mb-5">
-          <div className="flex gap-2 overflow-x-auto scroll-smooth scrollbar-none pb-2">
-            {selectedIngredients.map(id => {
-              const item = allIngredients.find(i => i.id === id);
-              return item ? (
-                <button key={id} onClick={() => toggleIngredient(id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold flex-shrink-0"
-                  style={{ background: `${TU.accent}15`, color: TU.accent, border: `1px solid ${TU.accent}30` }}>
-                  {item.emoji} {t(`nutrition_ingredients.items.${item.id}`, item.label)} <X size={10} />
+            {ingredientQuery.length > 0 && filteredForQuery
+              .filter(item => !selectedIngredients.includes(item.id))
+              .map(item => (
+                <button key={item.id} onClick={() => toggleIngredient(item.id)}
+                  className="px-3.5 py-2 rounded-full text-[14px] font-semibold active:scale-95 transition-all"
+                  style={{ border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+                  {t(`nutrition_ingredients.items.${item.id}`, item.label)}
                 </button>
-              ) : null;
-            })}
+              ))}
+            {ingredientQuery.length > 0 && selectedIngredients.length === 0 && filteredForQuery.length === 0 && (
+              <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.noIngredientsMatch', 'No ingredients match')} &ldquo;{ingredientQuery}&rdquo;</p>
+            )}
           </div>
-          <button onClick={() => setShowResults(true)}
-            className="w-full mt-2 py-3.5 rounded-2xl font-bold text-[15px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
-            style={{ background: 'var(--color-text-primary)', color: 'var(--color-bg-primary)' }}>
-            <Search size={16} />{t('nutrition.findRecipes', 'Find Recipes')} ({selectedIngredients.length})
-          </button>
         </div>
       )}
 
@@ -4136,7 +5055,6 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                           color: selected ? TU.accent : 'var(--color-text-muted)',
                           fontWeight: selected ? 600 : 500,
                         }}>
-                        <span className="text-[14px] leading-none">{item.emoji}</span>
                         {t(`nutrition_ingredients.items.${item.id}`, item.label)}
                         {selected && <Check size={10} />}
                       </button>
@@ -4171,15 +5089,6 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
             <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>
               {matchedRecipes.length} {matchedRecipes.length !== 1 ? t('nutrition.recipesPlural', 'recipes') : t('nutrition.recipeSingular', 'recipe')} {t('nutrition.found', 'found')}
             </p>
-            {(activeFilter !== 'all' || selectedIngredients.length > 0) && (
-              <button
-                onClick={() => { setActiveFilter('all'); setSelectedIngredients([]); setShowResults(false); }}
-                className="inline-flex items-center gap-1 text-[11px] font-bold active:scale-95 transition-transform"
-                style={{ color: TU.accent }}
-              >
-                <X size={11} /> {t('nutrition.clearFilters', 'Clear')}
-              </button>
-            )}
           </div>
           {matchedRecipes.length === 0 ? (
             <div className="rounded-[22px] p-6 text-center" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
@@ -4187,38 +5096,60 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
               <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.tryAddingMore', 'Try adding more ingredients or changing the filter.')}</p>
             </div>
           ) : (
-            <div className="space-y-2.5">
-              {matchedRecipes.slice(0, 20).map(recipe => {
+            <div className="grid grid-cols-2 gap-3">
+              {matchedRecipes.slice(0, visibleCount).map(recipe => {
                 const ingredientMatchActive = selectedIngredients.length > 0;
                 const canMake = ingredientMatchActive && recipe.missing === 0;
-                const almostThere = ingredientMatchActive && recipe.missing <= 2;
+                const recipeImg = recipe.image || mealImageById(recipe.id);
+                const gMatch = goalMatchPct(recipe, targets);
                 return (
-                  <button key={recipe.id} onClick={() => onOpenRecipe(recipe)}
-                    className="w-full flex items-center gap-3 p-3 rounded-[18px] text-left active:scale-[0.98] transition-all"
+                  <button key={recipe.id} onClick={() => openRecipe(recipe)}
+                    className="text-left rounded-[22px] overflow-hidden active:scale-[0.98] transition-all"
                     style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-                    <div className="relative w-[60px] h-[60px] rounded-[14px] overflow-hidden flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }}>
-                      <img src={foodImageUrl(recipe.image)} alt={mealTitle(recipe)} className="w-full h-full object-cover" loading="lazy" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      {ingredientMatchActive && (
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{
-                          background: canMake ? `${TU.accent}15` : almostThere ? 'rgba(245,158,11,0.12)' : 'var(--color-surface-hover)',
-                          color: canMake ? TU.accent : almostThere ? '#F59E0B' : 'var(--color-text-muted)',
-                        }}>
-                          {canMake ? `\u2713 ${t('nutrition.canMakeNow', 'Can make now')}` : `${t('nutrition.needs', 'Needs')} ${recipe.missing} ${t('nutrition.more', 'more')}`}
-                        </span>
+                    {/* Square image: goal-match % (left) + ingredient status (right) */}
+                    <div className="relative w-full" style={{ aspectRatio: '1 / 1', background: 'var(--color-border-subtle)' }}>
+                      <img src={(foodImageUrl(recipeImg) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={mealTitle(recipe)} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                      {gMatch != null && (
+                        <div className="absolute top-2 left-2">
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{
+                            background: gMatch >= 80 ? TU.accent : gMatch >= 60 ? '#F59E0B' : 'rgba(0,0,0,0.6)', color: '#fff', backdropFilter: 'blur(6px)', letterSpacing: 0.1,
+                          }}>
+                            {gMatch}% {t('nutrition.goalMatch', 'match')}
+                          </span>
+                        </div>
                       )}
-                      <p className="text-[14px] font-bold leading-snug mb-1 mt-1 line-clamp-1" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{mealTitle(recipe)}</p>
-                      <MacroSegBar p={recipe.protein} c={recipe.carbs} f={recipe.fat} height={4} />
+                      {ingredientMatchActive && (
+                        <div className="absolute top-2 right-2">
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{
+                            background: canMake ? TU.accent : '#F59E0B', color: '#fff', backdropFilter: 'blur(6px)', letterSpacing: 0.1,
+                          }}>
+                            {canMake ? t('nutrition.ready', 'Ready') : t('nutrition.needsMore', 'Needs {{n}} more', { n: recipe.missing })}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right flex-shrink-0 ml-1">
-                      <div style={{ fontFamily: TU.display, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1 }}>{recipe.calories}</div>
-                      <div className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>kcal</div>
+                    <div className="p-3">
+                      <div className="text-[14px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{mealTitle(recipe)}</div>
+                      <div className="mt-2"><MacroSegBar p={recipe.protein} c={recipe.carbs} f={recipe.fat} height={6} /></div>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px] font-bold tabular-nums" style={{ letterSpacing: -0.2 }}>
+                        <span style={{ color: 'var(--color-text-primary)' }}>{Math.round(recipe.calories)} cal</span>
+                        <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+                        <span style={{ color: TU.macroP }}>{Math.round(recipe.protein)}P</span>
+                        <span style={{ color: TU.macroC }}>{Math.round(recipe.carbs)}C</span>
+                        <span style={{ color: TU.macroF }}>{Math.round(recipe.fat)}F</span>
+                      </div>
                     </div>
                   </button>
                 );
               })}
             </div>
+          )}
+          {matchedRecipes.length > visibleCount && (
+            <button onClick={() => setVisibleCount(c => c + 30)}
+              className="w-full mt-4 py-3 rounded-2xl font-bold text-[13px] active:scale-[0.98] transition-all"
+              style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}>
+              {t('nutrition.loadMore', 'Load more')} ({matchedRecipes.length - visibleCount})
+            </button>
           )}
         </div>
       )}
@@ -4226,7 +5157,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
       {/* ── Fits your macros ── */}
       {!showResults && (
         <>
-          <div className="px-5 pt-2 pb-2 flex items-baseline justify-between">
+          <div className="px-5 pt-2 pb-2 flex items-start justify-between gap-3">
             <div>
               <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>
                 {t('nutrition.fitsYourMacros', 'Fits your macros')}
@@ -4235,11 +5166,13 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                 {t('nutrition.basedOnRemaining', 'Based on your remaining macros')}
               </div>
             </div>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold"
-              style={{ background: `${TU.coach}15`, color: TU.coach, letterSpacing: 0.3 }}>
-              <Sparkles size={11} style={{ color: TU.coach }} />
-              AI
-            </span>
+            <button onClick={() => setMacrosSeed(s => s + 1)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold active:scale-95 transition-transform flex-shrink-0 mt-0.5"
+              style={{ background: TU.accent, color: 'var(--color-text-on-accent)', letterSpacing: 0.2, boxShadow: '0 2px 8px rgba(0,0,0,0.14)' }}
+              aria-label={t('nutrition.regenerate', 'Regenerate')}>
+              <RefreshCw size={13} style={{ color: 'var(--color-text-on-accent)' }} />
+              {t('nutrition.regenerate', 'Regenerate')}
+            </button>
           </div>
 
           <div className="flex gap-3 overflow-x-auto scroll-smooth px-5 pb-2 scrollbar-none">
@@ -4248,11 +5181,11 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
               const [ga, gb] = gradients[si % gradients.length];
               const matchPct = Math.min(99, Math.round(70 + (s.protein / Math.max(s.calories, 1)) * 200));
               return (
-                <button key={s.id} onClick={() => onOpenRecipe(s)}
+                <button key={s.id} onClick={() => openRecipe(s)}
                   className="flex-shrink-0 rounded-[20px] overflow-hidden text-left"
                   style={{ width: 200, background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
                   <div className="relative" style={{ height: 110, background: `linear-gradient(135deg, ${ga} 0%, ${gb} 100%)` }}>
-                    {s.image && <img src={foodImageUrl(s.image)} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />}
+                    {s.image && <img src={foodImageUrl(s.image)} onError={handleMealImgError} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />}
                     {/* White chips → fixed dark content (theme text var is
                         white in dark mode → was white-on-white). */}
                     <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1"
@@ -4300,7 +5233,9 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                 <button key={cat.id} onClick={() => { setActiveFilter(cat.id); setShowRecipeFilters(false); setShowResults(true); }}
                   className="flex items-center gap-3 p-3.5 rounded-[18px] text-left active:scale-[0.97] transition-all"
                   style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-                  <FoodTile name={cat.label} size={44} seed={ci} />
+                  {/* Dedicated per-section image at /categories/<id>.jpg (upload to
+                      food-images/categories/). Branded placeholder until it exists. */}
+                  <img src={(foodImageUrl(`/categories/${cat.id}.jpg`) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={cat.label} className="w-11 h-11 rounded-[12px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                   <div className="min-w-0">
                     <div style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>
                       {t(`nutrition.categories.${cat.id}`, cat.label)}
@@ -4322,7 +5257,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
           </div>
           <div className="px-4 space-y-3">
             {WEEKLY_COLLECTIONS.map(col => {
-              const colRecipes = RECIPES.filter(r => col.recipeIds.includes(r.id));
+              const colRecipes = collectionRecipes(col, RECIPES);
               return (
                 <button key={col.id} onClick={() => onOpenCollection(col)}
                   className="w-full text-left rounded-[22px] overflow-hidden"
@@ -4345,7 +5280,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                       {colRecipes.map(r => (
                         <div key={r.id} className="relative w-[64px] h-[52px] rounded-xl overflow-hidden flex-shrink-0"
                           style={{ background: 'var(--color-border-subtle)' }}>
-                          <img src={foodImageUrl(r.image)} alt={mealTitle(r)} className="w-full h-full object-cover" loading="lazy" />
+                          <img src={(foodImageUrl(r.image) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={mealTitle(r)} className="w-full h-full object-cover" loading="lazy" />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                         </div>
                       ))}
@@ -4365,30 +5300,37 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
             <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>
               {t('nutrition.recentTab', 'Recent')}
             </div>
-            <span className="text-[13px] font-bold" style={{ color: TU.accent, cursor: 'pointer' }}>
-              {t('nutrition.seeAll', 'See all')}
-            </span>
+            {recentRecipes.length > 3 && (
+              <button onClick={() => setShowAllRecent(v => !v)} className="text-[13px] font-bold active:opacity-70" style={{ color: TU.accent }}>
+                {showAllRecent ? t('nutrition.showLess', 'Show less') : t('nutrition.seeAll', 'See all')}
+              </button>
+            )}
           </div>
           <div className="px-4 flex flex-col gap-2.5">
-            {recentRecipes.map((r, ri) => (
-              <button key={r.id} onClick={() => onOpenRecipe(r)}
+            {(showAllRecent ? recentRecipes.slice(0, 20) : recentRecipes.slice(0, 3)).map((r, ri) => (
+              <button key={r.id} onClick={() => openRecipe(r)}
                 className="w-full flex items-center gap-3 p-3 rounded-[18px] text-left active:scale-[0.975] transition-all"
                 style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
                 {r.image ? (
-                  <img src={foodImageUrl(r.image)} alt="" className="w-[48px] h-[48px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+                  <img src={(foodImageUrl(r.image) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt="" className="w-[48px] h-[48px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                 ) : (
                   <FoodTile name={mealTitle(r)} size={48} seed={ri} />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                      {t('nutrition.recentTab', 'Recent')}
+                      {relOpenedLabel(r._openedAt, lang) || t('nutrition.recentTab', 'Recent')}
                     </span>
                   </div>
                   <p className="text-[14px] font-bold truncate mb-1" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>
                     {mealTitle(r)}
                   </p>
                   <MacroSegBar p={r.protein} c={r.carbs} f={r.fat} height={4} />
+                  <div className="flex items-center gap-2.5 mt-1.5 text-[11px] font-bold" style={{ fontFamily: TU.display }}>
+                    <span style={{ color: TU.macroP }}>{Math.round(r.protein || 0)}P</span>
+                    <span style={{ color: TU.macroC }}>{Math.round(r.carbs || 0)}C</span>
+                    <span style={{ color: TU.macroF }}>{Math.round(r.fat || 0)}F</span>
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-1">
                   <div style={{ fontFamily: TU.display, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1 }}>{r.calories}</div>
@@ -4403,15 +5345,81 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
   );
 };
 
+// Saved / My-meals card in the "Fits your macros" look — full-width image
+// header with a corner action (star to unsave, trash to delete) and macros
+// below. A div (not button) so the corner can hold its own tappable control.
+const MacroGridCard = ({ image, title, kcal, p, c, f, onClick, corner, ariaLabel }) => (
+  <div role="button" tabIndex={0} onClick={onClick} aria-label={ariaLabel}
+    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
+    className="rounded-[20px] overflow-hidden text-left active:scale-[0.97] transition-all cursor-pointer focus:outline-none"
+    style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
+    <div className="relative" style={{ height: 96 }}>
+      <img src={image || MEAL_IMG_FALLBACK} onError={handleMealImgError} alt="" className="absolute inset-0 w-full h-full object-cover" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+      {corner && <div className="absolute top-2 right-2">{corner}</div>}
+    </div>
+    <div className="p-3">
+      <div className="truncate text-[13.5px] font-bold mb-1" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.3, lineHeight: 1.2 }}>{title}</div>
+      <div className="mb-2" style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>
+        {Math.round(kcal || 0)}<span className="text-[10.5px] font-semibold" style={{ color: 'var(--color-text-muted)' }}> kcal</span>
+      </div>
+      <MacroSegBar p={p} c={c} f={f} height={4} />
+      <div className="flex justify-between mt-1.5 text-[10px] font-semibold">
+        <span style={{ color: TU.macroP }}>{Math.round(p || 0)}P</span>
+        <span style={{ color: TU.macroC }}>{Math.round(c || 0)}C</span>
+        <span style={{ color: TU.macroF }}>{Math.round(f || 0)}F</span>
+      </div>
+    </div>
+  </div>
+);
+
+// Circular white corner button used on MacroGridCard image headers.
+const CardCornerBtn = ({ onClick, ariaLabel, children }) => (
+  <button onClick={(e) => { e.stopPropagation(); onClick?.(); }} aria-label={ariaLabel}
+    className="w-[28px] h-[28px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+    style={{ background: 'rgba(255,255,255,0.95)', boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}>
+    {children}
+  </button>
+);
+
 // ── SAVED VIEW ──────────────────────────────────────────────
-const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites = [], onOpenFavorite }) => {
+const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites = [], onOpenFavorite, userId, gymId, onLogMeal }) => {
+  // Live recipe library — the saved list follows DB hydration (no rebuild).
+  const RECIPES = useMeals();
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
   const mealTitle = (r) => (lang === 'es' && r.title_es) ? r.title_es : r.title;
   const savedRecipes = RECIPES.filter(r => savedIds.has(r.id));
   // Two top-level tabs: bookmarked recipes vs scanned/favorited foods.
   const [savedTab, setSavedTab] = useState('recipes');
+  const [sortMode, setSortMode] = useState('name'); // saved recipes sort
+  const SAVED_SORTS = [
+    { id: 'name', label: t('nutrition.sortAZ', 'A–Z') },
+    { id: 'protein', label: t('nutrition.sortProtein', 'Protein') },
+    { id: 'calories', label: t('nutrition.sortCalories', 'Calories') },
+  ];
+  const cycleSaved = () => setSortMode(m => { const i = SAVED_SORTS.findIndex(s => s.id === m); return SAVED_SORTS[(i + 1) % SAVED_SORTS.length].id; });
+  const sortedSaved = [...savedRecipes].sort((a, b) =>
+    sortMode === 'protein' ? (b.protein || 0) - (a.protein || 0)
+      : sortMode === 'calories' ? (a.calories || 0) - (b.calories || 0)
+        : String(a.title || '').localeCompare(String(b.title || '')));
   const totalCount = savedRecipes.length + scannedFavorites.length;
+
+  // Member's own custom meals (custom_meals, owner-only via RLS).
+  const [myMeals, setMyMeals] = useState([]);
+  const [showBuilder, setShowBuilder] = useState(false);
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    supabase.from('custom_meals').select('*').eq('created_by', userId).order('created_at', { ascending: false })
+      .then(({ data }) => { if (alive) setMyMeals(data || []); });
+    return () => { alive = false; };
+  }, [userId]);
+  const deleteMyMeal = async (id) => {
+    setMyMeals(prev => prev.filter(m => m.id !== id));
+    await supabase.from('custom_meals').delete().eq('id', id);
+  };
+  // custom_meals row → the meal shape the log sheet expects.
+  const myMealToMeal = (r) => ({ id: `custom_${r.id}`, title: r.name, title_es: r.name_es || r.name, calories: Number(r.calories) || 0, protein: Number(r.protein_g) || 0, carbs: Number(r.carbs_g) || 0, fat: Number(r.fat_g) || 0, category: r.category || 'custom', custom: true, image: null });
 
   return (
     <div className="pb-28 md:pb-12">
@@ -4425,12 +5433,50 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites =
           <div style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
             {t('nutrition.savedRecipes', 'Saved')}
           </div>
-          <div className="flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+          <button onClick={cycleSaved} className="flex items-center gap-1.5 text-[13px] font-semibold active:scale-95 transition-transform focus:outline-none" style={{ color: 'var(--color-text-muted)' }} aria-label={t('nutrition.sort', 'Sort')}>
             <SlidersHorizontal size={15} style={{ color: 'var(--color-text-muted)' }} />
-            {t('nutrition.sort', 'Sort')}
-          </div>
+            {SAVED_SORTS.find(s => s.id === sortMode)?.label || t('nutrition.sort', 'Sort')}
+          </button>
         </div>
       </div>
+
+      {/* My Meals — member-built custom meals (foods + portions + photo) */}
+      <div className="px-4 mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[11px] font-bold uppercase tracking-[0.6px]" style={{ color: 'var(--color-text-subtle)' }}>
+            {t('nutrition.myMeals', 'My meals')}
+          </div>
+          <button onClick={() => setShowBuilder(true)}
+            className="flex items-center gap-1.5 text-[12px] font-bold px-3 py-1.5 rounded-full active:scale-[0.97] transition-transform"
+            style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)' }}>
+            <Plus size={14} strokeWidth={2.4} /> {t('nutrition.createMeal', 'Create meal')}
+          </button>
+        </div>
+        {myMeals.length === 0 ? (
+          <button onClick={() => setShowBuilder(true)}
+            className="w-full rounded-[18px] p-5 text-center active:scale-[0.99] transition-transform"
+            style={{ background: 'var(--color-bg-card)', border: '1px dashed var(--color-border-subtle)' }}>
+            <UtensilsCrossed size={22} className="mx-auto mb-2" style={{ color: 'var(--color-text-muted)' }} />
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.noCustomMeals', 'Build your own meal')}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.noCustomMealsHint', 'Pick foods, set portions, add a photo')}</p>
+          </button>
+        ) : (
+          <div className="grid grid-cols-2 gap-2.5">
+            {myMeals.map((m) => {
+              const img = m.image_url ? (/^https?:\/\//.test(m.image_url) ? m.image_url : foodImageUrl(m.image_url)) : null;
+              const nm = (lang === 'es' && m.name_es) ? m.name_es : m.name;
+              return (
+                <MacroGridCard key={m.id} image={img} title={nm}
+                  kcal={Number(m.calories) || 0} p={Number(m.protein_g) || 0} c={Number(m.carbs_g) || 0} f={Number(m.fat_g) || 0}
+                  onClick={() => onLogMeal?.(myMealToMeal(m))} ariaLabel={t('nutrition.logMeal', 'Log meal')}
+                  corner={<CardCornerBtn onClick={() => deleteMyMeal(m.id)} ariaLabel={t('common.delete', 'Delete')}><Trash2 size={13} style={{ color: '#DC2626' }} /></CardCornerBtn>} />
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <CustomMealBuilder open={showBuilder} onClose={() => setShowBuilder(false)}
+        onSaved={(m) => setMyMeals(prev => [m, ...prev])} userId={userId} gymId={gymId} lang={lang} />
 
       {/* Saved Foods (scanned/starred via the scan modal) */}
       {scannedFavorites.length > 0 && (
@@ -4487,43 +5533,19 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites =
         </div>
       ) : savedRecipes.length === 0 ? null : (
         <>
-          {scannedFavorites.length > 0 && (
-            <div className="px-4 mb-2">
-              <div className="text-[11px] font-bold uppercase tracking-[0.6px]" style={{ color: 'var(--color-text-subtle)' }}>
-                {t('nutrition.savedRecipes', 'Saved recipes')}
-              </div>
+          {/* Always labelled so it reads as its own section below "My meals". */}
+          <div className="px-4 mb-2">
+            <div className="text-[11px] font-bold uppercase tracking-[0.6px]" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('nutrition.savedRecipes', 'Saved recipes')}
             </div>
-          )}
-          {/* 2-column grid */}
+          </div>
+          {/* 2-column grid — Fits-macros card look, tap the star to unsave */}
           <div className="px-4 grid grid-cols-2 gap-2.5">
-            {savedRecipes.map((recipe, ri) => (
-              <button key={recipe.id} onClick={() => onOpenRecipe(recipe)}
-                className="rounded-[18px] p-3 text-left active:scale-[0.97] transition-all"
-                style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-                <div className="relative mb-2.5">
-                  {recipe.image ? (
-                    <img src={foodImageUrl(recipe.image)} alt="" className="w-16 h-16 rounded-[14px] object-cover" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
-                  ) : (
-                    <FoodTile name={mealTitle(recipe)} size={64} seed={ri} />
-                  )}
-                  {/* Star badge */}
-                  <div className="absolute -top-1 -right-1 w-[26px] h-[26px] rounded-full flex items-center justify-center"
-                    style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-                    <Star size={12} fill="#FFC24A" style={{ color: '#FFC24A' }} />
-                  </div>
-                </div>
-                <div className="truncate text-[14px] font-bold" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2, lineHeight: 1.2 }}>
-                  {mealTitle(recipe)}
-                </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-                    <span style={{ color: 'var(--color-text-primary)', fontWeight: 800 }}>{recipe.calories}</span> kcal
-                  </span>
-                </div>
-                <div className="mt-2">
-                  <MacroSegBar p={recipe.protein} c={recipe.carbs} f={recipe.fat} height={3} />
-                </div>
-              </button>
+            {sortedSaved.map((recipe) => (
+              <MacroGridCard key={recipe.id} image={recipe.image ? foodImageUrl(recipe.image) : null} title={mealTitle(recipe)}
+                kcal={recipe.calories} p={recipe.protein} c={recipe.carbs} f={recipe.fat}
+                onClick={() => onOpenRecipe(recipe)} ariaLabel={mealTitle(recipe)}
+                corner={<CardCornerBtn onClick={() => onSave(recipe.id)} ariaLabel={t('nutrition.unsave', 'Remove from saved')}><Star size={14} fill="#FFC24A" style={{ color: '#FFC24A' }} /></CardCornerBtn>} />
             ))}
           </div>
         </>
@@ -4533,49 +5555,313 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites =
 };
 
 // ── GROCERY VIEW ────────────────────────────────────────────
-const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRemoveItem, onFillFromMeals, onClearList }) => {
-  const { t } = useTranslation('pages');
+// Aisle order within a day — how a store is walked, not alphabetical.
+const GROCERY_CAT_ORDER = { vegetables: 1, proteins: 2, carbs: 3, dairy: 4, fats: 5, extras: 6, other: 99 };
+const GROCERY_CAT_FALLBACK = { proteins: 'Proteins', carbs: 'Carbs', vegetables: 'Vegetables', dairy: 'Dairy', fats: 'Fats', extras: 'Extras', other: 'Other' };
+const groceryCatLabel = (t, key) => t(`nutrition_ingredients.categoryNames.${key}`, GROCERY_CAT_FALLBACK[key] || 'Extras');
 
-  // Flat list grouped by FOOD ITEM (label, case-insensitive), not by macro
-  // category. Each unique food appears once with all source rows merged so
-  // checking the row checks every backing entry, and recipe badges from each
-  // contributing recipe are surfaced as a comma list.
-  // Grouped BY MEAL (the recipe each ingredient came from) so the list reads
-  // like a shopping plan per dish. Within a meal, identical ingredients merge;
-  // a meal added more than once shows an "N portions" badge. Items with no
-  // recipe (added manually) collect under an "Other items" group, shown last.
-  const mealGroups = useMemo(() => {
-    const map = new Map(); // key = recipe name (or '__other__')
-    groceryList.forEach(item => {
-      const mealKey = (item.fromRecipe || '').trim() || '__other__';
-      if (!map.has(mealKey)) map.set(mealKey, { key: mealKey, meal: item.fromRecipe || null, items: [] });
-      map.get(mealKey).items.push(item);
-    });
-    const groups = Array.from(map.values()).map(g => {
-      const byLabel = new Map();
-      g.items.forEach(item => {
-        const lk = (item.label || '').trim().toLowerCase();
-        if (!lk) return;
-        if (!byLabel.has(lk)) byLabel.set(lk, { key: lk, label: item.label, ids: [item.id], checked: !!item.checked, count: 1 });
-        else { const e = byLabel.get(lk); e.ids.push(item.id); e.checked = e.checked && !!item.checked; e.count += 1; }
+// Best-effort food-group classifier for ANY ingredient key — recipes use far
+// more ingredients than the 116-item palette, so a palette lookup alone leaves
+// most items uncategorised. Fruits fold into carbs and spices/condiments into
+// "extras", matching the app's existing 6-group taxonomy. Order matters:
+// specific/ambiguous buckets are tested before broad ones, and short risky words
+// (egg, oil, ham, cod, beet, corn…) use word boundaries so "boiled"≠oil,
+// "eggplant"≠egg.
+function classifyIngredientKey(ing) {
+  const s = String(ing || '').toLowerCase().replace(/_/g, ' ');
+  const has = (...w) => w.some(x => s.includes(x));
+  const word = (...w) => w.some(x => new RegExp(`\\b${x}\\b`).test(s));
+  if (has('eggplant', 'aubergine')) return 'vegetables';
+  if (has('black pepper', 'peppercorn')) return 'extras';
+  if (word('egg', 'eggs') || has('egg white')) return 'proteins';
+  if (word('oil') || has('olive', 'butter', 'ghee', 'avocado', 'tahini', 'mayo', 'coconut', 'flax', 'chia', 'sesame', 'lard', 'almond', 'walnut', 'cashew', 'peanut', 'pecan', 'pistachio', 'hazelnut', 'macadamia') || word('nut', 'nuts', 'seed', 'seeds')) return 'fats';
+  if (has('milk', 'cheese', 'yogurt', 'yoghurt', 'kefir', 'cottage', 'sour cream', 'custard')) return 'dairy';
+  if (has('chicken', 'beef', 'pork', 'lamb', 'turkey', 'veal', 'duck', 'bacon', 'sausage', 'steak', 'mince', 'salmon', 'tuna', 'tilapia', 'haddock', 'trout', 'sardine', 'mackerel', 'anchov', 'shrimp', 'prawn', 'scallop', 'crab', 'lobster', 'tofu', 'tempeh', 'seitan', 'whey', 'casein', 'protein', 'jerky') || word('ham', 'cod', 'fish')) return 'proteins';
+  if (has('broccoli', 'spinach', 'kale', 'lettuce', 'arugula', 'rocket', 'pepper', 'onion', 'garlic', 'shallot', 'scallion', 'leek', 'carrot', 'cucumber', 'zucchini', 'courgette', 'mushroom', 'cauliflower', 'celery', 'asparagus', 'cabbage', 'sprout', 'tomato', 'squash', 'pumpkin', 'radish', 'turnip', 'chard', 'collard', 'okra', 'artichoke', 'green bean', 'bok choy', 'fennel', 'beet')) return 'vegetables';
+  if (has('rice', 'pasta', 'noodle', 'spaghetti', 'macaroni', 'bread', 'loaf', 'bagel', 'tortilla', 'wrap', 'oat', 'granola', 'cereal', 'quinoa', 'couscous', 'barley', 'bulgur', 'potato', 'flour', 'cracker', 'bean', 'lentil', 'chickpea', 'polenta', 'pancake', 'waffle', 'honey', 'maple', 'sugar', 'syrup', 'banana', 'apple', 'berry', 'berr', 'mango', 'orange', 'grape', 'melon', 'peach', 'pear', 'pineapple', 'kiwi', 'cherry', 'plum', 'apricot', 'raisin') || word('bun', 'yam', 'corn', 'fig', 'date', 'lemon', 'lime', 'pea', 'peas', 'oats')) return 'carbs';
+  return 'extras'; // spices, herbs, condiments, stocks, and anything unrecognised
+}
+
+// "Mon · Jul 14" for a YYYY-MM-DD day key; un-dated items fall under "Other items".
+function groceryDayLabel(dayKey, lang, t) {
+  if (dayKey === '__any__') return t('nutrition.otherItems', 'Other items');
+  try {
+    const d = new Date(dayKey + 'T12:00:00');
+    const loc = lang === 'es' ? 'es' : 'en';
+    const wd = d.toLocaleDateString(loc, { weekday: 'short' });
+    const md = d.toLocaleDateString(loc, { month: 'short', day: 'numeric' });
+    return `${wd} · ${md}`;
+  } catch { return dayKey; }
+}
+
+// Aisle accent per food group — how a store is colour-coded, not the app accent.
+const GROCERY_AISLE_COLOR = { vegetables: '#3E9B54', proteins: '#D9534F', carbs: '#C67D22', dairy: '#3E86C4', fats: '#C79A2B', extras: '#6B5FD0', other: '#96A0AA' };
+
+// ── amount summing ────────────────────────────────────────────
+// The aggregated Shop view sums each ingredient's per-meal amounts into one buy
+// quantity. Amounts are free-text ("1½ cups", "6 oz", "2 stalks", "500 g"), so
+// parse number+unit, sum matching units, and join the rest.
+const _FRAC = { '½': .5, '⅓': 1 / 3, '⅔': 2 / 3, '¼': .25, '¾': .75, '⅛': .125, '⅜': .375, '⅝': .625, '⅞': .875, '⅕': .2, '⅖': .4, '⅗': .6, '⅘': .8, '⅙': 1 / 6 };
+function _parseQty(str) {
+  const s = String(str || '').trim();
+  const m = s.match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+\s*[½⅓⅔¼¾⅛⅜⅝⅞⅕⅖⅗⅘⅙]?|[½⅓⅔¼¾⅛⅜⅝⅞⅕⅖⅗⅘⅙])\s*(.*)$/);
+  if (!m) return null;
+  let numStr = m[1].trim(); const unit = (m[2] || '').trim().toLowerCase(); let n = 0;
+  const uf = numStr.match(/[½⅓⅔¼¾⅛⅜⅝⅞⅕⅖⅗⅘⅙]/);
+  if (uf) { n += _FRAC[uf[0]] || 0; numStr = numStr.replace(uf[0], '').trim(); }
+  if (numStr.includes('/')) {
+    const parts = numStr.split(/\s+/);
+    if (parts.length === 2) { const [a, b] = parts[1].split('/'); n += (parseFloat(parts[0]) || 0) + parseFloat(a) / parseFloat(b); }
+    else { const [a, b] = numStr.split('/'); n += parseFloat(a) / parseFloat(b); }
+  } else if (numStr) { n += parseFloat(numStr) || 0; }
+  return { n, unit };
+}
+function _fmtQty(n) {
+  const whole = Math.floor(n + 1e-9), frac = n - whole;
+  const fmap = [[.5, '½'], [1 / 3, '⅓'], [2 / 3, '⅔'], [.25, '¼'], [.75, '¾'], [.125, '⅛'], [.2, '⅕'], [.4, '⅖'], [.6, '⅗'], [.8, '⅘']];
+  for (const [v, g] of fmap) if (Math.abs(frac - v) < .02) return whole > 0 ? `${whole}${g}` : g;
+  const r = Math.round(n * 10) / 10;
+  return String(r);
+}
+function sumAmounts(list) {
+  const amts = (list || []).filter(Boolean).map(a => String(a).trim());
+  if (!amts.length) return null;
+  const byUnit = new Map(); const rest = [];
+  for (const a of amts) {
+    const p = _parseQty(a);
+    if (!p) { rest.push(a); continue; }
+    const norm = p.unit.replace(/s$/, '');
+    const e = byUnit.get(norm);
+    if (e) e.n += p.n; else byUnit.set(norm, { n: p.n, display: p.unit });
+  }
+  const parts = [];
+  for (const { n, display } of byUnit.values()) parts.push(display ? `${_fmtQty(n)} ${display}` : _fmtQty(n));
+  const seen = new Set(parts);
+  for (const u of rest) if (!seen.has(u)) { parts.push(u); seen.add(u); }
+  return parts.join(' + ') || null;
+}
+
+const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRemoveItem, onFillFromMeals, onClearList, onAddGroceryItems }) => {
+  const { t, i18n } = useTranslation('pages');
+  const lang = i18n.language || 'en';
+
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleExpand = (key) => setExpanded(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  // One tap on an aggregated row gathers every backing line (the row is one
+  // ingredient summed across meals). setRowChecked flips only the ones that need it.
+  const setRowChecked = (row, target) => row.ids.forEach(id => {
+    const it = groceryList.find(i => i.id === id);
+    if (it && !!it.checked !== target) onToggleItem(id);
+  });
+
+  // Segmented view + period. The period both scopes "Fill from plan" AND filters
+  // the visible list to that window (undated custom items always show).
+  const [groceryView, setGroceryView] = useState('shop');
+  const [fillWeeks, setFillWeeks] = useState(1);
+  const FILL_PERIODS = [[1, t('nutrition.periodWeek', 'This week')], [2, t('nutrition.period2wk', '2 weeks')], [4, t('nutrition.periodMonth', 'Month')]];
+  const periodList = useMemo(() => {
+    const baseWs = getWeekStartDate();
+    const end = new Date(baseWs + 'T12:00:00'); end.setDate(end.getDate() + fillWeeks * 7);
+    const endStr = toLocalDateStr(end);
+    return groceryList.filter(i => !i.day || (i.day >= baseWs && i.day < endStr));
+  }, [groceryList, fillWeeks]);
+
+  // VIEW A · Shop by aisle, AGGREGATED across the period: one line per ingredient,
+  // quantities from every meal summed into the buy amount, with a tap-to-expand
+  // per-meal split. Days live inside the breakdown, not the layout.
+  const aisles = useMemo(() => {
+    const byIng = new Map(); // key = label lower
+    periodList.forEach(item => {
+      const key = (item.label || '').trim().toLowerCase();
+      if (!key) return;
+      if (!byIng.has(key)) byIng.set(key, {
+        key, label: item.label, ing: item.ing,
+        categoryKey: item.categoryKey || classifyIngredientKey(item.ing || key),
+        ids: [], amounts: [], mealAmts: new Map(), allChecked: true, allEaten: true, n: 0,
       });
-      const ingredients = Array.from(byLabel.values()).sort((a, b) => a.label.localeCompare(b.label));
-      const portions = ingredients.length ? Math.max(...ingredients.map(x => x.count)) : 1;
-      const checked = ingredients.length > 0 && ingredients.every(x => x.checked);
-      return { ...g, ingredients, portions, checked };
-    }).filter(g => g.ingredients.length > 0);
-    groups.sort((a, b) => {
-      if (a.key === '__other__') return 1;
-      if (b.key === '__other__') return -1;
-      return (a.meal || '').localeCompare(b.meal || '');
+      const e = byIng.get(key);
+      e.ids.push(item.id); e.n++;
+      if (item.amount) e.amounts.push(item.amount);
+      if (item.fromRecipe) {
+        const cur = e.mealAmts.get(item.fromRecipe) || [];
+        if (item.amount) cur.push(item.amount);
+        e.mealAmts.set(item.fromRecipe, cur);
+      }
+      if (!item.checked) e.allChecked = false;
+      if (!item.eaten) e.allEaten = false;
     });
-    return groups;
-  }, [groceryList]);
+    const rows = Array.from(byIng.values()).map(e => ({
+      key: e.key, label: e.label, ing: e.ing, categoryKey: e.categoryKey,
+      imgSlug: ingredientImageSlug(e.ing || e.label.toLowerCase().replace(/\s+/g, '_')),
+      ids: e.ids, checked: e.n > 0 && e.allChecked, eaten: e.n > 0 && e.allEaten,
+      total: sumAmounts(e.amounts),
+      mealCount: e.mealAmts.size,
+      sources: Array.from(e.mealAmts.entries()).map(([meal, amts]) => ({ meal, amount: sumAmounts(amts) })),
+    }));
+    const byCat = new Map();
+    rows.forEach(r => { const c = r.categoryKey || 'extras'; if (!byCat.has(c)) byCat.set(c, []); byCat.get(c).push(r); });
+    return Array.from(byCat.entries())
+      .map(([catKey, items]) => ({ catKey, label: groceryCatLabel(t, catKey), color: GROCERY_AISLE_COLOR[catKey] || GROCERY_AISLE_COLOR.other, items: items.sort((a, b) => a.label.localeCompare(b.label)) }))
+      .sort((a, b) => (GROCERY_CAT_ORDER[a.catKey] ?? 50) - (GROCERY_CAT_ORDER[b.catKey] ?? 50));
+  }, [periodList, t]);
 
-  const allIngredients = mealGroups.flatMap(g => g.ingredients);
-  const checkedGroupCount = allIngredients.filter(x => x.checked).length;
-  const totalGroups = allIngredients.length;
+  // "In your kitchen" — staples you already own, hidden from Shop/List (persisted).
+  const [have, setHave] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('grocery_have') || '[]')); } catch { return new Set(); } });
+  useEffect(() => { try { localStorage.setItem('grocery_have', JSON.stringify([...have])); } catch { /* quota */ } }, [have]);
+  const toggleHave = (key) => setHave(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const allRows = aisles.flatMap(a => a.items);
+  const shopRows = allRows.filter(x => !have.has(x.key));       // what's actually left to buy
+  const checkedGroupCount = shopRows.filter(x => x.checked).length;
+  const totalGroups = shopRows.length;
   const pct = totalGroups > 0 ? (checkedGroupCount / totalGroups) * 100 : 0;
+  const mealCount = useMemo(() => { const s = new Set(); periodList.forEach(i => i.fromRecipe && s.add(i.fromRecipe)); return s.size; }, [periodList]);
+
+  const [addingItem, setAddingItem] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const handleAddCustom = () => {
+    const name = newItemName.trim();
+    if (!name) { setAddingItem(false); return; }
+    const ing = name.toLowerCase().replace(/\s+/g, '_');
+    const catKey = classifyIngredientKey(ing);
+    onAddGroceryItems?.([{ id: `custom_${ing}_${Date.now()}`, ing, label: name, category: groceryCatLabel(t, catKey), categoryKey: catKey, imgSlug: ingredientImageSlug(ing), amount: null, fromRecipe: null, day: null, addedDate: toLocalDateStr(new Date()), checked: false }]);
+    setNewItemName(''); setAddingItem(false);
+  };
+  const [confirmState, setConfirmState] = useState(null); // { title, body, confirmLabel, danger, onConfirm }
+  const flatRows = useMemo(() => aisles.flatMap(a => a.items.map(x => ({ ...x, color: a.color }))), [aisles]);
+  const [expandedMeals, setExpandedMeals] = useState(() => new Set()); // collapsed by default; opt-in to open
+  const toggleMealExpand = (key) => setExpandedMeals(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  // Meals view: DAY → meal (premium card w/ photo + collapsible ingredient list).
+  const mealDayGroups = useMemo(() => {
+    const dayMap = new Map(); // day → Map(meal → Map(label → row))
+    periodList.forEach(item => {
+      const day = item.day || item.addedDate || '__any__';
+      const meal = item.fromRecipe || t('nutrition.customItem', 'Custom item');
+      if (!dayMap.has(day)) dayMap.set(day, new Map());
+      const mealMap = dayMap.get(day);
+      if (!mealMap.has(meal)) mealMap.set(meal, new Map());
+      const rowMap = mealMap.get(meal);
+      const key = (item.label || '').trim().toLowerCase();
+      if (!rowMap.has(key)) rowMap.set(key, { key, label: item.label, ing: item.ing, categoryKey: item.categoryKey || classifyIngredientKey(item.ing || key), ids: [item.id], amounts: [item.amount], allChecked: !!item.checked, allEaten: !!item.eaten });
+      else { const e = rowMap.get(key); e.ids.push(item.id); e.amounts.push(item.amount); if (!item.checked) e.allChecked = false; if (!item.eaten) e.allEaten = false; }
+    });
+    const days = Array.from(dayMap.entries()).map(([day, mealMap]) => ({
+      day,
+      meals: Array.from(mealMap.entries()).map(([meal, rowMap]) => {
+        const rows = Array.from(rowMap.values()).map(r => ({ ...r, checked: r.allChecked, eaten: r.allEaten, mealCount: 1, sources: [], imgSlug: ingredientImageSlug(r.ing || r.label.toLowerCase().replace(/\s+/g, '_')), total: sumAmounts(r.amounts), color: GROCERY_AISLE_COLOR[r.categoryKey] || GROCERY_AISLE_COLOR.other }));
+        return { meal, ckey: `${day}|${meal}`, image: recipeImageByName(meal), rows, done: rows.filter(r => r.checked).length };
+      }),
+    }));
+    days.sort((a, b) => { if (a.day === '__any__') return 1; if (b.day === '__any__') return -1; return a.day.localeCompare(b.day); });
+    return days;
+  }, [periodList, t]);
+  const askRemove = (x) => setConfirmState({ title: t('nutrition.removeItemQ', 'Remove item?'), body: t('nutrition.removeItemBody', { name: x.label, defaultValue: `Remove ${x.label} from your list?` }), confirmLabel: t('nutrition.remove', 'Remove'), danger: true, onConfirm: () => x.ids.forEach(id => onRemoveItem(id)) });
+  // "Clear checks" resets progress WITHOUT deleting the list — just unchecks.
+  const askClearChecks = () => setConfirmState({ title: t('nutrition.uncheckAllQ', 'Clear all checks?'), body: t('nutrition.uncheckAllBody', 'Keeps your whole list — just clears the checkmarks so you can shop it again.'), confirmLabel: t('nutrition.clearChecks', 'Clear checks'), danger: false, onConfirm: () => groceryList.filter(i => i.checked).forEach(i => onToggleItem(i.id)) });
+
+  const SEG = [['shop', t('nutrition.segShop', 'Shop')], ['meals', t('nutrition.segMeals', 'Meals')]];
+
+  const progressStrip = (
+    <div className="px-4 pb-3">
+      {/* Period — how far ahead "Fill from plan" shops (week → month) */}
+      <div className="flex gap-1 p-0.5 rounded-[11px] mb-2.5" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
+        {FILL_PERIODS.map(([wk, label]) => {
+          const on = wk === fillWeeks;
+          return (
+            <button key={wk} onClick={() => setFillWeeks(wk)} className="flex-1 py-1.5 rounded-[9px] text-[12px] font-bold transition-all active:scale-95" style={{ background: on ? 'var(--color-bg-card)' : 'transparent', color: on ? 'var(--color-text-primary)' : 'var(--color-text-muted)', boxShadow: on ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' }}>{label}</button>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-between mb-2 gap-3">
+        <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+          <span style={{ fontFamily: TU.display, fontSize: 17, fontWeight: 800, color: 'var(--color-text-primary)' }}>{checkedGroupCount}</span>{' '}
+          {t('nutrition.ofNInCart', { total: totalGroups, defaultValue: `of ${totalGroups} in cart` })}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {checkedGroupCount > 0 && (
+            <button onClick={askClearChecks} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold active:scale-95 transition-transform" style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+              <RefreshCw size={12} />{t('nutrition.clearChecks', 'Clear checks')}
+            </button>
+          )}
+          <button onClick={() => onFillFromMeals(fillWeeks)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold active:scale-95 transition-transform" style={{ border: `1px solid ${TU.accent}`, background: `${TU.accent}14`, color: TU.accent }}>
+            <Sparkles size={13} />{t('nutrition.fillFromPlan', 'Fill from plan')}
+          </button>
+        </div>
+      </div>
+      <div className="rounded-full overflow-hidden" style={{ height: 6, background: 'var(--color-surface-hover, rgba(0,0,0,0.05))' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: `linear-gradient(to right, ${TU.accent}, #5AD6A0)`, borderRadius: 999, transition: 'width 500ms cubic-bezier(0.2,0.9,0.3,1)' }} />
+      </div>
+    </div>
+  );
+
+  // Shared aggregated ingredient row — Shop / List / Have reuse it. Remove now
+  // opens a confirm (askRemove) instead of deleting straight away.
+  const renderRow = (x, color, opts = {}) => {
+    const isOpen = expanded.has(x.key);
+    const showAttr = opts.showAttr !== false;
+    const multi = x.mealCount > 1 && showAttr;
+    return (
+      <div key={x.key} style={{ borderTop: opts.first ? 'none' : '1px solid var(--color-border-subtle)' }}>
+        <div className="flex items-center gap-3 px-3.5 py-2.5">
+          <button onClick={() => setRowChecked(x, !x.checked)}
+            className="flex-shrink-0 w-[24px] h-[24px] rounded-[8px] flex items-center justify-center focus:outline-none active:scale-90 transition-transform"
+            style={{ background: x.checked ? 'var(--color-success, #3E9B54)' : 'transparent', border: x.checked ? 'none' : '1.6px solid var(--color-border-subtle)' }}
+            aria-label={x.checked ? t('nutrition.uncheckItem', 'Uncheck item') : t('nutrition.checkItem', 'Check item')}>
+            {x.checked && <Check size={15} className="text-white" strokeWidth={3} />}
+          </button>
+          <FoodThumb src={x.imgSlug ? foodImageUrl(`/ingredients/${x.imgSlug}.jpg`) : null} name={x.label} size={40} seed={(x.label || '?').charCodeAt(0) || 0} className="w-10 h-10 rounded-[12px] object-cover flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[15px] truncate" style={{ fontWeight: 650, color: x.checked ? 'var(--color-text-muted)' : 'var(--color-text-primary)', textDecoration: x.checked ? 'line-through' : 'none', letterSpacing: -0.2 }}>{x.label}</span>
+              {x.eaten && (
+                <span className="flex-shrink-0 text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded" style={{ color: 'var(--color-success, #3E9B54)', background: 'rgba(62,155,84,0.14)', letterSpacing: 0.4 }}>{t('nutrition.eatenTag', 'eaten')}</span>
+              )}
+            </div>
+            {showAttr && (
+              <div className="mt-0.5">
+                {multi ? (
+                  <button onClick={() => toggleExpand(x.key)} className="inline-flex items-center gap-1 focus:outline-none active:opacity-70"
+                    style={{ padding: '2px 4px 2px 8px', borderRadius: 999, border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 3, background: TU.accent }} />
+                    <span className="text-[11.5px] font-bold" style={{ color: 'var(--color-text-secondary, var(--color-text-primary))' }}>{t('nutrition.nMeals', { count: x.mealCount, defaultValue: `${x.mealCount} meals` })}</span>
+                    <ChevronDown size={13} style={{ color: 'var(--color-text-muted)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold truncate" style={{ color: 'var(--color-text-muted)', maxWidth: '100%' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 3, background: color, opacity: .7, flexShrink: 0 }} />
+                    <span className="truncate">{x.sources && x.sources[0] ? x.sources[0].meal : t('nutrition.customItem', 'Custom item')}</span>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          {x.total && (
+            <span className="flex-shrink-0" style={{ fontFamily: TU.display, fontSize: multi ? 15 : 13.5, fontWeight: 700, letterSpacing: -0.2, color: 'var(--color-text-primary)', padding: multi ? '4px 10px' : '3px 9px', borderRadius: 8, background: multi ? `${TU.accent}1f` : 'var(--color-surface-hover, rgba(0,0,0,0.04))', whiteSpace: 'nowrap' }}>{x.total}</span>
+          )}
+          {opts.onHaveIt && (
+            <button onClick={(e) => { e.stopPropagation(); opts.onHaveIt(); }} className="text-[11px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 active:scale-95 transition-transform" style={{ color: TU.accent, background: `${TU.accent}12` }}>
+              {t('nutrition.haveIt', 'Have it')}
+            </button>
+          )}
+          <button onClick={() => askRemove(x)}
+            className="min-w-[34px] min-h-[34px] w-6 h-6 flex items-center justify-center flex-shrink-0 opacity-45 hover:opacity-100 active:scale-90 transition-all focus:outline-none"
+            aria-label={t('nutrition.removeItem', 'Remove item')}>
+            <Trash2 size={15} style={{ color: 'var(--color-danger, #DC2626)' }} />
+          </button>
+        </div>
+        {isOpen && multi && (
+          <div style={{ marginLeft: 58, marginBottom: 8, borderLeft: `2px solid ${TU.accent}33`, paddingLeft: 12 }}>
+            {x.sources.map((s, si) => (
+              <div key={si} className="flex items-center gap-2 py-1">
+                <span className="flex-1 text-[12.5px] font-semibold truncate" style={{ color: 'var(--color-text-secondary, var(--color-text-muted))' }}>{s.meal}</span>
+                {s.amount && <span className="text-[12.5px] font-bold flex-shrink-0" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{s.amount}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="pb-28 md:pb-12">
@@ -4585,17 +5871,24 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
           style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common.back', 'Go back')}>
           <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
         </button>
-        <div className="flex-1 flex items-end justify-between">
-          <div style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
-            {t('nutrition.groceryList', 'Groceries')}
+        <div className="flex-1 flex items-start justify-between">
+          <div>
+            <div style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
+              {t('nutrition.groceryList', 'Groceries')}
+            </div>
+            {mealCount > 0 && (
+              <div className="text-[12.5px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                {(FILL_PERIODS.find(p => p[0] === fillWeeks)?.[1] || t('nutrition.periodWeek', 'This week'))}{' · '}{t('nutrition.nMeals', { count: mealCount, defaultValue: `${mealCount} meals` })}
+              </div>
+            )}
           </div>
           {/* "Lista nueva" / "New list" — clears the list with confirm. */}
           <button
             type="button"
             onClick={onClearList}
-            className="flex items-center gap-1.5 text-[13px] font-bold focus:outline-none active:scale-95"
-            style={{ color: 'var(--color-text-primary)' }}>
-            <Plus size={15} style={{ color: 'var(--color-text-primary)' }} strokeWidth={2.4} />
+            className="flex items-center gap-1 text-[12px] font-bold px-3 py-1.5 rounded-full focus:outline-none active:scale-95 transition-transform"
+            style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+            <Plus size={13} strokeWidth={2.6} />
             {t('nutrition.newList', 'New list')}
           </button>
         </div>
@@ -4613,104 +5906,190 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
               {t('nutrition.browseRecipes', 'Browse Recipes')}
             </button>
             {onFillFromMeals && (
-              <button onClick={onFillFromMeals}
+              <button onClick={() => onFillFromMeals(1)}
                 className="px-5 py-2.5 rounded-full text-[13px] font-semibold flex items-center gap-1.5"
                 style={{ background: 'var(--color-text-primary)', color: 'var(--color-bg-primary)' }}>
                 <Sparkles size={13} />
-                {t('nutrition.autoFillFromMeals', 'Fill from meals')}
+                {t('nutrition.fillFromPlan', 'Fill from plan')}
               </button>
             )}
           </div>
         </div>
       ) : (
         <>
-          {/* Progress card */}
-          <div className="px-4 pb-4">
-            <div className="rounded-[22px] p-4" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
-                    {t('nutrition.thisWeeksList', "This week's list")}
+          {/* Filters — Shop / Meals. The kitchen (Have) is reached via the note. */}
+          {groceryView === 'have' ? (
+            <button onClick={() => setGroceryView('shop')} className="mx-4 mb-3 flex items-center gap-1 text-[13px] font-bold active:opacity-70" style={{ color: TU.accent }}>
+              <ChevronLeft size={16} />{t('nutrition.backToShop', 'Back to shop')}
+            </button>
+          ) : (
+            <div className="mx-4 mb-3 flex gap-1 p-1 rounded-[14px]" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
+              {SEG.map(([k, label]) => {
+                const on = k === groceryView;
+                return (
+                  <button key={k} onClick={() => setGroceryView(k)}
+                    className="flex-1 text-center py-2 rounded-[10px] text-[13px] font-bold transition-all active:scale-95"
+                    style={{ background: on ? 'var(--color-text-primary)' : 'transparent', color: on ? 'var(--color-bg-primary)' : 'var(--color-text-muted)', boxShadow: on ? '0 1px 3px rgba(0,0,0,0.18)' : 'none' }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Shop - aisle-aggregated (owned staples hidden) */}
+          {groceryView === 'shop' && (
+            <>
+              {progressStrip}
+              <div className="px-4 space-y-4">
+                {aisles.map((a) => {
+                  const items = a.items.filter(x => !have.has(x.key));
+                  if (!items.length) return null;
+                  return (
+                  <div key={a.catKey}>
+                    <div className="flex items-center gap-2 px-1.5 mb-2">
+                      <span style={{ width: 8, height: 8, borderRadius: 4, background: a.color }} />
+                      <span className="text-[14px]" style={{ fontFamily: TU.display, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{a.label}</span>
+                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{items.filter(x => x.checked).length}/{items.length}</span>
+                    </div>
+                    <div className="rounded-[18px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+                      {items.map((x, i) => renderRow(x, a.color, { first: i === 0 }))}
+                    </div>
                   </div>
-                  <div className="mt-1" style={{ fontFamily: TU.display, fontSize: 32, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
-                    {checkedGroupCount}<span style={{ color: 'var(--color-text-muted)', fontWeight: 700 }}>/{totalGroups}</span>
-                  </div>
-                  <div className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.itemsGathered', 'items gathered')}</div>
-                </div>
-              </div>
-              {/* Progress bar */}
-              <div className="mt-3.5 rounded-full overflow-hidden" style={{ height: 8, background: 'var(--color-border-subtle)' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: `linear-gradient(to right, ${TU.macroP}, ${TU.accent})`, borderRadius: 999, transition: 'width 500ms cubic-bezier(0.2,0.9,0.3,1)' }} />
-              </div>
-              {/* Action buttons */}
-              <div className="flex gap-2 mt-3.5">
-                <button
-                  type="button"
-                  onClick={onFillFromMeals}
-                  className="flex-1 py-3 rounded-[14px] text-[13px] font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-                  style={{ background: 'var(--color-text-primary)', color: 'var(--color-bg-primary)' }}>
-                  <Sparkles size={14} />
-                  {t('nutrition.autoFillFromMeals', 'Fill from meals')}
-                </button>
-                {checkedGroupCount > 0 && (
-                  <button onClick={onClearChecked}
-                    className="py-3 px-4 rounded-[14px] text-[13px] font-bold active:scale-95 transition-all"
-                    style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}>
-                    {t('nutrition.clearChecked', 'Clear')}
+                  );
+                })}
+                {allRows.some(x => have.has(x.key)) && (
+                  <button onClick={() => setGroceryView('have')} className="w-full flex items-center gap-2.5 px-4 py-3 rounded-[14px] text-left active:scale-[0.99] transition-transform" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
+                    <Home size={16} style={{ color: 'var(--color-text-muted)' }} className="flex-shrink-0" />
+                    <span className="flex-1 text-[12.5px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('nutrition.inKitchenHidden', { count: allRows.filter(x => have.has(x.key)).length, defaultValue: `${allRows.filter(x => have.has(x.key)).length} already in your kitchen — hidden` })}
+                    </span>
+                    <span className="text-[12px] font-bold flex-shrink-0" style={{ color: TU.accent }}>{t('nutrition.showKitchen', 'Show')}</span>
                   </button>
                 )}
               </div>
+            </>
+          )}
+
+          {/* Meals - grouped by day, premium collapsible cards w/ meal photo */}
+          {groceryView === 'meals' && (
+            <>
+            {progressStrip}
+            <div className="px-4 space-y-4">
+              {mealDayGroups.map((dg) => (
+                <div key={dg.day}>
+                  {dg.day !== '__any__' && (
+                    <div className="flex items-center gap-2 px-1.5 mb-2">
+                      <Calendar size={13} style={{ color: TU.accent }} className="flex-shrink-0" />
+                      <p className="text-[13px] font-bold uppercase" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: 0.4 }}>{groceryDayLabel(dg.day, lang, t)}</p>
+                    </div>
+                  )}
+                  <div className="space-y-3">
+                    {dg.meals.map((m) => {
+                      const open = expandedMeals.has(m.ckey);
+                      return (
+                        <div key={m.ckey} className="rounded-[18px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+                          {/* Premium meal header — photo + name + count + collapse chevron */}
+                          <button onClick={() => toggleMealExpand(m.ckey)} className="w-full flex items-center gap-3 p-3 text-left active:opacity-90 focus:outline-none">
+                            {m.image
+                              ? <img src={m.image} onError={handleMealImgError} alt="" className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+                              : <FoodTile name={m.meal} size={52} seed={(m.meal || '?').charCodeAt(0) || 0} />}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[15.5px] truncate" style={{ fontFamily: TU.display, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{m.meal}</div>
+                              <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{m.rows.length} {t('nutrition.itemsLabel', 'items')} · {m.done} {t('nutrition.inCartTitle', 'in cart')}</div>
+                            </div>
+                            <ChevronDown size={18} style={{ color: 'var(--color-text-muted)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} className="flex-shrink-0" />
+                          </button>
+                          {open && (
+                            <div style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                              {m.rows.map((r, i) => renderRow(r, r.color, { first: i === 0, showAttr: false }))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
+            </>
+          )}
+
+          {/* Have - to buy / in cart / in your kitchen */}
+          {groceryView === 'have' && (
+            <div className="px-4 space-y-4">
+              {[['toBuy', t('nutrition.toBuy', 'To buy'), flatRows.filter(x => !have.has(x.key) && !x.checked)], ['inCart', t('nutrition.inCartTitle', 'In cart'), flatRows.filter(x => !have.has(x.key) && x.checked)]].map(([k, label, rows]) => rows.length > 0 && (
+                <div key={k}>
+                  <div className="flex items-center gap-2 px-1.5 mb-2">
+                    <span className="text-[14px]" style={{ fontFamily: TU.display, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{label}</span>
+                    <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{rows.length}</span>
+                  </div>
+                  <div className="rounded-[18px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+                    {rows.map((x, i) => renderRow(x, x.color, { first: i === 0, onHaveIt: () => toggleHave(x.key) }))}
+                  </div>
+                </div>
+              ))}
+              {(() => {
+                const krows = flatRows.filter(x => have.has(x.key));
+                if (!krows.length) return null;
+                return (
+                  <div>
+                    <div className="flex items-center gap-2 px-1.5 mb-2">
+                      <Home size={13} style={{ color: 'var(--color-text-muted)' }} className="flex-shrink-0" />
+                      <span className="text-[14px]" style={{ fontFamily: TU.display, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{t('nutrition.inYourKitchen', 'In your kitchen')}</span>
+                      <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{krows.length}</span>
+                    </div>
+                    <div className="rounded-[18px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}>
+                      {krows.map((x, i) => (
+                        <div key={x.key} className="flex items-center gap-3 px-3.5 py-2.5" style={{ borderTop: i === 0 ? 'none' : '1px solid var(--color-border-subtle)', opacity: 0.72 }}>
+                          <span className="w-[24px] h-[24px] rounded-[8px] flex items-center justify-center flex-shrink-0" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.05))' }}><Home size={13} style={{ color: 'var(--color-text-muted)' }} /></span>
+                          <FoodThumb src={x.imgSlug ? foodImageUrl(`/ingredients/${x.imgSlug}.jpg`) : null} name={x.label} size={34} seed={(x.label || '?').charCodeAt(0) || 0} className="w-[34px] h-[34px] rounded-[10px] object-cover flex-shrink-0" />
+                          <span className="flex-1 min-w-0 text-[15px] font-medium truncate" style={{ color: 'var(--color-text-secondary, var(--color-text-muted))' }}>{x.label}</span>
+                          <button onClick={() => toggleHave(x.key)} className="text-[12px] font-bold flex-shrink-0 active:opacity-60" style={{ color: TU.accent }}>{t('nutrition.moveToList', 'Move to list')}</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Add a custom (non-recipe) item */}
+          <div className="px-4 pt-1">
+            {addingItem ? (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[14px]" style={{ background: 'var(--color-bg-card)', border: `1px solid ${TU.accent}` }}>
+                <Plus size={18} style={{ color: TU.accent }} className="flex-shrink-0" />
+                <input autoFocus value={newItemName} onChange={(e) => setNewItemName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddCustom(); if (e.key === 'Escape') { setAddingItem(false); setNewItemName(''); } }}
+                  placeholder={t('nutrition.addItemPlaceholder', 'Add an item…')}
+                  className="flex-1 bg-transparent outline-none text-[15px]" style={{ color: 'var(--color-text-primary)' }} />
+                <button onClick={handleAddCustom} className="text-[13px] font-bold px-3 py-1.5 rounded-full flex-shrink-0 active:scale-95" style={{ background: TU.accent, color: 'var(--color-text-on-accent, #fff)' }}>{t('nutrition.addBtn', 'Add')}</button>
+              </div>
+            ) : (
+              <button onClick={() => setAddingItem(true)} className="w-full flex items-center gap-2 px-3.5 py-3 rounded-[14px] text-[14px] font-semibold active:scale-[0.99] transition-transform" style={{ border: '1.5px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
+                <Plus size={18} style={{ color: 'var(--color-text-muted)' }} />{t('nutrition.addItem', 'Add item…')}
+              </button>
+            )}
           </div>
 
-          {/* One card per MEAL — header (dish name + "N portions" when a meal
-              repeats) over its merged ingredient rows. */}
-          <div className="px-4 space-y-3">
-            {mealGroups.map((g) => (
-              <div key={g.key} className="rounded-[22px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-                {/* Meal header */}
-                <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface-hover, rgba(0,0,0,0.02))' }}>
-                  <UtensilsCrossed size={14} style={{ color: TU.accent }} className="flex-shrink-0" />
-                  <p className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)', fontFamily: TU.display, letterSpacing: -0.2 }}>
-                    {g.meal || t('nutrition.otherItems', 'Other items')}
-                  </p>
-                  {g.portions > 1 && (
-                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: `${TU.accent}15`, color: TU.accent }}>
-                      {t('nutrition.portionsBadge', { count: g.portions, defaultValue: `${g.portions} portions` })}
-                    </span>
-                  )}
+          {/* Confirm dialog — shared by row-delete and clear-checks */}
+          {confirmState && createPortal((
+            <div className="fixed inset-0 z-[100] flex items-center justify-center px-8" onClick={() => setConfirmState(null)}>
+              <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.45)' }} />
+              <div className="relative w-full max-w-[300px] rounded-[20px] p-5 text-center" style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 80px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()}>
+                <div className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: confirmState.danger ? 'rgba(220,38,38,0.12)' : `${TU.accent}1f` }}>
+                  {confirmState.danger ? <Trash2 size={22} style={{ color: 'var(--color-danger, #DC2626)' }} /> : <RefreshCw size={20} style={{ color: TU.accent }} />}
                 </div>
-                {/* Ingredient rows */}
-                {g.ingredients.map((x, i) => (
-                  <div key={x.key} className="flex items-center gap-3 px-4 py-3" style={{
-                    borderBottom: i < g.ingredients.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
-                  }}>
-                    <button onClick={() => x.ids.forEach(id => onToggleItem(id))}
-                      className="flex-shrink-0 w-[22px] h-[22px] rounded-[8px] flex items-center justify-center focus:outline-none"
-                      style={{
-                        background: x.checked ? TU.accent : 'transparent',
-                        border: x.checked ? 'none' : '1.5px solid var(--color-border-subtle)',
-                      }}
-                      aria-label={x.checked ? t('nutrition.uncheckItem', 'Uncheck item') : t('nutrition.checkItem', 'Check item')}>
-                      {x.checked && <Check size={14} className="text-[var(--color-text-on-accent,#fff)]" strokeWidth={3} />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[15px] font-medium truncate" style={{
-                        color: x.checked ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
-                        textDecoration: x.checked ? 'line-through' : 'none',
-                        letterSpacing: -0.2,
-                      }}>{x.label}</p>
-                    </div>
-                    <button onClick={() => x.ids.forEach(id => onRemoveItem(id))}
-                      className="min-w-[44px] min-h-[44px] w-6 h-6 flex items-center justify-center flex-shrink-0 opacity-30 hover:opacity-100 transition-opacity focus:outline-none"
-                      aria-label={t('nutrition.removeItem', 'Remove item')}>
-                      <X size={12} style={{ color: 'var(--color-text-muted)' }} />
-                    </button>
-                  </div>
-                ))}
+                <div className="text-[16px] font-bold mb-1" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{confirmState.title}</div>
+                <div className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{confirmState.body}</div>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmState(null)} className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.05))', color: 'var(--color-text-primary)' }}>{t('common.cancel', 'Cancel')}</button>
+                  <button onClick={() => { confirmState.onConfirm?.(); setConfirmState(null); }} className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold text-white active:scale-95" style={{ background: confirmState.danger ? 'var(--color-danger, #DC2626)' : TU.accent }}>{confirmState.confirmLabel}</button>
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ), document.body)}
         </>
       )}
     </div>
@@ -4743,6 +6122,17 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
   const [avoid, setAvoid] = useState(initialAvoid);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const RECIPES = useMeals();
+  const ingLabel = useCallback((key) => t(`nutrition_ingredients.items.${key}`, formatIngredientLabel(key)), [t]);
+  // Every avoidable ingredient = the palette + every ingredient used across our
+  // recipes. The generator hard-excludes any recipe containing an avoided key,
+  // so the pool must cover the full recipe vocabulary, not a curated shortlist.
+  const ingredientVocab = useMemo(() => {
+    const set = new Set();
+    Object.values(INGREDIENT_CATEGORIES).flat().forEach(it => { if (it?.id) set.add(it.id); });
+    (RECIPES || []).forEach(r => (r.ingredients || []).forEach(i => { if (i) set.add(i); }));
+    return Array.from(set);
+  }, [RECIPES]);
   // Re-sync local edits from the parent's loaded prefs whenever the sheet
   // opens OR the loaded values change (covers opening the gear before
   // loadPrefs has resolved — otherwise it'd capture empty arrays and stick).
@@ -4754,11 +6144,16 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
   }, [open, initKey]);
   if (!open) return null;
   const toggleIn = (arr, setter, v) => setter(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
-  const extraAvoid = avoid.filter(a => !PREF_COMMON_INGREDIENTS.includes(a));
-  const pool = [...extraAvoid, ...PREF_COMMON_INGREDIENTS];
-  const shown = search.trim()
-    ? pool.filter(i => i.replace(/_/g, ' ').toLowerCase().includes(search.trim().toLowerCase()))
-    : pool;
+  const q = search.trim().toLowerCase();
+  // No query → common quick-picks plus anything already avoided. Query → search
+  // the WHOLE catalog by label or key (capped so a broad match doesn't render
+  // hundreds of chips at once).
+  const shown = q
+    ? ingredientVocab
+        .filter(i => ingLabel(i).toLowerCase().includes(q) || i.replace(/_/g, ' ').includes(q))
+        .sort((a, b) => ingLabel(a).localeCompare(ingLabel(b)))
+        .slice(0, 60)
+    : Array.from(new Set([...avoid, ...PREF_COMMON_INGREDIENTS]));
   const Chip = ({ active, onClick, children }) => (
     <button type="button" onClick={onClick}
       className="px-3 py-2 rounded-full text-[12.5px] font-semibold active:scale-95 transition-all"
@@ -4830,8 +6225,14 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
                 style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
             </div>
             <div className="flex flex-wrap gap-2">
-              {shown.map(i => <Chip key={i} active={avoid.includes(i)} onClick={() => toggleIn(avoid, setAvoid, i)}>{formatIngredientLabel(i)}</Chip>)}
+              {shown.map(i => <Chip key={i} active={avoid.includes(i)} onClick={() => toggleIn(avoid, setAvoid, i)}>{ingLabel(i)}</Chip>)}
             </div>
+            {q && shown.length === 0 && (
+              <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.prefsAvoidNone', 'No ingredient matches')}</p>
+            )}
+            {!q && (
+              <p className="text-[11px] mt-2.5" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.prefsAvoidSearchHint', 'Search to avoid any of our ingredients')}</p>
+            )}
           </div>
         </div>
         <div className="px-5 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
@@ -4883,16 +6284,20 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
   const persistPlan = useCallback(async (nextPlan, targets) => {
     setPlan(nextPlan);
     if (!user?.id) return;
-    const sow = new Date();
+    // Target the DISPLAYED week (matches the reader). Only the current week is
+    // the "active" one so the latest-active lookups (grocery fill) stay correct.
+    const now = new Date();
+    now.setDate(now.getDate() + weekOffset * 7);
+    const sow = new Date(now);
     sow.setDate(sow.getDate() - sow.getDay());
     const weekStartStr = sow.toISOString().split('T')[0];
     try {
       await supabase.from('generated_meal_plans').upsert({
         profile_id: user.id, week_start: weekStartStr,
-        plan_data: nextPlan, macro_targets: targets || macros || {}, is_active: true,
+        plan_data: nextPlan, macro_targets: targets || macros || {}, is_active: weekOffset === 0,
       }, { onConflict: 'profile_id,week_start' });
     } catch (e) { console.error('[persistPlan]', e); }
-  }, [user?.id, setPlan, macros]);
+  }, [user?.id, setPlan, macros, weekOffset]);
 
   // Food prefs (allergies / dietary restrictions / foods-to-avoid + learned
   // affinities) — loaded once and fed into every plan generation so the planner
@@ -4952,15 +6357,35 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
       // Only flip loading on when there's no cached data — avoids flashing the
       // skeleton on revisit; the stale plan stays visible while we refetch.
       if (!hasCachedState(`${planCacheKey}-plan`)) setLoading(true);
-      const { data } = await supabase
+      // Load the plan for the DISPLAYED week (onboarding seeds ~4 weeks ahead, so
+      // navigating forward shows real plans, not a repeat of week 1). Same UTC
+      // Sunday calc as persistPlan so the week_start keys line up.
+      const now = new Date();
+      now.setDate(now.getDate() + weekOffset * 7);
+      const sow = new Date(now);
+      sow.setDate(sow.getDate() - sow.getDay());
+      const weekStartStr = sow.toISOString().split('T')[0];
+      let { data } = await supabase
         .from('generated_meal_plans')
         .select('plan_data, macro_targets, week_start')
         .eq('profile_id', user.id)
-        .eq('is_active', true)
-        .order('week_start', { ascending: false })
-        .limit(1)
+        .eq('week_start', weekStartStr)
         .maybeSingle();
+      // Legacy fallback (current week only): older accounts have a single active
+      // row whose week_start may not match today's Sunday exactly — keep showing it.
+      if (!data && weekOffset === 0) {
+        const res = await supabase
+          .from('generated_meal_plans')
+          .select('plan_data, macro_targets, week_start')
+          .eq('profile_id', user.id)
+          .eq('is_active', true)
+          .order('week_start', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        data = res.data;
+      }
       if (data) { setPlan(data.plan_data); setMacros(data.macro_targets); }
+      else { setPlan(Array.from({ length: 7 }, () => ({ meals: [], totals: {} }))); }
       setLoading(false);
     })();
   }, [user?.id, weekOffset, planCacheKey, setPlan, setMacros]);
@@ -5365,19 +6790,7 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
                 meals: newMeals,
                 totals: fresh.totals || {},
               };
-              setPlan(nextPlan);
-              const startOfWeek = new Date();
-              startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-              const weekStartStr = startOfWeek.toISOString().split('T')[0];
-              await supabase
-                .from('generated_meal_plans')
-                .upsert({
-                  profile_id: user.id,
-                  week_start: weekStartStr,
-                  plan_data: nextPlan,
-                  macro_targets: macroTargets,
-                  is_active: true,
-                }, { onConflict: 'profile_id,week_start' });
+              await persistPlan(nextPlan, macroTargets);
               showToast?.(t('nutrition.regenerateDayDone', 'Day regenerated'));
             } catch (err) {
               console.error('[regenerateDay]', err);
@@ -5510,42 +6923,10 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
   );
 };
 
-// ── BOTTOM NAV ──────────────────────────────────────────────
-const NutritionNav = ({ view, setView }) => {
-  const { t } = useTranslation('pages');
-  const tabs = [
-    { id: 'home',     Icon: Flame,        label: t('nutrition.navTrack', 'Track')    },
-    { id: 'plan',     Icon: Calendar,     label: t('nutrition.myPlan', 'My Plan')   },
-    { id: 'discover', Icon: Search,       label: t('nutrition.navDiscover', 'Discover') },
-    { id: 'saved',    Icon: Bookmark,     label: t('nutrition.navSaved', 'Saved')    },
-    { id: 'grocery',  Icon: ShoppingCart, label: t('nutrition.navGrocery', 'Grocery') },
-  ];
-  return (
-    <div className="fixed bottom-0 left-0 right-0 z-40" style={{
-      background: 'var(--color-bg-card)',
-      borderTop: '1px solid var(--color-border-subtle)',
-      paddingBottom: 'var(--safe-area-bottom, env(safe-area-inset-bottom))',
-    }}>
-      <div className="flex mx-auto max-w-[480px] md:max-w-4xl lg:max-w-6xl py-2.5 px-3">
-        {tabs.map(tab => {
-          const isActive = view === tab.id;
-          return (
-            <button key={tab.id} onClick={() => setView(tab.id)}
-              className="flex-1 flex flex-col items-center gap-1 py-1 transition-all focus:outline-none">
-              <tab.Icon size={22}
-                style={{ color: isActive ? TU.accent : 'var(--color-text-muted)' }}
-                strokeWidth={isActive ? 2.2 : 1.8} />
-              <span className="text-[10px] font-bold" style={{
-                color: isActive ? TU.accent : 'var(--color-text-muted)',
-                letterSpacing: -0.1,
-              }}>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
+// NOTE: The in-page bottom nav (NutritionNav) was removed. Nutrition is not a
+// separate "app" — its sub-pages (Recipes / Saved / Grocery) are reached from
+// the Home view and keep the app's real header + bottom nav. My Plan is the
+// Home "My Plan" button (→ WeeklyMealPlanner); there is no second plan surface.
 
 // ── MAIN ─────────────────────────────────────────────────────
 export default function Nutrition({ embedded = false }) {
@@ -5822,22 +7203,36 @@ export default function Nutrition({ embedded = false }) {
     });
   };
 
-  const handleAddToGrocery = (recipe) => {
+  // `opts.day` (YYYY-MM-DD) tags the ingredient with the plan day it's needed —
+  // so the grocery list can section by day → then food. Omitted for one-off
+  // "Add to grocery" from a recipe (those collect under "Anytime").
+  const handleAddToGrocery = (recipe, opts = {}) => {
+    const day = opts.day || null;
     const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
     const recipeTitle = (lang === 'es' && recipe.title_es) ? recipe.title_es : recipe.title;
     setGroceryList(prev => {
       const existingIds = new Set(prev.map(i => i.id));
       const additions = recipe.ingredients
-        .map(ing => {
-          const id = `${ing}_${recipe.id}`;
+        .map((ing, i) => {
+          const id = `${ing}_${recipe.id}${day ? '_' + day : ''}`;
           if (existingIds.has(id)) return null;
           const match = allIngredients.find(i => i.id === ing);
           const catEntry = Object.entries(INGREDIENT_CATEGORIES || {}).find(([, items]) => items.some(i => i.id === ing));
+          // Palette category when known (curated), else classify by keyword so
+          // exotic recipe ingredients still land in a real food group.
+          const categoryKey = catEntry ? catEntry[0].toLowerCase() : classifyIngredientKey(ing);
           return {
             id,
-            label: t(`nutrition_ingredients.items.${ing}`, match?.label || ing.replace(/_/g, ' ')),
-            category: catEntry ? t(`nutrition_ingredients.categoryNames.${catEntry[0].toLowerCase()}`, catEntry[0]) : t('nutrition.other', 'Other'),
+            ing,                                                     // raw key (grouping)
+            label: t(`nutrition_ingredients.items.${ing}`, match?.label || ing.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
+            category: groceryCatLabel(t, categoryKey),
+            categoryKey,
+            imgSlug: ingredientImageSlug(ing),                       // uploaded slug (exact or alias), or null → letter tile
+            amount: (recipe.ingredientAmounts?.[i] || '').toString().trim() || null, // how much this recipe needs
             fromRecipe: recipeTitle,
+            recipeId: recipe.id,                                     // for "already added" checks in the planner
+            day,
+            addedDate: toLocalDateStr(new Date()),                   // when it hit the list (fallback grouping for undated items)
             checked: false,
           };
         })
@@ -5871,6 +7266,26 @@ export default function Nutrition({ embedded = false }) {
     setGroceryList(prev => prev.filter(i => i.id !== id));
   };
 
+  // Plan ↔ grocery sync. When a planned meal is REMOVED from My Plan, pull its
+  // grocery items back off the list (match the same recipe + day set that
+  // `mealInList` uses to show the green "Added" state). Undated items from the
+  // same recipe (added via recipe-detail, not the planner) are pulled too.
+  const handleRemoveRecipeFromGrocery = useCallback((recipeId, day) => {
+    if (recipeId == null) return;
+    setGroceryList(prev => prev.filter(i =>
+      !(i.recipeId === recipeId && (i.day === day || i.day == null))));
+  }, []);
+
+  // When a planned meal is marked EATEN, flag its grocery items as acquired +
+  // eaten so the list reflects "already bought and used" instead of still-to-buy.
+  const handleMarkMealEaten = useCallback((recipeId, day) => {
+    if (recipeId == null) return;
+    setGroceryList(prev => prev.map(i =>
+      (i.recipeId === recipeId && (i.day === day || i.day == null))
+        ? { ...i, checked: true, eaten: true }
+        : i));
+  }, []);
+
   // "Lista nueva" / "New list" — clears the grocery list (with confirm).
   const handleClearGroceryList = useCallback(() => {
     if (groceryList.length === 0) {
@@ -5889,40 +7304,52 @@ export default function Nutrition({ embedded = false }) {
   }, [groceryList.length, lang, showToast, t]);
 
   // "Rellenar desde comidas" / "Fill from meals" — pulls ingredients from the
-  // user's active weekly meal plan recipes into the grocery list. Re-uses
-  // handleAddToGrocery's existing dedupe + category mapping logic.
-  const handleFillFromMeals = useCallback(async () => {
+  // SAME weekly plan the "My Plan" tab shows: localStorage `meal_plan_<uid>_<ws>`
+  // (format { weekStart, days:{[date]:{breakfast,lunch,dinner}} }), with the DB
+  // `meal_plans` mirror as fallback. Previously it read `generated_meal_plans`,
+  // a disconnected store — that's why it once pulled 122 items while My Plan was
+  // empty. Re-uses handleAddToGrocery's dedupe + category mapping.
+  const handleFillFromMeals = useCallback(async (weeks = 1) => {
     if (!user?.id) {
       showToast?.(t('nutrition.fillFromMealsEmpty', 'No active meal plan to pull from'));
       return;
     }
     try {
-      const { data } = await supabase
-        .from('generated_meal_plans')
-        .select('plan_data')
-        .eq('profile_id', user.id)
-        .eq('is_active', true)
-        .order('week_start', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const planArr = Array.isArray(data?.plan_data) ? data.plan_data : [];
-      if (planArr.length === 0) {
-        showToast?.(t('nutrition.fillFromMealsEmpty', 'No active meal plan to pull from'));
-        return;
+      // Shop the plan for N consecutive weeks (1 = this week, 4 ≈ a month), so
+      // the list isn't locked to week-to-week.
+      const n = Math.max(1, Math.min(6, (weeks | 0) || 1));
+      const baseWs = getWeekStartDate();
+      const days = {};
+      for (let w = 0; w < n; w++) {
+        const d = new Date(baseWs + 'T12:00:00');
+        d.setDate(d.getDate() + w * 7);
+        const ws = toLocalDateStr(d);
+        let wkDays = null;
+        try { const raw = localStorage.getItem(`meal_plan_${user.id}_${ws}`); if (raw) wkDays = JSON.parse(raw).days || {}; } catch { /* parse — ignore */ }
+        if (!wkDays || !Object.keys(wkDays).length) {
+          const { data } = await supabase.from('meal_plans').select('plan_data').eq('profile_id', user.id).eq('week_start', ws).maybeSingle();
+          wkDays = (data?.plan_data && typeof data.plan_data === 'object' && !Array.isArray(data.plan_data)) ? data.plan_data : {};
+        }
+        Object.assign(days, wkDays);
       }
-      // Only shop for days that haven't happened yet. The active plan is the
-      // current week (index 0=Sun..6=Sat), so skip anything before today —
-      // no reason to buy groceries for meals that are already in the past.
-      const todayDow = new Date().getDay();
-      const seenRecipeIds = new Set();
+      // Only shop for days that haven't happened yet — no reason to buy for the past.
+      const todayS = toLocalDateStr(new Date());
+      const seen = new Set(); // dedup per (recipe, day) — same dish on two days shops both
       let added = 0;
-      planArr.forEach((day, idx) => {
-        if (idx < todayDow) return;
-        (day.meals || []).forEach(m => {
-          const recipe = RECIPES.find(r => r.id === m.id);
-          if (!recipe || !recipe.ingredients?.length || seenRecipeIds.has(recipe.id)) return;
-          seenRecipeIds.add(recipe.id);
-          handleAddToGrocery(recipe);
+      Object.entries(days).forEach(([date, slots]) => {
+        if (date < todayS) return;
+        // Iterate the day's ACTUAL slots (breakfast/lunch/dinner + any snacks)
+        // so snack meals get shopped too.
+        Object.keys(slots || {}).forEach(slot => {
+          const m = slots?.[slot];
+          if (!m?.id) return;
+          // Prefer the full library recipe (carries the ingredient list); fall
+          // back to the stored slot object for custom entries.
+          const recipe = RECIPES.find(r => r.id === m.id) || m;
+          const dedup = `${recipe.id}_${date}`;
+          if (!recipe.ingredients?.length || seen.has(dedup)) return;
+          seen.add(dedup);
+          handleAddToGrocery(recipe, { day: date });
           added++;
         });
       });
@@ -5947,7 +7374,7 @@ export default function Nutrition({ embedded = false }) {
       supabase.from('nutrition_targets').select('*').eq('profile_id', user.id).maybeSingle(),
       supabase.from('member_onboarding').select('primary_goal,training_days_per_week,initial_weight_lbs,height_inches,age,sex').eq('profile_id', user.id).maybeSingle(),
       supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('food_logs').select('id, food_item_id, calories, protein_g, carbs_g, fat_g, meal_type, servings, custom_name, photo_url, created_at, log_date, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)').eq('profile_id', user.id).eq('log_date', todayStr()).order('created_at', { ascending: false }).limit(100),
+      supabase.from('food_logs').select('id, food_item_id, source, calories, protein_g, carbs_g, fat_g, meal_type, servings, custom_name, photo_url, created_at, log_date, food_item:food_items(name, name_es, brand, serving_size, serving_unit, image_url)').eq('profile_id', user.id).eq('log_date', todayStr()).order('created_at', { ascending: false }).limit(100),
       supabase.from('favorite_foods').select('food_item_id, food_item:food_items(id, name, name_es, brand, image_url, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g)').eq('profile_id', user.id).limit(200),
     ]);
 
@@ -6613,6 +8040,10 @@ export default function Nutrition({ embedded = false }) {
       photo_url: food.id ? null : (photoPreview || food.image_url || null),
       meal_type: mealType, log_date: todayStr(), servings,
       calories: cal, protein_g: pro, carbs_g: carb, fat_g: fat,
+      // How this entry was created — lets the detail modal show the right (or no)
+      // disclaimer. AI photo → 'ai'; barcode → 'barcode'; a food-DB pick → 'food_db';
+      // otherwise a hand-typed entry.
+      source: food.isBarcode ? 'barcode' : (photoResult ? 'ai' : (food.id ? 'food_db' : 'manual')),
     };
     const { data, error } = await supabase.from('food_logs')
       .insert(insertPayload)
@@ -6668,7 +8099,7 @@ export default function Nutrition({ embedded = false }) {
     if (h >= 11 && h < 14) return 'lunch';
     if (h >= 14 && h < 17) return 'snack';
     if (h >= 17 && h < 21) return 'dinner';
-    return 'late';
+    return 'snack'; // late night / early morning → snack (a valid category, not 'late')
   }, []);
 
   const handleLogMenuItem = useCallback(async (item) => {
@@ -6692,13 +8123,16 @@ export default function Nutrition({ embedded = false }) {
       food_item_id: null,
       custom_name: cleanedName,
       photo_url: resolvedImage,
-      meal_type: mealTypeFromClock(),
+      meal_type: item.mealType || mealTypeFromClock(),
       log_date: todayStr(),
       servings: item.servings ?? 1,
       calories: Math.round(item.calories || 0),
       protein_g: Math.round((item.protein_g || 0) * 10) / 10,
       carbs_g: Math.round((item.carbs_g || 0) * 10) / 10,
       fat_g: Math.round((item.fat_g || 0) * 10) / 10,
+      // A recipe from our library (`image` present) vs a photographed restaurant
+      // menu. Neither is an AI-photo estimate of the member's own plate.
+      source: item.source || (item.image ? 'recipe' : 'menu_scan'),
     };
     const { data, error } = await supabase.from('food_logs')
       .insert(payload)
@@ -6888,16 +8322,23 @@ export default function Nutrition({ embedded = false }) {
               groceryList={groceryList}
               onAddGroceryItems={handleAddGroceryItemsRaw}
               onAddRecipeToGrocery={handleAddToGrocery}
+              onRemoveRecipeFromGrocery={handleRemoveRecipeFromGrocery}
+              onMarkMealEaten={handleMarkMealEaten}
               recentScans={recentScans}
               scannedFavorites={scannedFavorites}
               onRepeatScan={(r) => {
-                // Re-open the scan-result modal prefilled with this food
+                // Re-open the scan-result modal prefilled with this food. Preserve
+                // the REAL source — collapsing everything to 'ai' was why recipes
+                // from our own list re-opened labeled "AI identified". Only a true
+                // barcode or ai stays special; recipes/menu/search show neutral.
                 setScanResult({
-                  source: r.source === 'barcode' ? 'barcode' : 'ai',
+                  source: r.source === 'barcode' ? 'barcode' : (r.source === 'ai' ? 'ai' : 'search'),
                   food: {
                     name: r.name,
                     brand: r.brand,
-                    image_url: r.image_url,
+                    // Resolve the image the SAME way the card does so the modal shows
+                    // the same photo (logged recipes have no image_url — resolve by name).
+                    image_url: foodImageUrl(r.image_url) || r.image_url || getFoodImage(r.name, r.brand) || recipeImageByName(r.name),
                     calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g,
                     serving_size: r.serving_size, serving_unit: r.serving_unit,
                     nutri_score: r.nutri_score,
@@ -6949,36 +8390,16 @@ export default function Nutrition({ embedded = false }) {
           document.body
         )}
 
-        {/* Sub-views: when embedded, render as fullscreen overlay via portal to escape SwipeableTabView */}
-        {view !== 'home' && embedded && createPortal(
-          <div className="fixed inset-0 z-[60] bg-[var(--color-bg-primary)] overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-            <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl">
-              {view === 'plan'     && <MyPlanView setView={setView} onAddRecipeToGrocery={handleAddToGrocery} onOpenRecipe={setOpenRecipe} />}
-              {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} />}
-              {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} />}
-              {view === 'grocery'  && (
-                <GroceryView
-                  setView={setView}
-                  groceryList={groceryList}
-                  onToggleItem={handleToggleGroceryItem}
-                  onClearChecked={handleClearChecked}
-                  onRemoveItem={handleRemoveGroceryItem}
-                  onFillFromMeals={handleFillFromMeals}
-                  onClearList={handleClearGroceryList}
-                />
-              )}
-            </div>
-            <NutritionNav view={view} setView={setView} />
-          </div>,
-          document.body
-        )}
-
-        {/* Sub-views: when standalone, render inline as before */}
-        {view !== 'home' && !embedded && (
-          <>
-            {view === 'plan'     && <MyPlanView setView={setView} onAddRecipeToGrocery={handleAddToGrocery} onOpenRecipe={setOpenRecipe} />}
-            {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} />}
-            {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} />}
+        {/* Sub-views render INLINE inside the Nutrition tab — they keep the
+            app's normal header + bottom nav, they are NOT a separate full-screen
+            "app" with their own footer. Reached from the Home view's pills /
+            buttons; each sub-view has its own back arrow → home. (My Plan lives
+            on the Home "My Plan" button → WeeklyMealPlanner, so there is no
+            longer a second, divergent 'plan' surface with its own nav.) */}
+        {view !== 'home' && (
+          <div className="mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl">
+            {view === 'discover' && <DiscoverView {...sharedProps} setView={setView} targets={targets} />}
+            {view === 'saved'    && <SavedView    {...sharedProps} setView={setView} userId={user?.id} gymId={profile?.gym_id} onLogMeal={(meal) => setLogMealSheet(meal)} />}
             {view === 'grocery'  && (
               <GroceryView
                 setView={setView}
@@ -6988,13 +8409,12 @@ export default function Nutrition({ embedded = false }) {
                 onRemoveItem={handleRemoveGroceryItem}
                 onFillFromMeals={handleFillFromMeals}
                 onClearList={handleClearGroceryList}
+                onAddGroceryItems={handleAddGroceryItemsRaw}
               />
             )}
-          </>
+          </div>
         )}
       </div>
-
-      {!embedded && <NutritionNav view={view} setView={setView} />}
 
       {/* Modals — portal when embedded to escape SwipeableTabView */}
       {embedded ? createPortal(<>
@@ -7013,7 +8433,7 @@ export default function Nutrition({ embedded = false }) {
 
       {/* Collection Detail Modal */}
       {openCollection && (() => {
-        const colRecipes = RECIPES.filter(r => openCollection.recipeIds.includes(r.id));
+        const colRecipes = collectionRecipes(openCollection, RECIPES);
         const totalCal = colRecipes.reduce((s, r) => s + (r.calories || 0), 0);
         const totalP = colRecipes.reduce((s, r) => s + (r.protein || 0), 0);
         const totalC = colRecipes.reduce((s, r) => s + (r.carbs || 0), 0);
@@ -7044,68 +8464,118 @@ export default function Nutrition({ embedded = false }) {
                 </button>
               </div>
 
-              {/* Macro summary bar */}
+              {/* Per-meal averages — a bundle TOTAL is meaningless since macros
+                  are tracked per day, so show the typical meal instead. */}
+              {(() => { const n = Math.max(colRecipes.length, 1); return (
               <div className="mx-5 mb-3 p-3 rounded-2xl border border-white/[0.04]" style={{ background: 'color-mix(in srgb, var(--color-bg-inset) 50%, transparent)' }}>
+                <p className="text-[10px] font-bold uppercase text-center mb-2" style={{ color: 'var(--color-text-subtle)', letterSpacing: '0.08em' }}>{t('nutrition.perMeal', 'Avg per meal')}</p>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   <div>
-                    <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{totalCal}</p>
+                    <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{Math.round(totalCal / n)}</p>
                     <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.kcalUnit', 'kcal')}</p>
                   </div>
                   <div>
-                    <p className="text-[13px] font-bold text-[#10B981]">{totalP}g</p>
+                    <p className="text-[13px] font-bold text-[#10B981]">{Math.round(totalP / n)}g</p>
                     <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.protein')}</p>
                   </div>
                   <div>
-                    <p className="text-[13px] font-bold text-[#FBBF24]">{totalC}g</p>
+                    <p className="text-[13px] font-bold text-[#FBBF24]">{Math.round(totalC / n)}g</p>
                     <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.carbs')}</p>
                   </div>
                   <div>
-                    <p className="text-[13px] font-bold text-[#F97316]">{totalF}g</p>
+                    <p className="text-[13px] font-bold text-[#F97316]">{Math.round(totalF / n)}g</p>
                     <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>{t('nutrition.fat')}</p>
                   </div>
                 </div>
               </div>
+              ); })()}
 
-              {/* Meal list */}
-              <div className="overflow-y-auto flex-1 px-5 pb-6 space-y-2">
-                {colRecipes.map(r => {
-                  const title = (lang === 'es' && r.title_es) ? r.title_es : r.title;
-                  const tag = (lang === 'es' && r.tag_es) ? r.tag_es : r.tag;
-                  return (
-                    <button key={r.id} onClick={() => { setCollectionContext(openCollection); setOpenCollection(null); setOpenRecipe(r); }}
-                      className="w-full flex items-center gap-3 p-3 rounded-2xl text-left active:scale-[0.98] transition-transform"
-                      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-                      <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'var(--color-bg-inset)' }}>
-                        <img src={foodImageUrl(r.image)} alt={title} className="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{title}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{tag}</p>
-                        <div className="flex gap-2 mt-1">
-                          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{r.calories} {t('nutrition.kcalUnit', 'kcal')}</span>
-                          <span className="text-[10px] text-[#10B981]">{r.protein}g P</span>
-                          <span className="text-[10px] text-[#FBBF24]">{r.carbs}g C</span>
-                          <span className="text-[10px] text-[#F97316]">{r.fat}g F</span>
+              {/* Meal list — table style: one card, rows divided by lines, names as headings */}
+              <div className="overflow-y-auto flex-1 px-5 pb-4">
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                  {colRecipes.map((r, ri) => {
+                    const title = (lang === 'es' && r.title_es) ? r.title_es : r.title;
+                    const tag = (lang === 'es' && r.tag_es) ? r.tag_es : r.tag;
+                    const gm = goalMatchPct(r, targets);
+                    return (
+                      <button key={r.id} onClick={() => { setCollectionContext(openCollection); setOpenCollection(null); setOpenRecipe(r); }}
+                        className="w-full flex items-center gap-3 p-3 text-left active:opacity-70 transition-opacity"
+                        style={{ borderBottom: ri < colRecipes.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
+                        <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'var(--color-bg-inset)' }}>
+                          <img src={(foodImageUrl(r.image) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={title} className="w-full h-full object-cover" loading="lazy" />
                         </div>
-                      </div>
-                      <ChevronRight size={14} style={{ color: 'var(--color-text-muted)' }} className="flex-shrink-0" />
-                    </button>
-                  );
-                })}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-[14px] font-bold truncate flex-1 min-w-0" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{title}</p>
+                            {gm != null && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{
+                                background: gm >= 80 ? `${TU.accent}22` : gm >= 60 ? 'rgba(245,158,11,0.18)' : 'var(--color-bg-inset)',
+                                color: gm >= 80 ? TU.accent : gm >= 60 ? '#F59E0B' : 'var(--color-text-muted)',
+                              }}>{gm}% {t('nutrition.goalMatch', 'match')}</span>
+                            )}
+                          </div>
+                          {tag && <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{tag}</p>}
+                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1 tabular-nums">
+                            <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{r.calories} {t('nutrition.kcalUnit', 'kcal')}</span>
+                            <span className="text-[10px] text-[#10B981]">{r.protein}g P</span>
+                            <span className="text-[10px] text-[#FBBF24]">{r.carbs}g C</span>
+                            <span className="text-[10px] text-[#F97316]">{r.fat}g F</span>
+                          </div>
+                        </div>
+                        <ChevronRight size={14} style={{ color: 'var(--color-text-muted)' }} className="flex-shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Save collection button */}
-              <div className="px-5 pb-5 pt-2 border-t border-white/[0.04]" style={{ background: 'var(--color-bg-secondary)' }}>
+              {/* Actions — add the whole bundle to this week's plan, or bookmark it */}
+              <div className="px-5 pb-5 pt-2 border-t border-white/[0.04] flex gap-2.5" style={{ background: 'var(--color-bg-secondary)' }}>
+                <button
+                  onClick={() => { colRecipes.forEach(r => { if (!savedRecipeIds.has(r.id)) toggleSaveRecipe(r.id); }); setOpenCollection(null); }}
+                  className="flex-1 py-3 rounded-2xl font-semibold text-[13px] flex items-center justify-center gap-1.5 transition-colors active:scale-[0.97]"
+                  style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <Bookmark size={15} />{t('nutrition.saveAll', 'Save all')}
+                </button>
                 <button
                   onClick={() => {
-                    colRecipes.forEach(r => { if (!savedRecipeIds.has(r.id)) toggleSaveRecipe(r.id); });
-                    setOpenCollection(null);
+                    try {
+                      const ws = getWeekStartDate();
+                      const key = `meal_plan_${user?.id || 'anon'}_${ws}`;
+                      let days = {};
+                      try { const raw = localStorage.getItem(key); if (raw) days = JSON.parse(raw).days || {}; } catch { /* ignore */ }
+                      const start = new Date(ws + 'T12:00:00');
+                      const weekDates = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return toLocalDateStr(d); });
+                      // Fill the member's configured slots (incl. snacks), not just the core 3.
+                      const scheduleKeys = plannerSlotKeys(loadMealSchedule(user?.id).count);
+                      let qi = 0;
+                      for (const date of weekDates) {
+                        if (qi >= colRecipes.length) break;
+                        days[date] = days[date] || {};
+                        for (const slot of scheduleKeys) {
+                          if (qi >= colRecipes.length) break;
+                          if (!days[date][slot]) { days[date][slot] = colRecipes[qi]; qi++; }
+                        }
+                      }
+                      localStorage.setItem(key, JSON.stringify({ weekStart: ws, days }));
+                      // Mirror to the DB (same lane as WeeklyMealPlanner.savePlan) so
+                      // it's durable + cross-device, and ping My Plan to re-read if
+                      // it's already mounted — otherwise the add only shows on remount.
+                      if (user?.id) {
+                        supabase.from('meal_plans').upsert({
+                          profile_id: user.id, week_start: ws, plan_data: days, updated_at: new Date().toISOString(),
+                        }, { onConflict: 'profile_id,week_start' }).then(() => {}, () => {});
+                      }
+                      window.dispatchEvent(new CustomEvent('tugympr:meal-plan-changed', { detail: { weekStart: ws } }));
+                      showToast?.(t('nutrition.addedToWeek', "Added to this week's plan"), 'success');
+                      setOpenCollection(null);
+                    } catch { showToast?.(t('common.error', 'Something went wrong'), 'error'); }
                   }}
-                  className="w-full py-3 rounded-2xl font-semibold text-[14px] flex items-center justify-center gap-2 transition-colors"
-                  style={{ background: openCollection.accent || 'var(--color-accent)', color: '#000' }}
+                  className="flex-1 py-3 rounded-2xl font-bold text-[13px] flex items-center justify-center gap-1.5 transition-colors active:scale-[0.97]"
+                  style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
                 >
-                  <Bookmark size={16} />
-                  {t('nutrition.saveAllRecipes', 'Save All Recipes')}
+                  <Plus size={15} strokeWidth={2.6} />{t('nutrition.addToWeek', 'Add to week')}
                 </button>
               </div>
             </div>
@@ -7117,6 +8587,7 @@ export default function Nutrition({ embedded = false }) {
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         onSelect={food => { setSearchOpen(false); setLogFood(food); }}
+        onLogMeal={recipe => { setSearchOpen(false); setLogMealSheet(recipe); }}
         onPhotoCapture={handlePhotoCapture}
         onBarcodeResult={handleBarcodeRequest}
         favorites={favorites}
@@ -7731,6 +9202,7 @@ export default function Nutrition({ embedded = false }) {
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         onSelect={food => { setSearchOpen(false); setLogFood(food); }}
+        onLogMeal={recipe => { setSearchOpen(false); setLogMealSheet(recipe); }}
         onPhotoCapture={handlePhotoCapture}
         onBarcodeResult={handleBarcodeRequest}
         favorites={favorites}
