@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams, useNavigationType } from 'react-router-dom';
 import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
 import QRCodeModal from './components/QRCodeModal';
 import UpdateRequiredModal from './components/UpdateRequiredModal';
 import MaintenanceGate from './components/MaintenanceGate';
 import { startVersionCheck } from './lib/appVersionCheck';
-import { resolveAppSection } from './lib/appUrls';
+import { resolveAppSection, resolveSiriRoute } from './lib/appUrls';
 import './App.css';
 
 import { useAuth } from './contexts/AuthContext';
@@ -19,7 +19,7 @@ import { supabase } from './lib/supabase';
 import { useTranslation } from 'react-i18next';
 import { WifiOff } from 'lucide-react';
 import { getQueue } from './lib/offlineQueue';
-import { setNavigateFn, safeReload } from './lib/navigationRef';
+import { setNavigateFn, safeReload, setCurrentPath, noteNavigation } from './lib/navigationRef';
 import useResumeEpoch from './hooks/useResumeEpoch';
 import { useFeatureEnabled } from './hooks/usePlatformFlags';
 
@@ -97,6 +97,7 @@ const Nutrition        = lazy(nutritionImport);
 const MyGym            = lazy(myGymImport);
 const CheckIn          = lazy(() => import('./pages/CheckIn'));
 const ExerciseLibraryPage = lazy(() => exerciseLibImport().then(m => ({ default: m.ExerciseLibraryPage })));
+const Equipment        = lazy(() => import('./pages/Equipment'));
 const Challenges       = lazy(challengesImport);
 const Messages         = lazy(messagesImport);
 const Progress         = lazy(progressImport);
@@ -143,6 +144,7 @@ const AdminLeaderboard   = lazy(() => import('./pages/admin/AdminLeaderboard'));
 const AdminAnnouncements = lazy(() => import('./pages/admin/AdminAnnouncements'));
 const AdminOutreach      = lazy(() => import('./pages/admin/AdminOutreach'));
 const AdminSettings      = lazy(() => import('./pages/admin/AdminSettings'));
+const PlatformEquipmentQR = lazy(() => import('./pages/platform/EquipmentQR'));
 const AdminSettingsBranding     = lazy(() => import('./pages/admin/AdminSettingsBranding'));
 const AdminSettingsHours        = lazy(() => import('./pages/admin/AdminSettingsHours'));
 const AdminSettingsCards        = lazy(() => import('./pages/admin/AdminSettingsCards'));
@@ -1054,6 +1056,8 @@ const MemberRoutes = () => {
               registrations — inside this member-gated group, trainer-view users
               got bounced back to /trainer before the page could render. */}
           <Route path="/messages/:conversationId" element={<Messages />} />
+          <Route path="/equipment"         element={<Equipment />} />
+          <Route path="/equipment/:slug"   element={<Equipment />} />
           {/* Redirects */}
           <Route path="/workout-log"       element={<Navigate to="/progress?tab=log" replace />} />
           <Route path="/strength"          element={<Navigate to="/progress?tab=strength" replace />} />
@@ -1132,6 +1136,17 @@ function App() {
     setNavigateFn(navigate);
     return () => setNavigateFn(null);
   }, [navigate]);
+
+  // ── Feed the live route + navigation type to navigationRef so the Android
+  // hardware-back handler (main.jsx) knows the REAL current path and in-app
+  // stack depth. Under MemoryRouter (native) window.location/window.history
+  // never update, so without this the back button backgrounded the app on
+  // every screen. ────────────────────────────────────────────
+  const navigationType = useNavigationType();
+  useEffect(() => {
+    setCurrentPath(location.pathname);
+    noteNavigation(navigationType);
+  }, [location, navigationType]);
 
   // ── App-version gate ────────────────────────────────────────
   // Fires the first RPC immediately on mount and then polls every 15 min.
@@ -1432,6 +1447,20 @@ function App() {
     return () => window.removeEventListener('deeplink', handler);
   }, [navigate]);
 
+  // ── Hydrate the exercise library from the DB (source of truth) once authed ──
+  // Best-effort + defensive: the bundled static seed keeps generation working if
+  // this fails or is slow, so it can never break the generators. Refreshes the
+  // in-memory store that every generator + the Exercise Library read from.
+  useEffect(() => {
+    if (loading || !user) return;
+    import('./lib/exerciseStore')
+      .then((m) => m.hydrateExercisesFromDb(supabase))
+      .catch(() => { /* keep the static seed */ });
+    import('./lib/mealStore')
+      .then((m) => m.hydrateMealsFromDb(supabase))
+      .catch(() => { /* keep the static seed */ });
+  }, [loading, user]);
+
   // ── Invite deep links: /challenge/:id and /class/:id ──
   // Reactive (not the one-shot processor below) so they redirect whether opened
   // cold (web) or tapped while the app is already running. They translate to
@@ -1477,16 +1506,9 @@ function App() {
         return;
       }
 
-      const siriRoutes = {
-        'start-workout': '/record',
-        'check-in':      '/checkin',
-        // /checkin owns the member QR display — Profile never implemented showQR
-        'gym-card':      '/checkin',
-        'streak':        '/profile',
-        'log-food':      '/progress?tab=nutrition',
-      };
-
-      const target = siriRoutes[siriAction] || '/';
+      // Shared action→route map (SIRI_ROUTES in appUrls.js) — same source the
+      // native tugympr://siri/* handler uses, so web and native never drift.
+      const target = resolveSiriRoute(siriAction) || '/';
       navigate(target, { replace: true });
       return;
     }
@@ -1779,6 +1801,7 @@ function App() {
                 <Route path="/audit-log"    element={<AuditLog />} />
                 <Route path="/error-logs"   element={<ErrorLogs />} />
                 <Route path="/custom-meals" element={<CustomMeals />} />
+                <Route path="/equipment-qr" element={<PlatformEquipmentQR />} />
                 <Route path="*"             element={<Navigate to="/platform/attention" replace />} />
               </Routes>
               </Suspense>

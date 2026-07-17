@@ -282,7 +282,7 @@ const WorkoutHeroCard = ({
           {/* Exercise videos — hidden in completed state */}
           {!isCompleted && exercises.map((ex, i) => ex.video && (
             <video
-              key={ex.video}
+              key={i}
               src={ex.video}
               autoPlay
               loop
@@ -372,7 +372,12 @@ const WorkoutHeroCard = ({
                   </h3>
                   {current.sets && current.reps && (
                     <p className="text-[13px] mt-1.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
-                      {current.sets} {t('workoutHeroCard.sets', 'sets')} × {current.reps} {t('workoutHeroCard.reps', 'reps')} · {t('workoutHeroCard.thenMore', { count: Math.max(0, displayExCount - (currentIndex + 1)) }, `then ${Math.max(0, displayExCount - (currentIndex + 1))} more lifts`)}
+                      {current.sets} {t('workoutHeroCard.sets', 'sets')} × {current.reps} {t('workoutHeroCard.reps', 'reps')} · {(() => {
+                        const rem = Math.max(0, displayExCount - (currentIndex + 1));
+                        if (rem === 0) return t('workoutHeroCard.thenMore_0', 'last lift — finish strong');
+                        if (rem === 1) return t('workoutHeroCard.thenMore', { count: 1, defaultValue: 'then 1 more lift' });
+                        return t('workoutHeroCard.thenMore_other', { count: rem, defaultValue: `then ${rem} more lifts` });
+                      })()}
                     </p>
                   )}
                 </motion.div>

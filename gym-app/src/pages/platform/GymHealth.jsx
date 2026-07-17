@@ -13,6 +13,7 @@ import {
 import { format, subDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { healthScoreFromStatsRow, healthTier, colorForScore } from '../../lib/platform/healthScore';
 import ChartTooltip from '../../components/ChartTooltip';
 import FadeIn from '../../components/platform/FadeIn';
@@ -79,16 +80,18 @@ export default function GymHealth() {
       // Aggregates are computed server-side (one row per gym) so this scales
       // with gym count, not member count — see migrations 0437/0540.
       const [gymRes, statsRes, adminRes, pulseRes, snapRes] = await Promise.all([
-        supabase.from('gyms').select('id, name, slug, is_active, created_at'),
+        selectAllRows((from, to) => supabase.from('gyms').select('id, name, slug, is_active, created_at').range(from, to)),
         supabase.rpc('platform_gym_stats'),
         supabase.from('admin_presence').select('gym_id, last_seen_at').gte('last_seen_at', sevenDaysAgo),
         supabase.rpc('platform_gym_activity_pulse', { p_window_days: 14 }),
-        // Weekly captures (0545). Tolerate absence pre-apply — the trend
-        // chart simply stays in its single-point empty state.
-        supabase.from('platform_snapshots')
+        // Weekly captures (0545). Tolerate absence pre-apply — the trend chart
+        // stays in its single-point empty state. Paged: ascending order clamped
+        // at the 1000-row cap dropped the newest weeks (grows gyms×weeks).
+        selectAllRows((from, to) => supabase.from('platform_snapshots')
           .select('snapshot_date, gym_id, data')
           .eq('kind', 'gym_stats')
-          .order('snapshot_date', { ascending: true }),
+          .order('snapshot_date', { ascending: true })
+          .range(from, to)),
       ]);
 
       // supabase-js v2 never throws — surface failures instead of rendering

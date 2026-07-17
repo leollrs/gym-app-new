@@ -7,6 +7,7 @@ import {
   Trophy, Upload, Microscope, Database, HeartPulse,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import logger from '../../lib/logger';
@@ -617,13 +618,20 @@ export default function GymDetail() {
   // treat imported_archived as non-members) and the authoritative counts come
   // from the platform_gym_stats RPC, so capping the rendered list is safe.
   const fetchMembers = async () => {
-    const { data, error } = await supabase
+    // Page real members up to a bounded ceiling. The imported_archived filter
+    // already excludes the tens-of-thousands of shell rows that caused the old
+    // 119s scan, so the previous .limit(2000) was a belt-and-suspenders cap —
+    // but PostgREST clamps any response to ~1000, so it silently truncated the
+    // list for gyms with 1000–2000 active members. Bounded at 3000 to keep the
+    // "don't render an unbounded set" intent (created_at + id for stable paging).
+    const { data, error } = await selectAllRows((lo, hi) => supabase
       .from('profiles')
       .select('id, full_name, username, role, additional_roles, created_at, last_active_at, membership_status, avatar_url, avatar_type, avatar_value, imported_archived')
       .eq('gym_id', gymId)
       .not('imported_archived', 'is', true)
       .order('created_at', { ascending: false })
-      .limit(2000);
+      .order('id', { ascending: true })
+      .range(lo, hi), { maxRows: 3000 });
     if (!error) setMembers(data ?? []);
     markLoad('members', error);
   };

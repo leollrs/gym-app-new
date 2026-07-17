@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Zap, Trash2, Dumbbell, AlertCircle, Pencil } from 'lucide-react';
-import { MUSCLE_GROUPS, getExerciseById } from '../data/exercises';
+import { MUSCLE_GROUPS } from '../data/exercises';
+import { getExerciseById } from '../lib/exerciseStore';
 import { generateRoutineFromMuscles } from '../lib/workoutGenerator';
 import useFocusTrap from '../hooks/useFocusTrap';
 

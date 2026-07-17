@@ -12,6 +12,22 @@ import { supabase } from '../supabase.js';
  * (which Postgrest is picky about) in one place.
  */
 
+/**
+ * True count of pending reports for the gym — a head-only COUNT, not a filter
+ * over the 50-row `fetchReports` page. The banner + tab badge must reflect
+ * EVERY pending report; deriving the count from the capped list undercounts
+ * (and can tell an admin "all clear" while older pending reports sit unseen).
+ */
+export async function fetchPendingReportCount(gymId) {
+  const { count, error } = await supabase
+    .from('content_reports')
+    .select('id', { count: 'exact', head: true })
+    .eq('gym_id', gymId)
+    .eq('status', 'pending');
+  if (error) throw error;
+  return count || 0;
+}
+
 export async function fetchPosts(gymId) {
   const { data, error } = await supabase
     .from('activity_feed_items')

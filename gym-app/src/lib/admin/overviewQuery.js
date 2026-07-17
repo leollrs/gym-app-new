@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import logger from '../logger';
+import { selectAllRows } from '../churn/batchedSelect';
 import { format, subDays, startOfMonth } from 'date-fns';
 import { loadGymChurnScores, estimateChurnScoreFallback } from '../churnScore';
 import { withQueryTimeout } from '../queryWithTimeout';
@@ -31,15 +32,18 @@ export async function fetchOverviewData(gymId) {
       logger.error('AdminOverview v2 churn scoring failed:', err);
       return null;
     }),
-    supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).limit(2000),
-    supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).limit(1000),
-    supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).limit(2000),
+    // Page the full sets — .limit(N) is clamped to the ~1000-row max_rows cap,
+    // so member count / retention / active-rate and the churn histogram were
+    // wrong for any gym over ~1000 members or 1000 recent sessions.
+    selectAllRows((from, to) => supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).range(from, to)),
+    selectAllRows((from, to) => supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).range(from, to)),
+    selectAllRows((from, to) => supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).range(from, to)),
     supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).eq('imported_archived', false).gte('created_at', fortyEightHoursAgo).limit(500),
     // Left-join the member's name/avatar (no !inner) so a check-in still renders
     // in the activity feed even when its profile is outside the members query's
     // filters (e.g. archived imports) or otherwise not in memberMap. The weekly
     // pulse uses this same array and just ignores the extra columns.
-    supabase.from('check_ins').select('profile_id, checked_in_at, profiles(full_name, avatar_url)').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).limit(1000),
+    selectAllRows((from, to) => supabase.from('check_ins').select('profile_id, checked_in_at, profiles(full_name, avatar_url)').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).range(from, to)),
   ]), 15_000, 'fetchOverviewData:primary');
 
   const { data: todayCheckins, error: todayCheckinsErr } = await withQueryTimeout(

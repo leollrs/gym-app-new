@@ -491,8 +491,14 @@ Deno.serve(async (req) => {
     // others). 320×320 matches what the previous inline renderer used.
     let voucherQrImageUrl: string | undefined;
     if (voucherQrCode) {
+      // The scannable QR MUST carry the `gym-voucher:` prefix so the front-desk
+      // scanner (scanRouter.js) routes it to the voucher handler and extracts the
+      // bare code. Encoding just the bare 12-char code made the router fall
+      // through to the check-in catch-all → "Member not found", so no emailed
+      // win-back voucher could ever be redeemed. (rewardQrCode below stays the
+      // bare code — it's the human-readable "manual code" display, not the QR.)
       voucherQrImageUrl =
-        `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(voucherQrCode)}`;
+        `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent('gym-voucher:' + voucherQrCode)}`;
     }
 
     // When the caller supplied a pre-rendered designer template, send it

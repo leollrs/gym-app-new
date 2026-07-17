@@ -423,6 +423,11 @@ function GoalCard({ goal, onTap }) {
             : <Icon size={15} style={{ color }} strokeWidth={2.2} />}
         </div>
         <div className="flex-1 min-w-0">
+          {goal.is_milestone && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 8.5, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--color-accent)', marginBottom: 1 }}>
+              🎯 {t('goals.milestoneBadge', { defaultValue: 'Milestone' })}
+            </span>
+          )}
           <p className="text-[12px] leading-tight line-clamp-2" style={{ fontFamily: OB_DISPLAY, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.1 }}>
             {goal.title}
           </p>
@@ -1117,10 +1122,11 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
       title: title.trim(),
       target_date: targetDate || null,
       exercise_id: needsExercise ? exerciseId : null,
+      is_milestone: false,  // manual goals are always long-term (0616 re-keyed the unique constraint)
     };
 
     let { error } = await supabase.from('member_goals').upsert(payload, {
-      onConflict: 'profile_id,goal_type,exercise_id',
+      onConflict: 'profile_id,goal_type,exercise_id,is_milestone',
     });
     // start_value ships in migration 0557, which may not be applied yet. If the
     // column is missing, retry without the baseline so goal creation still works
@@ -1129,7 +1135,7 @@ function GoalModal({ onClose, onCreated, gymId, fitnessLevel }) {
     if (error && (error.code === '42703' || error.code === 'PGRST204' || /column .* does not exist/i.test(error.message || ''))) {
       const { start_value, ...base } = payload;
       ({ error } = await supabase.from('member_goals').upsert(base, {
-        onConflict: 'profile_id,goal_type,exercise_id',
+        onConflict: 'profile_id,goal_type,exercise_id,is_milestone',
       }));
     }
 

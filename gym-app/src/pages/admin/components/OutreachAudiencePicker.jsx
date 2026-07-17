@@ -154,7 +154,7 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
                 <p className="text-[13.5px] font-bold truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: '-0.2px' }}>{opt.label}</p>
                 {opt.count !== null && (
                   <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {opt.count} {t(opt.count === 1 ? 'admin.outreach.members' : 'admin.outreach.members_plural', { count: opt.count, defaultValue: opt.count === 1 ? 'member' : 'members' })}
+                    {opt.count} {t(opt.count === 1 ? 'admin.outreach.members' : 'admin.outreach.members_other', { count: opt.count, defaultValue: opt.count === 1 ? 'member' : 'members' })}
                   </p>
                 )}
               </div>

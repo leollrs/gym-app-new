@@ -140,7 +140,7 @@
     "daysPrefilled": "Pre-seleccionado según tu frecuencia — ajusta según necesites.",
     "selectAtLeast": "Selecciona al menos un día para continuar.",
     "daysSelected": "{{count}} día seleccionado",
-    "daysSelected_plural": "{{count}} días seleccionados",
+    "daysSelected_other": "{{count}} días seleccionados",
     "durationTitle": "Duración del Entrenamiento",
     "durationHint": "¿Cuánto quieres que dure cada sesión?",
     "duration30": "30 min",
@@ -180,7 +180,7 @@
     "fromHealth": "de Salud",
     "noneSelected": "Nada seleccionado — todos los ejercicios disponibles.",
     "areasCount": "{{count}} área marcada — trabajaremos alrededor de esta.",
-    "areasCount_plural": "{{count}} áreas marcadas — trabajaremos alrededor de estas.",
+    "areasCount_other": "{{count}} áreas marcadas — trabajaremos alrededor de estas.",
     "lowerBack": "Espalda Baja",
     "knees": "Rodillas",
     "shoulders": "Hombros",
@@ -278,7 +278,59 @@
     "programMeta": "{{days}} días/sem · {{minutes}} min · programa de {{weeks}} semanas",
     "goToDashboard": "Vamos",
     "skip": "Lo configuro después",
-    "weekN": "Semana {{n}}"
+    "weekN": "Semana {{n}}",
+    "programNameLabel": "Nombre del programa",
+    "programNamePlaceholder": "Nombra tu programa",
+    "resetName": "Restablecer"
+  },
+  "onboardingTargets": {
+    "title": "Tus Metas",
+    "subtitle": "Elige lo que importa — adaptamos tu plan. Opcional.",
+    "trigger": "Define metas específicas",
+    "triggerSet": "Metas definidas — toca para editar",
+    "triggerSub": "Opcional — adapta tu plan a un peso, levantamiento o músculo",
+    "current": "Actual",
+    "target": "Meta",
+    "skip": "Omitir",
+    "save": "Guardar metas",
+    "band": {
+      "steady": "Constante",
+      "moderate": "Moderado",
+      "aggressive": "Agresivo"
+    },
+    "muscle": {
+      "chest": "Pecho",
+      "back": "Espalda",
+      "shoulders": "Hombros",
+      "arms": "Brazos",
+      "legs": "Piernas",
+      "glutes": "Glúteos",
+      "core": "Core"
+    },
+    "emphasis": {
+      "title": "Énfasis muscular",
+      "sub": "Volumen extra donde lo quieras"
+    },
+    "bodyWeight": {
+      "title": "Peso corporal meta",
+      "sub": "A dónde quieres llegar"
+    },
+    "bodyFat": {
+      "title": "% de grasa corporal",
+      "sub": "Si lo mides"
+    },
+    "lifts": {
+      "title": "Levantamientos meta",
+      "sub": "Números que quieres alcanzar"
+    },
+    "conflict": {
+      "fatLossButGaining": "Atención: tu meta es perder grasa pero tu peso meta es mayor que el actual.",
+      "muscleGainButLosing": "Atención: tu meta es ganar músculo pero tu peso meta es menor que el actual."
+    },
+    "caption": {
+      "extra": "énfasis en {{muscles}}",
+      "toward": "hacia {{n}} lb"
+    }
   },
   "mealPlan": {
     "askTitle": "¿Quieres un plan de comidas semanal?",

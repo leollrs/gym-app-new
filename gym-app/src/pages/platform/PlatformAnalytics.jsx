@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { format, subMonths, startOfMonth, parseISO } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useTranslation } from 'react-i18next';
 import { getMonthlyPrice, getPricingLabel, getMemberBracketLabel } from '../../lib/pricing';
 import { exportCSV } from '../../lib/csvExport';
@@ -134,13 +135,16 @@ export default function PlatformAnalytics() {
       setLoading(true);
       setLoadError(null);
       const [gymRes, statsRes, snapRes] = await Promise.all([
-        supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price, plan_type, is_founding'),
+        selectAllRows((from, to) => supabase.from('gyms').select('id, name, slug, is_active, created_at, subscription_tier, monthly_price, plan_type, is_founding').range(from, to)),
         supabase.rpc('platform_gym_stats'),
-        // Optional: snapshots may not exist yet (0545 pending) — tolerate.
-        supabase.from('platform_snapshots')
+        // Optional: snapshots may not exist yet (0545 pending) — tolerate. Paged
+        // because the ascending order clamped at the 1000-row cap dropped the
+        // NEWEST weeks (grows gyms×weeks), corrupting WoW deltas + income chart.
+        selectAllRows((from, to) => supabase.from('platform_snapshots')
           .select('snapshot_date, gym_id, data')
           .eq('kind', 'gym_stats')
-          .order('snapshot_date', { ascending: true }),
+          .order('snapshot_date', { ascending: true })
+          .range(from, to)),
       ]);
       if (gymRes.error || statsRes.error) {
         setLoadError((gymRes.error || statsRes.error).message || 'Query failed');

@@ -7,7 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { timeAgo as formatTimeAgo } from '../lib/dateUtils';
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
-import { exercises as exerciseLibrary } from '../data/exercises';
+import { getExercises } from '../lib/exerciseStore';
+const exerciseLibrary = getExercises();
 import { localizeRoutineName } from '../lib/exerciseName';
 import { hasCardioLoggedAfter, hasRecentCardioLog } from '../lib/cardioLedger';
 import { useTranslation } from 'react-i18next';
@@ -514,7 +515,7 @@ const QuickStart = () => {
               <div className="w-full h-full bg-gradient-to-br from-[#1a1f35] to-[#0a0f1a]" />
               {todayExercises.map((ex, i) => ex.video && (
                 <video
-                  key={ex.video}
+                  key={i}
                   src={ex.video}
                   autoPlay loop muted playsInline preload="auto"
                   className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"

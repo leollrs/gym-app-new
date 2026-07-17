@@ -50,7 +50,7 @@ const PRRow = ({ pr, history, isNew }) => {
       >
         {/* Icon */}
         <div className="w-10 h-10 rounded-[12px] flex items-center justify-center flex-shrink-0"
-          style={{ background: isNew ? 'rgba(255,90,46,0.12)' : `${TU_ACCENT}12` }}>
+          style={{ background: isNew ? 'rgba(255,90,46,0.12)' : `color-mix(in srgb, ${TU_ACCENT} 7%, transparent)` }}>
           {isNew ? <Flame size={18} style={{ color: '#FF5A2E' }} /> : <Trophy size={18} style={{ color: TU_ACCENT }} />}
         </div>
         <div className="flex-1 min-w-0">

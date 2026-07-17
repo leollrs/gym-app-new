@@ -28,6 +28,7 @@
 import { startOfMonth, subDays } from 'date-fns';
 import { supabase } from '../supabase';
 import { withQueryTimeout } from '../queryWithTimeout';
+import { selectAllRows } from '../churn/batchedSelect';
 
 export async function fetchCurrentKPIs(gymId) {
   if (!gymId) return null;
@@ -37,30 +38,32 @@ export async function fetchCurrentKPIs(gymId) {
   const thirtyDaysAgoIso = subDays(now, 30).toISOString();
 
   const [profilesRes, sessionsRes, checkInsRes] = await withQueryTimeout(Promise.all([
-    supabase
+    // All three page the FULL set — a plain .limit(5000) is clamped to the
+    // ~1000-row max_rows cap, so on any active gym the six headline KPIs
+    // (retention / active / avg-workouts / churn) were computed off a
+    // truncated sample. check_ins in particular crosses 1000 within weeks.
+    selectAllRows((from, to) => supabase
       .from('profiles')
       .select('id, created_at, membership_status')
       .eq('gym_id', gymId)
       .eq('role', 'member')
       // Imported-archived members are history-only — they feed the
-      // retention diagnostic but must never appear in live KPIs, or
-      // ex-members from years ago would show up as cancelled/churned
-      // every month forever.
+      // retention diagnostic but must never appear in live KPIs.
       .eq('imported_archived', false)
-      .limit(5000),
-    supabase
+      .range(from, to)),
+    selectAllRows((from, to) => supabase
       .from('workout_sessions')
       .select('profile_id, started_at')
       .eq('gym_id', gymId)
       .eq('status', 'completed')
       .gte('started_at', thirtyDaysAgoIso)
-      .limit(5000),
-    supabase
+      .range(from, to)),
+    selectAllRows((from, to) => supabase
       .from('check_ins')
       .select('checked_in_at')
       .eq('gym_id', gymId)
       .gte('checked_in_at', thirtyDaysAgoIso)
-      .limit(5000),
+      .range(from, to)),
   ]), 12_000, 'fetchCurrentKPIs');
 
   if (profilesRes.error) throw profilesRes.error;

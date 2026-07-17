@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { sendNotification } from '../../lib/notifications';
+import { inviteUrl as buildInviteUrl } from '../../lib/appUrls';
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { exportCSV } from '../../lib/csvExport';
@@ -1055,10 +1056,10 @@ export default function AdminMembers() {
             <p className="text-[15px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>{qrInvite.member_name}</p>
             <p className="text-[22px] font-mono font-bold tracking-[0.2em] mb-4" style={{ color: 'var(--color-accent)' }}>{qrInvite.invite_code}</p>
             <div className="bg-white p-4 rounded-xl inline-block mb-4">
-              <QRCodeSVG value={`https://tugympr.app/invite/${qrInvite.invite_code}`} size={180} level="H" />
+              <QRCodeSVG value={buildInviteUrl(qrInvite.invite_code)} size={180} level="H" />
             </div>
             <p className="text-[11px] font-mono mb-4 break-all" style={{ color: 'var(--color-text-muted)' }}>
-              tugympr.app/invite/{qrInvite.invite_code}
+              app.tugympr.com/invite/{qrInvite.invite_code}
             </p>
             <button onClick={() => setQrInvite(null)}
               className="px-6 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"

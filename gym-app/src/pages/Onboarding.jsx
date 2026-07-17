@@ -5,6 +5,7 @@ import {
   Sun, Sunrise, Moon, Sparkles, Trophy, Pin, Camera, Activity,
   Shield, BarChart3, Gift, X, Users, AlertTriangle, Loader2,
   UtensilsCrossed, Search, ExternalLink, Sprout, Smartphone, ChevronDown, LogOut,
+  Target,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePostHog } from '@posthog/react';
@@ -14,6 +15,9 @@ import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight } from '../lib/healthSync';
 import { generateProgram } from '../lib/workoutGenerator';
 import { generateProgramName, generateRoutineName } from '../lib/programNaming';
+import { buildOnboardingGoals, persistOnboardingGoals, mapGoalsForProgramGenerator, goalAnchoredName } from '../lib/onboardingGoals';
+import { useOnboardingTargetsEnabled } from '../hooks/usePlatformFlags';
+import OnboardingTargets from '../components/OnboardingTargets';
 import { calculateMacros } from '../lib/macroCalculator';
 import { generateWeekPlan } from '../lib/mealPlanner';
 // MEALS (~280 KB raw across 6 meal-category files) is lazy-loaded on first
@@ -27,8 +31,9 @@ const loadMeals = async () => {
   mealsCache = mod.MEALS;
   return mealsCache;
 };
-import { getExerciseById } from '../data/exercises';
+import { getExerciseById } from '../lib/exerciseStore';
 import { foodImageUrl } from '../lib/imageUrl';
+import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 import RewardPicker from '../components/RewardPicker';
 
 // ── DESIGN TOKENS ──────────────────────────────────────────
@@ -454,6 +459,23 @@ function getDefaultDays(freq, closedDays) {
 const CORE_STEPS = 11;   // steps 0-10: invite → social (phone inserted at step 9)
 const TOTAL_STEPS = 13;  // + step 11 (Program) + step 12 (Nutrition)
 
+// A deep-link destination stashed before signup (a challenge/class/section QR
+// scanned while logged out, etc.) is saved in sessionStorage as
+// `postLoginRedirect`. PublicRoute only consumes it for ALREADY-onboarded
+// users — a brand-new signup routes to /onboarding first, so without this the
+// destination is dropped when onboarding finishes and sends the user home.
+// Validate + consume it here (same rules as PublicRoute); fall back to home.
+function consumeOnboardingRedirect() {
+  try {
+    const dest = sessionStorage.getItem('postLoginRedirect');
+    if (dest && dest.startsWith('/') && !dest.startsWith('//') && !dest.startsWith('/login')) {
+      sessionStorage.removeItem('postLoginRedirect');
+      return dest;
+    }
+  } catch { /* noop */ }
+  return '/';
+}
+
 // Step labels (for OB progress "SECTION" tag) + analytics names. The labels
 // here are i18n keys (under the `onboarding.stepLabels.*` namespace) — kept
 // in array order so STEP_LABELS[step] continues to work.
@@ -655,6 +677,12 @@ const Onboarding = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const [onboardingDone, setOnboardingDone] = useState(false);
+  // Onboarding v2 "Your Targets" (dark feature flag). Additive overlay off the
+  // Primary-Goal step — no step renumbering. targetSelections feeds the goal
+  // service + generator at handleFinish.
+  const targetsEnabled = useOnboardingTargetsEnabled();
+  const [targetSelections, setTargetSelections] = useState(null);
+  const [showTargets, setShowTargets] = useState(false);
   // Age is derived from profiles.date_of_birth (mandatory at signup) — when
   // present the age input is locked to the computed value.
   const [ageFromDob, setAgeFromDob] = useState(false);
@@ -850,6 +878,20 @@ const Onboarding = () => {
   // "Week A / Week B".
   const [previewWeekIdx, setPreviewWeekIdx] = useState(0);
 
+  // Editable program name (Onboarding v2). `programName` is what the preview
+  // shows/edits; `generatedName` is the auto-name for the reset button;
+  // `programId` targets the generated_programs row for the persist-on-finish.
+  // A ref (not state) tracks "user edited it" so a background regeneration
+  // never clobbers a hand-typed name, and closures in async handlers stay fresh.
+  const [programName, setProgramName] = useState('');
+  const [generatedName, setGeneratedName] = useState('');
+  const [programId, setProgramId] = useState(null);
+  // `nameEdited` drives the reset button (reactive); `nameEditedRef` mirrors it
+  // for fresh reads inside async handlers (no stale closure). Set both together.
+  const [nameEdited, setNameEdited] = useState(false);
+  const nameEditedRef = useRef(false);
+  const markNameEdited = (v) => { nameEditedRef.current = v; setNameEdited(v); };
+
   const [showMealPlan, setShowMealPlan] = useState(false);
   const [mealPlanError, setMealPlanError] = useState('');
   // dietaryRestrictions / foodAllergies / dislikedIngredients moved up — see
@@ -877,6 +919,8 @@ const Onboarding = () => {
     age: data.age,
     workout_duration_min: data.workout_duration_min,
     preferred_training_days: data.preferred_training_days,
+    initial_weight_lbs: data.initial_weight_lbs,          // lb baseline for goal building
+    target_selections: targetSelections,                  // Onboarding v2 "Your Targets"
   });
 
   // Input key for cache invalidation — any change here invalidates.
@@ -884,6 +928,7 @@ const Onboarding = () => {
     data.fitness_level, data.primary_goal, data.training_days_per_week,
     data.available_equipment, data.injury_areas, data.sex, data.age,
     data.workout_duration_min, data.preferred_training_days,
+    targetSelections,  // regenerate when the member changes their Targets
   ]);
 
   const buildMealSnapshot = () => ({
@@ -1536,9 +1581,31 @@ const Onboarding = () => {
       sex: snapshot.sex || 'male',
       age: snapshot.age ? parseInt(snapshot.age) : 30,
       workout_duration_min: snapshot.workout_duration_min || 60,
+      // Onboarding v2: muscle emphasis biases slot selection + gives +1 set.
+      priority_muscles: snapshot.target_selections?.priorityMuscles || [],
     };
 
-    const result = generateProgram(onboardingForGenerator);
+    // Onboarding v2: turn the member's specific targets into real, trackable
+    // member_goals (+ priority_muscles) and feed the lift goals into the
+    // generator so the plan visibly reflects them. Non-fatal — a failure here
+    // must never block plan generation (goals are a bonus on top of the plan).
+    let genGoals = [];
+    const targets = snapshot.target_selections;
+    if (targets && gymId) {
+      const builtGoals = buildOnboardingGoals(targets, {
+        fitnessLevel: onboardingForGenerator.fitness_level,
+        onboardingWeightLbs: snapshot.initial_weight_lbs ? parseFloat(snapshot.initial_weight_lbs) : undefined,
+        primaryGoal: onboardingForGenerator.primary_goal,
+      });
+      try {
+        await persistOnboardingGoals(builtGoals, targets.priorityMuscles || [], { profileId: user.id, gymId });
+      } catch (e) {
+        console.warn('persistOnboardingGoals failed (non-fatal)', e);
+      }
+      genGoals = mapGoalsForProgramGenerator(builtGoals);
+    }
+
+    const result = generateProgram(onboardingForGenerator, genGoals);
 
     const startDate = new Date();
     startDate.setSeconds(startDate.getSeconds() - 5);
@@ -1665,11 +1732,18 @@ const Onboarding = () => {
     const usedProgramNames = (priorPrograms || [])
       .map((p) => p.schedule_map?.display_name)
       .filter(Boolean);
-    const displayName = generateProgramName(
-      result.split,
-      snapshot.primary_goal || 'general_fitness',
-      usedProgramNames,
-    );
+    // Onboarding v2: prefer a short, goal-anchored name ("The 160 Build") when
+    // the member set a specific target — feels personal vs. "1RM Push/Pull/Legs".
+    // Fall back to the creative pool when there's no specific goal or the anchored
+    // name collides with a program they already have.
+    const anchored = goalAnchoredName(snapshot.target_selections, { primaryGoal: snapshot.primary_goal });
+    const displayName = (anchored && !usedProgramNames.includes(anchored))
+      ? anchored
+      : generateProgramName(
+          result.split,
+          snapshot.primary_goal || 'general_fitness',
+          usedProgramNames,
+        );
 
     const scheduleMapData = {
       display_name:    displayName,
@@ -1689,7 +1763,7 @@ const Onboarding = () => {
       total_calendar_weeks: totalCalendarWeeks,
     };
 
-    const { error: progErr } = await supabase.from('generated_programs').insert({
+    const { data: insertedProg, error: progErr } = await supabase.from('generated_programs').insert({
       profile_id:       user.id,
       gym_id:           gymId,
       split_type:       result.split,
@@ -1698,7 +1772,7 @@ const Onboarding = () => {
       routines_a_count: N,
       duration_weeks:   DURATION_WEEKS,
       schedule_map:     scheduleMapData,
-    });
+    }).select('id').maybeSingle();
     if (progErr) console.warn('generated_programs insert failed:', progErr.message);
 
     // Seed workout_schedule with variant A only. The Workouts page resolves
@@ -1733,13 +1807,22 @@ const Onboarding = () => {
       name: generateRoutineName(r.slotsKey, r.variantIndex, nameSeed),
       exercises: r.exercises.map((ex) => {
         const info = getExerciseById(ex.exerciseId);
-        return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '' };
+        return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '', videoUrl: info?.videoUrl || null };
       }),
     }));
     return {
       routinesA: enrich(result.routinesA),
       routinesB: enrich(result.routinesB),
+      programId: insertedProg?.id || null,      // for editable-name persistence
+      programName: displayName,                  // generated (goal-anchored or creative)
     };
+  };
+
+  // Capture the generated program's id + name; keep a hand-edited name intact.
+  const applyGeneratedMeta = (r) => {
+    setProgramId(r.programId || null);
+    setGeneratedName(r.programName || '');
+    if (!nameEditedRef.current) setProgramName(r.programName || '');
   };
 
   // Consumer: applies UI state from the (possibly pre-warmed) cache.
@@ -1755,6 +1838,7 @@ const Onboarding = () => {
         setGeneratedRoutinesB(cached.routinesB);
         setPreviewRoutineIdx(0);
         setPreviewWeekIdx(0);
+        applyGeneratedMeta(cached);
         setShowGeneratePlan('done');
         return;
       }
@@ -1773,6 +1857,7 @@ const Onboarding = () => {
       setGeneratedRoutinesB(result.routinesB);
       setPreviewRoutineIdx(0);
       setPreviewWeekIdx(0);
+      applyGeneratedMeta(result);
       setShowGeneratePlan('done');
     } catch (err) {
       planCacheRef.current = { key: null, promise: null, result: null, error: err };
@@ -1863,19 +1948,37 @@ const Onboarding = () => {
   const formatIngredient = (ing) =>
     ing.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+  // Persist a hand-edited program name onto the generated program's
+  // schedule_map.display_name. No-op unless the user actually changed it.
+  // Non-fatal — a failure must never block finishing onboarding.
+  const persistProgramName = async () => {
+    const name = (programName || '').trim();
+    if (!nameEditedRef.current || !programId || !name || name === generatedName) return;
+    try {
+      const { data: row } = await supabase
+        .from('generated_programs').select('schedule_map').eq('id', programId).maybeSingle();
+      if (row?.schedule_map) {
+        await supabase.from('generated_programs')
+          .update({ schedule_map: { ...row.schedule_map, display_name: name.slice(0, 60) } })
+          .eq('id', programId);
+      }
+    } catch (e) { console.warn('persist program name failed (non-fatal)', e); }
+  };
+
   const handleSkipMealPlan = async () => {
     // See handleMealPlanDone — same ordering: DB write → optimistic local
     // flip via markOnboarded() (synchronous) → navigate → background
     // refreshProfile. Awaiting refreshProfile inline used to race the
     // navigate on slow networks and bounce the user back to step 0.
     await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
-    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
+    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS, targets_set: !!targetSelections });
     setOnboardingDone(true);
     markOnboarded();
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
-    navigate('/', { replace: true });
+    await persistProgramName();
+    navigate(consumeOnboardingRedirect(), { replace: true });
     refreshProfile?.()?.catch(() => {});
   };
 
@@ -1938,19 +2041,35 @@ const Onboarding = () => {
       affinities: {},
     });
 
+    // Seed a FULL MONTH, not a one-week cliff. A member who opens their plan and
+    // sees only seven days quits after seven days — so we persist 4 weeks up
+    // front (week 1 is the active/current one; weeks 2-4 are ready and waiting
+    // when they navigate forward). Each is its own generated_meal_plans row.
+    // Best-effort: only week 1 gates the visible preview.
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    const { error: planErr } = await supabase
-      .from('generated_meal_plans')
-      .upsert({
-        profile_id: user.id,
-        gym_id: gymId,
-        week_start: startOfWeek.toISOString().split('T')[0],
-        plan_data: weekPlan,
-        macro_targets: macros,
-        is_active: true,
-      }, { onConflict: 'profile_id,week_start' });
-    if (planErr) console.warn('[onboarding] generated meal plan save failed:', planErr.message);
+    const PLAN_WEEKS = 4;
+    for (let w = 0; w < PLAN_WEEKS; w++) {
+      const ws = new Date(startOfWeek);
+      ws.setDate(ws.getDate() + w * 7);
+      // Week 1 reuses the already-generated preview plan; later weeks get fresh
+      // variety so the month doesn't repeat the same seven days.
+      const wkPlan = w === 0 ? weekPlan : generateWeekPlan({
+        targets: macros, favorites: [],
+        allergies: snapshot.foodAllergies, restrictions: snapshot.dietaryRestrictions, affinities: {},
+      });
+      const { error: planErr } = await supabase
+        .from('generated_meal_plans')
+        .upsert({
+          profile_id: user.id,
+          gym_id: gymId,
+          week_start: ws.toISOString().split('T')[0],
+          plan_data: wkPlan,
+          macro_targets: macros,
+          is_active: w === 0, // only the current week is the "active" one
+        }, { onConflict: 'profile_id,week_start' });
+      if (planErr) { console.warn('[onboarding] generated meal plan save failed:', planErr.message); break; }
+    }
 
     // Column names per 0001 schema (daily_*) — the bare calories/protein_g
     // names 42703'd silently here, so onboarding never persisted targets and
@@ -2022,13 +2141,14 @@ const Onboarding = () => {
     // next render of ProtectedRoute always sees is_onboarded=true. The
     // background refreshProfile then reconciles with the server.
     await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
-    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS });
+    posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS, targets_set: !!targetSelections });
     setOnboardingDone(true);
     markOnboarded();
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     try { localStorage.removeItem(PERSIST_KEY); } catch {}
     try { localStorage.removeItem('referrer_buddy'); } catch {}
-    navigate('/', { replace: true });
+    await persistProgramName();
+    navigate(consumeOnboardingRedirect(), { replace: true });
     refreshProfile?.()?.catch(() => {});
   };
 
@@ -2512,6 +2632,39 @@ const Onboarding = () => {
               );
             })}
           </div>
+        )}
+
+        {/* Onboarding v2 "Your Targets" trigger — flag-gated, shows once a goal
+            is picked. Opens the skippable Targets overlay. */}
+        {step === 3 && targetsEnabled && !!data.primary_goal && (
+          <button
+            type="button"
+            onClick={() => { setShowTargets(true); try { posthog?.capture('onboarding_targets_viewed'); } catch {} }}
+            style={{
+              marginTop: 12, width: '100%', padding: '14px 16px', borderRadius: 16,
+              background: targetSelections ? 'rgba(46,196,196,0.10)' : OB.surface,
+              border: `1.5px dashed ${targetSelections ? OB.teal : OB.line}`,
+              display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <div style={{
+              width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+              background: 'rgba(46,196,196,0.14)', color: OB.teal,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Target size={20} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14.5, color: OB.ink }}>
+                {targetSelections
+                  ? t('onboardingTargets.triggerSet', 'Targets set — tap to edit')
+                  : t('onboardingTargets.trigger', 'Set specific targets')}
+              </div>
+              <div style={{ fontSize: 12, color: OB.sub, marginTop: 1 }}>
+                {t('onboardingTargets.triggerSub', 'Optional — tailor your plan to a weight, lift or muscle')}
+              </div>
+            </div>
+          </button>
         )}
 
         {/* ══════════════════════════════════════════════════════
@@ -3808,6 +3961,72 @@ const Onboarding = () => {
               })}
             </div>
 
+            {/* Onboarding v2 editable program name — pre-filled with the goal-
+                anchored/creative name, editable, with a reset-to-suggested. */}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: OB.sub }}>
+                  {t('generatePlan.programNameLabel', 'Program name')}
+                </span>
+                {nameEdited && generatedName && (
+                  <button
+                    type="button"
+                    onClick={() => { setProgramName(generatedName); markNameEdited(false); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 800, color: OB.teal, padding: 0 }}
+                  >
+                    {t('generatePlan.resetName', 'Reset')}
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={programName}
+                maxLength={60}
+                onChange={(e) => { setProgramName(e.target.value); markNameEdited(true); }}
+                onBlur={() => { if (!(programName || '').trim()) { setProgramName(generatedName); markNameEdited(false); } }}
+                placeholder={generatedName || t('generatePlan.programNamePlaceholder', 'Name your program')}
+                aria-label={t('generatePlan.programNameLabel', 'Program name')}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: 12,
+                  background: OB.surface, border: `1.5px solid ${OB.line}`,
+                  fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 18,
+                  color: OB.ink, outline: 'none', letterSpacing: -0.3,
+                }}
+              />
+            </div>
+
+            {/* Onboarding v2 "why this plan" caption — makes the tailoring visible
+                (the core retention lever). Only shows when targets were set.
+                Assembled with t() so it's fully bilingual (goal · emphasis · toward). */}
+            {(() => {
+              const sel = targetSelections;
+              if (!sel) return null;
+              const goalKey = GOALS.find(g => g.value === data.primary_goal)?.key;
+              const parts = [];
+              if (goalKey) parts.push(t(`goal.${goalKey}.label`));
+              const pm = sel.priorityMuscles || [];
+              if (pm.length) {
+                const muscles = pm.slice(0, 2).map(m => t(`onboardingTargets.muscle.${m.toLowerCase()}`, m).toLowerCase()).join(' & ');
+                parts.push(t('onboardingTargets.caption.extra', { defaultValue: 'extra {{muscles}}', muscles }));
+              }
+              const bwT = parseFloat(sel.bodyWeight?.target);
+              const topLift = (sel.lifts || []).map(l => parseFloat(l.target)).filter(n => Number.isFinite(n) && n > 0).sort((a, b) => b - a)[0];
+              const towardN = Number.isFinite(bwT) && bwT > 0 ? bwT : topLift;
+              if (towardN) parts.push(t('onboardingTargets.caption.toward', { defaultValue: 'toward {{n}} lb', n: towardN }));
+              const caption = parts.filter(Boolean).join(' · ');
+              if (!caption) return null;
+              return (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 10,
+                  padding: '7px 12px', borderRadius: 999,
+                  background: 'rgba(46,196,196,0.10)', border: `1px solid ${OB.teal}`,
+                }}>
+                  <Target size={13} color={OB.teal} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: OB.ink, textTransform: 'capitalize' }}>{caption}</span>
+                </div>
+              );
+            })()}
+
             {/* 12-week strip. The underlying program is a 2-variant rotation
                 (Week A / Week B) that alternates across 12 calendar weeks —
                 odd weeks run Variant A, even weeks run Variant B. We surface
@@ -3943,14 +4162,7 @@ const Onboarding = () => {
                       border: `1px solid ${OB.line}`,
                       display: 'flex', alignItems: 'center', gap: 12,
                     }}>
-                      <div style={{
-                        width: 38, height: 38, borderRadius: 10,
-                        background: c.bg, color: c.fg,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0,
-                      }}>
-                        <Dumbbell size={20} color={c.fg} />
-                      </div>
+                      <ExerciseVideoThumb exercise={ex} size={44} radius={11} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
                           fontFamily: OB_FONT.display, fontWeight: 800, fontSize: 14,
@@ -4460,6 +4672,38 @@ const Onboarding = () => {
         )}
 
       </div>{/* /container */}
+
+      {/* Onboarding v2 "Your Targets" overlay (top-level so its fixed position
+          is viewport-relative). Flag-gated at the trigger. */}
+      {showTargets && (
+        <OnboardingTargets
+          t={t}
+          initial={targetSelections}
+          context={{
+            fitnessLevel: data.fitness_level || 'intermediate',
+            onboardingWeightLbs: data.initial_weight_lbs ? parseFloat(data.initial_weight_lbs) : undefined,
+            primaryGoal: data.primary_goal,
+            liftBaselines: data.known_maxes || {},
+          }}
+          onClose={() => {
+            setShowTargets(false);
+            if (!targetSelections) { try { posthog?.capture('onboarding_targets_skipped'); } catch {} }
+          }}
+          onSave={(sel) => {
+            setTargetSelections(sel);
+            setShowTargets(false);
+            try {
+              posthog?.capture('onboarding_targets_set', {
+                priority_muscle_count: sel.priorityMuscles?.length || 0,
+                has_body_weight: !!sel.bodyWeight,
+                has_body_fat: !!sel.bodyFat,
+                lift_count: sel.lifts?.length || 0,
+                goal_count: (sel.bodyWeight ? 1 : 0) + (sel.bodyFat ? 1 : 0) + (sel.lifts?.length || 0),
+              });
+            } catch { /* analytics best-effort */ }
+          }}
+        />
+      )}
 
       {/* Privacy Policy Modal */}
       {showPrivacyModal && (

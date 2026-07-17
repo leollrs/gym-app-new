@@ -4,6 +4,7 @@ import { format, subDays, parseISO } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
@@ -137,14 +138,20 @@ export default function AdminRevenue() {
   const { data: pointsData, isLoading: loadingPoints } = useQuery({
     queryKey: adminKeys.revenue.points(gymId, period),
     queryFn: async () => {
-      let q = supabase
-        .from('reward_points_log')
-        .select('points, created_at')
-        .eq('gym_id', gymId)
-        .neq('points', 0)
-        .limit(20000);
-      if (cutoffDate) q = q.gte('created_at', cutoffDate);
-      const { data } = await q;
+      // Page the full set — .limit(20000) is a false safeguard (PostgREST caps
+      // the response at ~1000), so issued/spent points totals truncated once a
+      // gym crossed 1000 log rows. Rebuild per page (conditional date filter).
+      const { data } = await selectAllRows((lo, hi) => {
+        let q = supabase
+          .from('reward_points_log')
+          .select('points, created_at')
+          .eq('gym_id', gymId)
+          .neq('points', 0)
+          .order('created_at', { ascending: false })
+          .range(lo, hi);
+        if (cutoffDate) q = q.gte('created_at', cutoffDate);
+        return q;
+      });
       const issued = [];
       const spent = [];
       for (const row of (data || [])) {
@@ -159,13 +166,20 @@ export default function AdminRevenue() {
   const { data: purchases, isLoading: loadingPurchases } = useQuery({
     queryKey: adminKeys.revenue.purchases(gymId, period),
     queryFn: async () => {
-      let q = supabase
-        .from('member_purchases')
-        .select('id, points_earned, total_price, is_free_reward, status, created_at, quantity, product_id, member_id, gym_products(name, category, emoji_icon, punch_card_target, price), profiles:member_id(full_name)')
-        .eq('gym_id', gymId)
-        .order('created_at', { ascending: false });
-      if (cutoffDate) q = q.gte('created_at', cutoffDate);
-      const { data } = await q;
+      // P1: this drove Total Sales / avg transaction / category revenue off a
+      // 1000-capped read (uncapped select → silent ~1000 truncation). Page it so
+      // the owner's revenue numbers are complete. id order = stable tiebreaker.
+      const { data } = await selectAllRows((lo, hi) => {
+        let q = supabase
+          .from('member_purchases')
+          .select('id, points_earned, total_price, is_free_reward, status, created_at, quantity, product_id, member_id, gym_products(name, category, emoji_icon, punch_card_target, price), profiles:member_id(full_name)')
+          .eq('gym_id', gymId)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(lo, hi);
+        if (cutoffDate) q = q.gte('created_at', cutoffDate);
+        return q;
+      });
       return data || [];
     },
     enabled: !!gymId,

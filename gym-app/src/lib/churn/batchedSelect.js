@@ -88,3 +88,49 @@ export async function selectAllRows(makeQuery, { pageSize = 1000, maxRows = 1000
   }
   return { data: all, error: null };
 }
+
+/**
+ * selectAllInBatches — combine `.in(col, ids)` chunking (URL-length safety) with
+ * `.range()` paging PER chunk (the 1000-row cap). selectInBatches alone still
+ * truncates a chunk at ~1000 rows, so any aggregate over many members' sessions
+ * (weekly activity, adherence sparklines) silently undercounts once a chunk
+ * crosses 1000. This pages each chunk to completion.
+ *
+ * `makeQuery(idsChunk, from, to)` must return a FRESH Supabase query with both
+ * `.in(col, idsChunk)` and `.range(from, to)` (and a stable `.order()`).
+ */
+export async function selectAllInBatches(makeQuery, ids, { chunkSize = 200, pageSize = 1000, maxRows = 100000, dedupeKey } = {}) {
+  if (!ids || ids.length === 0) return { data: [], error: null };
+
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+
+  const results = await Promise.all(chunks.map(async (chunk) => {
+    let from = 0;
+    let all = [];
+    for (;;) {
+      const res = await makeQuery(chunk, from, from + pageSize - 1);
+      if (res.error) return { data: all.length ? all : null, error: res.error };
+      const rows = res.data || [];
+      all = all.concat(rows);
+      if (rows.length < pageSize || all.length >= maxRows) break;
+      from += pageSize;
+    }
+    return { data: all, error: null };
+  }));
+
+  const firstErr = results.find((r) => r.error)?.error || null;
+  if (firstErr) return { data: null, error: firstErr };
+
+  let data = results.flatMap((r) => r.data || []);
+  if (dedupeKey) {
+    const seen = new Set();
+    data = data.filter((row) => {
+      const k = dedupeKey(row);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+  return { data, error: null };
+}

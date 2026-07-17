@@ -12,7 +12,8 @@
 
 import { aggregateRegions } from './readinessEngine';
 import { GROUP_TO_REGIONS } from './muscleBuckets';
-import { exercises as DEFAULT_LIBRARY } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const DEFAULT_LIBRARY = getExercises();
 
 // Rank exercises by their best `muscleScores` match across the given region
 // ids. Used by the Recovery modal's per-muscle dropdown — the user taps a

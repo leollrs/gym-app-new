@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/churn/batchedSelect';
 import { useAuth } from '../contexts/AuthContext';
 import { format, parseISO } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -280,11 +281,14 @@ export default function Strength() {
         .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name, muscle_group)')
         .eq('profile_id', user.id)
         .order('estimated_1rm', { ascending: false }),
-      supabase
+      // Page the full history — ascending order means a 1000-row clamp would
+      // drop the NEWEST PRs and corrupt the recent trend for long-tenured lifters.
+      selectAllRows((from, to) => supabase
         .from('pr_history')
         .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at')
         .eq('profile_id', user.id)
-        .order('achieved_at', { ascending: true }),
+        .order('achieved_at', { ascending: true })
+        .range(from, to)),
       supabase
         .from('body_weight_logs')
         .select('weight_lbs')

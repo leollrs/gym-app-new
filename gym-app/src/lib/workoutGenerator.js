@@ -4,7 +4,8 @@
  * Does NOT touch Supabase — caller is responsible for saving.
  */
 
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { INJURY_EXCLUSIONS } from './exerciseConstants';
 import i18n from 'i18next';
 

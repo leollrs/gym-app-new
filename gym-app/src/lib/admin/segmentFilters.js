@@ -1,6 +1,6 @@
 import { supabase } from '../supabase.js';
 import logger from '../logger.js';
-import { selectInBatches } from '../churn/batchedSelect.js';
+import { selectInBatches, selectAllRows } from '../churn/batchedSelect.js';
 
 /**
  * Run a member-segment filter spec against the DB and return the matched
@@ -26,22 +26,23 @@ export async function applySegmentFilters(gymId, filters) {
   // select it directly which 400'd the whole segment preview. The fitness-level
   // filter is now applied as a post-query join below (same pattern as workouts
   // / churn-tier filters).
-  let query = supabase
-    .from('profiles')
-    .select('id, full_name, username, created_at, last_active_at, avatar_type, avatar_value, streak_cache(current_streak_days)')
-    .eq('gym_id', gymId)
-    .eq('role', 'member');
+  // Rebuild the base query per page (Supabase builders aren't safely
+  // re-runnable), then page the FULL matching roster. A plain .limit(500)
+  // truncated the whole segment — campaign SEND, recipient COUNT, CSV export,
+  // and "Message All" DM — to the first 500 members alphabetically.
+  const buildQuery = (from, to) => {
+    let q = supabase
+      .from('profiles')
+      .select('id, full_name, username, created_at, last_active_at, avatar_type, avatar_value, streak_cache(current_streak_days)')
+      .eq('gym_id', gymId)
+      .eq('role', 'member');
+    if (filters.joined_after) q = q.gte('created_at', filters.joined_after);
+    if (filters.joined_before) q = q.lte('created_at', filters.joined_before);
+    // streak/fitness/workout filters are applied post-fetch below
+    return q.order('full_name').range(from, to);
+  };
 
-  if (filters.joined_after) {
-    query = query.gte('created_at', filters.joined_after);
-  }
-  if (filters.joined_before) {
-    query = query.lte('created_at', filters.joined_before);
-  }
-  // Note: streak filtering requires join to streak_cache table
-  // These filters are applied client-side after fetch if needed
-
-  const { data: members, error } = await query.order('full_name').limit(500);
+  const { data: members, error } = await selectAllRows(buildQuery);
   if (error) {
     logger.error('applySegmentFilters: profiles query', error);
     return [];

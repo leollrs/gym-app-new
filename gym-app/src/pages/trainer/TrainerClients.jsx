@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { selectInBatches } from '../../lib/churn/batchedSelect';
+import { selectInBatches, selectAllInBatches } from '../../lib/churn/batchedSelect';
 import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { useNavigate } from 'react-router-dom';
 // eslint-disable-next-line no-unused-vars
@@ -996,9 +996,10 @@ export default function TrainerClients() {
 
       const clientIds = assignedClients.map(c => c.id);
 
-      const { data: recentSessions, error: recSessError } = await selectInBatches(
-        (ids) => supabase.from('workout_sessions').select('profile_id, started_at')
-          .in('profile_id', ids).eq('status', 'completed').gte('started_at', fourteenDaysAgo),
+      const { data: recentSessions, error: recSessError } = await selectAllInBatches(
+        (ids, from, to) => supabase.from('workout_sessions').select('profile_id, started_at')
+          .in('profile_id', ids).eq('status', 'completed').gte('started_at', fourteenDaysAgo)
+          .order('started_at', { ascending: true }).range(from, to),
         clientIds,
       );
       if (recSessError) logger.error('TrainerClients: failed to load recent sessions:', recSessError);

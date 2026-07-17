@@ -21,19 +21,19 @@ shorts, dark sneakers**, professional coach presence, confident and friendly.
 
 ### 3. Blonde female — `blonde_female_*` / `blonde_trainer_*`
 Female trainer in her mid to late 20s, athletic/toned build, blonde hair tied back
-in a ponytail, fitted athletic top, leggings, clean premium gym style, friendly but
-focused coach energy.
+in a ponytail, **purple crop top, black leggings**, white sneakers, clean premium gym
+style, friendly but focused coach energy.
 
 ### 4. Black-haired female — `black_haired_trainer_*` / `black_hair_female_*`
 Female trainer in her mid to late 20s, athletic/toned build, long black or dark hair
-tied back, fitted athletic top, leggings, professional trainer look, confident and
-approachable.
+tied back, **black crop top, grey shorts**, white sneakers, professional trainer
+look, confident and approachable.
 
-## Muscle-group → trainer convention (from existing library)
-- **Chest, Back, most barbell/dumbbell/cable/machine push-pull** → Male
-- **Legs, Glutes, posterior chain, rows** → Black male (+ Blonde female on some)
-- **Shoulders, Biceps, isolation** → Blonde female
-- **Core, triceps, back extensions, carries** → Black-haired female
+## Muscle-group → trainer convention (LOCKED)
+- **Male** (gray wifebeater) → **Chest, Back, Traps**
+- **Blonde female** → **Shoulders, Biceps, Forearms, Warm-Up**
+- **Black-haired female** → **Triceps, Core, Glutes, Cardio (machines)**
+- **Black male** (maroon tee) → **Legs, Calves, Full Body**
 
 ## Kling prompt formula (proven)
 Structure every clip prompt the same way:

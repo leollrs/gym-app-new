@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2, Circle, Lock,
-  Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw,
+  Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw, Play,
 } from 'lucide-react';
+import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
+// Lazy so the heavy ExerciseLibrary module only loads when a routine exercise is
+// tapped for its info card (video + muscle diagram + cues).
+const ExerciseInfoCard = lazy(() => import('./ExerciseLibrary').then(m => ({ default: m.ExerciseCard })));
 import { useRoutines } from '../hooks/useRoutines';
 import { useCachedState, hasCachedState, useSyncedCachedState } from '../hooks/useCachedState';
 import { supabase } from '../lib/supabase';
@@ -17,7 +21,8 @@ import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import { timeAgo } from '../lib/dateUtils';
 // programTemplates + PROGRAM_CATEGORIES loaded dynamically to avoid 396KB eager bundle cost
-import { exercises as exerciseLibrary } from '../data/exercises';
+import { getExercises } from '../lib/exerciseStore';
+const exerciseLibrary = getExercises();
 import { useTranslation } from 'react-i18next';
 import { exName, localizeRoutineName } from '../lib/exerciseName';
 import { translateCreativeName } from '../lib/programNaming';
@@ -250,7 +255,7 @@ async function preloadRoutineExercises(routineIds) {
   if (uncached.length === 0) return;
   const { data } = await supabase
     .from('routine_exercises')
-    .select('id, routine_id, position, target_sets, target_reps, rest_seconds, exercises(name, name_es)')
+    .select('id, routine_id, position, target_sets, target_reps, rest_seconds, exercises(id, name, name_es, muscle_group, video_url, instructions, instructions_es, primary_regions, secondary_regions, equipment)')
     .in('routine_id', uncached)
     .order('position');
   // Group by routine_id and cache
@@ -272,10 +277,47 @@ async function preloadRoutineExercises(routineIds) {
   }
 }
 
-const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => {
+// Semantic muscle-group accent for the exercise-row dot + tag (fixed, like the
+// macro colors — NOT the gym's brand accent). Mirrors the Crown Forge palette.
+const MUSCLE_DOT = {
+  Chest: '#B85E3C', Back: '#3C77A2', Shoulders: '#B0842A', Legs: '#4C8551',
+  Biceps: '#7E5AB8', Triceps: '#B0577E', Arms: '#7E5AB8', Core: '#3C77A2',
+  Glutes: '#B0577E', Quads: '#4C8551', Hamstrings: '#4C8551', Calves: '#4C8551',
+  Lats: '#3C77A2', Forearms: '#B0842A', Traps: '#3C77A2', 'Full Body': '#6B655B',
+};
+const muscleDot = (m) => MUSCLE_DOT[m] || 'var(--color-accent, #C9A84C)';
+
+// Rest between sets → "45s" / "1:30" / "2m".
+const formatRest = (sec) => {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), r = s % 60;
+  return r ? `${m}:${String(r).padStart(2, '0')}` : `${m}m`;
+};
+
+// Rough session length, same formula the builder shows: sets × (rest + ~45s work).
+const estimateRoutineMinutes = (rows) => {
+  if (!rows?.length) return null;
+  const secs = rows.reduce((s, e) => s + ((Number(e.target_sets) || 0) * ((Number(e.rest_seconds) || 60) + 45)), 0);
+  return Math.max(1, Math.round(secs / 60));
+};
+
+const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart, onStats, showDelete = false }) => {
   const { t } = useTranslation('pages');
   const [exercises, setExercises] = useState(() => routineExerciseCache.get(routineId) || []);
   const [loaded, setLoaded] = useState(() => routineExerciseCache.has(routineId));
+  // Tapping a row opens the full exercise info card (video + muscle diagram + cues).
+  const [infoExercise, setInfoExercise] = useState(null);
+  const toInfo = (e) => ({
+    id: e.id, name: e.name, name_es: e.name_es, muscle: e.muscle_group, videoUrl: e.video_url,
+    instructions: e.instructions, instructions_es: e.instructions_es,
+    primary_regions: e.primary_regions, secondary_regions: e.secondary_regions, equipment: e.equipment,
+  });
+
+  // Report count + estimated minutes up so the sheet header can show "8 exercises · ~42 min".
+  useEffect(() => {
+    if (loaded && onStats) onStats({ count: exercises.length, minutes: estimateRoutineMinutes(exercises) });
+  }, [loaded, exercises, onStats]);
 
   useEffect(() => {
     if (routineExerciseCache.has(routineId)) {
@@ -285,7 +327,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => 
     }
     supabase
       .from('routine_exercises')
-      .select('id, position, target_sets, target_reps, rest_seconds, exercises(name, name_es)')
+      .select('id, position, target_sets, target_reps, rest_seconds, exercises(id, name, name_es, muscle_group, video_url, instructions, instructions_es, primary_regions, secondary_regions, equipment)')
       .eq('routine_id', routineId)
       .order('position')
       .then(({ data }) => {
@@ -298,45 +340,102 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => 
   }, [routineId]);
 
   return (
-    <div className="mx-4 mb-2 px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--color-surface-hover)', borderColor: 'var(--color-border-subtle)' }}>
+    <div className="px-3 pt-1 pb-3">
       {!loaded ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => <div key={i} className="h-4 rounded animate-pulse" style={{ backgroundColor: 'var(--color-surface-hover)' }} />)}
+        <div className="space-y-2 py-1">
+          {[1, 2, 3].map(i => <div key={i} className="h-[52px] rounded-[12px] animate-pulse" style={{ backgroundColor: 'var(--color-surface-hover)' }} />)}
         </div>
       ) : exercises.length === 0 ? (
-        <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.noExercisesAddedYet')}</p>
+        <p className="text-[12px] py-2" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.noExercisesAddedYet')}</p>
       ) : (
-        <div className="space-y-1.5">
-          {exercises.map((ex, i) => (
-            <div key={ex.id} className="flex items-center justify-between">
-              <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                <span style={{ color: 'var(--color-text-subtle)' }} className="mr-1.5">{i + 1}.</span>
-                {exName(ex.exercises) || t('workouts.unknown')}
-              </p>
-              <p className="text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
-                {ex.target_sets}×{ex.target_reps}
-              </p>
-            </div>
-          ))}
+        <>
+          {/* "EXERCISES" title + column legend share one aligned baseline, sitting
+              directly on top of the list so they read as one grouped header. */}
+          <div className="flex items-baseline justify-between px-1 mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.exercises')}</span>
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.setsRepsRest', 'Sets × Reps · Rest')}</span>
+          </div>
+        <div style={{ border: '1px solid var(--color-border-subtle)', borderRadius: 16, overflow: 'hidden', backgroundColor: 'var(--color-bg-card)' }}>
+          {exercises.map((ex, i) => {
+            const e = ex.exercises || {};
+            const muscle = e.muscle_group;
+            return (
+              <button key={ex.id} type="button" onClick={() => setInfoExercise(toInfo(e))}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left active:opacity-70 transition-opacity"
+                style={{ borderBottom: i === exercises.length - 1 ? 'none' : '1px solid var(--color-border-subtle)' }}>
+                <span className="w-[15px] text-center text-[12px] font-bold tabular-nums flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{i + 1}</span>
+                <ExerciseVideoThumb exercise={{ videoUrl: e.video_url, muscle }} size={44} radius={11} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[15px] font-semibold truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
+                    {exName(e) || t('workouts.unknown')}
+                  </div>
+                  {muscle && (
+                    <div className="flex items-center gap-1.5 mt-[3px]">
+                      <span style={{ width: 6, height: 6, borderRadius: 3, background: muscleDot(muscle), flexShrink: 0 }} />
+                      <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t(`muscleGroups.${muscle}`, muscle)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-[13px] font-bold tabular-nums" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.3, whiteSpace: 'nowrap' }}>
+                    {ex.target_sets}<span style={{ color: 'var(--color-text-subtle)', margin: '0 1px' }}>×</span>{ex.target_reps}
+                  </span>
+                  {ex.rest_seconds != null && (
+                    <>
+                      <span style={{ width: 1, height: 11, background: 'var(--color-border-subtle)', flexShrink: 0 }} />
+                      <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums" style={{ color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}>
+                        <Clock size={10} strokeWidth={2.4} />{formatRest(ex.rest_seconds)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
+        </>
       )}
-      <div className="flex flex-col gap-2 mt-3 pt-2.5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-        <Link
-          to={`/session/${routineId}`}
-          onClick={onStart}
-          className="w-full flex items-center justify-center py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-[0.98]"
-          style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)' }}
-        >
-          {t('workouts.startWorkout')}
-        </Link>
+      {/* Primary full-width Start, then a 50/50 Edit · Delete row (not a stack). */}
+      <Link
+        to={`/session/${routineId}`}
+        onClick={onStart}
+        className="w-full flex items-center justify-center gap-2 mt-4 py-4 rounded-[15px] text-[15px] font-bold transition-transform active:scale-[0.98]"
+        style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)', boxShadow: '0 6px 16px color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
+      >
+        <Play size={16} fill="currentColor" style={{ marginLeft: -2 }} /> {t('workouts.startWorkout')}
+      </Link>
+      <div className="flex gap-2 mt-2.5">
         <button
           onClick={onEdit}
-          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-semibold transition-colors"
-          style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-hover)' }}
+          className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-[13px] text-[13.5px] font-bold transition-transform active:scale-[0.98]"
+          style={{ color: 'var(--color-text-primary)', backgroundColor: 'var(--color-surface-hover)', border: '1.5px solid var(--color-border-default)' }}
         >
-          <Pencil size={11} /> {t('workouts.edit')}
+          <Pencil size={14} /> {t('workouts.edit')}
         </button>
+        {showDelete && (
+          <button
+            onClick={onDelete}
+            disabled={deletingId === routineId}
+            className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-[13px] text-[13.5px] font-bold transition-transform active:scale-[0.98] disabled:opacity-60"
+            style={{ color: 'var(--color-danger, #DC2626)', backgroundColor: 'color-mix(in srgb, var(--color-danger, #DC2626) 12%, transparent)' }}
+          >
+            <Trash2 size={14} /> {deletingId === routineId ? t('workouts.deleting', 'Deleting…') : t('workouts.deleteRoutine', 'Delete routine')}
+          </button>
+        )}
       </div>
+      {/* Tapped-exercise info card — reuses the library's rich detail modal (video,
+          muscle diagram, cues). Lazy; renders above the routine sheet (z-[10000]). */}
+      {infoExercise && (
+        <Suspense fallback={null}>
+          <ExerciseInfoCard
+            key={infoExercise.id}
+            exercise={infoExercise}
+            modalOnly
+            initiallyOpen
+            onExternalClose={() => setInfoExercise(null)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };
@@ -344,6 +443,82 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart }) => 
 // ── Design tokens ──────────────────────────────────────────
 const TU_DISPLAY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 const TU_ACCENT = 'var(--color-accent, #2EC4C4)';
+
+// ── Program-List (Direction D) visual helpers ──────────────────────────────
+// Decorative per-program gradient cover + week-dot timeline. Gradients are a
+// fixed decorative set cycled by a stable hash of the program id (covers are
+// illustration, not brand — like the meal-card gradients).
+const PROGRAM_GRADIENTS = [
+  ['#E8D3A0', '#C8A254'], ['#BEDCC0', '#7DAE81'], ['#C8D8FF', '#6B8FE8'],
+  ['#E8C4B2', '#CE8A67'], ['#D2C4E8', '#A184CC'], ['#C9CBD1', '#8E9199'],
+];
+const hashSeed = (s) => { let h = 0; const str = String(s || ''); for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); };
+const programGradient = (seed) => PROGRAM_GRADIENTS[hashSeed(seed) % PROGRAM_GRADIENTS.length];
+const ProgramCover = ({ name, seed, size = 52, radius = 14 }) => {
+  const [a, b] = programGradient(seed);
+  return (
+    <div style={{ width: size, height: size, borderRadius: radius, flexShrink: 0, position: 'relative', overflow: 'hidden', background: `linear-gradient(135deg,${a},${b})`, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'absolute', inset: 0, opacity: 0.14, backgroundImage: 'repeating-linear-gradient(135deg,#fff 0 1px,transparent 1px 8px)' }} />
+      <span style={{ fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: size * 0.4, color: 'rgba(255,255,255,0.96)' }}>{(name || '?').trim().charAt(0).toUpperCase() || '?'}</span>
+    </div>
+  );
+};
+// `filled` (bool[] per week) lights specific weeks — used for past-program
+// adherence where trained weeks may be non-contiguous. Without it, the first
+// `done` dots fill (the active hero's forward-progress timeline).
+const WeekDots = ({ weeks, done, active, gradient, size = 9, gap = 5, filled, numbered }) => {
+  const b = (gradient || ['#999', '#666'])[1];
+  const n = Math.max(1, Math.min(weeks || 1, 16));
+  // Empty weeks use a clearly-visible grey (a tint of muted text) so they read
+  // on any surface — the faint surface-hover fill was invisible on the cards.
+  const emptyBg = 'color-mix(in srgb, var(--color-text-muted) 38%, transparent)';
+  return (
+    <div style={{ display: 'flex', gap, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {Array.from({ length: n }).map((_, i) => {
+        const isDone = filled ? !!filled[i] : i < done;
+        const isCur = !filled && i === done && active;
+        const dotStyle = { width: size, height: size, borderRadius: '50%', flexShrink: 0, background: isDone ? b : isCur ? '#fff' : emptyBg, boxShadow: isCur ? `inset 0 0 0 2px ${b}` : 'none' };
+        if (numbered) {
+          return (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <span style={dotStyle} />
+              <span style={{ fontSize: 8, fontWeight: 700, lineHeight: 1, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
+            </div>
+          );
+        }
+        return <span key={i} style={dotStyle} />;
+      })}
+    </div>
+  );
+};
+// App-styled routine row for the program detail (accent tile, display name,
+// exercise count + estimated time). Time comes from the preloaded exercise cache.
+const ProgRoutineRow = ({ r, onOpen, t, schedule }) => {
+  const mins = estimateRoutineMinutes(routineExerciseCache.get(r.id));
+  return (
+    <button type="button" onClick={() => onOpen(r.id)}
+      className="w-full text-left flex items-center gap-3 px-3.5 py-3 rounded-[14px] transition-transform active:scale-[0.99]"
+      style={{ backgroundColor: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+      <div className="w-10 h-10 rounded-[11px] flex items-center justify-center flex-shrink-0" style={{ background: `color-mix(in srgb, ${TU_ACCENT} 14%, transparent)` }}>
+        <Dumbbell size={17} style={{ color: TU_ACCENT }} strokeWidth={2} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)', fontFamily: TU_DISPLAY, letterSpacing: -0.2 }}>{localizeRoutineName(r.name)}</p>
+        <div className="flex items-center gap-2.5 text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+          <span>{r.exerciseCount} {t('workouts.exercises')}</span>
+          {mins ? <span className="inline-flex items-center gap-1"><Clock size={10} />~{mins} {t('dashboard.min', 'min')}</span> : null}
+        </div>
+        {schedule && (
+          <div className="flex items-center gap-1.5 text-[11px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+            <Calendar size={10} className="flex-shrink-0" />
+            <span className="truncate">{schedule.weeksLabel} · {schedule.daysLabel}</span>
+          </div>
+        )}
+      </div>
+      <ChevronRight size={16} className="flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }} />
+    </button>
+  );
+};
 
 // Estimated per-session minute ranges for the "Por Tiempo" browse buckets.
 const TIME_BUCKETS = {
@@ -479,6 +654,10 @@ const Workouts = () => {
   const [startModeChoice, setStartModeChoice] = useState(null); // null | 'choosing' — show start mode modal
   const [startMode, setStartMode] = useState('today'); // 'today' | 'normal'
   const [expandedRoutineId, setExpandedRoutineId] = useState(null);
+  // Estimated minutes for the open routine sheet, reported by RoutineDetail once
+  // its exercises load. Reset per open so it never flashes the prior routine's time.
+  const [detailMinutes, setDetailMinutes] = useState(null);
+  useEffect(() => { setDetailMinutes(null); }, [expandedRoutineId]);
   const [expandedProgramRoutineId, setExpandedProgramRoutineId] = useState(null);
   const [programViewWeek, setProgramViewWeek] = useState(null);
   const [todayCompletedRoutineIds, setTodayCompletedRoutineIds] = useState(new Set());
@@ -790,6 +969,48 @@ const Workouts = () => {
       });
   }, [user?.id, generatedProgram?.program_start, programCompletedDays]);
 
+  // Completed-session timestamps across the member's history (bounded). Powers
+  // the read-only adherence recap on PAST program cards — a past program's
+  // routines are deleted once a newer one supersedes it, but the workout
+  // history survives, so real "workouts done vs planned" is still computable.
+  const [completedSessionTimes, setCompletedSessionTimes] = useState(null); // null = loading
+  useEffect(() => {
+    if (!user?.id) { setCompletedSessionTimes(null); return; }
+    supabase
+      .from('workout_sessions')
+      .select('completed_at')
+      .eq('profile_id', user.id)
+      .eq('status', 'completed')
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false })
+      .limit(1000)
+      .then(({ data }) => {
+        setCompletedSessionTimes((data || []).map(s => new Date(s.completed_at).getTime()).filter(n => Number.isFinite(n)));
+      });
+  }, [user?.id, allPrograms.length]);
+
+  // Adherence for a past program: completed workouts inside its date window vs
+  // planned (routines/week × weeks) + which weeks had ≥1 workout (for the dots).
+  const programAdherence = useCallback((prog) => {
+    const totalWk = getTotalProgramWeeks(prog) || prog.duration_weeks || 6;
+    const planned = (prog.routines_a_count || 0) * totalWk;
+    const weekDone = new Array(totalWk).fill(false);
+    const times = completedSessionTimes;
+    if (!Array.isArray(times)) return { done: 0, planned, pct: null, weekDone, loading: true };
+    const startMs = new Date(prog.program_start).getTime();
+    const endMs = new Date(prog.expires_at).getTime();
+    let done = 0;
+    for (const ms of times) {
+      if (ms >= startMs && ms < endMs) {
+        done++;
+        const wk = Math.floor((ms - startMs) / (7 * 86400000));
+        if (wk >= 0 && wk < totalWk) weekDone[wk] = true;
+      }
+    }
+    const pct = planned > 0 ? Math.min(100, Math.round((done / planned) * 100)) : null;
+    return { done, planned, pct, weekDone, loading: false };
+  }, [completedSessionTimes]);
+
   // Count completed workout days for the **viewing** program week. When the
   // user navigates back via the prev/next buttons in the hero card, the
   // "X/Y sessions" label needs to reflect that week's history, not the
@@ -934,6 +1155,53 @@ const Workouts = () => {
     if (existing && liveRoutineIds.has(existing) && !liveRoutineIds.has(rid)) continue;
     routineIdByNormalDow[key] = rid;
   }
+
+  // Which weeks + days a routine is programmed for — surfaced on the program's
+  // routine rows so the plan's cadence is visible ("Weeks 1,3,5 · Mon · Thu").
+  // Days come from the steady-state DOW→index map; weeks from A/B variant parity
+  // (odd weeks = variant A, even = B) or "every week" for single-variant plans.
+  // Only the active program renders a routine list, so schedMap (which drives
+  // normalDowToIdx) always matches the routines being labeled.
+  const routineScheduleLabel = (routineId) => {
+    const A = Array.isArray(schedMap?.routine_ids_a) ? schedMap.routine_ids_a : [];
+    const B = Array.isArray(schedMap?.routine_ids_b) ? schedMap.routine_ids_b : [];
+    const hasVar = A.length > 0 && B.length > 0;
+    let idx = -1, parity = 'all';
+    if (hasVar) {
+      const inA = A.includes(routineId), inB = B.includes(routineId);
+      if (inA && inB) { idx = A.indexOf(routineId); parity = 'all'; }
+      else if (inA) { idx = A.indexOf(routineId); parity = 'odd'; }
+      else if (inB) { idx = B.indexOf(routineId); parity = 'even'; }
+    } else {
+      const ids = Array.isArray(schedMap?.routine_ids) ? schedMap.routine_ids : [];
+      idx = ids.indexOf(routineId);
+    }
+    let days = idx >= 0
+      ? Object.entries(normalDowToIdx).filter(([, ri]) => ri === idx).map(([d]) => Number(d)).sort((a, b) => a - b)
+      : [];
+    if (days.length === 0) {
+      const dm = Object.entries(workoutScheduleMap).filter(([rid]) => rid === routineId).map(([, dow]) => Number(dow));
+      if (dm.length) days = [...new Set(dm)].sort((a, b) => a - b);
+    }
+    if (days.length === 0) return null;
+    const DOW = [
+      t('days.sun', { ns: 'common' }), t('days.mon', { ns: 'common' }), t('days.tue', { ns: 'common' }),
+      t('days.wed', { ns: 'common' }), t('days.thu', { ns: 'common' }), t('days.fri', { ns: 'common' }), t('days.sat', { ns: 'common' }),
+    ];
+    const daysLabel = days.map(d => DOW[d]).filter(Boolean).join(' · ');
+    const N = totalProgramWeeks || 6;
+    let weeksLabel;
+    if (parity === 'all') {
+      weeksLabel = t('workouts.everyWeek', 'Every week');
+    } else {
+      const list = [];
+      for (let w = (parity === 'odd' ? 1 : 2); w <= N; w += 2) list.push(w);
+      weeksLabel = list.length > 1
+        ? t('workouts.weeksList', { list: list.join(', '), defaultValue: `Weeks ${list.join(', ')}` })
+        : t('workouts.weekXOfY', { current: list[0] || 1, total: N });
+    }
+    return { daysLabel, weeksLabel };
+  };
 
   // Get routines for a specific week, with correct DOW labels per week.
   //
@@ -2415,20 +2683,10 @@ const Workouts = () => {
                 {allPrograms.length > 0 && (
                   <button
                     onClick={() => setProgramSelectMode(true)}
-                    className="px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold whitespace-nowrap"
-                    style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 min-h-[44px] rounded-full text-[12px] font-bold whitespace-nowrap transition-transform active:scale-95"
+                    style={{ color: 'var(--color-text-primary)', background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-default)' }}
                   >
-                    {t('workouts.select', 'Select')}
-                  </button>
-                )}
-                {programActive && generatedProgram && (
-                  <button
-                    onClick={() => { setBuilderProgram(generatedProgram); setShowBuilder(true); }}
-                    className="flex items-center gap-1 px-2.5 py-1 min-h-[44px] rounded-full text-[12px] font-bold transition-colors whitespace-nowrap"
-                    style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
-                  >
-                    <Pencil size={12} strokeWidth={2.4} />
-                    {t('workouts.editProgram', 'Edit')}
+                    <CheckCircle2 size={12} strokeWidth={2.4} />{t('workouts.select', 'Select')}
                   </button>
                 )}
                 <button
@@ -2463,6 +2721,99 @@ const Workouts = () => {
           </div>
         )}
 
+        {/* Active-program hero (Program-List / Direction D) — gradient header,
+            stat readouts, week timeline, up-next Continue, routine chips. */}
+        {programActive && generatedProgram && (() => {
+          const prog = generatedProgram;
+          const wk = getCurrentWeekClamped(prog);
+          const totalWk = getTotalProgramWeeks(prog) || 6;
+          const totalDays = totalWk * 7;
+          const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), totalDays);
+          const pct = Math.round((daysElapsed / totalDays) * 100);
+          const routineObjs = [...activeProgramRoutineIds].map(id => routines.find(r => r.id === id)).filter(Boolean);
+          // Prefer this week's actually-scheduled routines (the same resolution the
+          // program-detail rows use) so "up next" + chips always open real routine
+          // info; fall back to the full set on a rest week.
+          const weekRoutines = (thisWeekRoutines && thisWeekRoutines.length) ? thisWeekRoutines : routineObjs;
+          const routineNames = weekRoutines.map(r => localizeRoutineName(r.name));
+          const nextRoutine = weekRoutines[0];
+          const nRoutines = routineObjs.length || prog.routines_a_count || 0;
+          return (
+            <div className="rounded-[22px] overflow-hidden mb-5" style={{ boxShadow: '0 12px 34px rgba(20,16,10,0.14)' }}>
+              <div className="relative px-6 pt-5 pb-4" style={{ background: 'linear-gradient(135deg, var(--color-accent), var(--color-accent-dark, color-mix(in srgb, var(--color-accent) 68%, #000)))' }}>
+                <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.12, backgroundImage: 'repeating-linear-gradient(135deg,#fff 0 1px,transparent 1px 10px)' }} />
+                <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
+                  <button onClick={() => { setBuilderProgram(prog); setShowBuilder(true); }} aria-label={t('workouts.editProgram', 'Edit')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-bold active:scale-95 transition-transform"
+                    style={{ background: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 20%, transparent)', color: 'var(--color-text-on-accent, #fff)' }}>
+                    <Pencil size={13} />{t('workouts.editProgram', 'Edit')}
+                  </button>
+                  <button onClick={() => { loadExerciseNames(); openMyProgram(prog); }} aria-label={t('workouts.programInfo', 'Program info')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-bold active:scale-95 transition-transform"
+                    style={{ background: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 20%, transparent)', color: 'var(--color-text-on-accent, #fff)' }}>
+                    <Info size={13} />{t('workouts.programInfo', 'Program info')}
+                  </button>
+                </div>
+                <div className="relative text-[11px] font-extrabold uppercase" style={{ letterSpacing: '0.14em', color: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 74%, transparent)' }}>{t('workouts.active')}</div>
+                <div className="relative mt-1 truncate pr-44" style={{ fontFamily: TU_DISPLAY, fontSize: 26, fontWeight: 800, letterSpacing: -0.5, color: 'var(--color-text-on-accent, #fff)', lineHeight: 1.08 }}>{t('workouts.programSuffix', { name: gpName(prog) })}</div>
+              </div>
+              <div className="px-6 pt-5 pb-5" style={{ background: 'var(--color-bg-card)' }}>
+                <div className="flex gap-6 mb-5">
+                  {[
+                    { l: t('workouts.week', 'Week'), v: `${wk}/${totalWk}`, c: '#10B981' },
+                    { l: t('workouts.routines', 'Routines'), v: String(nRoutines), c: 'var(--color-text-primary)' },
+                    { l: t('workouts.complete', 'Complete'), v: `${pct}%`, c: '#10B981' },
+                  ].map((s, i) => (
+                    <div key={i}>
+                      <div style={{ fontFamily: TU_DISPLAY, fontSize: 22, fontWeight: 800, color: s.c, lineHeight: 1 }}>{s.v}</div>
+                      <div className="text-[10.5px] font-bold uppercase mt-1" style={{ letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mb-5">
+                  <div className="text-[10.5px] font-bold uppercase mb-2.5 tabular-nums" style={{ letterSpacing: '0.08em', color: 'var(--color-text-muted)' }}>{t('workouts.weekTimeline', { count: totalWk, defaultValue: `${totalWk}-week timeline` })}</div>
+                  <WeekDots weeks={totalWk} done={Math.max(0, wk - 1)} active gradient={['var(--color-accent)', 'var(--color-accent)']} size={11} gap={6} />
+                </div>
+                {/* Up next — tap the row for that routine's info; Continue starts it. */}
+                <div className="w-full flex items-center gap-3 rounded-[14px] px-4 py-3.5 mb-4" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                  <button onClick={() => nextRoutine && setExpandedRoutineId(nextRoutine.id)} className="flex items-center gap-3.5 flex-1 min-w-0 text-left active:opacity-70 transition-opacity" aria-label={t('workouts.viewRoutine', 'View routine')}>
+                    <div className="w-11 h-11 rounded-[12px] flex items-center justify-center flex-shrink-0" style={{ background: `color-mix(in srgb, ${TU_ACCENT} 14%, transparent)` }}>
+                      <Dumbbell size={22} style={{ color: TU_ACCENT }} strokeWidth={1.9} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '0.1em', color: 'var(--color-text-muted)' }}>{t('workouts.upNext', 'Up next')}</div>
+                      <div className="text-[15px] font-bold truncate mt-0.5" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{routineNames[0] || t('workouts.nextWorkout', 'Next workout')}</div>
+                    </div>
+                  </button>
+                  {nextRoutine ? (
+                    <Link to={`/session/${nextRoutine.id}`} onClick={() => posthog?.capture('program_continue', { program: prog.split_type })}
+                      className="inline-flex items-center gap-1.5 flex-shrink-0 px-3.5 py-2 rounded-[12px] text-[13px] font-bold active:scale-95 transition-transform"
+                      style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #000)', boxShadow: `0 4px 12px color-mix(in srgb, ${TU_ACCENT} 30%, transparent)` }}>
+                      <Play size={14} fill="currentColor" />{t('workouts.continue', 'Continue')}
+                    </Link>
+                  ) : (
+                    <button onClick={() => { loadExerciseNames(); openMyProgram(prog); }} className="inline-flex items-center gap-1.5 flex-shrink-0 px-3.5 py-2 rounded-[12px] text-[13px] font-bold active:scale-95" style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #000)' }}>
+                      <Play size={14} fill="currentColor" />{t('workouts.continue', 'Continue')}
+                    </button>
+                  )}
+                </div>
+                {weekRoutines.length > 0 && (
+                  <div className="flex gap-2 flex-wrap">
+                    {weekRoutines.slice(0, 6).map((r) => (
+                      <button key={r.id} onClick={() => setExpandedRoutineId(r.id)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-transform"
+                        style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: TU_ACCENT }} />
+                        {localizeRoutineName(r.name)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {allPrograms.length === 0 ? (
           <div className="rounded-2xl py-12 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
             <Zap size={28} className="mx-auto mb-3" style={{ color: 'var(--color-text-subtle)' }} />
@@ -2484,90 +2835,55 @@ const Workouts = () => {
               // pushed back during regenerate stay labeled "completed/
               // unfinished" so the list can't show two active programs.
               const isActive = prog.id === generatedProgram?.id && new Date(prog.expires_at) > new Date();
+              // The active program is shown in full as the hero above; keep the
+              // list to PAST programs only so it isn't rendered twice.
+              if (isActive) return null;
               const progTotalWeeks = getTotalProgramWeeks(prog) || 6;
-              const weekNum = isActive ? getCurrentWeekClamped(prog) : progTotalWeeks;
-              const totalDays = progTotalWeeks * 7;
-              const daysElapsed = Math.min(Math.floor((new Date() - new Date(prog.program_start)) / 86400000), totalDays);
-              const progress = Math.round((daysElapsed / totalDays) * 100);
               const selected = selectedProgramIds.has(prog.id);
+              const adh = programAdherence(prog);
 
+              // Past programs are a read-only record — their routines are deleted
+              // once a newer program supersedes them, so no edit/resume. We show
+              // real adherence (workouts done vs planned) + which weeks were trained.
               return (
-                <div key={prog.id} className="relative rounded-2xl transition-colors duration-200 group" style={{
-                  backgroundColor: isActive ? 'color-mix(in srgb, #10B981 10%, var(--color-surface-hover))' : 'var(--color-surface-hover)',
-                  border: isActive
-                    ? '1px solid color-mix(in srgb, #10B981 40%, transparent)'
-                    : (programSelectMode && selected ? '1px solid var(--color-accent)' : '1px solid transparent'),
+                <div key={prog.id} className="relative rounded-2xl p-5 pr-14" style={{
+                  backgroundColor: 'var(--color-surface-hover)',
+                  border: programSelectMode && selected ? '1px solid var(--color-accent)' : '1px solid var(--color-border-default)',
                 }}>
-                  <button onClick={() => {
-                    if (programSelectMode) { if (!isActive) toggleProgramSel(prog.id); return; }
-                    loadExerciseNames(); openMyProgram(prog);
-                  }} className="w-full text-left p-5" aria-label={`View program: ${gpName(prog)}`}>
-                    <div className="flex items-center justify-between mb-2.5">
-                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                        <p className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                          {t('workouts.programSuffix', { name: gpName(prog) })}
-                        </p>
-                        {isActive && (
-                          <span className="text-[9px] font-bold text-[#10B981] bg-[#10B981]/10 px-2 py-0.5 rounded-full flex-shrink-0">{t('workouts.active')}</span>
-                        )}
-                        {!isActive && (
-                          <span className={`text-[9px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${progress >= 95 ? '' : 'text-amber-400 bg-amber-500/10'}`} style={progress >= 95 ? { color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' } : undefined}>
-                            {progress >= 95 ? t('workouts.completed') : t('workouts.unfinished')}
-                          </span>
-                        )}
+                  <p className="text-[15px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    {t('workouts.programSuffix', { name: gpName(prog) })}
+                  </p>
+                  <p className="text-[11px] mt-0.5 flex items-center gap-1.5 flex-wrap" style={{ color: 'var(--color-text-subtle)' }}>
+                    <span className="inline-flex items-center gap-1"><Calendar size={10} />{t('workouts.weekProgram', { count: progTotalWeeks })}</span>
+                    {!adh.loading && adh.planned > 0 && <span>· {t('workouts.workoutsDoneOfPlanned', { done: adh.done, planned: adh.planned, defaultValue: `${adh.done} of ${adh.planned} workouts` })}</span>}
+                  </p>
+                  <div className="flex items-end justify-between gap-3 mt-3.5">
+                    <div className="min-w-0">
+                      <WeekDots weeks={progTotalWeeks} filled={adh.weekDone} gradient={['var(--color-accent)', 'var(--color-accent)']} size={10} gap={6} numbered />
+                    </div>
+                    {!adh.loading && adh.pct != null && (
+                      <div className="flex items-baseline gap-1 flex-shrink-0">
+                        <span style={{ fontFamily: TU_DISPLAY, fontSize: 22, fontWeight: 800, lineHeight: 1, color: adh.pct >= 80 ? '#10B981' : 'var(--color-text-primary)' }}>{adh.pct}%</span>
+                        <span className="text-[9px] font-bold uppercase" style={{ letterSpacing: '0.05em', color: 'var(--color-text-muted)' }}>{t('workouts.complete', 'Complete')}</span>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] mb-3" style={{ color: 'var(--color-text-subtle)' }}>
-                      <span className="flex items-center gap-1"><Calendar size={10} /> {t('workouts.weekProgram', { count: progTotalWeeks })}</span>
-                      <span>{isActive ? t('workouts.weekXOfY', { current: weekNum, total: progTotalWeeks }) : t('workouts.finished')}</span>
-                      {prog.routines_a_count > 0 && <span>{t('workouts.routinesCount', { count: prog.routines_a_count })}</span>}
-                    </div>
-                    <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
-                      <div
-                        className={`h-full rounded-full transition-all ${isActive ? 'bg-[#10B981]' : ''}`}
-                        style={{ width: `${progress}%`, ...(!isActive ? { backgroundColor: 'var(--color-text-subtle)' } : {}) }}
-                      />
-                    </div>
-                  </button>
-                  {/* Reactivate (resume) past program — pick up at the
-                       calendar week the user was on when it expired.
-                       Hidden for the canonical active program and for
-                       legacy rows without persisted routine_ids. */}
-                  {!programSelectMode && !isActive && (prog.schedule_map?.routine_ids?.length > 0) && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setReactivateConfirm(prog);
-                      }}
-                      className="absolute top-3 right-12 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[#10B981]/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                      style={{ backgroundColor: 'var(--color-surface-hover)', color: '#10B981' }}
-                      aria-label={t('workouts.ariaReactivateProgram', 'Resume program')}
-                    >
-                      <RotateCcw size={13} />
-                    </button>
+                    )}
+                  </div>
+                  {/* Whole-card tap toggles selection in multi-select mode. */}
+                  {programSelectMode && (
+                    <button onClick={() => toggleProgramSel(prog.id)} className="absolute inset-0 rounded-2xl" aria-label={t('workouts.select', 'Select')} />
                   )}
-                  {/* Delete program (single) — hidden in multi-select mode */}
-                  {!programSelectMode && (
+                  {!programSelectMode ? (
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive });
-                      }}
-                      className="absolute top-3 right-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-lg flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                      style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+                      onClick={(e) => { e.stopPropagation(); setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive: false }); }}
+                      className="absolute top-3 right-3 min-w-[40px] min-h-[40px] w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                      style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger, #DC2626) 12%, transparent)', color: 'var(--color-danger, #DC2626)' }}
                       aria-label={t('workouts.ariaDeleteProgram', 'Delete program')}
                     >
                       <Trash2 size={13} />
                     </button>
-                  )}
-                  {/* Multi-select checkbox / lock (active program can't be deleted) */}
-                  {programSelectMode && (
-                    <span className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center pointer-events-none" style={{ background: 'var(--color-surface-hover)' }}>
-                      {isActive
-                        ? <Lock size={15} style={{ color: 'var(--color-text-subtle)' }} />
-                        : selected
-                          ? <CheckCircle2 size={19} style={{ color: 'var(--color-accent)' }} />
-                          : <Circle size={19} style={{ color: 'var(--color-text-subtle)' }} />}
+                  ) : (
+                    <span className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full flex items-center justify-center pointer-events-none" style={{ background: 'var(--color-bg-card)' }}>
+                      {selected ? <CheckCircle2 size={19} style={{ color: 'var(--color-accent)' }} /> : <Circle size={19} style={{ color: 'var(--color-text-subtle)' }} />}
                     </span>
                   )}
                 </div>
@@ -2917,29 +3233,20 @@ const Workouts = () => {
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               <div className="mb-5">
                 <h2 className="text-[24px] font-bold tracking-tight leading-tight" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(routine.name)}</h2>
-                <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                  {routine.exerciseCount} {t('workouts.exercises')}
-                </p>
+                <div className="flex items-center gap-3.5 text-[12.5px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                  <span className="inline-flex items-center gap-1.5"><Dumbbell size={13} strokeWidth={2} />{routine.exerciseCount} {t('workouts.exercises')}</span>
+                  {detailMinutes ? <span className="inline-flex items-center gap-1.5"><Clock size={13} strokeWidth={2} />~{detailMinutes} {t('dashboard.min', 'min')}</span> : null}
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.exercises')}</p>
-                <RoutineDetail
-                  routineId={routine.id}
-                  onEdit={() => { setExpandedRoutineId(null); navigate(`/workouts/${routine.id}/edit`); }}
-                  onDelete={(e) => handleDelete(e, routine.id)}
-                  deletingId={deletingId}
-                  onStart={() => { posthog?.capture('routine_started', { routine_name: routine.name }); setExpandedRoutineId(null); }}
-                />
-              </div>
-            </div>
-            <div className="shrink-0 px-6 pt-4 pb-5" style={{ background: 'linear-gradient(to top, var(--color-bg-secondary), var(--color-bg-secondary), transparent)' }}>
-              <button
-                onClick={(e) => { handleDelete(e, routine.id); setExpandedRoutineId(null); }}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors"
-                disabled={deletingId === routine.id}
-              >
-                {deletingId === routine.id ? t('workouts.deleting', 'Deleting...') : t('workouts.deleteRoutine', 'Delete routine')}
-              </button>
+              <RoutineDetail
+                routineId={routine.id}
+                onEdit={() => { setExpandedRoutineId(null); navigate(`/workouts/${routine.id}/edit`); }}
+                onDelete={(e) => { handleDelete(e, routine.id); setExpandedRoutineId(null); }}
+                deletingId={deletingId}
+                onStart={() => { posthog?.capture('routine_started', { routine_name: routine.name }); setExpandedRoutineId(null); }}
+                onStats={({ minutes }) => setDetailMinutes(minutes)}
+                showDelete
+              />
             </div>
           </div>
         </div>
@@ -3046,20 +3353,7 @@ const Workouts = () => {
                   {programRoutines.length > 0 ? (
                     <div className="space-y-2">
                       {programRoutines.map(r => (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => setExpandedRoutineId(r.id)}
-                          className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl transition-colors group"
-                          style={{ backgroundColor: 'var(--color-surface-hover)', border: 'none', cursor: 'pointer' }}
-                        >
-                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}><Dumbbell size={14} style={{ color: 'var(--color-text-muted)' }} /></div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(r.name)}</p>
-                            <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{r.exerciseCount} {t('workouts.exercises')}</p>
-                          </div>
-                          <ChevronRight size={14} className="transition-colors" style={{ color: 'var(--color-text-subtle)' }} />
-                        </button>
+                        <ProgRoutineRow key={r.id} r={r} onOpen={setExpandedRoutineId} t={t} schedule={routineScheduleLabel(r.id)} />
                       ))}
                     </div>
                   ) : (
@@ -3077,20 +3371,7 @@ const Workouts = () => {
                   <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.thisWeeksRoutines')}</p>
                   <div className="space-y-2">
                     {programRoutines.map(r => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setExpandedRoutineId(r.id)}
-                        className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl transition-colors group"
-                        style={{ backgroundColor: 'var(--color-surface-hover)', border: 'none', cursor: 'pointer' }}
-                      >
-                        <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}><Dumbbell size={14} style={{ color: 'var(--color-text-muted)' }} /></div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{localizeRoutineName(r.name)}</p>
-                          <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{r.exerciseCount} {t('workouts.exercises')}</p>
-                        </div>
-                        <ChevronRight size={14} className="transition-colors" style={{ color: 'var(--color-text-subtle)' }} />
-                      </button>
+                      <ProgRoutineRow key={r.id} r={r} onOpen={setExpandedRoutineId} t={t} schedule={routineScheduleLabel(r.id)} />
                     ))}
                   </div>
                 </div>

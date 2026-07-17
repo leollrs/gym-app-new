@@ -1217,7 +1217,7 @@ const DailyChallenge = ({ userId, gymId, t }) => {
             .from('check_ins')
             .select('id', { count: 'exact', head: true })
             .eq('profile_id', userId)
-            .gte('created_at', todayStart);
+            .gte('checked_in_at', todayStart);
           value = count ?? 0;
 
         } else if (challenge.metric === 'pr') {

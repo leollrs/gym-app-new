@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Check, Heart, RefreshCw, Sparkles, ScanLine, Search, Sunrise, Sun, Moon, Apple } from 'lucide-react';
+import { X, Check, Heart, RefreshCw, ScanLine, Search, Sunrise, Sun, Moon, Apple } from 'lucide-react';
 import { getFoodImage } from '../../lib/foodImages';
 import { foodImageUrl } from '../../lib/imageUrl';
 
@@ -117,9 +117,10 @@ export default function FoodScanResultModal({
   const [mealType, setMealType] = useState('snack');
   const [saving, setSaving] = useState(false);
   const [favLocal, setFavLocal] = useState(isFavorite);
+  const [imgBroken, setImgBroken] = useState(false);
 
   useEffect(() => { setFavLocal(isFavorite); }, [isFavorite]);
-  useEffect(() => { setServings(1); setMealType('snack'); }, [food?.name]);
+  useEffect(() => { setServings(1); setMealType('snack'); setImgBroken(false); }, [food?.name]);
 
   // Body scroll lock
   useEffect(() => {
@@ -181,12 +182,14 @@ export default function FoodScanResultModal({
     try { await onToggleFavorite(food); } catch { setFavLocal(!next); }
   };
 
-  const SourceIcon = source === 'barcode' ? ScanLine : source === 'ai' ? Sparkles : Search;
-  const sourceColor = source === 'ai' ? TU.coach : TU.accent;
+  // No AI branding — "AI" reads as gimmicky to gym members. A photo estimate is
+  // just labeled "Estimated"; barcode/search keep their neutral labels.
+  const SourceIcon = source === 'barcode' ? ScanLine : Search;
+  const sourceColor = TU.accent;
   const sourceLabel = source === 'barcode'
     ? t('nutrition.scannedProduct', 'Scanned product')
     : source === 'ai'
-      ? t('nutrition.aiIdentified', 'AI identified')
+      ? t('nutrition.estimatedEntry', 'Estimated')
       : t('nutrition.foodDetail', 'Food detail');
 
   return createPortal(
@@ -207,8 +210,8 @@ export default function FoodScanResultModal({
       >
         {/* Header */}
         <div className="flex items-center gap-3.5 px-5 pt-3 pb-4" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          {imgUrl ? (
-            <img src={imgUrl} alt={displayName} className="w-[64px] h-[64px] rounded-[18px] object-cover flex-shrink-0"
+          {imgUrl && !imgBroken ? (
+            <img src={imgUrl} alt={displayName} onError={() => setImgBroken(true)} className="w-[64px] h-[64px] rounded-[18px] object-cover flex-shrink-0"
                  style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
           ) : (
             <FoodTile name={displayName} size={64} seed={seed} />
@@ -276,22 +279,22 @@ export default function FoodScanResultModal({
                   style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }} aria-label={t('nutrition.increaseServings', 'Increase servings')}>+</button>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2.5">
+            {/* Macro proportion line + inline numbers — matches the app card style */}
+            <div className="flex rounded-full overflow-hidden mb-2.5" style={{ height: 8, gap: 1.5, background: 'var(--color-surface-hover, rgba(0,0,0,0.06))' }}>
+              <div style={{ flex: (pro || 0) + 0.001, background: TU.macroP, borderRadius: 999 }} />
+              <div style={{ flex: (carb || 0) + 0.001, background: TU.macroC, borderRadius: 999 }} />
+              <div style={{ flex: (fat || 0) + 0.001, background: TU.macroF, borderRadius: 999 }} />
+            </div>
+            <div className="flex items-center justify-between">
               {[
                 { l: t('nutrition.protein'), v: pro, c: TU.macroP },
-                // Short "Carbs" label avoids overflow when Spanish locale would
-                // otherwise expand to "Carbohidratos" and clip the chip.
-                { l: t('nutrition.carbsChip', 'Carbs'),   v: carb, c: TU.macroC },
-                { l: t('nutrition.fat'),     v: fat, c: TU.macroF },
+                { l: t('nutrition.carbsChip', 'Carbs'), v: carb, c: TU.macroC },
+                { l: t('nutrition.fat'), v: fat, c: TU.macroF },
               ].map(m => (
-                <div key={m.l} className="rounded-[12px] p-2.5 min-w-0" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
-                  <div className="flex items-center gap-1.5 mb-1 min-w-0">
-                    <div className="w-1.5 h-1.5 rounded-sm flex-shrink-0" style={{ background: m.c }} />
-                    <span className="text-[10px] font-bold uppercase truncate" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>{m.l}</span>
-                  </div>
-                  <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.6, lineHeight: 1 }}>
-                    {m.v}<span className="text-[11px] font-medium ml-0.5" style={{ color: 'var(--color-text-muted)' }}>g</span>
-                  </div>
+                <div key={m.l} className="flex items-center gap-1.5 min-w-0">
+                  <div className="w-1.5 h-1.5 rounded-sm flex-shrink-0" style={{ background: m.c }} />
+                  <span style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{m.v}<span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>g</span></span>
+                  <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.04em' }}>{m.l}</span>
                 </div>
               ))}
             </div>

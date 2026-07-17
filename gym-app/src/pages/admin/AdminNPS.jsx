@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -178,20 +179,26 @@ export default function AdminNPS() {
   const { data: responses, isLoading: responsesLoading } = useQuery({
     queryKey: responsesKey,
     queryFn: async () => {
-      let query = supabase
-        .from('nps_responses')
-        .select('id, score, feedback, created_at, profile_id, profiles:profile_id(full_name, avatar_url, avatar_type, avatar_value)')
-        .eq('gym_id', gymId)
-        .eq('survey_id', selectedSurveyId)
-        .gte('score', 1)
-        .order('created_at', { ascending: false })
-        .limit(1000);
+      let since = null;
       if (appliedDays) {
-        const since = new Date();
-        since.setDate(since.getDate() - appliedDays);
-        query = query.gte('created_at', since.toISOString());
+        const d = new Date();
+        d.setDate(d.getDate() - appliedDays);
+        since = d.toISOString();
       }
-      const { data, error } = await query;
+      // Page all responses — .limit(1000) is clamped by max_rows, so the NPS
+      // score / promoter-passive-detractor split / response rate were computed
+      // off a truncated sample. Rebuild per page (builders aren't re-runnable).
+      const { data, error } = await selectAllRows((from, to) => {
+        let q = supabase
+          .from('nps_responses')
+          .select('id, score, feedback, created_at, profile_id, profiles:profile_id(full_name, avatar_url, avatar_type, avatar_value)')
+          .eq('gym_id', gymId)
+          .eq('survey_id', selectedSurveyId)
+          .gte('score', 1)
+          .order('created_at', { ascending: false });
+        if (since) q = q.gte('created_at', since);
+        return q.range(from, to);
+      });
       if (error) throw error;
       return data || [];
     },
@@ -219,12 +226,12 @@ export default function AdminNPS() {
   const { data: surveyScores = [] } = useQuery({
     queryKey: ['admin', 'nps', gymId, 'survey-scores'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await selectAllRows((from, to) => supabase
         .from('nps_responses')
         .select('survey_id, score')
         .eq('gym_id', gymId)
         .gte('score', 1)
-        .limit(5000);
+        .range(from, to));
       if (error) throw error;
       return data || [];
     },

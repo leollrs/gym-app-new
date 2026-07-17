@@ -68,6 +68,35 @@ Deno.serve(async (req) => {
   // Service-role client for trusted lookups
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // ── Rate limit ─────────────────────────────────────────────
+  // Gate the 3-4 sequential DB round-trips below behind a per-caller cap so
+  // this endpoint can't be hammered. Generous (a member re-opening their reward
+  // QR is normal). Fail-OPEN on infra error — unlike the paid AI endpoints,
+  // blocking a member from their own QR on a transient error is worse than the
+  // rare abuse it would prevent.
+  try {
+    const RATE_LIMIT = 60; // per hour
+    const ENDPOINT = 'reward-qr';
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { error: rlErr } = await supabase.from('ai_rate_limits').insert({ profile_id: callerId, endpoint: ENDPOINT });
+    if (!rlErr) {
+      const { count } = await supabase
+        .from('ai_rate_limits')
+        .select('*', { count: 'exact', head: true })
+        .eq('profile_id', callerId)
+        .eq('endpoint', ENDPOINT)
+        .gte('created_at', oneHourAgo);
+      if ((count ?? 0) > RATE_LIMIT) {
+        return new Response(renderError('Too many requests. Try again later.'), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      }
+    }
+  } catch (rlEx) {
+    console.error('reward-qr rate-limit check failed (proceeding):', rlEx);
+  }
+
   // Look up the redemption
   const { data: redemption, error } = await supabase
     .from('reward_redemptions')
@@ -176,7 +205,13 @@ Deno.serve(async (req) => {
   const rawPayload = `gym-reward:${redemption.gym_id}:${redemption.profile_id}:${redemption.id}`;
   const timestamped = rawPayload + ':' + Date.now();
   const sig = await hmacSign(timestamped);
-  const qrValue = timestamped + ':' + sig;
+  // Signature MUST be joined with '|' (not ':') — the scanner (scanRouter.js)
+  // splits the signed payload on the last '|' as `payload:timestamp|signature`.
+  // Joining with ':' produced `gym-reward:...:sig` with no '|', which the router
+  // treated as an unsigned/failed QR and rejected ("Invalid QR — please refresh
+  // in the app"), so every emailed win-back reward QR was categorically
+  // unscannable. Check-in QRs already use '|' correctly.
+  const qrValue = timestamped + '|' + sig;
 
   const gymName = gym?.name || 'Your Gym';
   const format = url.searchParams.get('format');

@@ -9,7 +9,8 @@
  */
 
 import { supabase } from './supabase';
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { INJURY_EXCLUSIONS } from './exerciseConstants';
 
 // ── Muscle group classification ─────────────────────────────────────────────

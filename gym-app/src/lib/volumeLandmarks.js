@@ -20,7 +20,8 @@
 // counts as one chest set, not ~2 from hitting upper+mid+lower chest.
 // -----------------------------------------------------------------------------
 
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { GROUP_TO_REGIONS } from './muscleBuckets';
 
 // Weekly working-set landmarks for an INTERMEDIATE lifter. Group taxonomy

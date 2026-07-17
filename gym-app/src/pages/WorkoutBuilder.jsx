@@ -3,11 +3,13 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Plus, Trash2, Dumbbell,
-  ChevronRight, RotateCcw, Link2, Unlink, ArrowLeftRight, GripVertical
+  ChevronRight, RotateCcw, Link2, Unlink, ArrowLeftRight, GripVertical, X
 } from 'lucide-react';
 import ExerciseLibrary from './ExerciseLibrary';
+import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 import LazyVideoTile from '../components/LazyVideoTile';
-import { getExerciseById, exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises, getExerciseById } from '../lib/exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { getSwapMatchScore, filterByReason } from '../lib/swapMatchScore';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -95,11 +97,29 @@ function useDragSort(ids, onReorder) {
   return { dragId: drag?.id ?? null, draggedTranslate, start: h.current.start };
 }
 
+// Muscle-group tint for the row thumbnail (Iron Frame palette — fixed semantic
+// colors like the macro colors, not the gym's brand accent).
+const MUSCLE_TINT = {
+  Chest: '#B85E3C', Back: '#3C77A2', Shoulders: '#B0842A', Biceps: '#7E5AB8',
+  Triceps: '#B0577E', Legs: '#4C8551', Hamstrings: '#5B8A6B', Glutes: '#B0577E',
+  Core: '#4F8A9E', Calves: '#4C8551', Forearms: '#B0842A', Traps: '#3C77A2',
+  Arms: '#7E5AB8', 'Full Body': '#6B655B',
+};
+const muscleTint = (m) => MUSCLE_TINT[m] || '#9C968A';
+const MuscleThumb = ({ muscle, size = 36 }) => {
+  const tint = muscleTint(muscle);
+  return (
+    <div style={{ width: size, height: size, borderRadius: 10, flexShrink: 0, background: `${tint}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ width: 8, height: 8, borderRadius: 4, background: tint }} />
+    </div>
+  );
+};
+
 const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap, onGripDown, isSelected, onToggleSelect, t, primaryGoal }) => {
   if (!exercise) return null;
 
   return (
-    <div className={`rounded-2xl overflow-hidden transition-colors duration-200 ${isSelected ? 'ring-1 ring-[#D4AF37]/50' : ''}`} style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+    <div className="rounded-2xl overflow-hidden transition-colors duration-200" style={{ background: 'var(--color-bg-card)', boxShadow: isSelected ? '0 0 0 1.5px color-mix(in srgb, var(--color-accent) 55%, transparent), 0 1px 3px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04)' }}>
       {/* Top: drag handle + name + actions — all 44px touch targets */}
       <div className="flex items-center gap-2 px-5 py-3">
         {/* Drag handle — grab to reorder (replaces the up/down arrows) */}
@@ -119,11 +139,12 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap,
           aria-label={isSelected ? t('workoutBuilder.ariaDeselect', 'Deselect exercise') : t('workoutBuilder.ariaSelect', 'Select exercise')}
           className="w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors"
           style={isSelected
-            ? { background: '#D4AF37', borderColor: '#D4AF37', color: 'var(--color-text-on-accent,#000)' }
+            ? { background: 'var(--color-accent)', borderColor: 'var(--color-accent)', color: 'var(--color-text-on-accent,#000)' }
             : { borderColor: 'color-mix(in srgb, var(--color-accent) 60%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
         >
           {isSelected && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
         </button>
+        <ExerciseVideoThumb exercise={{ videoUrl: exercise.videoUrl, muscle: exercise.muscle }} size={40} radius={11} />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[15px] truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(exercise)}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -141,7 +162,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap,
           <button
             onClick={() => onSwap(index)}
             aria-label={t('workoutBuilder.ariaSwap', 'Swap exercise')}
-            className="w-11 h-11 flex items-center justify-center hover:text-[#D4AF37] transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
+            className="w-11 h-11 flex items-center justify-center hover:text-[var(--color-accent)] transition-colors active:scale-90 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none rounded-xl"
             style={{ color: 'var(--color-text-muted)' }}
           >
             <ArrowLeftRight size={16} />
@@ -149,7 +170,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap,
           <button
             onClick={() => onRemove(index)}
             aria-label={t('workoutBuilder.ariaRemove', 'Remove exercise')}
-            className="w-11 h-11 flex items-center justify-center hover:text-red-400 transition-colors active:scale-90 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none rounded-xl"
+            className="w-11 h-11 flex items-center justify-center hover:text-red-400 transition-colors active:scale-90 focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none rounded-xl"
             style={{ color: 'var(--color-text-muted)' }}
           >
             <Trash2 size={16} />
@@ -166,14 +187,14 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap,
             <button
               onClick={() => onChange(index, 'sets', Math.max(1, item.sets - 1))}
               aria-label={t('workoutBuilder.ariaDecreaseSets', 'Decrease sets')}
-              className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: '#000' }}
             >−</button>
             <span className="font-bold text-[15px] tabular-nums w-5 text-center" style={{ color: 'var(--color-text-primary)' }}>{item.sets}</span>
             <button
               onClick={() => onChange(index, 'sets', Math.min(10, item.sets + 1))}
               aria-label={t('workoutBuilder.ariaIncreaseSets', 'Increase sets')}
-              className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+              className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: '#000' }}
             >+</button>
           </div>
@@ -196,7 +217,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap,
                 if (!isNaN(n) && n > 999) return onChange(index, 'reps', '999');
                 onChange(index, 'reps', (!isNaN(n) && n < 0) ? '0' : v);
               }}
-              className="w-16 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors"
+              className="w-16 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-center focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none transition-colors"
               style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-text-primary)' }}
             />
           </div>
@@ -230,7 +251,7 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap,
             value={item.restSeconds}
             aria-label={`${t('workoutBuilder.rest')} for ${exercise ? exName(exercise) : t('workoutBuilder.exerciseFallback', 'exercise')}`}
             onChange={e => onChange(index, 'restSeconds', Number(e.target.value))}
-            className="w-16 rounded-lg py-1.5 text-[13px] font-semibold focus:ring-2 focus:ring-[#D4AF37] focus:outline-none transition-colors appearance-none"
+            className="w-16 rounded-lg py-1.5 text-[13px] font-semibold focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none transition-colors appearance-none"
             style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-text-primary)', textAlign: 'center', textAlignLast: 'center', paddingLeft: '0', paddingRight: '0' }}
           >
             {REST_OPTIONS.map(s => (
@@ -275,7 +296,7 @@ const PickerList = ({ exercises, selectedIds, onSelect, emptyText, t }) => {
               <button
                 onClick={() => onSelect(ex)}
                 aria-label={t('workoutBuilder.ariaAddExercise', { name: exName(ex), defaultValue: `Add ${exName(ex)}` })}
-                className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
+                className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none"
                 style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-accent) 50%, transparent)' }}
               >
                 <Plus size={18} strokeWidth={2.5} style={{ color: 'var(--color-accent)' }} />
@@ -598,7 +619,7 @@ const WorkoutBuilder = () => {
   if (loading) {
     return (
       <div className="fixed inset-0 z-[90] flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
-        <div className="w-8 h-8 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin" />
+        <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '2px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', borderTopColor: 'var(--color-accent)' }} />
       </div>
     );
   }
@@ -684,13 +705,14 @@ const WorkoutBuilder = () => {
 
       {/* Exercise Library Slide-in */}
       {showLibrary && (
-        <div className="fixed inset-0 z-[95] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)' }}>
-          {/* Header */}
-          <div className="sticky top-0 z-10 border-b border-white/[0.06] backdrop-blur-2xl" style={{ background: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}>
+        <div className="fixed inset-0 z-[95] flex flex-col animate-fade-in" style={{ background: 'var(--color-bg-primary)', paddingTop: 'env(safe-area-inset-top)' }}>
+          {/* Header — flex-shrink-0 flow item (not sticky) so the scroll body below
+              can never slide under it. */}
+          <div className="flex-shrink-0 z-10 border-b border-white/[0.06]" style={{ background: 'var(--color-bg-primary)' }}>
             <div className="px-4 py-3.5 flex items-center gap-3">
               <button
                 onClick={() => { setShowLibrary(false); setSwapTargetIndex(null); setSwapReason(null); }}
-                className="text-[#D4AF37] hover:text-[#E6C766] flex items-center gap-0.5 transition-colors"
+                className="flex items-center gap-0.5 transition-colors" style={{ color: 'var(--color-accent)' }}
               >
                 <ChevronLeft size={24} strokeWidth={2.5} />
                 <span className="font-semibold text-[14px]">{t('workoutBuilder.back')}</span>
@@ -712,7 +734,7 @@ const WorkoutBuilder = () => {
                     onClick={() => setPickerTab(key)}
                     className={`pb-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
                       pickerTab === key
-                        ? 'border-[#D4AF37] text-[#D4AF37]'
+                        ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
                         : 'border-transparent'
                     }`}
                     style={pickerTab !== key ? { color: 'var(--color-text-subtle)' } : undefined}
@@ -724,8 +746,9 @@ const WorkoutBuilder = () => {
             )}
           </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
+          {/* Content — min-h-0 lets this flex child scroll WITHIN the remaining
+              space instead of growing and pushing content under the header. */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-24">
             {/* Swap mode — same video-tile grid as the active-session swap.
                 Same-muscle picks first, then other muscles. Tap a tile to
                 run handleAdd, which replaces the target row's exercise id. */}
@@ -904,17 +927,17 @@ const WorkoutBuilder = () => {
       <div className="container max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-5 pb-8 md:pb-10" style={{ paddingTop: '2rem' }}>
 
         {/* Summary stats */}
-        <div className="flex items-center justify-between rounded-2xl px-2 py-3 mb-6" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.06) 0%, rgba(212,175,55,0.02) 100%)', border: '1px solid rgba(212,175,55,0.12)' }}>
+        <div className="flex items-center justify-between rounded-2xl px-2 py-3 mb-6" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, transparent) 0%, color-mix(in srgb, var(--color-accent) 3%, transparent) 100%)', border: '1px solid color-mix(in srgb, var(--color-accent) 16%, transparent)' }}>
           <div className="flex-1 flex flex-col items-center gap-0.5">
             <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{routineExercises.length}</span>
             <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>{routineExercises.length !== 1 ? t('workoutBuilder.exercises') : t('workoutBuilder.exercise')}</span>
           </div>
-          <div className="w-px h-8 rounded-full" style={{ background: 'rgba(212,175,55,0.15)' }} />
+          <div className="w-px h-8 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)' }} />
           <div className="flex-1 flex flex-col items-center gap-0.5">
             <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>{routineExercises.reduce((sum, e) => sum + e.sets, 0)}</span>
             <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.totalSets')}</span>
           </div>
-          <div className="w-px h-8 rounded-full" style={{ background: 'rgba(212,175,55,0.15)' }} />
+          <div className="w-px h-8 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)' }} />
           <div className="flex-1 flex flex-col items-center gap-0.5">
             <span className="font-bold text-[18px] tabular-nums" style={{ color: 'var(--color-text-primary)' }}>~{Math.round(routineExercises.reduce((sum, e) => sum + (e.sets * (e.restSeconds + 45)), 0) / 60)}</span>
             <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workoutBuilder.minLabel', 'min')}</span>
@@ -926,11 +949,11 @@ const WorkoutBuilder = () => {
             knowing about the row checkboxes. Shows a hint when <2 selected
             and becomes actionable once the user picks at least two. */}
         {routineExercises.length >= 2 && (
-          <div className="flex items-center gap-2 mb-4 p-3 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/25">
-            <Link2 size={14} className="text-[#D4AF37] shrink-0" />
+          <div className="flex items-center gap-2 mb-4 p-3 rounded-2xl" style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+            <Link2 size={14} className="shrink-0" style={{ color: 'var(--color-accent)' }} />
             {selectedIndices.size >= 2 ? (
               <>
-                <span className="text-[12px] text-[#D4AF37] font-semibold flex-1">
+                <span className="text-[12px] font-semibold flex-1" style={{ color: 'var(--color-accent)' }}>
                   {selectedIndices.size} {t('workoutBuilder.selectToGroup', 'selected — group as:')}
                 </span>
                 <button
@@ -947,7 +970,7 @@ const WorkoutBuilder = () => {
                 </button>
               </>
             ) : (
-              <span className="text-[12px] text-[#D4AF37]/90 font-semibold flex-1 leading-snug">
+              <span className="text-[12px] font-semibold flex-1 leading-snug" style={{ color: 'color-mix(in srgb, var(--color-accent) 90%, transparent)' }}>
                 {t('workoutBuilder.supersetHint', {
                   defaultValue: 'Tap the checkbox on 2+ exercises to group them as a Superset or Circuit.',
                 })}
@@ -1030,7 +1053,7 @@ const WorkoutBuilder = () => {
         {/* Add Exercise button — desktop only; mobile uses sticky bar */}
         <button
           onClick={() => setShowLibrary(true)}
-          className="hidden md:flex w-full items-center justify-center gap-2 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/18 border border-[#D4AF37]/25 hover:border-[#D4AF37]/45 text-[#D4AF37] font-semibold text-[14px] py-4 rounded-2xl transition-all"
+          className="hidden md:flex w-full items-center justify-center gap-2 font-semibold text-[14px] py-4 rounded-2xl transition-all" style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)', color: 'var(--color-accent)' }}
         >
           <Plus size={19} strokeWidth={2.5} /> {t('workoutBuilder.addExercise')}
         </button>
@@ -1039,7 +1062,7 @@ const WorkoutBuilder = () => {
         {routineExercises.length === 0 && (
           <button
             onClick={() => setShowLibrary(true)}
-            className="md:hidden w-full flex items-center justify-center gap-2 bg-[#D4AF37]/10 border border-[#D4AF37]/25 text-[#D4AF37] font-semibold text-[14px] py-4 rounded-2xl transition-all active:scale-95"
+            className="md:hidden w-full flex items-center justify-center gap-2 font-semibold text-[14px] py-4 rounded-2xl transition-all active:scale-95" style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)', color: 'var(--color-accent)' }}
           >
             <Plus size={19} strokeWidth={2.5} /> {t('workoutBuilder.addExercise')}
           </button>
@@ -1058,7 +1081,7 @@ const WorkoutBuilder = () => {
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
             className="hidden md:flex w-full mt-4 disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[14px] py-4 rounded-2xl transition-all items-center justify-center gap-2"
-            style={{ background: '#D4AF37' }}
+            style={{ background: 'var(--color-accent)' }}
           >
             {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>
@@ -1068,15 +1091,42 @@ const WorkoutBuilder = () => {
         {routineExercises.length > 0 && (
           <button
             onClick={() => setRoutineExercises(originalExercises.map(e => ({ ...e })))}
-            className="w-full flex items-center justify-center gap-2 text-[12px] mt-3 py-2 transition-colors"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="w-full flex items-center justify-center gap-2 text-[13px] font-semibold mt-3 py-2.5 rounded-[12px] transition-transform active:scale-[0.98]"
+            style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
           >
-            <RotateCcw size={12} /> {t('workoutBuilder.resetToSaved')}
+            <RotateCcw size={13} /> {t('workoutBuilder.resetToSaved')}
           </button>
         )}
       </div>
 
       </div>{/* end scrollable body */}
+
+      {/* Grouping action bar — floats above the save bar so the Superset/Circuit
+          options are visible while you're marking checkboxes further down the
+          list (they used to live only in the banner at the top, off-screen). */}
+      {selectedIndices.size >= 2 && (
+        <div className="flex-shrink-0 px-5 py-2.5 flex items-center gap-2 border-t"
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 9%, var(--color-bg-primary))', borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
+          <span className="text-[12.5px] font-bold flex-shrink-0" style={{ color: 'var(--color-accent)' }}>
+            {selectedIndices.size} {t('workoutBuilder.selectedShort', 'selected')}
+          </span>
+          <div className="flex-1" />
+          <button onClick={() => handleGroup('superset')}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11.5px] font-bold active:scale-95 transition-transform"
+            style={{ background: 'rgba(139,92,246,0.18)', border: '1px solid rgba(139,92,246,0.35)', color: '#a78bfa' }}>
+            <Link2 size={12} />{t('activeSession.superset', 'Superset')}
+          </button>
+          <button onClick={() => handleGroup('circuit')}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11.5px] font-bold active:scale-95 transition-transform"
+            style={{ background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.35)', color: '#60a5fa' }}>
+            <Link2 size={12} />{t('activeSession.circuit', 'Circuit')}
+          </button>
+          <button onClick={() => setSelectedIndices(new Set())} aria-label={t('common.clear', 'Clear')}
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 active:scale-90" style={{ color: 'var(--color-text-muted)' }}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {/* Mobile bottom bar — pinned just above the iOS home indicator.
           Was using `0.75rem + safe-area` which left a chunky empty band
@@ -1086,13 +1136,13 @@ const WorkoutBuilder = () => {
         className="md:hidden flex-shrink-0 px-5 pt-3 backdrop-blur-xl border-t border-white/[0.06]"
         style={{
           background: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)',
-          paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
         }}
       >
         <div className="flex gap-3">
           <button
             onClick={() => setShowLibrary(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] font-semibold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all"
+            className="flex-1 flex items-center justify-center gap-1.5 font-semibold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all" style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', color: 'var(--color-accent)' }}
           >
             <Plus size={16} strokeWidth={2.5} /> {t('workoutBuilder.add')}
           </button>
@@ -1100,7 +1150,7 @@ const WorkoutBuilder = () => {
             onClick={() => handleSave({ andExit: true })}
             disabled={saving}
             className="flex-1 disabled:opacity-50 text-[var(--color-text-on-accent,#000)] font-bold text-[13px] py-2.5 rounded-xl active:scale-95 transition-all flex items-center justify-center"
-            style={{ background: '#D4AF37' }}
+            style={{ background: 'var(--color-accent)' }}
           >
             {saving ? '…' : t('workoutBuilder.saveAndDone')}
           </button>

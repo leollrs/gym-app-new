@@ -491,16 +491,14 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
       <div onClick={close} style={{ position: 'absolute', inset: 0, background: 'rgba(5,7,9,0.62)',
         backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
         opacity: vis ? 1 : 0, transition: 'opacity .32s ease' }} />
-      {/* sheet */}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center',
-        transform: vis ? 'translateY(0)' : 'translateY(102%)', transition: 'transform .46s cubic-bezier(.32,.72,0,1)' }}>
-        <div style={{ width: '100%', maxWidth: 480, maxHeight: '92dvh',
-          background: 'var(--color-bg-card)', borderTopLeftRadius: 30, borderTopRightRadius: 30,
-          boxShadow: '0 -8px 40px rgba(0,0,0,0.5)', overflow: 'hidden', display: 'flex', flexDirection: 'column',
-          border: '1px solid var(--color-border-subtle)', borderBottom: 'none', position: 'relative' }}>
-          {/* grabber */}
-          <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 30,
-            width: 42, height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.3)' }} />
+      {/* centered modal — appears mid-page (was a bottom sheet) */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px',
+        opacity: vis ? 1 : 0, transform: vis ? 'scale(1)' : 'scale(0.96)',
+        transition: 'opacity .26s ease, transform .3s cubic-bezier(.32,.72,0,1)' }}>
+        <div style={{ width: '100%', maxWidth: 460, maxHeight: '88dvh',
+          background: 'var(--color-bg-card)', borderRadius: 28,
+          boxShadow: '0 24px 64px rgba(0,0,0,0.5)', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+          border: '1px solid var(--color-border-subtle)', position: 'relative' }}>
           {/* hero */}
           <div style={{ position: 'relative', flexShrink: 0, height: 208 }}>
             {imgUrl ? (

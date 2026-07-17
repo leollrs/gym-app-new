@@ -22,7 +22,8 @@ import { generateProgram } from '../../lib/workoutGenerator';
 import { generateRoutineName, translateCreativeName } from '../../lib/programNaming';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateWeekPlan, generateDayPlan } from '../../lib/mealPlanner';
-import { MEALS } from '../../data/meals';
+import { getMeals } from '../../lib/mealStore';
+const MEALS = getMeals();
 import { foodImageUrl } from '../../lib/imageUrl';
 import { validateImageFile } from '../../lib/validateImage';
 

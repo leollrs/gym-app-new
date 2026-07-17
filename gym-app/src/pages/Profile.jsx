@@ -17,6 +17,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/churn/batchedSelect';
 import { PROD_WEB_URL } from '../lib/appUrls';
 import { validateImageFile } from '../lib/validateImage';
 import { stripExif } from '../lib/stripExif';
@@ -509,8 +510,10 @@ const Profile = () => {
       // 5b. Lifetime totals for the stats strip. head:true count queries
       // transfer zero rows; volume has no count shortcut and no lifetime RPC
       // exists (get_dashboard_data only returns the last 50 sessions), so we
-      // pull just the total_volume_lbs column — capped at the 2000 most
-      // recent sessions — and sum client-side.
+      // pull just the total_volume_lbs column and sum client-side. Page the
+      // full set — a plain select (or the old .limit(2000)) is clamped to ~1000
+      // by PostgREST, so lifetime volume understated for members past ~1000
+      // sessions. One numeric column pages cheaply.
       const [
         { count: workoutCount },
         { count: prCount },
@@ -523,9 +526,9 @@ const Profile = () => {
           .eq('profile_id', user.id),
         supabase.from('check_ins').select('id', { count: 'exact', head: true })
           .eq('profile_id', user.id),
-        supabase.from('workout_sessions').select('total_volume_lbs')
+        selectAllRows((from, to) => supabase.from('workout_sessions').select('total_volume_lbs')
           .eq('profile_id', user.id).eq('status', 'completed')
-          .order('completed_at', { ascending: false }).limit(2000),
+          .order('completed_at', { ascending: true }).range(from, to)),
       ]);
       // null = query failed → render falls back to the capped-array numbers.
       setLifetimeStats({

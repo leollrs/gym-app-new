@@ -70,7 +70,7 @@ export default function WhyLeftPanel({ gymId }) {
         <Card style={{ padding: '20px 24px' }}>
           <div style={{ fontFamily: FK.display, fontSize: 17, fontWeight: 800, letterSpacing: -0.3, color: TK.text }}>{t('admin.whyLeft.breakdownTitle', 'Cancellation reasons')}</div>
           <div style={{ fontFamily: FK.body, fontSize: 13, color: TK.textMute, marginTop: 3 }}>
-            {t(total === 1 ? 'admin.whyLeft.totalCancellations' : 'admin.whyLeft.totalCancellations_plural', { count: total, defaultValue: total === 1 ? '{{count}} cancellation' : '{{count}} cancellations' })}
+            {t(total === 1 ? 'admin.whyLeft.totalCancellations' : 'admin.whyLeft.totalCancellations_other', { count: total, defaultValue: total === 1 ? '{{count}} cancellation' : '{{count}} cancellations' })}
           </div>
           {loadingBreakdown ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}><Loader2 size={20} className="animate-spin" style={{ color: TK.textMute }} /></div>

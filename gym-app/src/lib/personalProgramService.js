@@ -11,7 +11,8 @@
 
 import { generateProgram } from './workoutGenerator';
 import { generateProgramName, generateRoutineName } from './programNaming';
-import { exercises as exerciseLibrary } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const exerciseLibrary = getExercises();
 
 const getExerciseById = (id) => exerciseLibrary.find((e) => e.id === id);
 
@@ -278,7 +279,7 @@ export async function generateAndSavePersonalProgram({ supabase, user, gymId, sn
       name: generateRoutineName(r.slotsKey, r.variantIndex, nameSeed),
       exercises: r.exercises.map((ex) => {
         const info = getExerciseById(ex.exerciseId);
-        return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '' };
+        return { ...ex, name: info?.name || ex.exerciseId, name_es: info?.name_es || null, muscle: info?.muscle || '', videoUrl: info?.videoUrl || null };
       }),
     })),
   };

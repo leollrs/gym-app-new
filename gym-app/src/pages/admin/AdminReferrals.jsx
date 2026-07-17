@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow, subDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
@@ -144,13 +145,19 @@ export default function AdminReferrals() {
   const { data: referrals = [], isLoading } = useQuery({
     queryKey: [...(adminKeys.referrals?.all?.(gymId) ?? ['admin', 'referrals', gymId]), period.key],
     queryFn: async () => {
-      let query = supabase
-        .from('referrals')
-        .select('*, referrer:profiles!referrals_referrer_id_fkey(id, full_name, avatar_url, avatar_type, avatar_value), referred:profiles!referrals_referred_id_fkey(id, full_name)')
-        .eq('gym_id', gymId)
-        .order('created_at', { ascending: false });
-      if (period.days) query = query.gte('created_at', subDays(new Date(), period.days).toISOString());
-      const { data, error } = await query;
+      const cutoff = period.days ? subDays(new Date(), period.days).toISOString() : null;
+      // Page all referrals — the unbounded query clamps at max_rows, so on the
+      // "All time" period every stat, the name search, and the CSV export ran on
+      // a silently truncated 1000-row array. Rebuild per page.
+      const { data, error } = await selectAllRows((from, to) => {
+        let q = supabase
+          .from('referrals')
+          .select('*, referrer:profiles!referrals_referrer_id_fkey(id, full_name, avatar_url, avatar_type, avatar_value), referred:profiles!referrals_referred_id_fkey(id, full_name)')
+          .eq('gym_id', gymId)
+          .order('created_at', { ascending: false });
+        if (cutoff) q = q.gte('created_at', cutoff);
+        return q.range(from, to);
+      });
       if (error) throw error;
       return (data || []).filter(r => r.referrer);
     },

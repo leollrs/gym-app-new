@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Search, User, BookOpen, Dumbbell, Megaphone, Filter as FilterIcon, ArrowRight, X, Compass } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useScrollLock } from '../../hooks/useScrollLock';
 
@@ -84,11 +85,11 @@ export default function GlobalSearch({ open, onClose, onToggle, pageIndex = [] }
       const [members, classes, programs, segments, announcements] = await Promise.all([
         // `email` is not on the profiles table (lives on auth.users); searching
         // by full_name / username covers the admin use case here.
-        supabase.from('profiles')
+        selectAllRows((from, to) => supabase.from('profiles')
           .select('id, full_name, username')
           .eq('gym_id', gymId)
           .eq('role', 'member')
-          .limit(1000),
+          .range(from, to)),
         supabase.from('gym_classes')
           .select('id, name, description')
           .eq('gym_id', gymId)

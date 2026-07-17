@@ -29,6 +29,17 @@ export function trainerShareUrl(id) {
   return `${PROD_WEB_URL}/invite/t/${id || ''}`;
 }
 
+// Member invite link. Rides the `/invite/:code` universal link + web fallback,
+// both served from app.tugympr.com — the ONLY host in the app's iOS
+// associated-domains and Android assetlinks. Earlier builds hardcoded a dead
+// `tugympr.app` host, which is not app-link-associated, so those links never
+// opened the app AND never reached the working web /invite handler. Always
+// build invite links from PROD_WEB_URL so they deep-link (or web-fallback)
+// correctly.
+export function inviteUrl(code) {
+  return `${PROD_WEB_URL}/invite/${code || ''}`;
+}
+
 // Download-oriented share link. When a member shares a poster (workout, PR,
 // achievement, streak, monthly recap, cardio…) the link in the caption should
 // point a NON-user at downloading the app — not at the bare web app. This lands
@@ -72,6 +83,25 @@ export const APP_SECTIONS = {
 // Resolve a deep-link section key to its in-app route. Unknown/blank → home.
 export function resolveAppSection(key) {
   return APP_SECTIONS[key] || APP_SECTIONS.home;
+}
+
+// ── Siri Shortcuts (iOS AppIntents) ─────────────────────────────────────────
+// Each Siri intent opens tugympr://siri/<action>. Single source of truth for
+// the action→route map, shared by the native URL handler (main.jsx appUrlOpen)
+// and the web reactive handler (App.jsx /siri/* path). Keep in sync with the
+// intents declared in ios/App/App/AppIntents.swift.
+export const SIRI_ROUTES = {
+  'start-workout': '/record',                 // PhoneStartWorkoutIntent
+  'check-in':      '/checkin',                 // PhoneCheckInIntent
+  'gym-card':      '/checkin',                 // PhoneShowGymCardIntent (QR card lives on /checkin)
+  'streak':        '/profile',                 // PhoneCheckStreakIntent (streak on profile header)
+  'log-food':      '/progress?tab=nutrition',  // PhoneLogNutritionIntent
+};
+
+// Resolve a Siri action slug to its in-app route. Unknown/blank → null so the
+// caller can decide (native no-ops; web falls back to home).
+export function resolveSiriRoute(action) {
+  return SIRI_ROUTES[action] || null;
 }
 
 // Smart deep link for emails/marketing that opens the native app on `section`.

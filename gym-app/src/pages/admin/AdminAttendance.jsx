@@ -2,6 +2,7 @@ import { Fragment, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useInsightsRange } from '../../contexts/InsightsRangeContext';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
@@ -77,21 +78,25 @@ export default function AdminAttendance() {
       const from = subDays(new Date(), parseInt(period)).toISOString();
 
       const [{ data: sessions }, { data: checkIns }] = await Promise.all([
-        supabase
+        // Page all rows in the window — a .limit(1000) with ascending order
+        // silently dropped the NEWEST days once the window exceeded 1000 rows,
+        // so heatmap / trends / totals were wrong (and lost recent weeks) on
+        // busy gyms. selectAllRows fetches every page.
+        selectAllRows((f, t) => supabase
           .from('workout_sessions')
           .select('started_at')
           .eq('gym_id', gymId)
           .eq('status', 'completed')
           .gte('started_at', from)
           .order('started_at', { ascending: true })
-          .limit(1000),
-        supabase
+          .range(f, t)),
+        selectAllRows((f, t) => supabase
           .from('check_ins')
           .select('profile_id, checked_in_at')
           .eq('gym_id', gymId)
           .gte('checked_in_at', from)
           .order('checked_in_at', { ascending: true })
-          .limit(1000),
+          .range(f, t)),
       ]);
 
       const sessionList = sessions || [];

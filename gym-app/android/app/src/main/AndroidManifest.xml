@@ -148,25 +148,38 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Permissions: Health / fitness (Google Health Connect via @capgo/capacitor-health).
-         Every type below is backed by real read/write code in src/lib/healthSync.js:
-         reads steps/HR/calories/weight/height/sleep/HRV/resting-HR/exercise, writes weight/calories. -->
-    <uses-permission android:name="android.permission.health.READ_STEPS" />
-    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+         Android reads only calories/weight/height/exercise and writes weight/calories —
+         every type below is backed by real read/write code in src/lib/healthSync.js.
+
+         Heart rate, HRV, resting HR, sleep and steps are REMOVED on Android (see the
+         tools:node="remove" block below) to satisfy Health Connect's "Minimum Scope"
+         policy. Those features are driven by Apple Health / Apple Watch on iOS
+         (HealthKit, declared separately in the iOS Info.plist) and have no
+         Android-visible feature yet — Play rejected version code 10 for requesting
+         them without one. To re-enable a type on Android, add its uses-permission
+         line back here AND delete its matching tools:node="remove" line below. -->
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
     <uses-permission android:name="android.permission.health.READ_HEIGHT" />
-    <uses-permission android:name="android.permission.health.READ_SLEEP" />
-    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
-    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
     <uses-permission android:name="android.permission.health.WRITE_TOTAL_CALORIES_BURNED" />
 
+    <!-- Removed after Play rejected version code 10 for excessive Health Connect
+         scope. These read types are requested on iOS via HealthKit only, never on
+         Android, so they must not reach the merged manifest / Play declaration. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" tools:node="remove" />
+
     <!--
          Suppress unused permissions auto-injected by @capgo/capacitor-health to comply
-         with Play Health Apps attestation policy. The plugin's manifest declares 39
-         Health Connect permissions, but TuGymPR only uses 11 (declared above). All
-         others are removed via tools:node="remove" so they do not appear in the merged
+         with Play Health Apps attestation + Health Connect Minimum Scope policy. The
+         plugin's manifest declares the full Health Connect permission catalog, but
+         TuGymPR's Android app only uses 6 (declared above). All others are removed
+         via tools:node="remove" so they do not appear in the merged
          manifest, the Play permission declaration form, or the Health Connect
          permission picker shown to the user.
 

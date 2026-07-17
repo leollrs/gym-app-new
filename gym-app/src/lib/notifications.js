@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import logger from './logger';
+import { selectAllRows } from './churn/batchedSelect';
 
 // ── NOTIFICATION TYPE CONSTANTS ────────────────────────────
 // Valid DB enum values: workout_reminder, streak_warning, challenge_update,
@@ -33,11 +34,17 @@ export function isQuietHours() {
  * Also fires a native push notification to all registered devices.
  */
 export async function broadcastNotification({ gymId, type, title, body = null, data = {}, dedupKey = null }) {
-  const { data: members } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('gym_id', gymId)
-    .eq('role', 'member');
+  // Page through the FULL member roster — a plain select clamps at the ~1000-row
+  // PostgREST cap, so on a gym over 1000 members announcements / NPS surveys
+  // silently reached only the first 1000. selectAllRows fetches every page.
+  const { data: members } = await selectAllRows(
+    (from, to) => supabase
+      .from('profiles')
+      .select('id')
+      .eq('gym_id', gymId)
+      .eq('role', 'member')
+      .range(from, to),
+  );
 
   if (!members?.length) return;
 

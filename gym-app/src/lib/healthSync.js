@@ -64,13 +64,21 @@ export async function requestPermissions() {
     // unknown name throws inside the iOS plugin BEFORE HKHealthStore is
     // called, which silently breaks the entire auth request — and the app
     // never registers in iOS Settings → Health.
-    await Health.requestAuthorization({
-      read: [
-        'steps', 'weight', 'height', 'heartRate', 'calories',
-        'sleep', 'heartRateVariability', 'restingHeartRate',
-      ],
-      write: ['weight'],
-    });
+    //
+    // Android (Health Connect) only requests the types still declared in
+    // AndroidManifest.xml. Heart rate, HRV, resting-HR, sleep and steps were
+    // stripped there for Health Connect "Minimum Scope" compliance (Play
+    // rejected vc10), so requesting them here would ask for undeclared
+    // permissions and could reject the whole authorization — taking the legit
+    // weight/height reads down with it. Those types stay iOS-only via HealthKit,
+    // where they're already approved and backed by real features. ('calories'
+    // maps to ActiveCaloriesBurned on Android, whose permission is also stripped,
+    // so it's excluded from the Android set too.)
+    const read = Capacitor.getPlatform() === 'android'
+      ? ['weight', 'height']
+      : ['steps', 'weight', 'height', 'heartRate', 'calories',
+         'sleep', 'heartRateVariability', 'restingHeartRate'];
+    await Health.requestAuthorization({ read, write: ['weight'] });
     return { granted: true };
   } catch (e) {
     logger.warn('Health requestPermissions failed:', e);

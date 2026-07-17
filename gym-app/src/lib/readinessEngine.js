@@ -32,7 +32,8 @@
 //   - fresh:    >= 80
 // -----------------------------------------------------------------------------
 
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const ALL_EXERCISES = getExercises();
 import { BODY_REGION_DEFINITIONS } from '../data/muscleRegions';
 
 // Recovery rate per region. Larger compound muscles recover slower.

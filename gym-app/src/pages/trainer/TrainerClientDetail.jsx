@@ -25,7 +25,8 @@ import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
 import ChartTooltip from '../../components/ChartTooltip';
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateDayPlan } from '../../lib/mealPlanner';
-import { exercises as EXERCISE_CATALOG } from '../../data/exercises';
+import { getExercises } from '../../lib/exerciseStore';
+const EXERCISE_CATALOG = getExercises();
 import { exName } from '../../lib/exerciseName';
 import { buildStreakCalendar } from '../../lib/streakCalendar';
 import { normalizePhone, openWhatsApp } from '../../lib/whatsapp';
@@ -451,9 +452,11 @@ export default function TrainerClientNotes() {
           .select('id, full_name, username, phone_number, last_active_at, created_at, assigned_program_id, checkin_photo_path, allow_trainer_measurements')
           .eq('id', clientId)
           .single(),
+        // Lifetime session count via a head-only COUNT — a fetch-all-ids +
+        // .length silently capped at 1000 for long-tenured clients.
         supabase
           .from('workout_sessions')
-          .select('id')
+          .select('id', { count: 'exact', head: true })
           .eq('profile_id', clientId)
           .eq('status', 'completed'),
         // Full year of weight logs so the Body tab's 365d view isn't truncated
@@ -623,7 +626,7 @@ export default function TrainerClientNotes() {
 
       const loadedPayload = {
         client: clientRes.data,
-        stats: { count: (statsRes.data || []).length },
+        stats: { count: statsRes.count ?? 0 },
         programName: loadedProgramName,
         enrollment: loadedEnrollment,
         weights: weightsRes.data || [],

@@ -9,7 +9,8 @@
  *   - Varies difficulty through the week
  */
 
-import { exercises as ALL_EXERCISES } from '../data/exercises';
+import { getExercises } from './exerciseStore';
+const ALL_EXERCISES = getExercises();
 
 // ── Focus rotation: 7 day cycle ────────────────────────────────────────────────
 const FOCUS_ROTATION = [

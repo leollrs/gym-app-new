@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { supabase, authHeader } from '../../../lib/supabase';
+import { inviteUrl as buildInviteUrl } from '../../../lib/appUrls';
 import AdminModal from '../../../components/admin/AdminModal';
 import PhoneInput from '../../../components/admin/PhoneInput';
 import NameFields from './NameFields';
@@ -144,7 +145,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     const channels = sendMethod === 'both' ? ['email', 'sms'] : [sendMethod];
     const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
     const firstName = (nameParts.first || '').trim();
-    const inviteUrl = `https://tugympr.app/invite/${code}`;
+    const inviteUrl = buildInviteUrl(code);
     const succeeded = [];
     setDelivering(true);
     try {

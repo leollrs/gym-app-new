@@ -28,6 +28,17 @@ import { hasConsentedToAI, recordAIConsent } from '../../lib/aiConsent';
 import AIConsentDialog from '../../components/AIConsentDialog';
 import { useFeatureEnabled } from '../../hooks/usePlatformFlags';
 import { updateBodyMetricGoals } from '../../lib/goalUpdater';
+import Confetti from '../../components/Confetti';
+
+// Both body-goal completion paths (weight in the main page, body-fat in the
+// measurements modal) dispatch this so a single listener in ProgressBody can
+// celebrate regardless of which component fired it.
+const GOAL_ACHIEVED_EVENT = 'tugympr:goal-achieved';
+const emitGoalAchieved = (achieved) => {
+  if (achieved?.length) {
+    try { window.dispatchEvent(new CustomEvent(GOAL_ACHIEVED_EVENT, { detail: achieved })); } catch { /* noop */ }
+  }
+};
 
 // ── Goal-aware progress color helper ─────────────────────────────────────────
 
@@ -649,7 +660,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
       // Move any body_fat goal's progress bar when a body-fat % was logged
       // (goalUpdater skips body goals on workout completion). Non-blocking.
       if (payload.body_fat_pct != null) {
-        updateBodyMetricGoals(profileId, 'body_fat', payload.body_fat_pct).catch(() => {});
+        updateBodyMetricGoals(profileId, 'body_fat', payload.body_fat_pct).then(emitGoalAchieved).catch(() => {});
       }
       posthog?.capture('body_metric_logged', { metric_type: 'measurements' });
       onSaved();
@@ -960,6 +971,28 @@ export default function ProgressBody() {
   const { showToast } = useToast();
   const posthog = usePostHog();
 
+  // Celebrate a goal/milestone a weigh-in (or body-fat log) just completed —
+  // confetti + toast. Both paths dispatch GOAL_ACHIEVED_EVENT; this is the one
+  // listener. (The completion push fires separately via the DB trigger.)
+  const [goalConfetti, setGoalConfetti] = useState(false);
+  useEffect(() => {
+    const onAchieved = (e) => {
+      const achieved = e.detail || [];
+      if (!achieved.length) return;
+      setGoalConfetti(true);
+      setTimeout(() => setGoalConfetti(false), 3200);
+      achieved.forEach((g) => {
+        const isMs = g.is_milestone;
+        const label = isMs
+          ? t('goals.milestoneHitToast', { defaultValue: 'Milestone hit' })
+          : t('goals.achievedToast', { defaultValue: 'Goal achieved' });
+        showToast(`${isMs ? '🎯' : '🎉'} ${label}: ${g.title || ''}`.trim(), 'success');
+      });
+    };
+    window.addEventListener(GOAL_ACHIEVED_EVENT, onAchieved);
+    return () => window.removeEventListener(GOAL_ACHIEVED_EVENT, onAchieved);
+  }, [t, showToast]);
+
   // Cache keys scoped to user — survives unmount via localStorage so swapping
   // back to the Body tab after visiting Dashboard/Workouts paints instantly.
   const uid = user?.id || 'anon';
@@ -1206,7 +1239,7 @@ export default function ProgressBody() {
     // Push the new weight into any body_weight goal — the workout-completion
     // goal updater deliberately skips body goals, so this is the only path that
     // moves their progress bar. Non-blocking: never let it fail the weight log.
-    updateBodyMetricGoals(user.id, 'body_weight', w).catch(() => {});
+    updateBodyMetricGoals(user.id, 'body_weight', w).then(emitGoalAchieved).catch(() => {});
     dispatch({ type: 'CLEAR_WEIGHT_INPUT' });
     posthog?.capture('body_metric_logged', { metric_type: 'weight' });
     loadData();
@@ -1246,6 +1279,7 @@ export default function ProgressBody() {
 
   return (
     <div>
+      <Confetti active={goalConfetti} particleCount={90} duration={3200} />
       {/* ── Progress Photos (top) ── */}
       <div className="rounded-[22px] overflow-hidden mb-4" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
         {/* Before / Now side-by-side

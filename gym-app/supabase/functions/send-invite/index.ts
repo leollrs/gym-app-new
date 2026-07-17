@@ -170,8 +170,12 @@ Deno.serve(async (req) => {
 
     if (!inviteCode) return jsonResp({ error: 'inviteCode is required' }, 400);
     // Guard the link: only our own invite domain may appear in the branded email/SMS.
-    if (inviteUrl && !/^https:\/\/([a-z0-9-]+\.)?tugympr\.app\//i.test(inviteUrl)) {
-      return jsonResp({ error: 'inviteUrl must be a tugympr.app https link' }, 400);
+    // Canonical host is app.tugympr.com (the only app-link-associated domain).
+    // Legacy `tugympr.app` is still tolerated so already-shipped app builds (which
+    // send that host) don't start erroring mid-migration — their links are dead
+    // either way and get fixed by the app update, not by rejecting the send.
+    if (inviteUrl && !/^https:\/\/(app\.tugympr\.com|([a-z0-9-]+\.)?tugympr\.app)\//i.test(inviteUrl)) {
+      return jsonResp({ error: 'inviteUrl must be an app.tugympr.com https link' }, 400);
     }
 
     // Per-admin hourly rate limit (shared bucket for both channels).

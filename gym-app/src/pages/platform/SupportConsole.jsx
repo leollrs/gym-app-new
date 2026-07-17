@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useTranslation } from 'react-i18next';
 import { logAdminAction } from '../../lib/adminAudit';
 import { saveBlob } from '../../lib/saveBlob';
@@ -229,11 +230,15 @@ export default function SupportConsole() {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const [sessionsRes, recentSessionsRes, checkInsRes, streakRes, churnRes] = await Promise.all([
-      supabase
+      // Page the full set — Total Sessions / Total Volume are counted/summed
+      // in-memory, so an uncapped select read wrong (capped ~1000) for power users.
+      selectAllRows((from, to) => supabase
         .from('workout_sessions')
         .select('id, started_at, duration_seconds, total_volume_lbs, status')
         .eq('profile_id', member.id)
-        .eq('status', 'completed'),
+        .eq('status', 'completed')
+        .order('started_at', { ascending: true })
+        .range(from, to)),
       supabase
         .from('workout_sessions')
         .select('id, started_at, duration_seconds, total_volume_lbs')
@@ -556,13 +561,18 @@ export default function SupportConsole() {
     if (!selectedMember) return;
     try {
       const id = selectedMember.id;
+      // DSAR must be COMPLETE — a multi-year daily member can exceed the ~1000
+      // PostgREST response cap on check_ins / workout_sessions, so page every
+      // table with selectAllRows rather than relying on a single (capped) read.
+      const pageAll = (table) => selectAllRows((lo, hi) => supabase
+        .from(table).select('*').eq('profile_id', id).order('id', { ascending: true }).range(lo, hi));
       const [prof, sessions, prs, body, checkins, goals] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
-        supabase.from('workout_sessions').select('*').eq('profile_id', id),
-        supabase.from('personal_records').select('*').eq('profile_id', id),
-        supabase.from('body_measurements').select('*').eq('profile_id', id),
-        supabase.from('check_ins').select('*').eq('profile_id', id),
-        supabase.from('member_goals').select('*').eq('profile_id', id),
+        pageAll('workout_sessions'),
+        pageAll('personal_records'),
+        pageAll('body_measurements'),
+        pageAll('check_ins'),
+        pageAll('member_goals'),
       ]);
       const payload = {
         exported_at: new Date().toISOString(),

@@ -19,6 +19,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4601", "--directory", "/Users/leollorens/Desktop/TuGymPR-Brand-Hub/Carousel-Blog-Announcement"],
       "port": 4601
+    },
+    {
+      "name": "robot-arm",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/leollorens/robotic-arm-simulator/serve.py", "4610"],
+      "port": 4610
     }
   ]
 }
