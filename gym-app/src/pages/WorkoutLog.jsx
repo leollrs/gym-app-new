@@ -40,10 +40,20 @@ const SessionCard = ({ session, onEdit }) => {
   const prSets     = allSets.filter(s => s.is_pr);
   const volumeK    = (parseFloat(session.total_volume_lbs) || 0);
 
-  const sortedExercises = useMemo(
-    () => [...exercises].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
-    [exercises]
-  );
+  const sortedExercises = useMemo(() => {
+    // Merge session_exercises that reference the SAME movement (a routine may
+    // list an exercise more than once) so history shows each exercise ONCE with
+    // all its sets combined — instead of the same name repeated.
+    const ordered = [...exercises].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const byKey = new Map();
+    for (const ex of ordered) {
+      const key = (ex.snapshot_name || '').trim().toLowerCase() || ex.exercise_id || ex.id;
+      const prev = byKey.get(key);
+      if (prev) prev.session_sets = [...(prev.session_sets ?? []), ...(ex.session_sets ?? [])];
+      else byKey.set(key, { ...ex, session_sets: [...(ex.session_sets ?? [])] });
+    }
+    return [...byKey.values()];
+  }, [exercises]);
   const volumeStr  = volumeK >= 1000
     ? `${(volumeK / 1000).toFixed(1)}k lbs`
     : `${Math.round(volumeK)} lbs`;
@@ -80,7 +90,7 @@ const SessionCard = ({ session, onEdit }) => {
               <Zap size={11} /> {volumeStr}
             </span>
             <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Dumbbell size={11} /> {t('workoutLog.exercisesCount', { count: exercises.length })}
+              <Dumbbell size={11} /> {t('workoutLog.exercisesCount', { count: sortedExercises.length })}
             </span>
             {prSets.length > 0 && (
               <span className="flex items-center gap-1 text-[12px] font-semibold text-[#D4AF37]">
@@ -140,10 +150,10 @@ const SessionCard = ({ session, onEdit }) => {
 
                     <div className="flex flex-col gap-1.5">
                       <div className="flex flex-col gap-1.5">
-                        {sortedSets.map((set) => {
+                        {sortedSets.map((set, si) => {
                           const drops = Array.isArray(set.drops) ? set.drops.filter(d => (parseInt(d.reps, 10) || 0) > 0) : [];
                           return (
-                            <div key={`set-${set.set_number}`} className="flex flex-wrap items-center gap-1.5">
+                            <div key={`set-${si}-${set.set_number}`} className="flex flex-wrap items-center gap-1.5">
                               <div
                                 className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold"
                                 style={
@@ -168,7 +178,7 @@ const SessionCard = ({ session, onEdit }) => {
                               </div>
                               {drops.map((d, di) => (
                                 <div
-                                  key={`drop-${set.set_number}-${di}`}
+                                  key={`drop-${si}-${set.set_number}-${di}`}
                                   className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold"
                                   style={{
                                     background: 'rgba(212,175,55,0.06)',
@@ -189,8 +199,8 @@ const SessionCard = ({ session, onEdit }) => {
                         <div className="flex flex-col gap-0.5 pl-0.5">
                           {sortedSets
                             .filter(s => s.notes)
-                            .map(set => (
-                              <p key={`note-${set.set_number}`} className="text-[11px] italic truncate" style={{ color: 'var(--color-text-subtle)' }}>
+                            .map((set, ni) => (
+                              <p key={`note-${ni}-${set.set_number}`} className="text-[11px] italic truncate" style={{ color: 'var(--color-text-subtle)' }}>
                                 {t('workoutLog.setLabel', { number: set.set_number })}: {set.notes}
                               </p>
                             ))

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
   Search, UserPlus, Check, X, Users, Flag,
@@ -989,6 +990,17 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   const [myPostsLoaded, setMyPostsLoaded]         = useState(false);
   const [friendships, setFriendships] = useCachedState(`social-friendships-${user?.id || 'anon'}`, []);
   const [showFriends, setShowFriends]   = useState(false);
+  // Open the find-friends panel directly when arrived via /social?find=friends
+  // (e.g. the "Find friends" button on the Exercises → Friends tab). Only the
+  // standalone page acts, and the flag is cleared so it doesn't re-trigger.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (embedded || searchParams.get('find') !== 'friends') return;
+    setShowFriends(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('find');
+    setSearchParams(next, { replace: true });
+  }, [embedded, searchParams, setSearchParams]);
   const FEED_TABS = ['forYou', 'mine'];
   const [tab, setTab]                 = useState('forYou');
   const [friendStreaks, setFriendStreaks] = useCachedState(`social-streaks-${user?.id || 'anon'}`, []);

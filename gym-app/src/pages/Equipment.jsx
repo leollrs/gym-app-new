@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ScanLine, Star, Dumbbell } from 'lucide-react';
+import { ArrowLeft, ScanLine, Star, Dumbbell, LayoutGrid, LayoutList, ChevronRight } from 'lucide-react';
 import { getExercises } from '../lib/exerciseStore';
 const ALL_EXERCISES = getExercises();
 import { Capacitor } from '@capacitor/core';
@@ -9,7 +9,9 @@ import { STATIONS, STATION_GROUPS, stationBySlug, stationFor, parseEquipmentSlug
 import { ExerciseCard } from './ExerciseLibrary';
 import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 import { foodImageUrl } from '../lib/imageUrl';
+import { exName } from '../lib/exerciseName';
 import { useToast } from '../contexts/ToastContext';
+import WebQrScanModal from '../components/WebQrScanModal';
 
 // Station hero: prefer an uploaded equipment photo (food-images/equipment/<slug>.jpg),
 // fall back to a representative exercise's video first-frame until the photo exists.
@@ -84,16 +86,84 @@ function BrowseTile({ station, rep, title, sub, onClick }) {
   );
 }
 
+// List-row variant of BrowseTile — thumbnail + title + count, for list view.
+function BrowseRow({ station, rep, title, sub, onClick }) {
+  return (
+    <button onClick={onClick} className="active:scale-[0.99] transition-transform"
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: 10, borderRadius: 14,
+        background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+      <StationHero station={station} rep={rep} size={52} radius={12} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontWeight: 800, fontSize: 15, lineHeight: 1.15, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+        <span style={{ display: 'block', marginTop: 2, fontSize: 12, fontWeight: 700, color: 'var(--color-accent)' }}>{sub}</span>
+      </span>
+      <ChevronRight size={17} style={{ color: 'var(--color-text-subtle)', flexShrink: 0 }} />
+    </button>
+  );
+}
+
+// Grid ⇄ list, shared across both browse levels. Persisted so the choice sticks.
+function useBrowseView() {
+  const [v, setV] = useState(() => {
+    try { return localStorage.getItem('equipment.viewMode') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
+  });
+  const set = (mode) => { setV(mode); try { localStorage.setItem('equipment.viewMode', mode); } catch { /* ignore */ } };
+  return [v, set];
+}
+
+function ViewToggle({ viewMode, setViewMode, spanish }) {
+  const btn = (mode, Icon, label) => (
+    <button type="button" onClick={() => setViewMode(mode)} aria-label={label} aria-pressed={viewMode === mode}
+      style={{ display: 'flex', padding: '5px 8px', borderRadius: 8, border: 'none',
+        background: viewMode === mode ? 'var(--color-bg-card)' : 'transparent',
+        color: viewMode === mode ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+      <Icon size={15} />
+    </button>
+  );
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, padding: 3, borderRadius: 10, background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+      {btn('grid', LayoutGrid, spanish ? 'Cuadrícula' : 'Grid')}
+      {btn('list', LayoutList, spanish ? 'Lista' : 'List')}
+    </div>
+  );
+}
+
+function BrowseSection({ items, viewMode }) {
+  if (viewMode === 'list') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map((it) => <BrowseRow key={it.key} {...it} />)}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {items.map((it) => <BrowseTile key={it.key} {...it} />)}
+    </div>
+  );
+}
+
 /* ── Level 1: pick a category (Free Weights, Machines, …) ─────────────────── */
 function StationCategories({ onScan }) {
   const { i18n } = useTranslation('pages');
   const navigate = useNavigate();
   const spanish = es(i18n);
 
+  const [viewMode, setViewMode] = useBrowseView();
   const groups = STATION_GROUPS.map((g) => {
     const stations = STATIONS.filter((s) => s.group === g.key && (BY_STATION[s.name]?.length));
     return { ...g, stations };
   }).filter((g) => g.stations.length);
+  const items = groups.map((g) => {
+    const hero = g.stations[0];
+    const n = g.stations.length;
+    return {
+      key: g.key, station: hero, rep: REP_BY_STATION[hero?.name],
+      title: spanish ? g.label_es : g.label,
+      sub: `${n} ${spanish ? (n === 1 ? 'estación' : 'estaciones') : (n === 1 ? 'station' : 'stations')}`,
+      onClick: () => navigate(`/equipment/${g.key}`),
+    };
+  });
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg)', paddingBottom: 96 }}>
@@ -111,23 +181,13 @@ function StationCategories({ onScan }) {
               {spanish ? 'Elige una categoría, o escanea el código de una máquina' : 'Pick a category, or scan a machine’s code'}
             </p>
           </div>
+          <ViewToggle viewMode={viewMode} setViewMode={setViewMode} spanish={spanish} />
         </div>
         <ScanButton onScan={onScan} spanish={spanish} />
       </header>
 
       <div style={{ padding: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {groups.map((g) => {
-            const hero = g.stations[0];
-            const n = g.stations.length;
-            return (
-              <BrowseTile key={g.key} station={hero} rep={REP_BY_STATION[hero?.name]}
-                title={spanish ? g.label_es : g.label}
-                sub={`${n} ${spanish ? (n === 1 ? 'estación' : 'estaciones') : (n === 1 ? 'station' : 'stations')}`}
-                onClick={() => navigate(`/equipment/${g.key}`)} />
-            );
-          })}
-        </div>
+        <BrowseSection items={items} viewMode={viewMode} />
       </div>
     </div>
   );
@@ -138,7 +198,17 @@ function StationEquipment({ group, onScan }) {
   const { i18n } = useTranslation('pages');
   const navigate = useNavigate();
   const spanish = es(i18n);
+  const [viewMode, setViewMode] = useBrowseView();
   const stations = STATIONS.filter((s) => s.group === group.key && (BY_STATION[s.name]?.length));
+  const items = stations.map((s) => {
+    const count = BY_STATION[s.name]?.length || 0;
+    return {
+      key: s.slug, station: s, rep: REP_BY_STATION[s.name],
+      title: spanish ? s.name_es : s.name,
+      sub: `${count} ${spanish ? (count === 1 ? 'ejercicio' : 'ejercicios') : (count === 1 ? 'exercise' : 'exercises')}`,
+      onClick: () => navigate(`/equipment/${s.slug}`),
+    };
+  });
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg)', paddingBottom: 96 }}>
@@ -156,40 +226,55 @@ function StationEquipment({ group, onScan }) {
               {spanish ? 'Toca un equipo para ver sus ejercicios' : 'Tap a piece of equipment to see its exercises'}
             </p>
           </div>
+          <ViewToggle viewMode={viewMode} setViewMode={setViewMode} spanish={spanish} />
         </div>
         <ScanButton onScan={onScan} spanish={spanish} />
       </header>
 
       <div style={{ padding: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {stations.map((s) => {
-            const count = BY_STATION[s.name]?.length || 0;
-            return (
-              <BrowseTile key={s.slug} station={s} rep={REP_BY_STATION[s.name]}
-                title={spanish ? s.name_es : s.name}
-                sub={`${count} ${spanish ? (count === 1 ? 'ejercicio' : 'ejercicios') : (count === 1 ? 'exercise' : 'exercises')}`}
-                onClick={() => navigate(`/equipment/${s.slug}`)} />
-            );
-          })}
-        </div>
+        <BrowseSection items={items} viewMode={viewMode} />
       </div>
     </div>
   );
 }
 
 /* ── Detail: one station ────────────────────────────────────────────────── */
+// Grid tile for the exercise list's grid view — a first-frame video thumbnail
+// with the name overlaid, tapping opens the full ExerciseCard info modal.
+function ExerciseTile({ ex, onOpen }) {
+  return (
+    <button onClick={() => onOpen(ex)} className="active:scale-[0.98] transition-transform"
+      style={{ position: 'relative', textAlign: 'left', aspectRatio: '4 / 5', borderRadius: 16, overflow: 'hidden',
+        background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+      <ExerciseVideoThumb exercise={ex} fill showBadge={false} />
+      <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,13,16,0.86) 0%, rgba(10,13,16,0.2) 52%, transparent 100%)' }} />
+      <span style={{ position: 'absolute', left: 10, right: 10, bottom: 9, color: '#fff', fontWeight: 800, fontSize: 12.5, lineHeight: 1.16,
+        textShadow: '0 1px 6px rgba(0,0,0,0.55)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {exName(ex)}
+      </span>
+    </button>
+  );
+}
+
 function StationDetail({ station }) {
   const { i18n } = useTranslation('pages');
   const navigate = useNavigate();
   const spanish = es(i18n);
   const [muscle, setMuscle] = useState('All');
   const [beginnerOnly, setBeginnerOnly] = useState(false);
+  const [viewMode, setViewMode] = useBrowseView();
+  const [infoEx, setInfoEx] = useState(null);
 
   const all = BY_STATION[station.name] || [];
   const rep = REP_BY_STATION[station.name];
   const muscles = useMemo(() => ['All', ...Array.from(new Set(all.map((e) => e.muscle)))], [all]);
+  // Only surface the Beginner toggle when the station is actually a mix — if
+  // every exercise here is (or isn't) beginner, the toggle would visibly do
+  // nothing, which reads as broken.
+  const beginnerCount = useMemo(() => all.filter((e) => difficultyFor(e) === 'beginner').length, [all]);
+  const showBeginner = beginnerCount > 0 && beginnerCount < all.length;
   let shown = muscle === 'All' ? all : all.filter((e) => e.muscle === muscle);
-  if (beginnerOnly) shown = shown.filter((e) => difficultyFor(e) === 'beginner');
+  if (beginnerOnly && showBeginner) shown = shown.filter((e) => difficultyFor(e) === 'beginner');
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg)', paddingBottom: 96 }}>
@@ -216,9 +301,12 @@ function StationDetail({ station }) {
               </p>
             </div>
           </div>
+          <ViewToggle viewMode={viewMode} setViewMode={setViewMode} spanish={spanish} />
         </div>
 
+        {(showBeginner || muscles.length > 2) && (
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 2, WebkitOverflowScrolling: 'touch' }}>
+          {showBeginner && (
           <button onClick={() => setBeginnerOnly((v) => !v)}
             style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, padding: '6px 13px', borderRadius: 999, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
               border: '1px solid ' + (beginnerOnly ? 'var(--color-accent)' : 'var(--color-border-subtle)'),
@@ -226,6 +314,7 @@ function StationDetail({ station }) {
               color: beginnerOnly ? 'var(--color-text-on-accent, #fff)' : 'var(--color-text)' }}>
             <Star size={13} strokeWidth={2.4} fill={beginnerOnly ? 'currentColor' : 'none'} /> {spanish ? 'Principiante' : 'Beginner'}
           </button>
+          )}
           {muscles.length > 2 && muscles.map((m) => (
             <button key={m} onClick={() => setMuscle(m)}
               style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
@@ -236,18 +325,33 @@ function StationDetail({ station }) {
             </button>
           ))}
         </div>
+        )}
       </header>
 
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {shown.map((e) => (
-          <ExerciseCard key={e.id} exercise={e} />
-        ))}
+      <div style={{ padding: '16px' }}>
+        {viewMode === 'grid' ? (
+          <div className="grid grid-cols-2 gap-3">
+            {shown.map((e) => (
+              <ExerciseTile key={e.id} ex={e} onOpen={setInfoEx} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {shown.map((e) => (
+              <ExerciseCard key={e.id} exercise={e} />
+            ))}
+          </div>
+        )}
         {!shown.length && (
           <p style={{ textAlign: 'center', color: 'var(--color-text-subtle)', padding: 40 }}>
             {spanish ? 'No hay ejercicios para este filtro.' : 'No exercises for this filter.'}
           </p>
         )}
       </div>
+
+      {infoEx && (
+        <ExerciseCard exercise={infoEx} modalOnly initiallyOpen onExternalClose={() => setInfoEx(null)} />
+      )}
     </div>
   );
 }
@@ -264,12 +368,25 @@ export default function Equipment() {
   const station = slug ? stationBySlug(slug) : null;
   const group = slug ? STATION_GROUPS.find((g) => g.key === slug) : null;
 
+  // Web/desktop camera scanner (mobile web + laptops). Native uses MLKit below.
+  const [scanOpen, setScanOpen] = useState(false);
+
+  // A decoded QR → if it's a machine tag, jump to that station. Returns true
+  // when consumed so the web scanner modal knows to close.
+  const routeScannedSlug = (raw) => {
+    const s = parseEquipmentSlug(raw);
+    if (s) { setScanOpen(false); navigate(`/equipment/${s}`); return true; }
+    return false;
+  };
+
   // Scan a machine's QR (tugympr://equipment/<slug>) → jump to that station.
   const onScan = async () => {
+    // Web / desktop: open the in-browser camera scanner (html5-qrcode).
     if (!Capacitor.isNativePlatform()) {
-      showToast(spanish ? 'El escáner solo está disponible en la app móvil.' : 'Scanning is only available in the mobile app.', 'info');
+      setScanOpen(true);
       return;
     }
+    // Native: MLKit fullscreen scanner.
     try {
       const { BarcodeScanner, BarcodeFormat } = await import('@capacitor-mlkit/barcode-scanning');
       const { camera } = await BarcodeScanner.requestPermissions();
@@ -279,9 +396,9 @@ export default function Equipment() {
       }
       const { barcodes } = await BarcodeScanner.scan({ formats: [BarcodeFormat.QrCode] });
       if (barcodes?.length && barcodes[0].rawValue) {
-        const s = parseEquipmentSlug(barcodes[0].rawValue);
-        if (s) navigate(`/equipment/${s}`);
-        else showToast(spanish ? 'Ese código no corresponde a un equipo.' : "That code isn't a recognized equipment tag.", 'error');
+        if (!routeScannedSlug(barcodes[0].rawValue)) {
+          showToast(spanish ? 'Ese código no corresponde a un equipo.' : "That code isn't a recognized equipment tag.", 'error');
+        }
       }
     } catch (e) {
       if (e?.message?.toLowerCase?.().includes('cancel')) return;
@@ -289,7 +406,16 @@ export default function Equipment() {
     }
   };
 
-  if (station) return <StationDetail station={station} />;
-  if (group) return <StationEquipment group={group} onScan={onScan} />;
-  return <StationCategories onScan={onScan} />;
+  const body = station
+    ? <StationDetail station={station} />
+    : group
+      ? <StationEquipment group={group} onScan={onScan} />
+      : <StationCategories onScan={onScan} />;
+
+  return (
+    <>
+      {body}
+      <WebQrScanModal open={scanOpen} onClose={() => setScanOpen(false)} onDecode={routeScannedSlug} spanish={spanish} />
+    </>
+  );
 }

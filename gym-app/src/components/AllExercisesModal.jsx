@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { X, Search } from 'lucide-react';
+import { X, Search, LayoutGrid, LayoutList, ArrowUpDown } from 'lucide-react';
 import { exName } from '../lib/exerciseName';
 import LazyVideoTile from './LazyVideoTile';
 
@@ -49,6 +49,35 @@ function ExerciseBox({ ex, onTap }) {
   );
 }
 
+// Compact row variant for list view — video thumbnail + name + muscle · gear.
+function ExerciseRow({ ex, onTap, t }) {
+  const vsrc = videoSrc(ex);
+  const sub = [
+    ex.muscle && t(`muscleGroups.${ex.muscle}`, ex.muscle),
+    ex.equipment && t(`exerciseLibrary.equipmentNames.${ex.equipment}`, ex.equipment),
+  ].filter(Boolean).join(' · ');
+  return (
+    <button
+      type="button"
+      onClick={() => onTap?.(ex)}
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[14px] text-left active:scale-[0.99] transition-transform"
+      style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+    >
+      <div className="relative rounded-[10px] overflow-hidden flex-shrink-0" style={{ width: 46, height: 46, background: 'var(--color-surface-hover)' }}>
+        {vsrc ? (
+          <LazyVideoTile src={vsrc} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent)' }} />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex)}</p>
+        {sub && <p className="text-[11.5px] truncate mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>{sub}</p>}
+      </div>
+    </button>
+  );
+}
+
 export default function AllExercisesModal({
   open,
   onClose,
@@ -62,6 +91,11 @@ export default function AllExercisesModal({
   const { t } = useTranslation('pages');
   const [search, setSearch] = useState(initialSearch);
   const [chip, setChip] = useState(initialChip);
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('allExercises.viewMode') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
+  });
+  useEffect(() => { try { localStorage.setItem('allExercises.viewMode', viewMode); } catch { /* ignore */ } }, [viewMode]);
+  const [sortMode, setSortMode] = useState('az'); // 'az' | 'muscle'
 
   // Reset to the externally-provided starting state every time the modal opens
   // so chip taps from the parent surface here as the active chip.
@@ -90,8 +124,10 @@ export default function AllExercisesModal({
       }
       return true;
     });
-    return list.sort((a, b) => exName(a).localeCompare(exName(b)));
-  }, [exercises, search, chip, filterByChip]);
+    return sortMode === 'muscle'
+      ? list.sort((a, b) => (a.muscle || '').localeCompare(b.muscle || '') || exName(a).localeCompare(exName(b)))
+      : list.sort((a, b) => exName(a).localeCompare(exName(b)));
+  }, [exercises, search, chip, filterByChip, sortMode]);
 
   if (typeof document === 'undefined') return null;
 
@@ -184,11 +220,35 @@ export default function AllExercisesModal({
                 </div>
               )}
 
-              {/* Count */}
-              <div className="px-4 mb-2">
+              {/* Count + sort/view controls */}
+              <div className="px-4 mb-2 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-extrabold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
                   {t('exerciseLibrary.countExercises', { count: filtered.length, defaultValue: `${filtered.length} exercises` })}
                 </p>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSortMode((s) => (s === 'az' ? 'muscle' : 'az'))}
+                    aria-label={t('exerciseLibrary.sort', 'Sort')}
+                    className="flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform"
+                    style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+                  >
+                    <ArrowUpDown size={13} />
+                    {sortMode === 'az' ? t('exerciseLibrary.sortAZ', 'A–Z') : t('exerciseLibrary.sortMuscle', 'Muscle')}
+                  </button>
+                  <div className="inline-flex items-center rounded-lg p-[3px]" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                    <button type="button" onClick={() => setViewMode('grid')} aria-label={t('exerciseLibrary.viewGrid', 'Grid view')} aria-pressed={viewMode === 'grid'}
+                      className="px-2 py-1 rounded-md transition-colors"
+                      style={{ background: viewMode === 'grid' ? 'var(--color-bg-card)' : 'transparent', color: viewMode === 'grid' ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                      <LayoutGrid size={13} />
+                    </button>
+                    <button type="button" onClick={() => setViewMode('list')} aria-label={t('exerciseLibrary.viewList', 'List view')} aria-pressed={viewMode === 'list'}
+                      className="px-2 py-1 rounded-md transition-colors"
+                      style={{ background: viewMode === 'list' ? 'var(--color-bg-card)' : 'transparent', color: viewMode === 'list' ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                      <LayoutList size={13} />
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Grid */}
@@ -201,6 +261,12 @@ export default function AllExercisesModal({
                     <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
                       {t('exerciseLibrary.noExercisesFound', 'No exercises found')}
                     </p>
+                  </div>
+                ) : viewMode === 'list' ? (
+                  <div className="flex flex-col gap-2">
+                    {filtered.map((ex) => (
+                      <ExerciseRow key={ex.id} ex={ex} onTap={onExerciseTap} t={t} />
+                    ))}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">

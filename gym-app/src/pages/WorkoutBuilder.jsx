@@ -5,7 +5,7 @@ import {
   ChevronLeft, Plus, Trash2, Dumbbell,
   ChevronRight, RotateCcw, Link2, Unlink, ArrowLeftRight, GripVertical, X
 } from 'lucide-react';
-import ExerciseLibrary from './ExerciseLibrary';
+import ExerciseLibrary, { ExerciseCard } from './ExerciseLibrary';
 import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 import LazyVideoTile from '../components/LazyVideoTile';
 import { getExercises, getExerciseById } from '../lib/exerciseStore';
@@ -115,7 +115,7 @@ const MuscleThumb = ({ muscle, size = 36 }) => {
   );
 };
 
-const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap, onGripDown, isSelected, onToggleSelect, t, primaryGoal }) => {
+const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap, onGripDown, isSelected, onToggleSelect, t, primaryGoal, onShowInfo }) => {
   if (!exercise) return null;
 
   return (
@@ -144,7 +144,12 @@ const ExerciseRow = ({ item, exercise, index, total, onChange, onRemove, onSwap,
         >
           {isSelected && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
         </button>
-        <ExerciseVideoThumb exercise={{ videoUrl: exercise.videoUrl, muscle: exercise.muscle }} size={40} radius={11} />
+        <button type="button" onClick={() => onShowInfo?.(exercise)}
+          aria-label={t('exerciseLibrary.viewInfo', 'View exercise info')}
+          className="shrink-0 active:scale-95 transition-transform"
+          style={{ background: 'none', border: 'none', padding: 0, display: 'flex', borderRadius: 11 }}>
+          <ExerciseVideoThumb exercise={{ videoUrl: exercise.videoUrl, muscle: exercise.muscle }} size={40} radius={11} />
+        </button>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-[15px] truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(exercise)}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -340,6 +345,7 @@ const WorkoutBuilder = () => {
   const [customExs, setCustomExs]             = useState([]);
   const [friendIds, setFriendIds]             = useState(new Set());
   const [savedIds, setSavedIds]               = useState(new Set());
+  const [infoExercise, setInfoExercise]       = useState(null); // tapped thumbnail → exercise info card
 
   // Load routine from DB
   useEffect(() => {
@@ -1036,6 +1042,7 @@ const WorkoutBuilder = () => {
                       onToggleSelect={handleToggleSelect}
                       t={t}
                       primaryGoal={profile?.primary_goal}
+                      onShowInfo={setInfoExercise}
                     />
                   </div>
                 </React.Fragment>
@@ -1156,6 +1163,10 @@ const WorkoutBuilder = () => {
           </button>
         </div>
       </div>
+      {/* Tapped an exercise thumbnail → open its full info card (video, muscles, cues). */}
+      {infoExercise && (
+        <ExerciseCard exercise={infoExercise} modalOnly initiallyOpen onExternalClose={() => setInfoExercise(null)} />
+      )}
     </div>
   );
 };

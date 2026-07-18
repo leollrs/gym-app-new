@@ -138,12 +138,31 @@ export default defineConfig({
             },
           },
           {
-            // Supabase Storage — cache-first (images, videos, files)
+            // Exercise demo videos — the <video> thumbnails/players issue HTTP
+            // Range requests (206), which Workbox's default cacheableResponse
+            // ([0,200]) rejects, so they'd re-download on every page in/out.
+            // rangeRequests:true adds the Range plugin + we allow 206 so the
+            // clip is served from cache after the first load.
+            urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/.*exercise-videos.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'video-cache',
+              rangeRequests: true,
+              cacheableResponse: { statuses: [0, 200, 206] },
+              expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+            },
+          },
+          {
+            // Supabase Storage — cache-first (images, meal/equipment photos,
+            // files). Bumped to 1500 entries / 30 days so heavy media browsing
+            // (305 exercises + 432 recipes + food/equipment shots) doesn't evict
+            // and re-fetch as the user goes in and out of pages.
             urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/.*/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'storage-cache',
-              expiration: { maxEntries: 500, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 1500, maxAgeSeconds: 30 * 24 * 60 * 60 },
             },
           },
           // Self-hosted fonts (public/fonts/*.woff2) are part of the app shell

@@ -255,15 +255,17 @@ const ExerciseHeaderCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, on
           <video src={resolvedSrc} autoPlay loop muted playsInline className="w-full h-full object-cover" />
           <button
             onClick={(e) => { e.stopPropagation(); setShowVideo(false); }}
-            className="absolute top-3 right-3 z-20 w-10 h-10 rounded-full bg-black/70 flex items-center justify-center text-white active:scale-90 transition-transform"
+            className="absolute top-3 right-3 z-20 w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+            style={{ background: 'rgba(0,0,0,0.72)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', boxShadow: '0 2px 8px rgba(0,0,0,0.35)' }}
             aria-label={t?.('activeSession.hideDemoAria', 'Hide demo') ?? 'Hide demo'}
           >
-            <X size={18} strokeWidth={2.5} />
+            <X size={18} strokeWidth={2.6} color="#fff" />
           </button>
         </div>
       )}
       <div className="flex items-center gap-3 p-4">
-        {/* Demo thumbnail tile */}
+        {/* Demo thumbnail tile — shows the exercise's first frame as a preview
+            (it's already loaded) with a play badge to expand the full demo. */}
         <button
           type="button"
           onClick={() => videoUrl && setShowVideo(v => !v)}
@@ -278,8 +280,20 @@ const ExerciseHeaderCard = ({ exercise, muscle, videoUrl, knownPR, t, onSwap, on
           }}
           aria-label={showVideo ? (t?.('activeSession.hideDemoAria', 'Hide demo') ?? 'Hide demo') : (t?.('activeSession.showDemoAria', 'Show demo') ?? 'Show demo')}
         >
+          {resolvedSrc && (
+            <>
+              <video
+                src={`${resolvedSrc}#t=0.1`}
+                muted
+                playsInline
+                preload="metadata"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.26)' }} />
+            </>
+          )}
           <div
-            className="flex items-center justify-center rounded-full"
+            className="relative flex items-center justify-center rounded-full"
             style={{ width: 30, height: 30, backgroundColor: 'rgba(255,255,255,0.96)' }}
           >
             <Play size={12} fill="#0A0D10" color="#0A0D10" strokeWidth={0} style={{ marginLeft: 1 }} />
@@ -690,6 +704,20 @@ const ExerciseCard = ({
   const suggestedWeight = suggestion?.suggestedWeight;
   const suggestedReps = suggestion?.suggestedReps;
 
+  // Carry-forward from the last set the user actually logged THIS session:
+  // lifters usually keep the same weight across sets, so the next set's input
+  // pre-fills to it (fewer taps). Falls back to the engine suggestion below
+  // when nothing's been logged yet.
+  const lastLoggedSet = (() => {
+    for (let i = currentSets.length - 1; i >= 0; i--) {
+      const s = currentSets[i];
+      if (s?.completed && !s.skipped && s.weight !== '' && s.weight != null && s.reps !== '' && s.reps != null) return s;
+    }
+    return null;
+  })();
+  const carryWeight = lastLoggedSet != null ? Number(lastLoggedSet.weight) : null; // stored lb
+  const carryReps = lastLoggedSet != null ? Number(lastLoggedSet.reps) : null;
+
   const historyArr = Array.isArray(exercise.history) ? exercise.history : [];
   const historyForActiveSet = historyArr[activeSetIndex] || historyArr[historyArr.length - 1] || null;
 
@@ -1006,8 +1034,10 @@ const ExerciseCard = ({
                   const lbStored = unit === 'kg' ? Math.round(num * LB_PER_KG * 10) / 10 : num;
                   onUpdateSet(exercise.id, activeSetIndex, 'weight', String(lbStored));
                 };
-                const placeholderVal = suggestedWeight
-                  ? String(unit === 'kg' ? roundKgDisplay(suggestedWeight) : suggestedWeight)
+                // Prefer the last logged weight this session, then the engine suggestion.
+                const phWeight = (carryWeight != null && carryWeight > 0) ? carryWeight : suggestedWeight;
+                const placeholderVal = phWeight
+                  ? String(unit === 'kg' ? roundKgDisplay(phWeight) : phWeight)
                   : '0';
                 return (
                   <Stepper
@@ -1078,6 +1108,8 @@ const ExerciseCard = ({
                 min={0}
                 max={999}
                 placeholder={(() => {
+                  // Prefer the last logged reps this session, then the suggestion.
+                  if (carryReps != null && carryReps > 0) return String(carryReps);
                   if (suggestedReps) return String(suggestedReps);
                   // Fall back to the lower bound of the target range (e.g. "8-12" → 8)
                   const tr = String(exercise.targetReps ?? '').match(/^\s*(\d+)/);

@@ -3272,14 +3272,16 @@ export const ExerciseLibraryPage = () => {
       {/* ── Filter chips (scrollable) — tap to highlight muscles + open sheet,
           or open the All Exercises modal for non-muscle chips. */}
       <div className="mb-3 -mx-4 pl-4 overflow-x-auto no-scrollbar">
-        {/* pr-4 lives on the flex row (not the scroll container) so mobile WebKit
-            keeps the trailing whitespace after the last chip instead of collapsing it. */}
-        <div className="flex gap-1.5 whitespace-nowrap pr-4">
+        {/* A real trailing spacer element (not pr-4) guarantees breathing room
+            after the last chip (Core): mobile WebKit collapses trailing padding
+            on a horizontal-scroll flex row, but an explicit shrink-0 box holds. */}
+        <div className="flex gap-1.5 whitespace-nowrap">
           {chipDefs.map((c) => (
             <FilterChip key={c.id} active={c.id === activeChip} onClick={() => handleChipTap(c.id)}>
               {c.label}
             </FilterChip>
           ))}
+          <span aria-hidden className="shrink-0 w-4" />
         </div>
       </div>
 
@@ -3515,6 +3517,14 @@ export const ExerciseLibraryPage = () => {
             <p className="text-[13px] mt-1.5 text-[var(--color-text-muted)]">
               {t('exerciseLibrary.noFriendExercisesHint')}
             </p>
+            <button
+              type="button"
+              onClick={() => navigate('/social?find=friends')}
+              className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-transform"
+              style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)', border: 'none', boxShadow: '0 6px 16px color-mix(in srgb, var(--color-accent) 26%, transparent)' }}
+            >
+              <Users size={15} strokeWidth={2.4} /> {t('exerciseLibrary.findFriends', 'Find friends')}
+            </button>
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 xl:grid-cols-3">

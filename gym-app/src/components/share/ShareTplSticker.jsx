@@ -154,7 +154,7 @@ export default function ShareTplSticker({
             <div style={{ flexShrink: 0, transform: `scale(${s * 0.9})`, transformOrigin: 'right center', opacity: 0.9 }}>
               <GymLockup
                 gym={gymObj}
-                logoUrl={data.gymLogoUrl}
+                logoUrl={data.gymLogoUrl || data.gymLogo}
                 tone="light"
                 size="sm"
                 s={s}

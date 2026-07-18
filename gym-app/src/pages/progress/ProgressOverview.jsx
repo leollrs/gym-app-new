@@ -691,6 +691,20 @@ function SessionRow({ session, onDelete }) {
   const { t, i18n } = useTranslation('pages');
   const [expanded, setExpanded] = useState(false);
   const exercises = session.session_exercises ?? [];
+  // Merge exercises that share the same name (a routine may list a movement
+  // more than once) so history shows each ONCE with all its sets combined.
+  // This query doesn't fetch exercise_id, so we key on the displayed name.
+  const mergedExercises = (() => {
+    const ordered = [...exercises].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const byKey = new Map();
+    for (const ex of ordered) {
+      const key = (ex.snapshot_name || '').trim().toLowerCase() || ex.id;
+      const prev = byKey.get(key);
+      if (prev) prev.session_sets = [...(prev.session_sets ?? []), ...(ex.session_sets ?? [])];
+      else byKey.set(key, { ...ex, session_sets: [...(ex.session_sets ?? [])] });
+    }
+    return [...byKey.values()];
+  })();
   const allSets = exercises.flatMap(e => e.session_sets ?? []).filter(s => s.is_completed);
   const prCount = allSets.filter(s => s.is_pr).length;
   const vol = parseFloat(session.total_volume_lbs) || 0;
@@ -724,7 +738,7 @@ function SessionRow({ session, onDelete }) {
               <Zap size={10} strokeWidth={2} /> {volStr} lbs
             </span>
             <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-              <Dumbbell size={10} strokeWidth={2} /> {exercises.length}
+              <Dumbbell size={10} strokeWidth={2} /> {mergedExercises.length}
             </span>
             {prCount > 0 && (
               <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: '#FF5A2E' }}>
@@ -756,8 +770,7 @@ function SessionRow({ session, onDelete }) {
       {expanded && (
         <div className="px-4 pb-3.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           <div className="pt-3 flex flex-col gap-3">
-            {exercises
-              .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+            {mergedExercises
               .map(ex => {
                 const completedSets = (ex.session_sets ?? []).filter(s => s.is_completed);
                 const hasPR = completedSets.some(s => s.is_pr);
@@ -770,9 +783,9 @@ function SessionRow({ session, onDelete }) {
                     <div className="flex flex-wrap gap-1.5">
                       {completedSets
                         .sort((a, b) => a.set_number - b.set_number)
-                        .map(set => (
+                        .map((set, si) => (
                           <div
-                            key={`${set.set_number}-${set.weight_lbs}-${set.reps}`}
+                            key={`${si}-${set.set_number}-${set.weight_lbs}-${set.reps}`}
                             className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
                             style={
                               set.is_pr

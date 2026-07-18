@@ -15,7 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { getCached, setCache } from '../lib/queryCache';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { useCachedState, hasCachedState, useSyncedCachedState } from '../hooks/useCachedState';
 import { computeStreakFromSessions } from '../lib/achievements';
 import { hasCardioLoggedAfter, hasRecentCardioLog, recordCardioLogged } from '../lib/cardioLedger';
 import { getRewardTier } from '../lib/rewardsEngine';
@@ -32,7 +32,7 @@ import { tg } from '../lib/genderText';
 // dashboard body actually renders.
 const GymPulse = lazy(() => import('../components/GymPulse'));
 const GymWOD   = lazy(() => import('../components/GymWOD'));
-import { getTodayChallenge } from '../lib/dailyChallenges';
+import { getTodayChallenge, fetchDailyChallengeProgress, todayChallengeDate } from '../lib/dailyChallenges';
 
 import DayStrip from '../components/DayStrip';
 import WorkoutHeroCard from '../components/WorkoutHeroCard';
@@ -222,6 +222,32 @@ const Dashboard = () => {
   const today = new Date().toISOString().split('T')[0];
   const [localSkipped, setLocalSkipped] = useState(false);
   const skippedToday = localSkipped || profile?.skip_suggestion_date === today;
+
+  // ── "Challenge of the Day" progress (mirrors the Challenges-page card) ──────
+  // Read-only here — we fetch/show today's progress, but the completion +
+  // points award happens on the Challenges page. Shares the same per-user/day
+  // localStorage cache (useSyncedCachedState) so both surfaces stay in sync and
+  // the bar paints instantly on revisit.
+  const todayChallenge = getTodayChallenge();
+  // Local date (matches the Challenges page) so both surfaces show the same
+  // challenge AND share the same per-day cache keys.
+  const dcDate = todayChallengeDate();
+  const dailyChallengeKey = `daily_challenge_progress_${user?.id || 'anon'}_${dcDate}`;
+  const dailyChallengeDoneKey = `daily_challenge_${user?.id || 'anon'}_${dcDate}`;
+  const [dailyChallengeProgress, setDailyChallengeProgress] = useSyncedCachedState(dailyChallengeKey, 0);
+  const dailyChallengeDone =
+    dailyChallengeProgress >= todayChallenge.target ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem(dailyChallengeDoneKey) === 'true');
+  const dailyChallengePct = Math.min((dailyChallengeProgress / todayChallenge.target) * 100, 100);
+
+  useEffect(() => {
+    if (!user?.id || dailyChallengeDone) return;
+    if (hasCachedState(dailyChallengeKey)) return; // warm cache — instant, skip refetch
+    let alive = true;
+    fetchDailyChallengeProgress(user.id, todayChallenge).then((v) => { if (alive) setDailyChallengeProgress(v); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, dailyChallengeKey]);
   const [weekSessions, setWeekSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(() => readActiveSession());
   const [allActiveDrafts, setAllActiveDrafts] = useState(() => readAllActiveSessions());
@@ -2410,11 +2436,31 @@ const Dashboard = () => {
                       </span>
                     </div>
                     <p className="text-[15px] font-extrabold leading-tight mt-1" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: -0.3 }}>
-                      {tg(t, `challenges.dailyChallengeNames.${getTodayChallenge().nameKey}`, { defaultValue: getTodayChallenge().name })}
+                      {tg(t, `challenges.dailyChallengeNames.${todayChallenge.nameKey}`, { defaultValue: todayChallenge.name })}
                     </p>
                     <p className="text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--color-text-muted)' }}>
-                      {t(`challenges.dailyChallengeDescs.${getTodayChallenge().descKey}`, getTodayChallenge().desc)}
+                      {t(`challenges.dailyChallengeDescs.${todayChallenge.descKey}`, todayChallenge.desc)}
                     </p>
+                    {/* Quick completion glance — progress line + bar (e.g. 0/1 check-in) */}
+                    <div className="mt-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold" style={{ color: dailyChallengeDone ? '#10B981' : 'var(--color-text-muted)' }}>
+                          {todayChallenge.target >= 1000
+                            ? `${Math.round(dailyChallengeProgress).toLocaleString()} / ${todayChallenge.target.toLocaleString()}`
+                            : `${Math.round(dailyChallengeProgress)} / ${todayChallenge.target}`}
+                          {' '}{t(`challenges.units.${todayChallenge.unit}`, todayChallenge.unit)}
+                        </span>
+                        {dailyChallengeDone && (
+                          <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase" style={{ color: '#10B981', letterSpacing: 0.5 }}>
+                            <CheckCircle2 size={11} strokeWidth={2.5} /> {t('challenges.dailyDone', 'Done')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.06))' }}>
+                        <div className="h-full rounded-full transition-all duration-700 ease-out"
+                          style={{ width: `${dailyChallengePct}%`, background: dailyChallengeDone ? '#10B981' : '#FF5A2E' }} />
+                      </div>
+                    </div>
                   </Link>
                 </div>
               </section>

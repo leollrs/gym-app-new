@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, Component } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame, Unlink } from 'lucide-react';
+import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame, Unlink, GripVertical, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import logger from '../lib/logger';
@@ -34,6 +34,7 @@ import SessionHeader from './active-session/SessionHeader';
 import ExerciseCard from './active-session/ExerciseCard';
 import SupersetPickerModal from '../components/SupersetPickerModal';
 import LazyVideoTile from '../components/LazyVideoTile';
+import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 import { getSessionSuggestions } from '../lib/sessionExerciseSuggestions';
 import { getSwapMatchScore, filterByReason } from '../lib/swapMatchScore';
 import RestTimer from './active-session/RestTimer';
@@ -42,6 +43,70 @@ import { selectWarmUps } from '../lib/warmUpSelector';
 import { selectCoolDownStretches } from '../lib/cooldownSelector';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
+
+// Pointer drag-to-reorder — same hook the routine builders use (WorkoutBuilder /
+// MemberProgramBuilder), so the in-session exercise list reorders the same way:
+// grab the grip, drag, rows live-reorder while the grabbed row follows the finger.
+// Rows carry `data-dragitem={uid}` inside a `data-dragroot` container.
+const LIST_DRAG_GAP = 8; // matches the `space-y-2` (0.5rem) gap between rows
+function useDragSort(ids, onReorder) {
+  const [drag, setDrag] = useState(null);
+  const latest = useRef({ ids, onReorder });
+  latest.current.ids = ids;
+  latest.current.onReorder = onReorder;
+  const st = useRef({});
+  const h = useRef(null);
+  if (!h.current) {
+    const move = (e) => {
+      const s = st.current;
+      if (!s.id) return;
+      setDrag(d => (d ? { ...d, y: e.clientY } : d));
+      let idx = 0;
+      for (let i = 0; i < s.rects.length; i++) {
+        const mid = s.rects[i].rect.top + s.rects[i].rect.height / 2;
+        if (e.clientY > mid) idx = i + 1;
+      }
+      const cur = s.order.indexOf(s.id);
+      idx = Math.max(0, Math.min(s.order.length - 1, idx > cur ? idx - 1 : idx));
+      if (idx !== s.lastIndex) {
+        const next = s.order.filter(x => x !== s.id);
+        next.splice(idx, 0, s.id);
+        s.order = next; s.lastIndex = idx;
+        latest.current.onReorder(next.slice());
+      }
+    };
+    const end = () => {
+      st.current = {};
+      setDrag(null);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+    const start = (id, e, rowEl) => {
+      e.preventDefault(); e.stopPropagation();
+      const root = rowEl?.closest('[data-dragroot]');
+      if (!root) return;
+      const rows = Array.from(root.querySelectorAll('[data-dragitem]'));
+      const rects = rows.map(r => ({ id: r.getAttribute('data-dragitem'), rect: r.getBoundingClientRect() }));
+      const from = latest.current.ids.indexOf(id);
+      const cardH = rects[from]?.rect.height || 0;
+      st.current = { id, order: latest.current.ids.slice(), rects, lastIndex: from };
+      setDrag({ id, startY: e.clientY, y: e.clientY, from, h: cardH });
+      try { rowEl.setPointerCapture(e.pointerId); } catch (_) { /* capture optional */ }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+    };
+    h.current = { start, end };
+  }
+  useEffect(() => () => h.current?.end?.(), []);
+  const draggedTranslate = () => {
+    if (!drag) return 0;
+    const curIndex = latest.current.ids.indexOf(drag.id);
+    return (drag.y - drag.startY) - (curIndex - drag.from) * (drag.h + LIST_DRAG_GAP);
+  };
+  return { dragId: drag?.id ?? null, draggedTranslate, start: h.current.start };
+}
 
 // Chip filters for the in-session Add Exercise modal. Mirrors the chip set
 // used by the standalone Exercise Library so the same mental model carries.
@@ -912,6 +977,34 @@ const ActiveSession = () => {
       ex.groupId === groupId ? { ...ex, groupId: null, groupType: null } : ex
     ));
   };
+
+  // ── Drag-to-reorder for the list manager ─────────────────────────────────
+  // Exercise ids can repeat (a user may add the same movement twice) and the
+  // array index is unstable mid-drag, so we key a stable uid off each exercise
+  // OBJECT's identity. Reorder keeps the same object refs, so uids stay stable
+  // across a drag; adding a new exercise mints a fresh uid.
+  const rowUidMap = useRef(new WeakMap());
+  const rowUidSeq = useRef(0);
+  const uidForEx = useCallback((ex) => {
+    if (!ex || typeof ex !== 'object') return 'exrow-x';
+    let u = rowUidMap.current.get(ex);
+    if (!u) { u = `exrow-${++rowUidSeq.current}`; rowUidMap.current.set(ex, u); }
+    return u;
+  }, []);
+  const listDragUids = exercises.map(uidForEx);
+  const reorderExercisesByUids = useCallback((orderedUids) => {
+    const activeEx = exercises[currentExerciseIndex];
+    const byUid = new Map(exercises.map((ex) => [uidForEx(ex), ex]));
+    const next = orderedUids.map((u) => byUid.get(u)).filter(Boolean);
+    if (next.length !== exercises.length) return; // safety — never drop rows
+    setExercises(next);
+    // Keep the same exercise highlighted at its new position.
+    if (activeEx) {
+      const newIdx = next.indexOf(activeEx);
+      if (newIdx >= 0 && newIdx !== currentExerciseIndex) setCurrentExerciseIndex(newIdx);
+    }
+  }, [exercises, currentExerciseIndex, uidForEx]);
+  const { dragId: listDragId, draggedTranslate: listDraggedTranslate, start: listDragStart } = useDragSort(listDragUids, reorderExercisesByUids);
   // Quick-superset state: when the user taps the inline "Superset" pill we
   // either open a picker (to choose a partner from the routine / add a new
   // one) or — if the current exercise is already grouped — unlink the group.
@@ -3069,7 +3162,7 @@ const ActiveSession = () => {
           </div>
         </div>
 
-        {/* Buttons */}
+        {/* Buttons — Start full-width, then Skip + Cancel split 50/50 */}
         <div className="w-full px-6 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] space-y-3">
           <button
             onClick={() => { setWarmUpPhase('active'); setWarmUpIndex(0); }}
@@ -3078,35 +3171,37 @@ const ActiveSession = () => {
           >
             {t('activeSession.enterWarmUp', 'Start Warm-Up')}
           </button>
-          <button
-            onClick={() => setWarmUpPhase('done')}
-            className="w-full py-3 rounded-2xl font-semibold text-[13px] transition-colors"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {t('activeSession.skipWarmUp', 'Skip')}
-          </button>
-          <button
-            onClick={() => {
-              // Bail out: clear any draft we may have already written and
-              // bounce HOME. Mirrors the discard-session cleanup so we
-              // don't leave orphan state behind.
-              posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: 0, from: 'warmup_gate' });
-              sessionEndedRef.current = true;
-              draftSaveRef.current = null;
-              try { localStorage.removeItem(sessionKey); } catch {}
-              if (user?.id && !isEmptyMode) {
-                supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}, () => {});
-              }
-              try { cancelWorkoutNotification(); } catch {}
-              try { endLiveActivity(); } catch {}
-              try { syncWorkoutEnded({ duration: 0, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); } catch {}
-              navigate('/');
-            }}
-            className="w-full py-2 rounded-2xl font-semibold text-[12px] transition-colors"
-            style={{ color: 'var(--color-text-subtle)' }}
-          >
-            {t('activeSession.cancelWorkout', 'Cancel')}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setWarmUpPhase('done')}
+              className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+              style={{ backgroundColor: 'var(--color-surface-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+            >
+              {t('activeSession.skipWarmUp', 'Skip')}
+            </button>
+            <button
+              onClick={() => {
+                // Bail out: clear any draft we may have already written and
+                // bounce HOME. Mirrors the discard-session cleanup so we
+                // don't leave orphan state behind.
+                posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: 0, from: 'warmup_gate' });
+                sessionEndedRef.current = true;
+                draftSaveRef.current = null;
+                try { localStorage.removeItem(sessionKey); } catch {}
+                if (user?.id && !isEmptyMode) {
+                  supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}, () => {});
+                }
+                try { cancelWorkoutNotification(); } catch {}
+                try { endLiveActivity(); } catch {}
+                try { syncWorkoutEnded({ duration: 0, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); } catch {}
+                navigate('/');
+              }}
+              className="flex-1 py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--color-danger, #EF4444) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger, #EF4444) 40%, transparent)', color: 'var(--color-danger, #EF4444)' }}
+            >
+              {t('activeSession.cancelWorkout', 'Cancel')}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -3141,11 +3236,24 @@ const ActiveSession = () => {
     return null;
   };
   const _trMatch = String(currentExercise?.targetReps ?? '').match(/^\s*(\d+)/);
+  // Carry-forward: the last set actually logged this session (lifters repeat the
+  // same load across sets), preferred over the engine suggestion so tapping
+  // Complete commits exactly what the input placeholder shows. Mirrors the
+  // carryWeight/carryReps logic in ExerciseCard.
+  const _lastLoggedSet = (() => {
+    for (let i = currentSets.length - 1; i >= 0; i--) {
+      const s = currentSets[i];
+      if (s?.completed && !s.skipped && s.weight !== '' && s.weight != null && s.reps !== '' && s.reps != null) return s;
+    }
+    return null;
+  })();
   const suggestedW = _firstPositive(
+    _lastLoggedSet?.weight,
     currentExercise?.suggestion?.suggestedWeight,
     currentExercise?.suggestedWeight,
   );
   const suggestedR = _firstPositive(
+    _lastLoggedSet?.reps,
     currentExercise?.suggestion?.suggestedReps,
     currentExercise?.suggestedReps,
     _trMatch ? _trMatch[1] : null,
@@ -3835,6 +3943,13 @@ const ActiveSession = () => {
         if (!wu) return null;
         const wuName = i18n.language === 'es' && wu.name_es ? wu.name_es : wu.name;
         const localWu = localExercises.find(e => e.id === wu.id);
+        // Warm-up rows store a bare storage path ("global/x.mp4"); resolve it to
+        // the public Supabase URL just like every other exercise card, otherwise
+        // the <video> points at a relative path and never loads.
+        const rawWu = localWu?.videoUrl;
+        const wuVideoSrc = rawWu
+          ? (/^(https?:|blob:|data:)/.test(rawWu) ? rawWu : `https://erdhnixjnjullhjzmvpm.supabase.co/storage/v1/object/public/exercise-videos/${rawWu}`)
+          : null;
 
         return (
           <div className="flex-1 overflow-y-auto">
@@ -3842,9 +3957,9 @@ const ActiveSession = () => {
               {/* Exercise card — mirrors ExerciseCard layout */}
               <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)' }}>
                 {/* Video placeholder / demo area */}
-                {localWu?.videoUrl ? (
+                {wuVideoSrc ? (
                   <div className="relative w-full aspect-video bg-black/40 flex items-center justify-center">
-                    <video src={localWu.videoUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay aria-label={t('activeSession.exerciseDemoAria', { name: wuName, defaultValue: `${wuName} exercise demonstration` })} />
+                    <video src={wuVideoSrc} className="w-full h-full object-cover" muted loop playsInline autoPlay aria-label={t('activeSession.exerciseDemoAria', { name: wuName, defaultValue: `${wuName} exercise demonstration` })} />
                   </div>
                 ) : (
                   <div className="w-full h-24" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.1), rgba(234,88,12,0.03))' }} />
@@ -3877,11 +3992,11 @@ const ActiveSession = () => {
                 </div>
               </div>
 
-              {/* Skip link */}
+              {/* Skip to workout — buttony so it reads as a real action */}
               <button
                 onClick={() => setWarmUpPhase('done')}
-                className="w-full mt-4 py-2 text-[12px] font-medium"
-                style={{ color: 'var(--color-text-muted)' }}
+                className="w-full mt-4 py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
+                style={{ backgroundColor: 'var(--color-surface-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
               >
                 {t('activeSession.skipWarmUp', 'Skip to workout')}
               </button>
@@ -4558,13 +4673,21 @@ const ActiveSession = () => {
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2" data-dragroot>
               {exercises.map((ex, idx) => {
                 const isActive = idx === currentExerciseIndex;
                 const setCount = (loggedSets[ex.id] || []).length;
                 const completedCount = (loggedSets[ex.id] || []).filter(s => s.completed && !s.skipped).length;
                 const isInGroup = !!ex.groupId;
                 const isSelectedForGroup = listGroupSel.has(idx);
+                const uid = listDragUids[idx];
+                const isDragging = listDragId === uid;
+                const lib = localExercises.find(e => e.id === ex.id);
+                const thumbVideo = ex.videoUrl || lib?.videoUrl || null;
+                const thumbMuscle = ex.muscle || lib?.muscle || null;
+                // Rest time shown read-only (edited in the routine builder, not here).
+                const rest = ex.restSeconds ?? 90;
+                const restStr = rest >= 60 ? `${Math.floor(rest / 60)}:${String(rest % 60).padStart(2, '0')}` : `${rest}s`;
                 // Match the SessionHeader rule: tint the row when at least
                 // one logged set on this exercise was completed inside a
                 // superset/circuit, or — when no sets are logged yet — when
@@ -4580,8 +4703,9 @@ const ActiveSession = () => {
                 const tone = ROW_TONE[rowGroupType] || 'var(--color-accent)';
                 return (
                   <div
-                    key={ex.id}
-                    className="rounded-2xl flex items-center gap-2 px-3 py-3"
+                    key={uid}
+                    data-dragitem={uid}
+                    className="rounded-2xl flex items-center gap-1.5 pl-1.5 pr-2 py-2.5"
                     style={{
                       background: rowGroupType
                         ? `color-mix(in srgb, ${tone} 8%, var(--color-bg-card))`
@@ -4591,8 +4715,24 @@ const ActiveSession = () => {
                         : rowGroupType
                           ? `1px solid color-mix(in srgb, ${tone} 28%, transparent)`
                           : '1px solid var(--color-border-subtle)',
+                      transform: isDragging ? `translateY(${listDraggedTranslate()}px)` : undefined,
+                      transition: isDragging ? 'none' : 'transform 0.18s ease',
+                      position: isDragging ? 'relative' : undefined,
+                      zIndex: isDragging ? 30 : undefined,
+                      boxShadow: isDragging ? '0 10px 28px rgba(0,0,0,0.45)' : undefined,
                     }}
                   >
+                    {/* Drag handle — grab to reorder (mobile-safe pointer drag) */}
+                    <button
+                      type="button"
+                      aria-label={t('activeSession.dragReorder', 'Drag to reorder')}
+                      onPointerDown={(e) => listDragStart(uid, e, e.currentTarget)}
+                      className="w-6 h-11 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing"
+                      style={{ color: 'var(--color-text-subtle)', touchAction: 'none' }}
+                    >
+                      <GripVertical size={18} />
+                    </button>
+
                     {/* Grouping checkbox — explicit affordance to multi-select
                         for superset/circuit creation. */}
                     <button
@@ -4609,16 +4749,16 @@ const ActiveSession = () => {
                       {isSelectedForGroup && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
                     </button>
 
-                    {/* Position badge */}
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[12px] font-bold tabular-nums"
-                      style={{
-                        background: isActive ? tone : 'color-mix(in srgb, var(--color-text-primary) 8%, transparent)',
-                        color: isActive ? (ROW_TONE[rowGroupType] ? '#000' : 'var(--color-text-on-accent, #000)') : 'var(--color-text-muted)',
-                      }}
+                    {/* Video thumbnail — tap to jump to the exercise */}
+                    <button
+                      type="button"
+                      onClick={() => { setCurrentExerciseIndex(idx); setShowListManager(false); }}
+                      className="shrink-0 active:scale-95 transition-transform"
+                      style={{ background: 'none', border: 'none', padding: 0, display: 'flex', borderRadius: 11 }}
+                      aria-label={t('activeSession.goToExercise', 'Go to exercise')}
                     >
-                      {idx + 1}
-                    </div>
+                      <ExerciseVideoThumb exercise={{ videoUrl: thumbVideo, muscle: thumbMuscle }} size={42} radius={11} showBadge={false} />
+                    </button>
 
                     <button
                       onClick={() => { setCurrentExerciseIndex(idx); setShowListManager(false); }}
@@ -4637,7 +4777,7 @@ const ActiveSession = () => {
                         )}
                       </div>
                       <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                        {ex.targetSets} × {ex.targetReps}{setCount > 0 ? ` · ${completedCount}/${setCount}` : ''}
+                        {ex.targetSets} × {ex.targetReps} · {restStr} {t('activeSession.restShort', 'rest')}{setCount > 0 ? ` · ${completedCount}/${setCount}` : ''}
                       </p>
                     </button>
 
@@ -4653,26 +4793,6 @@ const ActiveSession = () => {
                       </button>
                     )}
 
-                    {/* Up / down */}
-                    <button
-                      onClick={() => handleReorderExercise(idx, idx - 1)}
-                      disabled={idx === 0}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg disabled:opacity-25 active:scale-90 transition-transform focus:outline-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                      aria-label={t('activeSession.moveUpAria', 'Move up')}
-                    >
-                      <ChevronLeft size={18} className="rotate-90" />
-                    </button>
-                    <button
-                      onClick={() => handleReorderExercise(idx, idx + 1)}
-                      disabled={idx === exercises.length - 1}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg disabled:opacity-25 active:scale-90 transition-transform focus:outline-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                      aria-label={t('activeSession.moveDownAria', 'Move down')}
-                    >
-                      <ChevronLeft size={18} className="-rotate-90" />
-                    </button>
-
                     {/* Swap */}
                     <button
                       onClick={() => handleSwapAtIndex(idx)}
@@ -4683,15 +4803,15 @@ const ActiveSession = () => {
                       <ArrowLeftRight size={16} />
                     </button>
 
-                    {/* Delete */}
+                    {/* Delete — red trashcan so it's obvious */}
                     <button
                       onClick={() => handleRemoveExerciseAt(idx)}
                       disabled={exercises.length <= 1}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg active:scale-90 transition-transform disabled:opacity-25 focus:outline-none hover:text-red-400"
-                      style={{ color: 'var(--color-text-muted)' }}
+                      className="w-9 h-9 flex items-center justify-center rounded-lg active:scale-90 transition-transform disabled:opacity-25 focus:outline-none"
+                      style={{ color: 'var(--color-danger, #EF4444)' }}
                       aria-label={t('activeSession.removeExercise', 'Remove')}
                     >
-                      <Minus size={18} />
+                      <Trash2 size={17} />
                     </button>
                   </div>
                 );

@@ -484,23 +484,38 @@ function getSplitType(days) {
 // seed shifts the whole pick window per generation — same inputs but a fresh
 // seed pick a different starting exercise, so consecutive regenerates don't
 // produce identical routines.
-function pickExercise(pool, muscle, tier, variantOffset, usageMap, seed = 0) {
+function pickExercise(pool, muscle, tier, variantOffset, usageMap, seed = 0, usedIds = null) {
   const key = `${muscle}:${tier}`;
   const candidates = pool.filter(ex => ex.muscle === muscle && (META[ex.id]?.tier || 'isolation') === tier);
 
-  if (candidates.length === 0) {
-    // Fall back to any tier for this muscle
-    const fallback = pool.filter(ex => ex.muscle === muscle);
-    if (fallback.length === 0) return null;
-    const fbKey = `${muscle}:any`;
-    const used = usageMap.get(fbKey) || 0;
-    usageMap.set(fbKey, used + 1);
-    return fallback[(used + variantOffset + seed) % fallback.length] ?? fallback[0];
-  }
+  // Draw from `list` starting at the computed offset. When `usedIds` is given,
+  // rotate through the list to return the first exercise NOT already in this
+  // routine (so the same movement never appears twice); returns null if every
+  // candidate is already used, letting the caller fall back or skip the slot.
+  const drawFrom = (list, mapKey) => {
+    if (!list || list.length === 0) return null;
+    const used = usageMap.get(mapKey) || 0;
+    const start = used + variantOffset + seed;
+    if (usedIds) {
+      for (let i = 0; i < list.length; i++) {
+        const cand = list[(start + i) % list.length];
+        if (cand && !usedIds.has(cand.id)) {
+          usageMap.set(mapKey, used + 1);
+          return cand;
+        }
+      }
+      return null; // every candidate already used in this routine
+    }
+    usageMap.set(mapKey, used + 1);
+    return list[start % list.length] ?? list[0];
+  };
 
-  const used = usageMap.get(key) || 0;
-  usageMap.set(key, used + 1);
-  return candidates[(used + variantOffset + seed) % candidates.length] ?? candidates[0];
+  const primary = drawFrom(candidates, key);
+  if (primary) return primary;
+
+  // Fall back to any tier for this muscle (unused-first when deduping).
+  const fallback = pool.filter(ex => ex.muscle === muscle);
+  return drawFrom(fallback, `${muscle}:any`);
 }
 
 // ── Build a single routine from slots ──────────────────────────────────────
@@ -516,6 +531,9 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
 
   const usageMap = new Map();
   const exercises = [];
+  // Guarantee no exercise is auto-added to the same routine twice. Users can
+  // still manually add duplicates later; the generator never should.
+  const usedIds = new Set();
 
   for (const slot of slots) {
     // If there's a goal exercise for this muscle+tier, prefer it
@@ -525,13 +543,14 @@ function buildRoutine(template, pool, variantOffset, variant, level, gender, pri
         goalExerciseIds.has(e.id) &&
         e.muscle === slot.muscle &&
         (META[e.id]?.tier || 'isolation') === slot.tier &&
-        !exercises.some(picked => picked.exerciseId === e.id)
+        !usedIds.has(e.id)
       );
     }
     if (!ex) {
-      ex = pickExercise(pool, slot.muscle, slot.tier, effectiveOffset, usageMap, seed);
+      ex = pickExercise(pool, slot.muscle, slot.tier, effectiveOffset, usageMap, seed, usedIds);
     }
     if (!ex) continue;
+    usedIds.add(ex.id);
 
     // Determine sets
     const baseSets = goalConfig.sets[0];
@@ -597,8 +616,8 @@ export function generateRoutineFromMuscles(muscleGroups, length = 'standard') {
 
   const exercises = [];
   for (const slot of slots) {
-    const ex = pickExercise(pool, slot.muscle, slot.tier, 0, usageMap);
-    if (!ex || seen.has(ex.id)) continue;
+    const ex = pickExercise(pool, slot.muscle, slot.tier, 0, usageMap, 0, seen);
+    if (!ex) continue;
     seen.add(ex.id);
     exercises.push({
       id: ex.id,

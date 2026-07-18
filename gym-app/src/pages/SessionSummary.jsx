@@ -155,19 +155,27 @@ const SessionSummary = () => {
             .eq('session_id', sessionId);
           if (data?.length) {
             let setCount = 0;
-            const rows = data.map(ex => {
+            // Merge rows for the SAME exercise — a routine may list a movement
+            // more than once (creating multiple session_exercises rows), so we
+            // combine their sets/volume and show each exercise ONCE.
+            const byExercise = new Map();
+            for (const ex of data) {
               const sets = ex.session_sets || [];
               const done = sets.filter(s => s.is_completed !== false);
               setCount += done.length;
               const vol = done.reduce((sum, s) => sum + (s.weight_lbs || 0) * (s.reps || 0), 0);
+              const key = (ex.exercises?.name || '').trim().toLowerCase() || ex.exercise_id || ex.id;
               const name = (i18n.language === 'es' && ex.exercises?.name_es) || ex.exercises?.name || 'Exercise';
-              return { name, vol };
-            }).filter(r => r.vol > 0).sort((a, b) => b.vol - a.vol).slice(0, 5);
+              const prev = byExercise.get(key);
+              if (prev) prev.vol += vol;
+              else byExercise.set(key, { name, vol });
+            }
+            const rows = [...byExercise.values()].filter(r => r.vol > 0).sort((a, b) => b.vol - a.vol).slice(0, 5);
             setExerciseBreakdown(rows);
             if (initialCompletedSets === 0 && setCount > 0) {
               setCompletedSets(setCount);
               setTotalSets(setCount);
-              setTotalExercises(data.length);
+              setTotalExercises(byExercise.size);
             }
           }
         } catch {}

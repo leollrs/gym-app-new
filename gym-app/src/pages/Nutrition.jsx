@@ -626,7 +626,9 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
               : [{ id: 'ingredients', label: t('nutrition.ingredients') }];
             const activeIdx = Math.max(0, tabList.findIndex(tb => tb.id === detailTab));
             // Hold both tab panels to the same height (sized to the taller of the
-            // two) so switching/swiping doesn't compress or jump the view.
+            // two) so switching between Ingredients / Instructions never resizes
+            // the modal. The trade-off is some empty space under short ingredient
+            // lists — an accepted call: a stable height beats a tight fit.
             const panelMin = Math.max(
               240,
               (recipe.ingredients?.length || 0) * 46 + 44,
@@ -3835,10 +3837,10 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
 
       {/* Plan setup — length, meals/day, and optional per-meal times + reminders */}
       {showPlanConfig && (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPlanConfig(false)} role="presentation" />
-          <div className="relative w-full sm:max-w-[460px] max-h-[88dvh] flex flex-col overflow-hidden rounded-t-[24px] sm:rounded-[24px]"
-            style={{ background: 'var(--color-bg-primary)', boxShadow: '0 -8px 40px rgba(0,0,0,0.3)' }}>
+          <div className="relative w-full max-w-[460px] max-h-[88dvh] flex flex-col overflow-hidden rounded-[24px]"
+            style={{ background: 'var(--color-bg-primary)', boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
               <div style={{ fontFamily: TU.display, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.planConfig', 'Plan setup')}</div>
               <button onClick={() => setShowPlanConfig(false)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common.close', 'Close')}>
@@ -6192,10 +6194,10 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
     finally { setSaving(false); }
   };
   return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} role="presentation" />
-      <div className="relative w-full sm:max-w-[460px] max-h-[88dvh] flex flex-col overflow-hidden rounded-t-[24px] sm:rounded-[24px]"
-        style={{ background: 'var(--color-bg-primary)', boxShadow: '0 -8px 40px rgba(0,0,0,0.3)' }}>
+      <div className="relative w-full max-w-[460px] max-h-[88dvh] flex flex-col overflow-hidden rounded-[24px]"
+        style={{ background: 'var(--color-bg-primary)', boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
         <div className="flex items-center justify-between px-5 pt-5 pb-2 flex-shrink-0">
           <div style={{ fontFamily: TU.display, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.prefsTitle', 'Preferences')}</div>
           <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common.close', 'Close')}>

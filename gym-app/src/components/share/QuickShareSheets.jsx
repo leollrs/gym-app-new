@@ -25,7 +25,7 @@ export function SharePRSheet({ open, onClose, pr, user, gym, gymLogo }) {
     prUnit: pr.unit || 'lbs',
     prExercise: pr.exerciseName,
     prPrevious: pr.previousBest,
-    gym, gymLogo,
+    gym, gymLogoUrl: gymLogo,
     user: user?.full_name || user?.username,
   };
   const caption = t(
@@ -63,7 +63,7 @@ export function ShareStreakSheet({ open, onClose, streakDays, milestone, user, g
   const data = {
     streakDays,
     streakSubtitle: subtitle,
-    gym, gymLogo,
+    gym, gymLogoUrl: gymLogo,
     user: user?.full_name || user?.username,
   };
   const caption = t('share.streakCaption', {
@@ -104,7 +104,7 @@ export function ShareBodyCompSheet({ open, onClose, comp, user, gym, gymLogo }) 
     daysApart: comp.daysApart,
     beforeBfPct: comp.beforeBfPct,
     afterBfPct: comp.afterBfPct,
-    gym, gymLogo,
+    gym, gymLogoUrl: gymLogo,
     user: user?.full_name || user?.username,
   };
   const direction = comp.deltaLbs < 0 ? 'lost' : 'gained';
@@ -147,7 +147,7 @@ export function ShareMonthlySheet({ open, onClose, recap, user, gym, gymLogo }) 
     volume: recap.totalVolumeLbs,
     prCount: recap.prCount,
     streakDays: recap.streakDays,
-    gym, gymLogo,
+    gym, gymLogoUrl: gymLogo,
     user: user?.full_name || user?.username,
   };
   const caption = t('share.monthlyCaption', {

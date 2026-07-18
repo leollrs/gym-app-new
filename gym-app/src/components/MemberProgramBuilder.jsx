@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, Trash2, GripVertical, Dumbbell, Search, Calendar, Loader2, ChevronLeft, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -8,6 +8,9 @@ import { getExercises } from '../lib/exerciseStore';
 const ALL_EXERCISES = getExercises();
 import { exName } from '../lib/exerciseName';
 import ExerciseVideoThumb from './ExerciseVideoThumb';
+// Tapping an exercise thumbnail opens its full info card — lazy so the large
+// ExerciseLibrary module isn't bundled into the builder chunk until needed.
+const ExerciseInfoCard = lazy(() => import('../pages/ExerciseLibrary').then(m => ({ default: m.ExerciseCard })));
 
 // ── Member Program Builder ───────────────────────────────────────────────────
 // "Crear programa" — build your own multi-day program WITHOUT auto-generation,
@@ -144,7 +147,7 @@ function ExercisePicker({ onAdd, onClose, t, lang }) {
 }
 
 // ── One exercise row inside a day (grip + name + sets/reps/rest + remove) ──
-function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTranslate, t }) {
+function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTranslate, t, onShowInfo }) {
   const ex = useMemo(() => ALL_EXERCISES.find(e => e.id === item.id), [item.id]);
   return (
     <div
@@ -164,7 +167,12 @@ function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTransl
         >
           <GripVertical size={17} />
         </button>
-        <ExerciseVideoThumb exercise={{ videoUrl: ex?.videoUrl, muscle: ex?.muscle }} size={38} radius={10} />
+        <button type="button" onClick={() => ex && onShowInfo?.(ex)} disabled={!ex}
+          aria-label={t('exerciseLibrary.viewInfo', 'View exercise info')}
+          className="shrink-0 active:scale-95 transition-transform"
+          style={{ background: 'none', border: 'none', padding: 0, display: 'flex', borderRadius: 10 }}>
+          <ExerciseVideoThumb exercise={{ videoUrl: ex?.videoUrl, muscle: ex?.muscle }} size={38} radius={10} />
+        </button>
         <div className="flex-1 min-w-0">
           <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{ex ? exName(ex) : item.id}</p>
           {ex?.muscle && (
@@ -206,7 +214,7 @@ function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTransl
 }
 
 // ── A day card (name + day-of-week + exercises with drag) ──
-function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, onChangeEx, onRemoveEx, reorderEx, usedDows, t, lang }) {
+function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, onChangeEx, onRemoveEx, reorderEx, usedDows, t, lang, onShowInfo }) {
   const { dragId, draggedTranslate, start } = useDragSort(day.exercises.map(e => e._uid), reorderEx);
   const [open, setOpen] = useState(false); // collapsible day — default closed
   const dowLabel = t(`days.${DOW_SHORT_KEYS[day.dow]}`, { ns: 'common' });
@@ -271,6 +279,7 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
             isDragging={dragId === item._uid}
             draggedTranslate={draggedTranslate}
             t={t}
+            onShowInfo={onShowInfo}
           />
         ))}
       </div>
@@ -302,6 +311,7 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
   // Shown when the user shortens an in-progress program on edit: choose whether
   // to shorten the current run (keep its start + progress) or start fresh.
   const [lowerPrompt, setLowerPrompt] = useState(false);
+  const [infoExercise, setInfoExercise] = useState(null); // tapped thumbnail → exercise info card
 
   // Edit context: is this an ACTIVE program (in progress), how long was it, and
   // which week is the user currently on. Used to guard shortening the duration.
@@ -573,6 +583,7 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
                 reorderEx={(orderedUids) => reorderEx(day._uid, orderedUids)}
                 usedDows={usedDows}
                 t={t} lang={lang}
+                onShowInfo={setInfoExercise}
               />
             ))}
           </div>
@@ -593,6 +604,13 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
           onAdd={(ex) => { addExerciseToDay(pickerDayUid, ex); }}
           onClose={() => setPickerDayUid(null)}
         />
+      )}
+
+      {/* Tapped an exercise thumbnail → open its full info card (video, muscles, cues). */}
+      {infoExercise && (
+        <Suspense fallback={null}>
+          <ExerciseInfoCard exercise={infoExercise} modalOnly initiallyOpen onExternalClose={() => setInfoExercise(null)} />
+        </Suspense>
       )}
 
       {/* Shorten-in-progress choice — shortening the current run keeps its start

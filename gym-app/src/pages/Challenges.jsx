@@ -23,7 +23,7 @@ import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { sanitize } from '../lib/sanitize';
 import { useToast } from '../contexts/ToastContext';
-import { DAILY_CHALLENGES, seededIndex } from '../lib/dailyChallenges';
+import { fetchDailyChallengeProgress, getTodayChallenge, todayChallengeDate } from '../lib/dailyChallenges';
 import posthogClient from 'posthog-js';
 
 // ── Design tokens ─────────────────────────────────────────
@@ -1142,16 +1142,19 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
 };
 
 // ── Daily Challenge ───────────────────────────────────────
-// DAILY_CHALLENGES and seededIndex imported from ../lib/dailyChallenges
+// Challenge + local date come from the shared getTodayChallenge / todayChallengeDate
+// helpers so this card and the Dashboard card always agree on the day's challenge.
 
 const DailyChallenge = ({ userId, gymId, t }) => {
   const posthogDaily = usePostHog();
   const { i18n } = useTranslation('pages');
   const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
   const today = new Date();
-  const dateString = format(today, 'yyyy-MM-dd');
+  // Shared local-date helpers so this card and the Dashboard card always show
+  // the SAME challenge of the day and share the same per-day cache keys.
+  const dateString = todayChallengeDate();
   const todayStart = startOfDay(today).toISOString();
-  const challenge = DAILY_CHALLENGES[seededIndex(dateString)];
+  const challenge = getTodayChallenge();
   const storageKey = `daily_challenge_${userId}_${dateString}`;
   const progressKey = `daily_challenge_progress_${userId}_${dateString}`;
 
@@ -1166,80 +1169,7 @@ const DailyChallenge = ({ userId, gymId, t }) => {
 
     const fetchProgress = async () => {
       try {
-        let value = 0;
-
-        if (challenge.metric === 'volume') {
-          const { data: sets } = await supabase
-            .from('session_sets')
-            .select('weight_lbs, reps, session_exercises!inner(exercise_id, workout_sessions!inner(profile_id, completed_at, status))')
-            .eq('session_exercises.workout_sessions.profile_id', userId)
-            .eq('session_exercises.workout_sessions.status', 'completed')
-            .gte('session_exercises.workout_sessions.completed_at', todayStart)
-            .eq('is_completed', true);
-          value = (sets || []).reduce((sum, s) => sum + (s.weight_lbs ?? 0) * (s.reps ?? 0), 0);
-
-        } else if (challenge.metric === 'reps') {
-          const { data: sets } = await supabase
-            .from('session_sets')
-            .select('reps, session_exercises!inner(workout_sessions!inner(profile_id, completed_at, status))')
-            .eq('session_exercises.workout_sessions.profile_id', userId)
-            .eq('session_exercises.workout_sessions.status', 'completed')
-            .gte('session_exercises.workout_sessions.completed_at', todayStart)
-            .eq('is_completed', true);
-          value = (sets || []).reduce((sum, s) => sum + (s.reps ?? 0), 0);
-
-        } else if (challenge.metric === 'exercises') {
-          const { data: sets } = await supabase
-            .from('session_sets')
-            .select('session_exercises!inner(exercise_id, workout_sessions!inner(profile_id, completed_at, status))')
-            .eq('session_exercises.workout_sessions.profile_id', userId)
-            .eq('session_exercises.workout_sessions.status', 'completed')
-            .gte('session_exercises.workout_sessions.completed_at', todayStart)
-            .eq('is_completed', true);
-          const unique = new Set((sets || []).map(s => s.session_exercises?.exercise_id));
-          value = unique.size;
-
-        } else if (challenge.metric === 'speed') {
-          const { data: sessions } = await supabase
-            .from('workout_sessions')
-            .select('started_at, completed_at')
-            .eq('profile_id', userId)
-            .eq('status', 'completed')
-            .gte('completed_at', todayStart);
-          const fast = (sessions || []).some(s => {
-            if (!s.started_at || !s.completed_at) return false;
-            return (new Date(s.completed_at) - new Date(s.started_at)) < 30 * 60 * 1000;
-          });
-          value = fast ? 1 : 0;
-
-        } else if (challenge.metric === 'checkin') {
-          const { count } = await supabase
-            .from('check_ins')
-            .select('id', { count: 'exact', head: true })
-            .eq('profile_id', userId)
-            .gte('checked_in_at', todayStart);
-          value = count ?? 0;
-
-        } else if (challenge.metric === 'pr') {
-          const { count } = await supabase
-            .from('personal_records')
-            .select('id', { count: 'exact', head: true })
-            .eq('profile_id', userId)
-            .gte('achieved_at', todayStart);
-          value = count ?? 0;
-
-        } else if (challenge.metric === 'early') {
-          const noonToday = new Date(today);
-          noonToday.setHours(12, 0, 0, 0);
-          const { count } = await supabase
-            .from('workout_sessions')
-            .select('id', { count: 'exact', head: true })
-            .eq('profile_id', userId)
-            .eq('status', 'completed')
-            .gte('completed_at', todayStart)
-            .lt('completed_at', noonToday.toISOString());
-          value = count ?? 0;
-        }
+        const value = await fetchDailyChallengeProgress(userId, challenge, todayStart);
 
         setProgress(value);
 

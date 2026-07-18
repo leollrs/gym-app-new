@@ -867,7 +867,15 @@ const Workouts = () => {
           title: t('workouts.programEnded'),
           body: t('workouts.programEndedBody'),
           dedup_key: `program_ended_${latest.id}_${user.id}`,
-        }).then(() => supabase.from('generated_programs').update({ expiry_notified: true }).eq('id', latest.id));
+        }).then(({ error }) => {
+          // 23505 = a program-ended notification for this program already exists
+          // (the dedup_key unique index) — harmless. Either way, flip the flag so
+          // we stop re-attempting the insert on every Workouts mount (which was
+          // surfacing the duplicate-key error repeatedly). Only bail on a real,
+          // non-duplicate error so a transient failure can retry next mount.
+          if (error && error.code !== '23505') return;
+          supabase.from('generated_programs').update({ expiry_notified: true }).eq('id', latest.id);
+        });
       }
     };
     load();
@@ -2279,17 +2287,24 @@ const Workouts = () => {
                                   {t('workouts.upNext', 'UP NEXT')} {'\u00B7'} {t('workouts.today', 'TODAY')}
                                 </p>
                               </div>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3 min-w-0">
+                              <div className="flex items-center justify-between gap-3">
+                                {/* Tap the routine info to drop down its exercises, like the other rows. */}
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedProgramRoutineId(isExpanded ? null : routine.id)}
+                                  aria-expanded={isExpanded}
+                                  className="flex items-center gap-3 min-w-0 flex-1 text-left active:opacity-80 transition-opacity"
+                                >
                                   <div className="w-10 h-10 rounded-[12px] flex items-center justify-center flex-shrink-0"
                                     style={{ background: 'rgba(255,255,255,0.1)' }}>
                                     <Dumbbell size={16} style={{ color: 'rgba(255,255,255,0.7)' }} strokeWidth={2} />
                                   </div>
-                                  <div className="min-w-0">
+                                  <div className="flex-1 min-w-0">
                                     <p className="font-bold text-[15px] truncate" style={{ color: '#fff', letterSpacing: -0.2 }}>{localizeRoutineName(routine.name)}</p>
                                     <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{routine.exerciseCount} {t('workouts.exercises')} {'\u00B7'} {routine.estimatedMin || '~45'} {t('dashboard.min', 'min')}</p>
                                   </div>
-                                </div>
+                                  <ChevronRight size={15} className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'rgba(255,255,255,0.5)' }} strokeWidth={2.2} />
+                                </button>
                                 <Link
                                   to={`/session/${routine.id}`}
                                   onClick={() => posthog?.capture('routine_started', { routine_name: routine.name })}
@@ -2300,6 +2315,9 @@ const Workouts = () => {
                                 </Link>
                               </div>
                             </div>
+                            {isExpanded && (
+                              <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} onStart={() => posthog?.capture('routine_started', { routine_name: routine.name })} />
+                            )}
                           </div>
                         );
                       }
@@ -2737,6 +2755,9 @@ const Workouts = () => {
           const weekRoutines = (thisWeekRoutines && thisWeekRoutines.length) ? thisWeekRoutines : routineObjs;
           const routineNames = weekRoutines.map(r => localizeRoutineName(r.name));
           const nextRoutine = weekRoutines[0];
+          // Everything scheduled after "up next" — shown as a clean coming-up
+          // list (first 3) with a "+N more" overflow, replacing the old chips.
+          const upcoming = weekRoutines.slice(1);
           const nRoutines = routineObjs.length || prog.routines_a_count || 0;
           return (
             <div className="rounded-[22px] overflow-hidden mb-5" style={{ boxShadow: '0 12px 34px rgba(20,16,10,0.14)' }}>
@@ -2797,16 +2818,31 @@ const Workouts = () => {
                     </button>
                   )}
                 </div>
-                {weekRoutines.length > 0 && (
-                  <div className="flex gap-2 flex-wrap">
-                    {weekRoutines.slice(0, 6).map((r) => (
-                      <button key={r.id} onClick={() => setExpandedRoutineId(r.id)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold active:scale-95 transition-transform"
-                        style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: TU_ACCENT }} />
-                        {localizeRoutineName(r.name)}
+                {upcoming.length > 0 && (
+                  <div>
+                    <div className="text-[10.5px] font-bold uppercase mb-2" style={{ letterSpacing: '0.08em', color: 'var(--color-text-muted)' }}>
+                      {t('workouts.comingUp', 'Coming up')}
+                    </div>
+                    <div className="flex flex-col">
+                      {upcoming.slice(0, 3).map((r) => (
+                        <button key={r.id} onClick={() => setExpandedRoutineId(r.id)}
+                          className="w-full flex items-center gap-3 py-2 text-left active:opacity-70 transition-opacity"
+                          style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: TU_ACCENT }} />
+                          <span className="flex-1 min-w-0 truncate text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
+                            {localizeRoutineName(r.name)}
+                          </span>
+                          <ChevronRight size={15} className="flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }} />
+                        </button>
+                      ))}
+                    </div>
+                    {upcoming.length > 3 && (
+                      <button onClick={() => { loadExerciseNames(); openMyProgram(prog); }}
+                        className="mt-1.5 text-[12.5px] font-bold text-left active:opacity-70 transition-opacity"
+                        style={{ color: TU_ACCENT }}>
+                        {t('workouts.plusMoreRoutines', { count: upcoming.length - 3, defaultValue: `+${upcoming.length - 3} more routines` })}
                       </button>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>
