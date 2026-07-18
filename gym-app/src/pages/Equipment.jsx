@@ -132,13 +132,13 @@ function BrowseSection({ items, viewMode }) {
   if (viewMode === 'list') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {items.map((it) => <BrowseRow key={it.key} {...it} />)}
+        {items.map(({ key, ...it }) => <BrowseRow key={key} {...it} />)}
       </div>
     );
   }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-      {items.map((it) => <BrowseTile key={it.key} {...it} />)}
+      {items.map(({ key, ...it }) => <BrowseTile key={key} {...it} />)}
     </div>
   );
 }
