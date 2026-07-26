@@ -80,7 +80,7 @@ function Spinner() {
 
 function ConfirmDialog({ message, onConfirm, onCancel, cancelLabel = 'Cancel', deleteLabel = 'Delete' }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-sm w-full mx-4">
         <p className="text-[13px] text-[#E5E7EB] mb-5">{message}</p>
@@ -101,7 +101,7 @@ function ConfirmDialog({ message, onConfirm, onCancel, cancelLabel = 'Cancel', d
 
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">

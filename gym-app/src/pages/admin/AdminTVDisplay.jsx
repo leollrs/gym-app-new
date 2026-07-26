@@ -752,7 +752,7 @@ function RotateConfirm({ aliveCount, isPending, onCancel, onConfirm }) {
               fontFamily: FK.body, fontSize: 13, fontWeight: 700, color: TK.textSub, opacity: isPending ? 0.6 : 1,
             }}
           >
-            {t('common.cancel', { defaultValue: 'Cancel' })}
+            {t('common:cancel', { defaultValue: 'Cancel' })}
           </button>
           <button
             type="button"

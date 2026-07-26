@@ -78,8 +78,8 @@ export default function ProgressOverview() {
       if (!hasCachedState(`${cacheKey}-week-stats`)) setLoading(true);
 
       // Date range for "this week"
-      const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+      const weekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
+      const weekEnd = endOfWeek(new Date(), { weekStartsOn: 0 });
 
       // allSettled so one bad query (e.g. a missing column) can't blank the
       // whole page — the cards just render zeros for the failing slot.
@@ -186,7 +186,7 @@ export default function ProgressOverview() {
       const weeklyMap = {};
       volRaw.forEach(s => {
         if (!s.completed_at) return; // null → Invalid Date → format() throws
-        const wk = format(startOfWeek(new Date(s.completed_at), { weekStartsOn: 1 }), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined });
+        const wk = format(startOfWeek(new Date(s.completed_at), { weekStartsOn: 0 }), 'MMM d', { locale: i18n.language === 'es' ? esLocale : undefined });
         weeklyMap[wk] = (weeklyMap[wk] || 0) + (parseFloat(s.total_volume_lbs) || 0);
       });
       setVolumeChart(
@@ -1125,46 +1125,55 @@ function MonthlyTimeline({ userId }) {
         <YearBlock key={year} year={year} monthsData={monthsData} onDelete={onDelete} />
       ))}
 
-      {/* Delete confirmation */}
-      <AnimatePresence>
-        {deleteConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center px-6"
-            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
-            onClick={() => setDeleteConfirm(null)}
-          >
+      {/* Delete confirmation — portaled to body so `position: fixed` resolves
+          against the VIEWPORT. This timeline renders inside the Progress
+          SwipeableTabView track, whose `transform: translateX(...)` would
+          otherwise make the overlay anchor to the panel (it landed above the
+          fold once the timeline was scrolled, while useScrollLock froze the
+          page — reading as a dead Delete button on a frozen screen).
+          AnimatePresence lives INSIDE the portal so exit animations still run. */}
+      {createPortal(
+        <AnimatePresence>
+          {deleteConfirm && (
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-sm rounded-[22px] p-6"
-              style={{ background: 'var(--color-bg-card)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] flex items-center justify-center px-6"
+              style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+              onClick={() => setDeleteConfirm(null)}
             >
-              <p style={{ fontFamily: TL_DISPLAY, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3, marginBottom: 8 }}>
-                {t('dashboard.deleteSessionTitle', 'Delete session?')}
-              </p>
-              <p className="text-[13px] mb-1" style={{ color: 'var(--color-text-muted)' }}>
-                <span className="font-bold" style={{ color: 'var(--color-text-primary)' }}>{deleteConfirm.name}</span>
-              </p>
-              <p className="text-[12px] mb-5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
-                {t('dashboard.deleteSessionWarning', 'This will permanently remove this session and all its data. This cannot be undone.')}
-              </p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"
-                  style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-primary)' }}>
-                  {t('cancel', { ns: 'common', defaultValue: 'Cancel' })}
-                </button>
-                <button onClick={handleDeleteSession}
-                  className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"
-                  style={{ background: '#EF4444', color: '#fff' }}>
-                  {t('dashboard.deleteConfirm', 'Delete')}
-                </button>
-              </div>
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+                onClick={e => e.stopPropagation()}
+                className="w-full max-w-sm rounded-[22px] p-6"
+                style={{ background: 'var(--color-bg-card)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+              >
+                <p style={{ fontFamily: TL_DISPLAY, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3, marginBottom: 8 }}>
+                  {t('dashboard.deleteSessionTitle', 'Delete session?')}
+                </p>
+                <p className="text-[13px] mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                  <span className="font-bold" style={{ color: 'var(--color-text-primary)' }}>{deleteConfirm.name}</span>
+                </p>
+                <p className="text-[12px] mb-5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('dashboard.deleteSessionWarning', 'This will permanently remove this session and all its data. This cannot be undone.')}
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setDeleteConfirm(null)}
+                    className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"
+                    style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-primary)' }}>
+                    {t('cancel', { ns: 'common', defaultValue: 'Cancel' })}
+                  </button>
+                  <button onClick={handleDeleteSession}
+                    className="flex-1 py-3 rounded-2xl text-[13px] font-bold transition-colors active:scale-95"
+                    style={{ background: '#EF4444', color: '#fff' }}>
+                    {t('dashboard.deleteConfirm', 'Delete')}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   );
 }

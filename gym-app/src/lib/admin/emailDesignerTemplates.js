@@ -591,7 +591,7 @@ function recapMagazine({ lang, name, gymName, logoUrl, coachName, v }) {
   const subject = tx(lang, 'Tu Semana · Edición 47', 'Your Week · Issue 47');
   const preview = tx(lang, '6/7 días en movimiento. PR en sentadilla. Racha viva.', '6/7 active days. Squat PR. Streak alive.');
   const days = [3, 4, 2, 5, 0, 3, 4];
-  const labels = lang === 'es' ? ['L', 'M', 'M', 'J', 'V', 'S', 'D'] : ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const labels = lang === 'es' ? ['D', 'L', 'M', 'M', 'J', 'V', 'S'] : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const stats = lang === 'es'
     ? [{ k: '4', l: 'Sesiones', d: '+1 vs semana pasada' }, { k: v.streak_count, l: 'Días de racha', d: 'mejor del mes' }, { k: '12,4k', l: 'Pasos / día', d: 'promedio' }, { k: '+5kg', l: 'En sentadilla', d: 'PR nuevo' }]
     : [{ k: '4', l: 'Sessions', d: '+1 vs last week' }, { k: v.streak_count, l: 'Streak days', d: 'best this month' }, { k: '12.4k', l: 'Steps / day', d: 'average' }, { k: '+5kg', l: 'On squat', d: 'new PR' }];

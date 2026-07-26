@@ -1,4 +1,6 @@
+import { useContext } from 'react';
 import { TT, TFont, AVATAR_PALETTES } from './designTokens';
+import { SpectrumHueContext } from './spectrumKit';
 
 // ────────────────────────────────────────────────────────────────────
 // TCard — base elevated card
@@ -182,7 +184,25 @@ export function TPageTitle({ children, color = TT.text, style = {} }) {
 // ────────────────────────────────────────────────────────────────────
 // TSectionHeader — section title row with optional right action
 // ────────────────────────────────────────────────────────────────────
-export function TSectionHeader({ title, accent, action, color = TT.text }) {
+export function TSectionHeader({ title, accent, action, color = TT.text, n, hue: hueProp }) {
+  // Spectrum variant (when `n` is given): numbered tick + hairline rule + action.
+  // `hue` (a SPECTRUM_HUES entry, or the active tab's hue from context) colors
+  // the tick to match the page.
+  // Hook must run unconditionally — `hueProp || useContext(...)` short-circuits,
+  // so passing a truthy `hue` would render one fewer hook than the previous
+  // render and crash with "Rendered more hooks than during the previous render".
+  const ctxHue = useContext(SpectrumHueContext);
+  const hue = hueProp || ctxHue;
+  if (n != null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <span style={{ width: 24, height: 24, borderRadius: 8, background: hue ? hue.soft : TT.accentSoft, color: hue ? hue.c : TT.accentInk, display: 'grid', placeItems: 'center', fontFamily: TFont.mono, fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{n}</span>
+        <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: accent ? TT.hot : color, letterSpacing: -0.3 }}>{title}</div>
+        <div style={{ flex: 1, height: 1, background: TT.border }} />
+        {action ? <div style={{ fontSize: 12, color: TT.textSub, fontWeight: 700, flexShrink: 0 }}>{action}</div> : null}
+      </div>
+    );
+  }
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
       <div style={{

@@ -25,7 +25,6 @@ const MUSCLE_OPTIONS = [
   { value: 'Core' },
 ];
 
-const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 // ── Step 1: Customize Your Program ────────────────────────────────────────
 const StepCustomize = ({ form, onChange, onToggleMuscle }) => {

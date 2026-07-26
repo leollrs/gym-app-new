@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { X, Search, LayoutGrid, LayoutList, ArrowUpDown } from 'lucide-react';
+import { X, Search, LayoutGrid, LayoutList, ArrowDownAZ, ArrowDownZA } from 'lucide-react';
 import { exName } from '../lib/exerciseName';
 import LazyVideoTile from './LazyVideoTile';
 
@@ -95,7 +95,10 @@ export default function AllExercisesModal({
     try { return localStorage.getItem('allExercises.viewMode') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
   });
   useEffect(() => { try { localStorage.setItem('allExercises.viewMode', viewMode); } catch { /* ignore */ } }, [viewMode]);
-  const [sortMode, setSortMode] = useState('az'); // 'az' | 'muscle'
+  // Sort is direction only. Grouping by muscle/equipment belongs to the chips
+  // above, not here — a toggle that silently reorders by muscle reads as the
+  // alphabet breaking.
+  const [sortMode, setSortMode] = useState('az'); // 'az' | 'za'
 
   // Reset to the externally-provided starting state every time the modal opens
   // so chip taps from the parent surface here as the active chip.
@@ -124,8 +127,8 @@ export default function AllExercisesModal({
       }
       return true;
     });
-    return sortMode === 'muscle'
-      ? list.sort((a, b) => (a.muscle || '').localeCompare(b.muscle || '') || exName(a).localeCompare(exName(b)))
+    return sortMode === 'za'
+      ? list.sort((a, b) => exName(b).localeCompare(exName(a)))
       : list.sort((a, b) => exName(a).localeCompare(exName(b)));
   }, [exercises, search, chip, filterByChip, sortMode]);
 
@@ -186,7 +189,7 @@ export default function AllExercisesModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  aria-label={t('common.close', 'Close')}
+                  aria-label={t('common:close', 'Close')}
                   className="min-w-[44px] min-h-[44px] rounded-[12px] flex items-center justify-center"
                   style={{ background: 'var(--color-surface-hover)' }}
                 >
@@ -228,13 +231,13 @@ export default function AllExercisesModal({
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     type="button"
-                    onClick={() => setSortMode((s) => (s === 'az' ? 'muscle' : 'az'))}
+                    onClick={() => setSortMode((s) => (s === 'az' ? 'za' : 'az'))}
                     aria-label={t('exerciseLibrary.sort', 'Sort')}
                     className="flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform"
                     style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
                   >
-                    <ArrowUpDown size={13} />
-                    {sortMode === 'az' ? t('exerciseLibrary.sortAZ', 'A–Z') : t('exerciseLibrary.sortMuscle', 'Muscle')}
+                    {sortMode === 'az' ? <ArrowDownAZ size={13} /> : <ArrowDownZA size={13} />}
+                    {sortMode === 'az' ? t('exerciseLibrary.sortAZ', 'A–Z') : t('exerciseLibrary.sortZA', 'Z–A')}
                   </button>
                   <div className="inline-flex items-center rounded-lg p-[3px]" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
                     <button type="button" onClick={() => setViewMode('grid')} aria-label={t('exerciseLibrary.viewGrid', 'Grid view')} aria-pressed={viewMode === 'grid'}

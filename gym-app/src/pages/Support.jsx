@@ -96,7 +96,7 @@ export default function Support() {
     >
       {/* Header — matches MemberSettings */}
       <div
-        className="sticky top-0 z-30 backdrop-blur-2xl border-b border-white/[0.06]"
+        className="sticky sticky-under-appbar z-30 backdrop-blur-2xl border-b border-white/[0.06]"
         style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)' }}
       >
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">

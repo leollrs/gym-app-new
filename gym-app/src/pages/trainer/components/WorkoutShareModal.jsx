@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
 import useFocusTrap from '../../../hooks/useFocusTrap';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 import { TT } from './designTokens';
 
 /**
@@ -32,6 +33,9 @@ import { TT } from './designTokens';
  */
 export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t, activeClientId = null, activeClientName = '' }) {
   const focusRef = useFocusTrap(open, onClose);
+  // Freeze the page behind the portaled picker (ref-counted — this modal can
+  // open on top of the chat thread's own overlays).
+  useScrollLock(open);
   const [plans, setPlans] = useState([]);
   const [clientNames, setClientNames] = useState({});
   const [loading, setLoading] = useState(false);

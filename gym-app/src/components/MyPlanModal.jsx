@@ -18,6 +18,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { estimateMinutes, estimateCalories } from '../lib/workoutEstimate';
 import {
   X, ChevronLeft, ChevronRight, ClipboardList, Lock, Dumbbell, Moon, ChevronDown, Check,
 } from 'lucide-react';
@@ -208,7 +209,7 @@ export default function MyPlanModal({
           <button
             type="button"
             onClick={onClose}
-            aria-label={t('common.close', 'Close')}
+            aria-label={t('common:close', 'Close')}
             style={{
               width: 40,
               height: 40,
@@ -417,7 +418,7 @@ export default function MyPlanModal({
                                 ? t('dashboard.notYetStarted', 'Program not yet started')
                                 : day.isRest
                                   ? t('dashboard.restDay', 'Rest day')
-                                  : `${day.name} · ${day.exercises.length} ${t('dashboard.exercises', 'exercises')}`
+                                  : `${day.name} · ${day.exercises.length} ${t('dashboard.exercises', 'exercises')}${day.exercises.length ? ` · ~${estimateMinutes(day.exercises)}m · ${estimateCalories(day.exercises)} cal` : ''}`
                             }
                           </div>
                         </div>

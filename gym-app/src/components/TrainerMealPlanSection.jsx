@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getMeals } from '../lib/mealStore';
 const MEALS = getMeals();
 import { foodImageUrl } from '../lib/imageUrl';
+import { mealPlanWeeks, currentMealWeekKey } from '../lib/mealPlanWeeks';
 import logger from '../lib/logger';
 
 // ── Member-side surface for trainer-assigned meal plans (P0-2) ────────────
@@ -26,7 +27,7 @@ const SLOT_META = {
 export default function TrainerMealPlanSection({ userId, groceryList = [], onAddGroceryItems }) {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const uid = userId || user?.id;
   const [plan, setPlan] = useState(null);
   // Expanded by default: collapsed-by-default hid the day-by-day meals behind
@@ -41,15 +42,28 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
   useEffect(() => {
     if (!uid) return;
     let cancelled = false;
-    supabase
-      .from('trainer_meal_plans')
-      .select('id, name, description, target_calories, target_protein_g, target_carbs_g, target_fat_g, meals, is_active, created_at, start_date, duration_weeks, trainer:profiles!trainer_meal_plans_trainer_id_fkey(full_name)')
-      .eq('client_id', uid)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    (async () => {
+      try {
+        // A meal plan reaches this member as the legacy client_id OR shared via
+        // trainer_meal_plan_members (0645). Take the most-recent active one.
+        let junctionIds = [];
+        const { data: jm, error: jmErr } = await supabase
+          .from('trainer_meal_plan_members')
+          .select('plan_id')
+          .eq('member_id', uid);
+        if (!jmErr) junctionIds = (jm || []).map(r => r.plan_id).filter(Boolean);
+
+        let q = supabase
+          .from('trainer_meal_plans')
+          .select('id, name, description, target_calories, target_protein_g, target_carbs_g, target_fat_g, meals, is_active, created_at, start_date, duration_weeks, trainer:profiles!trainer_meal_plans_trainer_id_fkey(full_name)')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        q = junctionIds.length
+          ? q.or(`client_id.eq.${uid},id.in.(${junctionIds.join(',')})`)
+          : q.eq('client_id', uid);
+
+        const { data, error } = await q.maybeSingle();
         if (cancelled) return;
         if (error) {
           // Missing RLS pre-0537 / transient failure → hide quietly
@@ -58,27 +72,25 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
           return;
         }
         setPlan(data || null);
-      })
-      .catch(err => {
+      } catch (err) {
         if (!cancelled) { logger.error('TrainerMealPlanSection: failed to load meal plan:', err); setPlan(null); }
-      });
+      }
+    })();
     return () => { cancelled = true; };
   }, [uid]);
 
   if (!plan) return null;
 
-  // Robust to both stored shapes: the canonical day-nested
-  // [{day, meals:[...], totals}] (TrainerPlans), and a legacy/defensive flat
-  // meal array [{id, title, ...}] which we treat as a single day.
-  const rawDays = Array.isArray(plan.meals) ? plan.meals : [];
-  const days = rawDays.length > 0 && !Array.isArray(rawDays[0]?.meals) && (rawDays[0]?.id || rawDays[0]?.title)
-    ? [{ day: 1, meals: rawDays }]
-    : rawDays;
+  // Week-aware: a plan can now hold DISTINCT meals per week (week-keyed object),
+  // so show the week the member is currently on. mealPlanWeeks() also normalizes
+  // the legacy flat [{day, meals}] / bare-meal-array shapes into a single week.
+  const { weeks: planWeeks, weekKeys: planWeekKeys } = mealPlanWeeks(plan);
+  const days = planWeeks[currentMealWeekKey(plan, planWeekKeys)] || [];
   const day = days[Math.min(dayIdx, Math.max(days.length - 1, 0))];
   const dayLabels = [
-    t('trainerPlans.dayMon', 'Mon'), t('trainerPlans.dayTue', 'Tue'), t('trainerPlans.dayWed', 'Wed'),
-    t('trainerPlans.dayThu', 'Thu'), t('trainerPlans.dayFri', 'Fri'), t('trainerPlans.daySat', 'Sat'),
-    t('trainerPlans.daySun', 'Sun'),
+    t('trainerPlans.daySun', 'Sun'), t('trainerPlans.dayMon', 'Mon'), t('trainerPlans.dayTue', 'Tue'),
+    t('trainerPlans.dayWed', 'Wed'), t('trainerPlans.dayThu', 'Thu'), t('trainerPlans.dayFri', 'Fri'),
+    t('trainerPlans.daySat', 'Sat'),
   ];
 
   const targets = [
@@ -126,8 +138,10 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
   // ── "Add to My Plan" ───────────────────────────────────────────────────
   // Writes the coach's days into generated_meal_plans using the EXACT shape
   // the weekly planner reads ({meals:[{id,name,name_es,...,eaten:false}],
-  // totals} ×7, Monday-first, onConflict profile_id+week_start — mirrors the
+  // totals} ×7, SUNDAY-first, onConflict profile_id+week_start — mirrors the
   // regenerate-week writer in Nutrition.jsx). Fewer than 7 coach days cycle.
+  // (The old "Monday-first" note here was stale: slot 0 has always been Sunday,
+  // which is why the day labels now read Sun→Sat.)
   const handleAddToMyPlan = async () => {
     if (!uid || addPlanState === 'saving' || days.length === 0) return;
     const confirmMsg = t('trainerMealPlan.replacePlanConfirm', "This replaces this week's My Plan with your coach's plan. Continue?");
@@ -161,17 +175,24 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
       };
       const startOfWeek = new Date();
       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-      const weekStartStr = startOfWeek.toISOString().split('T')[0];
+      // LOCAL date string (match the planner's getWeekStartDate); toISOString()
+      // uses UTC and can land on the wrong day/week in negative-offset timezones,
+      // which would write a different generated_meal_plans row than the planner reads.
+      const weekStartStr = `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`;
       const { error } = await supabase
         .from('generated_meal_plans')
         .upsert({
           profile_id: uid,
+          gym_id: profile?.gym_id,   // NOT NULL — omitting it silently failed the write
           week_start: weekStartStr,
           plan_data: nextPlan,
           macro_targets: macroTargets,
           is_active: true,
         }, { onConflict: 'profile_id,week_start' });
       if (error) throw error;
+      // The live planner reads generated_meal_plans; drop this week's local cache
+      // so it re-hydrates from the server copy we just wrote (adopt = replace).
+      try { localStorage.removeItem(`meal_plan_${uid}_${weekStartStr}`); } catch { /* ignore */ }
       setAddPlanState('done');
     } catch (err) {
       logger.error('TrainerMealPlanSection: add to My Plan failed:', err);

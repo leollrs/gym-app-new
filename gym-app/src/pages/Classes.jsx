@@ -1200,7 +1200,7 @@ export default function Classes() {
           Title sits inline with the back button so the right-side pill never
           competes for centered space. Pill shows the full "Mis Reservas"
           label + count badge. */}
-      <div className="sticky top-0 z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
+      <div className="sticky sticky-under-appbar z-20 backdrop-blur-xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-3 py-3 flex items-center gap-2">
           <button onClick={() => navigate(-1)} aria-label={t('classes.goBack', { defaultValue: 'Go back' })} className="rounded-xl transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center focus:ring-2 focus:ring-[#D4AF37] focus:outline-none" style={{ color: 'var(--color-text-muted)' }}>
             <ChevronLeft size={22} strokeWidth={2} />

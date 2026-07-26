@@ -111,6 +111,7 @@ const TVDisplay        = lazy(() => import('./pages/TVDisplay'));
 const QuickStart       = lazy(quickStartImport);
 const HealthSync       = lazy(() => import('./pages/HealthSync'));
 const Classes          = lazy(() => import('./pages/Classes'));
+const MySessions       = lazy(() => import('./pages/MySessions'));
 const PublicTrainerProfile = lazy(() => import('./pages/PublicTrainerProfile'));
 const AppDownloadLanding = lazy(() => import('./pages/AppDownloadLanding'));
 
@@ -988,6 +989,7 @@ const KEEP_ALIVE_MAP = {
   '/classes':            Classes,
   '/checkin':            CheckIn,
   '/rewards':            Rewards,
+  '/sessions':           MySessions,
   '/referrals':          Referrals,
   '/health-sync':        HealthSync,
   '/messages':           Messages,

@@ -169,8 +169,11 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
 
   if (!mounted || !data) return null;
 
+  // zIndex matches every other share surface (ShareSheet / ShareCardioSheet /
+  // ShareAchievementSheet / SimpleShareSheet all use 9999). It was 120, which
+  // sits BELOW AppTour (z-200) and other app overlays.
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 120, display: 'flex', flexDirection: 'column',
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column',
       justifyContent: 'flex-end', fontFamily: FONT_D }}>
       {/* scrim */}
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(5,7,9,0.66)',

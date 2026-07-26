@@ -12,7 +12,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import { AdminPageShell, FadeIn, CardSkeleton, ErrorCard } from '../../components/admin';
 import { TK, FK, TONE, Ico, AICON, Card, MultiLine } from './components/analytics/analyticsKit';
 
-const DAY_KEYS = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun'];
+const DAY_KEYS = ['daySun', 'dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat'];
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 6am-8pm (15 hours)
 
 // Days kept as strings so the existing query key + parseInt usage works; each
@@ -131,7 +131,7 @@ export default function AdminAttendance() {
       checkInList.forEach(c => {
         const d = new Date(c.checked_in_at);
         const day = d.getDay();
-        const dayIndex = (day === 0) ? 6 : day - 1;
+        const dayIndex = day; // getDay() is already Sunday=0, matching DAY_KEYS
         const key = `${dayIndex}-${d.getHours()}`;
         heat[key] = (heat[key] || 0) + 1;
       });

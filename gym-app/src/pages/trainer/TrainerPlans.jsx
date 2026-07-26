@@ -4,7 +4,7 @@ import {
   Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell,
   ClipboardList, Search, ToggleLeft, ToggleRight, ArrowLeft, StickyNote,
   ChevronUp, FileText, Calendar, Zap, Loader2, RefreshCw, Pencil,
-  Activity, Target, MoreHorizontal, Minus, GripVertical, Link2, Check,
+  Activity, Target, MoreHorizontal, Minus, GripVertical, Link2, Check, Users,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -23,6 +23,7 @@ import { generateRoutineName, translateCreativeName } from '../../lib/programNam
 import { calculateMacros } from '../../lib/macroCalculator';
 import { generateWeekPlan, generateDayPlan } from '../../lib/mealPlanner';
 import { getMeals } from '../../lib/mealStore';
+import { getExerciseById } from '../../lib/exerciseStore';
 const MEALS = getMeals();
 import { foodImageUrl } from '../../lib/imageUrl';
 import { validateImageFile } from '../../lib/validateImage';
@@ -30,13 +31,38 @@ import { validateImageFile } from '../../lib/validateImage';
 // Resolve a meal image: full URLs (uploaded custom-meal photos) pass through;
 // catalog paths go through the food-images resolver.
 const mealImgSrc = (img) => (img ? (/^https?:\/\//.test(img) ? img : foodImageUrl(img)) : null);
+// Recipe ingredients are stored as snake_case keys (`bean_sprouts`, `soy_sauce`).
+// Showing them raw looks like leaked database rows.
+const humanizeIngredient = (k) => String(k).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Meal-picker thumbnail that shimmers while the photo loads (see .tt-media-loading).
+function MealThumb({ src, alt }) {
+  const [ready, setReady] = useState(false);
+  return (
+    <img src={src} alt={alt} loading="lazy" onLoad={() => setReady(true)} onError={() => setReady(true)}
+      className={`w-14 h-14 rounded-xl object-cover shrink-0${ready ? '' : ' tt-media-loading'}`}
+      style={{ backgroundColor: ready ? TT.surface2 : undefined }} />
+  );
+}
 import { motion } from 'framer-motion';
 import SwipeableTabView from '../../components/SwipeableTabView';
 import { UtensilsCrossed } from 'lucide-react';
 import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont } from './components/designTokens';
-import { TCard, TEyebrow, TPageTitle, TPrimaryButton, TTabPill, TSectionHeader, TPill } from './components/designPrimitives';
+import { TCard, TEyebrow, TPageTitle, TPrimaryButton, TTabPill, TSectionHeader, TPill, TAvatar } from './components/designPrimitives';
+// ── "Warmth (B)" meal-plan design system (Claude Design handoff-12) ──
+import { MK, soft, inkOf, mpShade, MacroRing, MacroCells, MacroReadout, MkPill, MkTag, MkBtn, MkIconBtn, MkChipStrip, WeekPicker as MkWeekPicker, SheetHead as MkSheetHead, SectionHead as MkSectionHead, Card as MkCard, FoodTile, Sec as MkSec, Note as MkNote } from './components/mealPlanKit';
+// meal-slot accent for the Warmth cards (Breakfast·Lunch·Snack·Dinner)
+const MK_SLOT_C = { breakfast: MK.hot, lunch: MK.amber, snack: MK.good, dinner: MK.coach, meal: MK.teal };
+import ExerciseVideoThumb from '../../components/ExerciseVideoThumb';
+import LazyVideoTile from '../../components/LazyVideoTile';
+import MealMacroCard from '../../components/nutrition/MealMacroCard';
+import { LayoutGrid, List, ArrowLeftRight, ChevronLeft, SlidersHorizontal, User, UserPlus, Gauge, Leaf, Bookmark } from 'lucide-react';
+
+// Resolve an exercise video path → full URL for grid tiles (mirrors the video store).
+const EXV_BASE = 'https://erdhnixjnjullhjzmvpm.supabase.co/storage/v1/object/public/exercise-videos/';
+const exVideoSrc = (raw) => (!raw ? null : (/^(https?:|blob:|data:)/.test(raw) ? raw : `${EXV_BASE}${raw}`));
 
 // ── Data helpers ──────────────────────────────────────────
 const DEFAULT_SETS = 3;
@@ -178,32 +204,33 @@ const Stepper = ({ value, onChange, suffix = '', min = 0, max = 999, step = 1, w
     onChange(n); setEditing(false);
   };
   const bump = (dir) => onChange(Math.max(min, Math.min(max, value + dir * step)));
+  // Teal StepBtn look, matching the per-client editor (ClientProgramEditor).
   const btn = (dir) => (
     <button type="button" onPointerDown={e => e.stopPropagation()} onClick={() => bump(dir)}
-      className="flex items-center justify-center rounded-lg active:scale-90 transition-transform flex-shrink-0"
-      style={{ width: 30, height: 30, background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
-      {dir < 0 ? <Minus size={14} /> : <Plus size={14} />}
+      className="tt-press tt-tap flex items-center justify-center flex-shrink-0"
+      style={{ width: 30, height: 30, borderRadius: 9, background: TT.accentSoft, color: TT.accentInk, border: `1px solid ${TT.accent}44` }}>
+      {dir < 0 ? <Minus size={14} strokeWidth={2.6} /> : <Plus size={14} strokeWidth={2.6} />}
     </button>
   );
   return (
     <div className="inline-flex items-center gap-1.5">
       {btn(-1)}
+      {/* Mono teal glyph PILL — same field the editor uses for reps/rest. */}
       <div onPointerDown={e => e.stopPropagation()} onClick={() => { setDraft(String(value)); setEditing(true); }}
         className="flex items-center justify-center cursor-text"
         style={{
-          minWidth: w, height: 30, padding: '0 6px', borderRadius: 9,
-          background: editing ? TT.surface : (accent ? TT.accentSoft : 'transparent'),
-          border: `1.5px solid ${editing ? TT.accent : 'transparent'}`,
-          boxShadow: editing ? `0 0 0 3px ${TT.accentSoft}` : 'none',
+          minWidth: Math.max(w, 46), height: 30, padding: '0 8px', borderRadius: 10,
+          background: TT.surface2,
+          boxShadow: editing ? `0 0 0 2px ${TT.accent}` : `inset 0 0 0 1px ${TT.accent}44`,
         }}>
         {editing ? (
           <input ref={inputRef} value={draft} inputMode="numeric"
             onChange={e => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
             onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); }}
             className="bg-transparent text-center outline-none p-0"
-            style={{ width: w - 8, fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text }} />
+            style={{ width: w - 6, fontFamily: TFont.mono, fontSize: 14, fontWeight: 700, color: TT.accentInk }} />
         ) : (
-          <span style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: accent ? TT.accentInk : TT.text, fontVariantNumeric: 'tabular-nums' }}>{value}{suffix}</span>
+          <span style={{ fontFamily: TFont.mono, fontSize: 14, fontWeight: 700, color: TT.accentInk, letterSpacing: -0.2, fontVariantNumeric: 'tabular-nums' }}>{value}{suffix}</span>
         )}
       </div>
       {btn(1)}
@@ -222,23 +249,43 @@ const TextStepField = ({ value, onChange, w = 64, placeholder }) => {
     <div onPointerDown={e => e.stopPropagation()} onClick={() => { setDraft(value); setEditing(true); }}
       className="flex items-center justify-center cursor-text"
       style={{
-        minWidth: w, height: 30, padding: '0 10px', borderRadius: 9,
-        background: editing ? TT.surface : TT.accentSoft,
-        border: `1.5px solid ${editing ? TT.accent : 'transparent'}`,
-        boxShadow: editing ? `0 0 0 3px ${TT.accentSoft}` : 'none',
+        minWidth: w, height: 30, padding: '0 10px', borderRadius: 10,
+        background: TT.surface2,
+        boxShadow: editing ? `0 0 0 2px ${TT.accent}` : `inset 0 0 0 1px ${TT.accent}44`,
       }}>
       {editing ? (
         <input ref={ref} value={draft} placeholder={placeholder}
           onChange={e => setDraft(e.target.value)}
           onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           className="bg-transparent text-center outline-none p-0"
-          style={{ width: w - 8, fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text }} />
+          style={{ width: w - 8, fontFamily: TFont.mono, fontSize: 14, fontWeight: 700, color: TT.accentInk }} />
       ) : (
-        <span style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.accentInk }}>{value}</span>
+        <span style={{ fontFamily: TFont.mono, fontSize: 14, fontWeight: 700, color: TT.accentInk, letterSpacing: -0.2 }}>{value}</span>
       )}
     </div>
   );
 };
+
+// ── Editor-style stat controls — mirror ClientProgramEditor's EditorDay so the
+//    standalone builder's exercise cards read identically (teal StepBtn +
+//    mono glyph PILL, boxed 3-col Sets/Reps/Rest grid). ──
+function DragDots() {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,3px)', gap: 3.5, flexShrink: 0 }} aria-hidden="true">
+      {Array.from({ length: 6 }).map((_, i) => <span key={i} style={{ width: 3, height: 3, borderRadius: 2, background: TT.textMute }} />)}
+    </div>
+  );
+}
+const ED_PILL = { minWidth: 52, padding: '7px 10px', borderRadius: 10, background: TT.surface2, boxShadow: `inset 0 0 0 1px ${TT.accent}44`, color: TT.accentInk, fontSize: 14, fontWeight: 700, textAlign: 'center', letterSpacing: -0.2, fontFamily: TFont.mono, outline: 'none', border: 'none' };
+function EdStepBtn({ children, onClick, ariaLabel, disabled = false }) {
+  return (
+    <button type="button" onPointerDown={e => e.stopPropagation()} onClick={onClick} disabled={disabled} aria-label={ariaLabel} className="tt-press tt-tap"
+      style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, cursor: disabled ? 'default' : 'pointer', border: `1px solid ${TT.accent}44`, background: TT.accentSoft, color: TT.accentInk, display: 'grid', placeItems: 'center', fontSize: 17, fontWeight: 800, lineHeight: 1, opacity: disabled ? 0.4 : 1 }}>
+      {children}
+    </button>
+  );
+}
+const ED_REST_OPTS = [30, 45, 60, 90, 120, 180];
 
 // ── Pointer drag-to-reorder (replaces the up/down arrows). The grabbed card
 //    LIFTS and tracks the finger (translateY) while the list live-reorders by
@@ -338,11 +385,13 @@ const CustomWeeksInput = ({ value, onCommit, color, ariaLabel }) => {
 // ── Exercise picker — member-style live search, muscle + equipment filter
 //    chips, tap-to-toggle multi-select, running-count footer. Rendered inside
 //    a bottom sheet by PlanBuilder (replaces the old per-day inline panel). ──
-const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor, t }) => {
+const ExercisePicker = ({ exercises, onAddMany, onReplace, replaceMode = false, onClose, exLabel, muscleLabelFor, t }) => {
   const [q, setQ] = useState('');
   const [muscle, setMuscle] = useState('all');
   const [equipment, setEquipment] = useState('all');
   const [sel, setSel] = useState({}); // id -> ex
+  const [view, setView] = useState('list'); // 'list' | 'grid'
+  const [showFilters, setShowFilters] = useState(false); // filter chips hidden by default (too many packed otherwise)
   const equipmentLabelFor = useCallback((eq) => (eq ? t(`equipment.${eq}`, eq) : ''), [t]);
 
   const muscles = useMemo(() => {
@@ -371,6 +420,9 @@ const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor
 
   const selCount = Object.keys(sel).length;
   const toggle = (ex) => setSel(s => { const n = { ...s }; if (n[ex.id]) delete n[ex.id]; else n[ex.id] = ex; return n; });
+  const activeFilters = (muscle !== 'all' ? 1 : 0) + (equipment !== 'all' ? 1 : 0);
+  // Cap what we render — the catalog is hundreds of exercises; never lay them all out.
+  const capped = results.slice(0, 80);
 
   const chip = (active) => ({
     flexShrink: 0, height: 34, padding: '0 13px', borderRadius: 999, cursor: 'pointer',
@@ -390,12 +442,24 @@ const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor
       {/* header + search */}
       <div className="px-4 pt-1 pb-3 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[19px] font-extrabold" style={{ fontFamily: TFont.display, color: TT.text, letterSpacing: -0.4 }}>
-            {t('trainerPlans.addExercises', 'Add exercises')}
+          <h3 className="text-[16px]" style={{ fontFamily: TFont.display, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
+            {replaceMode ? t('trainerPlans.swapExercise', 'Swap exercise') : t('trainerPlans.addExercises', 'Add exercises')}
           </h3>
-          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: TT.surface2, color: TT.textSub }}>
-            <X size={17} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setShowFilters(s => !s)} aria-label={t('trainerPlans.filters', 'Filters')}
+              style={{ position: 'relative', width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', border: `1px solid ${(showFilters || activeFilters) ? TT.accent : TT.border}`, background: (showFilters || activeFilters) ? TT.accentSoft : TT.surface2, color: (showFilters || activeFilters) ? TT.accentInk : TT.textSub }}>
+              <SlidersHorizontal size={15} />
+              {activeFilters > 0 && <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16, borderRadius: 999, background: TT.accent, color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'grid', placeItems: 'center', padding: '0 3px' }}>{activeFilters}</span>}
+            </button>
+            <div style={{ display: 'flex', background: TT.surface2, borderRadius: 10, padding: 3, border: `1px solid ${TT.border}` }}>
+              {[['list', List], ['grid', LayoutGrid]].map(([v, Ico]) => (
+                <button key={v} type="button" onClick={() => setView(v)} aria-label={v} style={{ width: 32, height: 28, borderRadius: 7, border: 'none', display: 'grid', placeItems: 'center', cursor: 'pointer', background: view === v ? TT.text : 'transparent', color: view === v ? TT.onInverse : TT.textMute }}><Ico size={15} /></button>
+              ))}
+            </div>
+            <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: TT.surface2, color: TT.textSub }}>
+              <X size={17} />
+            </button>
+          </div>
         </div>
         <div className="relative">
           <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: TT.textMute }} />
@@ -412,7 +476,8 @@ const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor
           )}
         </div>
       </div>
-      {/* filter chips */}
+      {/* filter chips — hidden until the Filters button is tapped (kept the row clean) */}
+      {showFilters && (
       <div className="flex-shrink-0 space-y-2 pb-2">
         <div className="flex gap-1.5 overflow-x-auto px-4 scrollbar-hide" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
           <button onClick={() => setMuscle('all')} style={chip(muscle === 'all')}>{t('trainerPlans.allMuscles', 'All')}</button>
@@ -429,6 +494,7 @@ const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor
           </div>
         )}
       </div>
+      )}
       {/* results */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-1" style={{ paddingBottom: selCount ? 100 : 24, WebkitOverflowScrolling: 'touch' }}>
         <div className="flex items-center justify-between px-1 pb-2">
@@ -440,18 +506,37 @@ const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor
             <p className="text-[14px] font-bold" style={{ color: TT.textSub }}>{t('trainerPlans.noExercisesFound', 'No exercises found')}</p>
             <p className="text-[12px] mt-1" style={{ color: TT.textMute }}>{t('trainerPlans.tryAnother', 'Try another name or clear the filters.')}</p>
           </div>
+        ) : view === 'grid' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {capped.map(ex => {
+              const selected = !replaceMode && !!sel[ex.id];
+              const vsrc = exVideoSrc(ex.video_url);
+              return (
+                <button key={ex.id} onClick={() => (replaceMode ? onReplace(ex) : toggle(ex))}
+                  className="active:scale-[0.98] transition-transform"
+                  style={{ position: 'relative', aspectRatio: '4 / 5', borderRadius: 14, overflow: 'hidden', textAlign: 'left', background: '#000', border: selected ? `2px solid ${TT.accent}` : `1px solid ${TT.border}`, cursor: 'pointer' }}>
+                  {vsrc ? <LazyVideoTile src={vsrc} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(135deg, ${TT.accent}22, transparent)`, display: 'grid', placeItems: 'center' }}><Dumbbell size={26} style={{ color: 'rgba(255,255,255,0.5)' }} /></div>}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0) 100%)' }} />
+                  {selected && <span style={{ position: 'absolute', top: 8, left: 8, width: 26, height: 26, borderRadius: 999, display: 'grid', placeItems: 'center', background: TT.accent, color: '#fff' }}><Check size={15} strokeWidth={3} /></span>}
+                  {replaceMode && <span style={{ position: 'absolute', top: 8, left: 8, width: 26, height: 26, borderRadius: 999, display: 'grid', placeItems: 'center', background: 'rgba(0,0,0,0.55)', color: '#fff' }}><ArrowLeftRight size={13} strokeWidth={2.6} /></span>}
+                  <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, color: '#fff' }}>
+                    <p style={{ fontSize: 11.5, fontWeight: 900, lineHeight: 1.1, textShadow: '0 1px 4px rgba(0,0,0,0.5)', margin: 0 }}>{exLabel(ex)}</p>
+                    {ex.muscle_group && <p style={{ fontSize: 10, fontWeight: 700, marginTop: 2, opacity: 0.85, textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>{muscleLabelFor(ex.muscle_group)}</p>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         ) : (
           <div className="space-y-2">
-            {results.map(ex => {
-              const selected = !!sel[ex.id];
+            {capped.map(ex => {
+              const selected = !replaceMode && !!sel[ex.id];
               const mc = getMuscleColor(ex.muscle_group);
               return (
-                <button key={ex.id} onClick={() => toggle(ex)}
+                <button key={ex.id} onClick={() => (replaceMode ? onReplace(ex) : toggle(ex))}
                   className="w-full flex items-center gap-3 text-left rounded-2xl px-3 py-2.5 active:scale-[0.99] transition-transform"
                   style={{ background: selected ? TT.accentSoft : TT.surface, border: `1.5px solid ${selected ? TT.accent : TT.border}` }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: mc.bg, color: mc.text }}>
-                    <Dumbbell size={18} />
-                  </div>
+                  <ExerciseVideoThumb exercise={{ videoUrl: ex.video_url, muscle: ex.muscle_group }} size={46} radius={12} />
                   <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-bold truncate" style={{ fontFamily: TFont.display, color: TT.text }}>{exLabel(ex)}</p>
                     <div className="flex items-center gap-2 mt-1">
@@ -459,13 +544,22 @@ const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor
                       {ex.equipment && <span className="text-[11px] truncate" style={{ color: TT.textMute }}>{equipmentLabelFor(ex.equipment)}</span>}
                     </div>
                   </div>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: selected ? TT.accent : TT.surface2, border: selected ? 'none' : `1.5px solid ${TT.border}` }}>
-                    {selected ? <Check size={16} color="#fff" /> : <Plus size={16} style={{ color: TT.textSub }} />}
-                  </div>
+                  {replaceMode ? (
+                    <ArrowLeftRight size={17} style={{ color: TT.accent, flexShrink: 0 }} />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: selected ? TT.accent : TT.surface2, border: selected ? 'none' : `1.5px solid ${TT.border}` }}>
+                      {selected ? <Check size={16} color="#fff" /> : <Plus size={16} style={{ color: TT.textSub }} />}
+                    </div>
+                  )}
                 </button>
               );
             })}
           </div>
+        )}
+        {results.length > capped.length && (
+          <p className="text-center py-3 text-[11px]" style={{ color: TT.textMute }}>
+            {t('trainerPlans.showingNofMEx', 'Showing {{n}} of {{total}} — search or filter to narrow', { n: capped.length, total: results.length })}
+          </p>
         )}
       </div>
       {/* footer */}
@@ -484,7 +578,7 @@ const ExercisePicker = ({ exercises, onAddMany, onClose, exLabel, muscleLabelFor
 };
 
 // ── Day Card (Direction A — drag-grip reorder, tap-to-type, supersets) ──
-const DayCard = ({ day, di, wk, exMuscle, exName, muscleLabelFor, updateDayName, removeDay, onAddExercise, removeExercise, updateExercise, duplicateExercise, reorderExercises, linkExercise, unlinkSuperset, copyDayMenu, setCopyDayMenu, setCopyWeekMenu, allDayTargets, copyDayTo, t }) => {
+const DayCard = ({ day, di, wk, exMuscle, exName, muscleLabelFor, updateDayName, removeDay, onAddExercise, removeExercise, updateExercise, duplicateExercise, onSwapExercise, reorderExercises, linkExercise, unlinkSuperset, copyDayMenu, setCopyDayMenu, setCopyWeekMenu, allDayTargets, copyDayTo, t }) => {
   const dayTime = calcDaySeconds(day);
   const showCopyDay = copyDayMenu?.wk === wk && copyDayMenu?.di === di;
   const dayTargets = allDayTargets(wk, di);
@@ -506,110 +600,116 @@ const DayCard = ({ day, di, wk, exMuscle, exName, muscleLabelFor, updateDayName,
     const dragging = dragId === ex._uid;
     const ty = dragging ? draggedTranslate() : 0;
     const noteOpen = expandedNotes[ex._uid] || ex.notes;
-    const labelCol = { fontSize: 12, fontWeight: 600, color: TT.textSub };
+    const cellLabel = { fontFamily: TFont.display, fontSize: 9.5, fontWeight: 800, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 1 };
+    // Always include the current rest value so a legacy non-standard rest (e.g. 75s) stays selectable.
+    const restOpts = Array.from(new Set([...ED_REST_OPTS, Number(ex.rest_seconds) || DEFAULT_REST])).sort((a, b) => a - b);
     return (
       <div key={ex._uid} data-dragitem={ex._uid}
-        className="rounded-2xl px-3 pt-3 pb-3.5"
         style={{
           background: TT.surface,
-          border: `1.5px solid ${dragging ? TT.accent : TT.border}`,
-          boxShadow: dragging ? TT.shadowLg : '0 1px 2px rgba(0,0,0,0.04)',
-          transform: dragging ? `translateY(${ty}px) scale(1.03)` : 'none',
+          border: `1px solid ${TT.border}`,
+          borderLeft: ex.group_id ? `3px solid ${TT.coach}` : `1px solid ${TT.border}`,
+          borderRadius: 12, overflow: 'hidden',
+          boxShadow: dragging ? TT.shadowLg : 'none',
+          transform: dragging ? `translateY(${ty}px) scale(1.02)` : 'none',
           opacity: dragging ? 0.97 : 1,
           position: 'relative', zIndex: dragging ? 30 : 1,
-          // grabbed card tracks the finger 1:1 (no transition); on drop it
-          // settles into its new slot with a short ease.
           transition: dragging ? 'none' : 'transform 170ms cubic-bezier(0.2,0.9,0.3,1), box-shadow 140ms',
           willChange: dragging ? 'transform' : undefined,
         }}>
-        {/* row 1: grip + name/muscle + duplicate + delete */}
-        <div className="flex items-center gap-2">
-          <div onPointerDown={(e) => start(ex._uid, e, e.currentTarget.closest('[data-dragitem]'))}
-            className="flex items-center justify-center flex-shrink-0 -ml-1"
-            style={{ width: 28, height: 36, cursor: 'grab', touchAction: 'none', color: TT.textMute }}>
-            <GripVertical size={18} />
+        {/* row: grip + name/muscle + duplicate + delete */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px' }}>
+          <button type="button" onPointerDown={(e) => start(ex._uid, e, e.currentTarget.closest('[data-dragitem]'))}
+            aria-label={t('workoutBuilder.ariaDragReorder', 'Drag to reorder')}
+            style={{ width: 18, height: 32, marginLeft: -2, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'none', border: 'none', cursor: 'grab', touchAction: 'none' }}>
+            <DragDots />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontFamily: TFont.display, fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>{exName(ex.id)}</p>
+            {mg && <span style={{ display: 'inline-block', marginTop: 3, fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4, padding: '1px 7px', borderRadius: 999, background: mc.bg, color: mc.text }}>{muscleLabelFor(mg)}</span>}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[14.5px] font-bold truncate" style={{ fontFamily: TFont.display, color: TT.text }}>{exName(ex.id)}</p>
-            {mg && <span className="inline-block mt-1 text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: mc.bg, color: mc.text }}>{muscleLabelFor(mg)}</span>}
-          </div>
+          <button onPointerDown={e => e.stopPropagation()} onClick={() => onSwapExercise(wk, di, ei)}
+            aria-label={t('trainerPlans.swap', 'Swap')}
+            style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: 'transparent', border: 'none', display: 'grid', placeItems: 'center', cursor: 'pointer', color: TT.textMute }}>
+            <ArrowLeftRight size={15} />
+          </button>
           <button onPointerDown={e => e.stopPropagation()} onClick={() => duplicateExercise(wk, di, ei)}
             aria-label={t('trainerPlans.duplicate', 'Duplicate')}
-            className="w-8 h-9 flex items-center justify-center flex-shrink-0" style={{ color: TT.textMute }}>
+            style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: 'transparent', border: 'none', display: 'grid', placeItems: 'center', cursor: 'pointer', color: TT.textMute }}>
             <Copy size={15} />
           </button>
           <button onPointerDown={e => e.stopPropagation()} onClick={() => removeExercise(wk, di, ei)}
             aria-label={t('trainerPlans.remove', 'Remove')}
-            className="w-8 h-9 flex items-center justify-center flex-shrink-0 -mr-1" style={{ color: TT.textMute }}
-            onMouseEnter={e => { e.currentTarget.style.color = TT.hot; }}
-            onMouseLeave={e => { e.currentTarget.style.color = TT.textMute; }}>
+            style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: 'transparent', border: 'none', display: 'grid', placeItems: 'center', cursor: 'pointer', color: TT.hot }}>
             <Trash2 size={15} />
           </button>
         </div>
-        {/* row 2: series + reps */}
-        <div className="flex items-center flex-wrap gap-x-5 gap-y-2.5 mt-3 pl-6">
-          <div className="flex items-center gap-2">
-            <span style={labelCol}>{t('trainerPlans.sets', 'Sets')}</span>
-            <Stepper value={ex.sets ?? DEFAULT_SETS} onChange={v => updateExercise(wk, di, ei, 'sets', v)} min={1} max={12} w={40} accent />
+        {/* boxed 3-col Sets / Reps / Rest grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', margin: '0 10px 10px', background: TT.surface2, borderRadius: 12, boxShadow: `inset 0 0 0 1px ${TT.border}`, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 6px 11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <span style={cellLabel}>{t('trainerPlans.sets', 'Sets')}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <EdStepBtn ariaLabel={t('common:decrease', 'Decrease')} onClick={() => updateExercise(wk, di, ei, 'sets', Math.max(1, (Number(ex.sets) || DEFAULT_SETS) - 1))}>−</EdStepBtn>
+              <span style={{ fontFamily: TFont.mono, fontWeight: 700, fontSize: 16, color: TT.text, minWidth: 14, textAlign: 'center' }}>{ex.sets ?? DEFAULT_SETS}</span>
+              <EdStepBtn ariaLabel={t('common:increase', 'Increase')} onClick={() => updateExercise(wk, di, ei, 'sets', Math.min(12, (Number(ex.sets) || DEFAULT_SETS) + 1))}>+</EdStepBtn>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span style={labelCol}>{t('trainerPlans.reps', 'Reps')}</span>
-            <TextStepField value={ex.reps ?? DEFAULT_REPS} onChange={v => updateExercise(wk, di, ei, 'reps', v)} placeholder={t('trainerPlans.repsPlaceholder', '8-12')} />
+          <div style={{ padding: '10px 6px 11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, borderLeft: `1px solid ${TT.border}`, borderRight: `1px solid ${TT.border}` }}>
+            <span style={cellLabel}>{t('trainerPlans.reps', 'Reps')}</span>
+            <input type="text" inputMode="numeric" value={ex.reps ?? DEFAULT_REPS} onPointerDown={e => e.stopPropagation()}
+              onChange={e => updateExercise(wk, di, ei, 'reps', e.target.value.slice(0, 7))} style={{ ...ED_PILL, width: 56 }} />
+          </div>
+          <div style={{ padding: '10px 6px 11px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <span style={cellLabel}>{t('trainerPlans.rest', 'Rest')}</span>
+            <select value={ex.rest_seconds ?? DEFAULT_REST} onPointerDown={e => e.stopPropagation()}
+              onChange={e => updateExercise(wk, di, ei, 'rest_seconds', Number(e.target.value))} style={{ ...ED_PILL, appearance: 'none', cursor: 'pointer' }}>
+              {restOpts.map(r => <option key={r} value={r}>{r < 60 ? `${r}s` : `${r / 60}m`}</option>)}
+            </select>
           </div>
         </div>
-        {/* row 3: rest + note toggle */}
-        <div className="flex items-center flex-wrap gap-x-5 gap-y-2.5 mt-2.5 pl-6">
-          <div className="flex items-center gap-2">
-            <span style={labelCol}>{t('trainerPlans.rest', 'Rest')}</span>
-            <Stepper value={ex.rest_seconds ?? DEFAULT_REST} onChange={v => updateExercise(wk, di, ei, 'rest_seconds', v)} suffix="s" min={0} max={600} step={15} w={54} />
-          </div>
+        {/* note toggle + textarea (kept feature) */}
+        <div style={{ padding: '0 12px 10px' }}>
           <button onPointerDown={e => e.stopPropagation()} onClick={() => toggleNote(ex._uid)}
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold"
-            style={{ color: noteOpen ? TT.accentInk : TT.textMute }}>
-            <StickyNote size={14} /> {ex.notes ? t('trainerPlans.noteAdded', 'Note added') : t('trainerPlans.addNote', 'Add note')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', color: noteOpen ? TT.accentInk : TT.textMute, padding: 0 }}>
+            <StickyNote size={13} /> {ex.notes ? t('trainerPlans.noteAdded', 'Note added') : t('trainerPlans.addNote', 'Add note')}
           </button>
+          {noteOpen && (
+            <textarea value={ex.notes || ''} onPointerDown={e => e.stopPropagation()}
+              onChange={e => updateExercise(wk, di, ei, 'notes', e.target.value)}
+              onFocus={() => setExpandedNotes(prev => ({ ...prev, [ex._uid]: true }))}
+              onBlur={e => { if (!e.target.value.trim()) setExpandedNotes(prev => ({ ...prev, [ex._uid]: false })); }}
+              maxLength={500} rows={2}
+              placeholder={t('trainerPlans.trainerNotesPlaceholder', 'e.g., Tempo 3-1-2, pause at bottom')}
+              style={{ width: '100%', marginTop: 8, borderRadius: 10, padding: '8px 11px', fontSize: 13, outline: 'none', resize: 'none', background: TT.surface2, border: `1px solid ${TT.border}`, color: TT.textSub }} />
+          )}
         </div>
-        {/* note textarea — pinned mounted until blurred empty */}
-        {noteOpen ? (
-          <textarea value={ex.notes || ''} onPointerDown={e => e.stopPropagation()}
-            onChange={e => updateExercise(wk, di, ei, 'notes', e.target.value)}
-            onFocus={() => setExpandedNotes(prev => ({ ...prev, [ex._uid]: true }))}
-            onBlur={e => { if (!e.target.value.trim()) setExpandedNotes(prev => ({ ...prev, [ex._uid]: false })); }}
-            maxLength={500} rows={2}
-            placeholder={t('trainerPlans.trainerNotesPlaceholder', 'e.g., Tempo 3-1-2, pause at bottom')}
-            className="mt-2.5 ml-6 rounded-xl px-3 py-2 text-[16px] sm:text-[13px] outline-none resize-none"
-            style={{ width: 'calc(100% - 1.5rem)', background: TT.surface2, border: `1px solid ${TT.border}`, color: TT.textSub }} />
-        ) : null}
       </div>
     );
   };
 
   return (
-    <div className="rounded-2xl overflow-visible" style={{ border: `1px solid ${TT.border}`, background: TT.surface2 }}>
-      {/* Day header - whole header tappable for expand/collapse */}
+    <div style={{ background: expanded ? TT.bg : TT.surface, border: `1px solid ${expanded ? `${TT.accent}44` : TT.border}`, borderRadius: 16, padding: expanded ? 10 : 0, marginBottom: 10, overflow: 'visible' }}>
+      {/* Day header — chevron toggles; the day name is a full-width pill (matches ClientProgramEditor) */}
       <div
-        className="flex items-center gap-1 md:gap-2 px-3 md:px-4 py-3 rounded-t-2xl cursor-pointer transition-colors"
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: expanded ? '2px 2px 10px' : '10px 12px', cursor: 'pointer' }}
         onClick={() => setExpanded(!expanded)}
       >
-        <ChevronDown size={16} className={`transition-transform flex-shrink-0 ${expanded ? '' : '-rotate-90'}`} style={{ color: TT.textMute }} />
+        <button type="button" onClick={e => { e.stopPropagation(); setExpanded(!expanded); }} aria-label={expanded ? t('common:collapse', 'Collapse') : t('common:expand', 'Expand')}
+          style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'grid', placeItems: 'center', color: TT.textSub }}>
+          <ChevronRight size={19} strokeWidth={2.2} style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} />
+        </button>
         <input value={day.name} onChange={e => updateDayName(wk, di, e.target.value)}
           onClick={e => e.stopPropagation()}
           placeholder={t('trainerPlans.dayPrefix', 'Day {{num}}', { num: di + 1 })}
-          className="flex-1 bg-transparent text-[15px] font-extrabold outline-none min-w-0" style={{ fontFamily: TFont.display, color: TT.text }} />
-        <span className="text-[11px] flex-shrink-0 flex items-center gap-1.5" style={{ color: TT.textMute }}>
-          <span>{items.length} {t('trainerPlans.ex', 'ex')}</span>
-          {dayTime > 0 && (
-            <>
-              <span className="opacity-40">&middot;</span>
-              <span className="flex items-center gap-0.5"><Clock size={9} /> ~{fmtTime(dayTime, t)}</span>
-            </>
-          )}
+          style={{ flex: 1, minWidth: 0, height: 38, background: TT.surface2, border: `1px solid ${TT.border}`, borderRadius: 10, padding: '0 13px', fontFamily: TFont.display, fontWeight: 800, fontSize: 15, color: TT.text, letterSpacing: -0.2, outline: 'none' }} />
+        <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: TT.textMute, fontFamily: TFont.mono, whiteSpace: 'nowrap' }}>
+          {items.length} {t('trainerPlans.ex', 'ex')}{dayTime > 0 ? ` · ~${fmtTime(dayTime, t)}` : ''}
         </span>
-        <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
           <button
             onClick={() => { setCopyDayMenu(showCopyDay ? null : { wk, di }); setCopyWeekMenu(null); }}
-            className="min-w-[36px] min-h-[44px] md:min-w-[44px] flex items-center justify-center transition-colors" style={{ color: TT.textMute }} title={t('trainerPlans.copyDay', 'Copy day')}>
-            <Copy size={13} />
+            style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: TT.textMute }} title={t('trainerPlans.copyDay', 'Copy day')}>
+            <Copy size={14} />
           </button>
           {showCopyDay && (
             <div className="absolute right-0 top-full mt-1 z-20 rounded-xl shadow-xl overflow-hidden min-w-[180px] max-w-[calc(100vw-2rem)] max-h-48 overflow-y-auto" style={{ background: TT.bgElev, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
@@ -626,16 +726,14 @@ const DayCard = ({ day, di, wk, exMuscle, exName, muscleLabelFor, updateDayName,
           )}
         </div>
         <button onClick={e => { e.stopPropagation(); removeDay(wk, di); }}
-          className="min-w-[36px] min-h-[44px] md:min-w-[44px] flex items-center justify-center transition-colors flex-shrink-0" style={{ color: TT.textMute }}
-          onMouseEnter={e => { e.currentTarget.style.color = TT.hot; }}
-          onMouseLeave={e => { e.currentTarget.style.color = TT.textMute; }}>
-          <Trash2 size={13} />
+          style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: TT.hot }}>
+          <Trash2 size={15} />
         </button>
       </div>
 
       {/* Exercises */}
       {expanded && (
-        <div className="px-3 md:px-4 pb-4 pt-2">
+        <div style={{ paddingTop: 4 }}>
           {/* Empty state */}
           {items.length === 0 && (
             <div className="py-8 text-center">
@@ -684,19 +782,47 @@ const DayCard = ({ day, di, wk, exMuscle, exName, muscleLabelFor, updateDayName,
           )}
 
           {/* Add exercise — opens the multi-select picker sheet */}
-          <button onClick={onAddExercise}
-            className="w-full mt-2 py-3.5 rounded-2xl border-2 border-dashed transition-colors flex items-center justify-center gap-2 min-h-[44px] active:scale-[0.99]"
-            style={{ borderColor: TT.borderStrong, color: TT.accentInk }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = TT.accent; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = TT.borderStrong; }}>
-            <Plus size={17} />
-            <span className="text-[13.5px] font-bold" style={{ fontFamily: TFont.display }}>{t('trainerPlans.addExercise', 'Add Exercise')}</span>
+          <button type="button" onClick={onAddExercise} className="tt-tap"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%', height: 44, marginTop: 10, borderRadius: 12, background: 'transparent', color: TT.accentInk, border: `1.5px dashed ${TT.accent}55`, fontFamily: TFont.display, fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}>
+            <Plus size={17} strokeWidth={2.4} /> {t('trainerPlans.addExercise', 'Add Exercise')}
           </button>
         </div>
       )}
     </div>
   );
 };
+
+// ── Client picker list (in-modal) ────────────────────────
+// A contained radio/checkbox list, NOT a native <select>. Native select popups
+// mis-render / overflow the screen when opened inside a backdrop-blurred
+// modal (WebView bug), so the assign/duplicate/multi sheets use this instead.
+// Single-select: pass value + onChange(id). Multi-select: pass multi + values
+// (array) + onToggle(id). `extra` prepends rows like a "No client" option.
+function ClientPickList({ value, onChange, clients, extra, multi, values, onToggle, maxHeight = 220 }) {
+  const rows = [...(extra || []), ...clients.map(c => ({ id: c.id, name: c.full_name }))];
+  const selected = (id) => (multi ? (values || []).includes(id) : value === id);
+  return (
+    <div className="rounded-xl" style={{ border: `1px solid ${TT.border}`, maxHeight, overflowY: 'auto', overflowX: 'hidden' }}>
+      {rows.map((opt, i) => {
+        const on = selected(opt.id);
+        return (
+          <button
+            key={opt.id || `_none_${i}`}
+            type="button"
+            onClick={() => (multi ? onToggle(opt.id) : onChange(opt.id))}
+            className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left tt-tap"
+            style={{ background: on ? TT.accentSoft : TT.surface, borderTop: i > 0 ? `1px solid ${TT.border}` : 'none' }}
+          >
+            <span className="flex items-center justify-center flex-shrink-0" style={{ width: 20, height: 20, borderRadius: multi ? 6 : 999, border: `1.5px solid ${on ? TT.accent : TT.borderSolid}`, background: on ? TT.accent : 'transparent' }}>
+              {on && <Check size={13} color="#06363B" strokeWidth={3} />}
+            </span>
+            <span className="truncate text-[15px] sm:text-[14px] font-medium" style={{ color: on ? TT.accentInk : TT.text }}>{opt.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ── Plan Builder (full-page workspace) ───────────────────
 const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, showToast }) => {
@@ -708,10 +834,26 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const init = plan || {};
   const { i18n } = useTranslation();
   const isEs = i18n.language?.startsWith('es');
-  const [clientId, setClientId]     = useState(init.client_id || '');
+  // Assignment is multi-member — a plan can be SHARED with many clients (0644).
+  // assignedIds is the source of truth; clientId is the "primary" (first)
+  // assignee that fills the legacy client_id column and drives the personalized
+  // profile + auto-generate (only meaningful when exactly one member).
+  const [assignedIds, setAssignedIds] = useState(init.client_id ? [init.client_id] : []);
+  const clientId = assignedIds[0] || '';
+  const [showAssignPicker, setShowAssignPicker] = useState(false);
+  const toggleAssigned = (id) => setAssignedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const [name, setName]             = useState(init.name ?? '');
   const [description, setDesc]      = useState(init.description ?? '');
-  const [durationWeeks, setDuration]= useState(init.duration_weeks ?? 4);
+  // duration_weeks === 0 is the "single session" sentinel — one workout, no
+  // multi-week scaffolding. Internally we still render 1 week so the day editor
+  // works; only the SAVED value is 0 (see doSave).
+  const [durationWeeks, setDuration]= useState(init.duration_weeks === 0 ? 1 : (init.duration_weeks ?? 4));
+  const [planKind, setPlanKind] = useState(init.duration_weeks === 0 ? 'session' : 'program'); // 'program' | 'session'
+  const switchPlanKind = (k) => {
+    setPlanKind(k);
+    if (k === 'session') { setDuration(1); setSelectedWeek(1); }
+    else if (durationWeeks < 4) { setDuration(4); }
+  };
   const PRESET_DURATIONS = [4, 6, 8, 10, 12];
   const isCustomDuration = !PRESET_DURATIONS.includes(durationWeeks);
   const [weeks, setWeeks]           = useState(() => normalizeWeeks(init.weeks, t));
@@ -728,7 +870,8 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   const [confirmPrune, setConfirmPrune] = useState(null); // { prunedWeeks } pending save
   const [confirmDiscard, setConfirmDiscard] = useState(false); // unsaved-changes guard
   const [pickerTarget, setPickerTarget] = useState(null); // { wk, di } for the add-exercise sheet
-  useScrollLock(!!confirmPrune || confirmDiscard || !!pickerTarget); // lock page behind builder dialogs/sheets
+  const [swapTarget, setSwapTarget] = useState(null); // { wk, di, ei } for replace-in-place swap
+  useScrollLock(!!confirmPrune || confirmDiscard || !!pickerTarget || !!swapTarget || showAssignPicker); // lock page behind builder dialogs/sheets
   // Editing a plan whose client was deactivated: the active-clients list no
   // longer contains them, so the (disabled) select showed "Select client...".
   // Keep the assigned name around for display.
@@ -754,25 +897,45 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   // from the signature so a freshly-opened plan never reads as already-edited.
   const planSig = (o) => JSON.stringify(o, (k, v) => (k === '_uid' ? undefined : v));
   const initialSnapshot = useRef(null);
+  const snapAssigned = (ids) => [...ids].sort().join(',');
   if (initialSnapshot.current === null) {
     initialSnapshot.current = planSig({
-      clientId: init.client_id || '',
+      assigned: snapAssigned(init.client_id ? [init.client_id] : []),
       name: init.name ?? '',
       description: init.description ?? '',
-      durationWeeks: init.duration_weeks ?? 4,
+      durationWeeks: init.duration_weeks === 0 ? 1 : (init.duration_weeks ?? 4),
+      // planKind is what decides duration_weeks 0-vs-N on save, so it has to be
+      // part of the signature: Session→Program at durationWeeks 4 leaves every
+      // other tracked field identical and used to read as "no changes", so the
+      // back arrow discarded the switch without warning.
+      planKind: init.duration_weeks === 0 ? 'session' : 'program',
       weeks: normalizeWeeks(init.weeks, t),
     });
   }
-  const isDirty = () => initialSnapshot.current !== planSig({ clientId, name, description, durationWeeks, weeks });
+  const isDirty = () => initialSnapshot.current !== planSig({ assigned: snapAssigned(assignedIds), name, description, durationWeeks, planKind, weeks });
   const handleBack = () => {
     if (isDirty()) { setConfirmDiscard(true); return; }
     onClose();
   };
 
   useEffect(() => {
+    // Opening the builder is a view-swap within the Plans page, NOT a route
+    // change — so the global ScrollToTop never fires and the builder inherits
+    // wherever the list was scrolled. Reset the trainer scroll region on open.
+    const reset = () => {
+      document.querySelector('.trainer-scroll-region')?.scrollTo(0, 0);
+      document.getElementById('main-content')?.scrollTo(0, 0);
+      window.scrollTo(0, 0);
+    };
+    reset();
+    const id = setTimeout(reset, 60); // after the builder lays out
+    return () => clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
     // exercises table can exceed 1000 rows — paginate to get all of them
     selectAllRows((from, to) =>
-      supabase.from('exercises').select('id, name, name_es, muscle_group, equipment').order('name').range(from, to),
+      supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, video_url').order('name').range(from, to),
     ).then(({ data, error }) => {
       if (error) console.error('[TrainerPlans] Failed to load exercises:', error);
       setExercises(data || []);
@@ -783,6 +946,33 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   useEffect(() => {
     if (selectedWeek > durationWeeks) setSelectedWeek(durationWeeks);
   }, [durationWeeks, selectedWeek]);
+
+  // Load the full set of shared members (0644 junction) when editing, and fold
+  // in the legacy client_id. Rebaseline the dirty-snapshot afterwards so this
+  // async hydrate never makes a freshly-opened plan read as edited.
+  useEffect(() => {
+    if (!isEdit || !plan?.id) return;
+    let cancelled = false;
+    supabase.from('trainer_plan_members').select('member_id').eq('plan_id', plan.id)
+      .then(({ data, error }) => {
+        if (cancelled || error) return; // table missing pre-migration → keep client_id only
+        const merged = Array.from(new Set([
+          ...(init.client_id ? [init.client_id] : []),
+          ...(data || []).map(r => r.member_id).filter(Boolean),
+        ]));
+        if (merged.length <= (init.client_id ? 1 : 0)) return; // nothing extra
+        setAssignedIds(merged);
+        initialSnapshot.current = planSig({
+          assigned: snapAssigned(merged),
+          name: init.name ?? '',
+          description: init.description ?? '',
+          durationWeeks: init.duration_weeks === 0 ? 1 : (init.duration_weeks ?? 4),
+          planKind: init.duration_weeks === 0 ? 'session' : 'program',
+          weeks: normalizeWeeks(init.weeks, t),
+        });
+      });
+    return () => { cancelled = true; };
+  }, [isEdit, plan?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resolve the assigned client's name even when they're no longer in the
   // active-clients list (deactivated client — the select is disabled on edit
@@ -906,9 +1096,15 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   };
 
   const exById = useMemo(() => new Map(exercises.map(e => [e.id, e])), [exercises]);
+  // The `exercises` table fetch is async, so for its first few hundred ms every
+  // row here rendered its raw primary key ("ex_abwh") before flipping to the
+  // real name. Fall back to the bundled catalog (synchronous, always present),
+  // and only if THAT misses do we show something derived from the id — never
+  // the id itself.
   const exName = (id) => {
-    const ex = exById.get(id);
-    return ex ? exLabel(ex) : id;
+    const ex = exById.get(id) || getExerciseById(id);
+    if (ex) return exLabel(ex) || ex.name || '';
+    return String(id || '').replace(/^ex[_-]/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   };
   const exMuscle = (id) => exById.get(id)?.muscle_group || null;
 
@@ -1048,6 +1244,28 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
     doSave(draft);
   };
 
+  // Reconcile trainer_plan_members (0644) to exactly assignedIds: drop members
+  // no longer assigned, add new ones (ON CONFLICT DO NOTHING → the assign-notify
+  // trigger only fires for genuinely new members). Best-effort: a failure here
+  // (e.g. junction table not yet migrated) must not fail the whole save.
+  const syncPlanMembers = async (planId) => {
+    try {
+      const keep = assignedIds.filter(Boolean);
+      const NONE = '00000000-0000-0000-0000-000000000000';
+      await supabase.from('trainer_plan_members').delete()
+        .eq('plan_id', planId)
+        .not('member_id', 'in', `(${keep.length ? keep.join(',') : NONE})`);
+      if (keep.length) {
+        await supabase.from('trainer_plan_members').upsert(
+          keep.map(mid => ({ plan_id: planId, member_id: mid, assigned_by: trainerId })),
+          { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
+        );
+      }
+    } catch (e) {
+      logger.error('TrainerPlans: syncPlanMembers failed (non-fatal):', e);
+    }
+  };
+
   const doSave = async (draftArg) => {
     // Called directly and from the prune dialog (which passes no boolean) —
     // fall back to the intent captured in handleSave.
@@ -1062,18 +1280,27 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
         client_id: clientId || null,
         name: name.trim(),
         description: description.trim(),
-        duration_weeks: durationWeeks,
+        duration_weeks: planKind === 'session' ? 0 : durationWeeks,
         weeks: buildWeeksPayload(),
         is_draft: draft,
         // A draft is never an active assignment; published plans keep their state.
         is_active: draft ? false : (plan?.is_active ?? true),
         updated_at: new Date().toISOString(),
       };
-      const { error: err } = isEdit
-        ? await supabase.from('trainer_workout_plans').update(payload).eq('id', plan.id)
-        : await supabase.from('trainer_workout_plans').insert(payload);
-      if (err) { setError(err.message); setSaving(false); return; }
-      if (!isEdit) posthog?.capture('trainer_plan_created');
+      let planId = isEdit ? plan.id : null;
+      if (isEdit) {
+        const { error: err } = await supabase.from('trainer_workout_plans').update(payload).eq('id', plan.id);
+        if (err) { setError(err.message); setSaving(false); return; }
+      } else {
+        const { data: ins, error: err } = await supabase.from('trainer_workout_plans').insert(payload).select('id').single();
+        if (err) { setError(err.message); setSaving(false); return; }
+        planId = ins?.id;
+        posthog?.capture('trainer_plan_created');
+      }
+      // Sync the shared-members junction (0644) to match assignedIds. Never
+      // blocks the save — the plan row is already persisted (client_id holds
+      // the primary assignee for backward-compat).
+      if (planId) await syncPlanMembers(planId);
       onSaved();
     } catch (err) {
       console.error('[TrainerPlans] handleSave error:', err);
@@ -1113,8 +1340,14 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
 
   return (
     <div className="min-h-screen overflow-x-hidden" style={{ background: TT.bg }} onClick={closeMenus}>
-      {/* ── Sticky top header ── */}
-      <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ background: 'color-mix(in srgb, var(--tt-bg) 92%, transparent)', borderBottom: `1px solid ${TT.border}` }}>
+      {/* ── Sticky top header ──
+          The offset is NOT decorative. `.trainer-scroll-region` is padded
+          52px+safe-area to clear the app's fixed top bar, but a sticky element
+          pins to the SCROLLPORT (the padding box), i.e. underneath that bar —
+          so with `top-0` the name + Program/Session rows were covered and the
+          builder looked like it had opened halfway down the page. Pin below the
+          bar instead. Desktop has no fixed bar (md:pt-0), so top-0 there. */}
+      <div className="sticky top-[calc(52px+env(safe-area-inset-top))] md:top-0 z-30 backdrop-blur-2xl" style={{ background: 'color-mix(in srgb, var(--tt-bg) 92%, transparent)', borderBottom: `1px solid ${TT.border}` }}>
         {/* Row 1: Back + Name + Actions */}
         <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pt-3 pb-2 flex items-center gap-2 md:gap-3">
           <button onClick={handleBack}
@@ -1148,23 +1381,24 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           </div>
         </div>
 
-        {/* Row 2: Client selector + Status + Auto-generate */}
-        <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pb-2 flex items-center gap-2 flex-wrap">
-          <select value={clientId} onChange={e => setClientId(e.target.value)} disabled={isEdit}
-            className="bg-transparent text-[13px] outline-none disabled:opacity-60 max-w-[200px] sm:max-w-[180px] truncate cursor-pointer py-2 min-h-[44px]"
-            style={{ color: TT.textSub }}>
-            <option value="">{t('trainerPlans.noClientGeneric', 'No client (generic plan)')}</option>
-            {/* Assigned client no longer in the active list (deactivated) —
-                keep an option so the select shows their name, not the
-                placeholder. The select is disabled on edit anyway. */}
-            {clientId && !clients.some(c => c.id === clientId) && (
-              <option value={clientId}>
-                {(assignedClientName || t('trainerPlans.formerClient', 'Former client'))}{` ${t('trainerPlans.clientInactiveSuffix', '(inactive)')}`}
-              </option>
-            )}
-            {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </select>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+        {/* Row 2: Program/Session (full-width segmented) + status. A single
+            deliberate control instead of two half-width blobs stacked. */}
+        <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pb-2 flex items-center gap-2">
+          <div className="flex flex-1 rounded-xl p-[3px] gap-[3px]" style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}>
+            {[['program', t('trainerPlans.kindProgram', 'Program'), Calendar], ['session', t('trainerPlans.kindSession', 'Session'), Dumbbell]].map(([k, lab, Icon]) => {
+              const on = planKind === k;
+              return (
+                <button key={k} type="button" onClick={() => switchPlanKind(k)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-[9px] min-h-[36px] text-[13px] font-bold transition-all"
+                  style={on
+                    ? { background: TT.accent, color: '#06363B', boxShadow: '0 2px 7px -3px rgba(0,0,0,0.4)' }
+                    : { background: 'transparent', color: TT.textMute }}>
+                  <Icon size={14} strokeWidth={2.4} /> {lab}
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0"
             style={isDraftSave
               ? { background: TT.warnSoft, color: TT.warnInk }
               : (plan?.is_active ?? true)
@@ -1172,26 +1406,33 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                 : { background: TT.surface2, color: TT.textMute }}>
             {isDraftSave ? t('trainerPlans.draft', 'Draft') : (plan?.is_active ?? true) ? t('trainerPlans.active', 'Active') : t('trainerPlans.inactive', 'Inactive')}
           </span>
-          <div className="flex-1" />
-          {clientId && clientProfile?.onboarding && (
-            <button onClick={handleAutoGenerate} disabled={generating}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-[11px] transition-colors whitespace-nowrap disabled:opacity-40"
-              style={{ backgroundColor: TT.accentSoft, color: TT.accentInk }}>
-              {generating ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-              {generating ? t('trainerPlans.generating', 'Generating…') : t('trainerPlans.autoGenerate', 'Auto-Generate')}
-            </button>
-          )}
         </div>
 
-        {/* Row 3: Collapsible description */}
-        <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6">
-          {showDetails && (
-            <div className="pb-3">
-              <textarea value={description} onChange={e => setDesc(e.target.value)} rows={2}
-                placeholder={t('trainerPlans.descPlaceholder', 'Goals and approach for this plan...')}
-                className="w-full rounded-xl px-4 py-2.5 text-[16px] sm:text-[13px] outline-none resize-none"
-                style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
-            </div>
+        {/* Row 3: Assignment (multi-member) + auto-generate. A plan can be
+            SHARED with many members; auto-generate only applies to a single
+            personalized assignee. */}
+        <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pb-2.5 flex items-center gap-2">
+          <button type="button" onClick={() => setShowAssignPicker(true)}
+            aria-label={t('trainerPlans.assignClientAria', 'Assign to members')}
+            className="flex items-center gap-2 rounded-lg pl-2.5 pr-2.5 tt-tap flex-1 min-w-0"
+            style={{ background: assignedIds.length ? TT.accentSoft : TT.surface2, border: `1px solid ${assignedIds.length ? TT.accent : TT.border}`, minHeight: 40 }}>
+            <UserPlus size={15} strokeWidth={2.3} style={{ flexShrink: 0, color: assignedIds.length ? TT.accentInk : TT.textMute }} />
+            <span className="text-[13px] font-semibold truncate flex-1 text-left" style={{ color: assignedIds.length ? TT.accentInk : TT.textSub }}>
+              {assignedIds.length === 0
+                ? t('trainerPlans.assignMembers', 'Assign members')
+                : assignedIds.length === 1
+                  ? (clients.find(c => c.id === assignedIds[0])?.full_name || assignedClientName || t('trainerPlans.oneMember', '1 member'))
+                  : t('trainerPlans.nMembers', '{{n}} members', { n: assignedIds.length })}
+            </span>
+            <ChevronDown size={15} style={{ flexShrink: 0, color: assignedIds.length ? TT.accentInk : TT.textMute }} />
+          </button>
+          {assignedIds.length === 1 && clientProfile?.onboarding && planKind !== 'session' && (
+            <button onClick={handleAutoGenerate} disabled={generating}
+              className="flex items-center gap-1.5 px-3 rounded-lg font-bold text-[12px] transition-colors whitespace-nowrap disabled:opacity-40 flex-shrink-0"
+              style={{ backgroundColor: TT.accentSoft, color: TT.accentInk, minHeight: 40 }}>
+              {generating ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+              {generating ? t('trainerPlans.generating', 'Generating…') : t('trainerPlans.autoGenerate', 'Auto-Generate')}
+            </button>
           )}
         </div>
 
@@ -1204,36 +1445,94 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
 
       {/* ── Client Profile + Duration + Week Nav (scrollable content) ── */}
       <div className="max-w-[480px] mx-auto md:max-w-5xl px-4 md:px-6 pt-4">
+        {/* Plan notes — a LABELED section in the body. It used to be a bare
+            textarea wedged into the sticky header, toggled by a tiny "Add notes"
+            link buried inside the client card: unlabeled, so it read as a
+            mystery field, and completely unreachable on a shared plan (that card
+            only renders for a single assignee). The row doubles as the preview
+            when collapsed. */}
+        <div className="mb-4 rounded-2xl overflow-hidden" style={{ background: TT.surface, border: `1px solid ${TT.border}` }}>
+          <button type="button" onClick={() => setShowDetails(v => !v)} aria-expanded={showDetails}
+            className="w-full flex items-center gap-2.5 px-4 py-3 tt-tap text-left"
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
+            <span style={{ width: 30, height: 30, borderRadius: 10, background: TT.accentSoft, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <FileText size={15} style={{ color: TT.accentInk }} />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span style={{ display: 'block', fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2 }}>
+                {t('trainerPlans.notesTitle', 'Plan notes')}
+              </span>
+              <span className="truncate" style={{ display: 'block', fontSize: 11.5, color: description?.trim() ? TT.textSub : TT.textMute, marginTop: 1 }}>
+                {description?.trim() || t('trainerPlans.notesHint', 'Goals, approach, anything the member should know')}
+              </span>
+            </span>
+            <ChevronDown size={17} style={{ color: TT.textMute, flexShrink: 0, transform: showDetails ? 'none' : 'rotate(-90deg)', transition: 'transform .18s' }} />
+          </button>
+          {showDetails && (
+            <div className="px-4 pb-4">
+              <textarea value={description} onChange={e => setDesc(e.target.value)} rows={3}
+                placeholder={t('trainerPlans.descPlaceholder', 'Goals and approach for this plan...')}
+                className="w-full rounded-xl px-3.5 py-2.5 text-[16px] sm:text-[13px] outline-none resize-none"
+                style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
+            </div>
+          )}
+        </div>
+
         {/* Client context + Generation overrides */}
-        {clientProfile?.onboarding && (
-          <div className="mb-4 rounded-2xl p-4" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-            {/* Header */}
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: TT.accent }}>
-                {t('trainerPlans.clientProfile', 'Client Profile')}
-              </p>
-              <button onClick={() => setShowDetails(!showDetails)}
-                className="flex items-center gap-1 text-[10px] font-medium transition-colors"
-                style={{ color: TT.textMute }}>
-                <FileText size={10} />
-                {showDetails ? t('trainerPlans.hideNotes', 'Hide notes') : t('trainerPlans.addNotes', 'Add notes')}
+        {/* Shared with many members = a template. No per-client personalization
+            (whose profile would we show?) — build it manually. */}
+        {assignedIds.length > 1 && (
+          <div className="mb-4 rounded-2xl p-4" style={{ background: `linear-gradient(160deg, ${TT.accentSoft}, ${TT.surface} 68%)`, border: `1px solid ${TT.accent}` }}>
+            <div className="flex items-center gap-3">
+              <div style={{ width: 46, height: 46, borderRadius: 14, background: TT.surface, display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: TT.shadow }}>
+                <Users size={22} color={TT.accent} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 900, letterSpacing: -0.4, color: TT.text }}>
+                  {t('trainerPlans.sharedWithN', 'Shared with {{n}} members', { n: assignedIds.length })}
+                </div>
+                <div className="text-[12.5px]" style={{ color: TT.textSub, marginTop: 2 }}>
+                  {t('trainerPlans.sharedTemplateHint', 'One plan, edited once for everyone.')}
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowAssignPicker(true)} className="tt-tap flex-shrink-0"
+                style={{ padding: '9px 13px', borderRadius: 11, background: TT.surface, border: `1px solid ${TT.accent}`, color: TT.accentInk, fontWeight: 800, fontSize: 12, fontFamily: TFont.display }}>
+                {t('trainerPlans.manage', 'Manage')}
               </button>
             </div>
-            {/* Compact client info */}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] mb-3">
-              <span><span style={{ color: TT.textMute }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{clientProfile.onboarding.fitness_level || '—'}</span></span>
-              <span><span style={{ color: TT.textMute }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{clientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${clientProfile.onboarding.primary_goal}`, clientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
-              {clientProfile.onboarding.injuries_notes && (
-                <span><span style={{ color: TT.textMute }}>{t('trainerPlans.injuries', 'Injuries')}:</span> <span className="font-semibold" style={{ color: TT.hot }}>{clientProfile.onboarding.injuries_notes}</span></span>
-              )}
+          </div>
+        )}
+
+        {/* Single personalized member — Identity-style profile + generation settings */}
+        {assignedIds.length === 1 && clientProfile?.onboarding && (
+          <div className="mb-4 rounded-2xl p-4" style={{ background: `linear-gradient(160deg, ${TT.accentSoft}, ${TT.surface} 62%)`, border: `1px solid ${TT.accent}` }}>
+            {/* Identity row — avatar + name + level/goal */}
+            <div className="flex items-center gap-3">
+              <TAvatar name={(clients.find(c => c.id === clientId)?.full_name || assignedClientName || '?')} size={46} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate" style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 900, letterSpacing: -0.4, color: TT.text, lineHeight: 1.1 }}>
+                  {clients.find(c => c.id === clientId)?.full_name || assignedClientName || t('trainerPlans.aClient', 'Client')}
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[12px]">
+                  <span style={{ color: TT.textSub }}>{t('trainerPlans.level', 'Level')}: <span className="font-semibold capitalize" style={{ color: TT.text }}>{clientProfile.onboarding.fitness_level || '—'}</span></span>
+                  <span style={{ color: TT.textSub }}>{t('trainerPlans.goal', 'Goal')}: <span className="font-semibold capitalize" style={{ color: TT.text }}>{clientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${clientProfile.onboarding.primary_goal}`, clientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
+                </div>
+              </div>
             </div>
-            {/* Equipment + goals tags */}
-            <div className="flex flex-wrap gap-1.5 mb-4">
+            {/* Injuries banner */}
+            {clientProfile.onboarding.injuries_notes && (
+              <div className="mt-3 text-[12px] rounded-lg px-2.5 py-1.5" style={{ background: TT.hotSoft, color: TT.hot }}>
+                <span className="font-bold uppercase tracking-wide text-[9px] mr-1.5">{t('trainerPlans.injuries', 'Injuries')}</span>
+                <span className="font-semibold">{clientProfile.onboarding.injuries_notes}</span>
+              </div>
+            )}
+            {/* Equipment + goals chips */}
+            <div className="flex flex-wrap gap-1.5 mt-3 mb-4">
               {clientProfile.onboarding.available_equipment?.map(eq => (
-                <span key={eq} className="px-2 py-0.5 rounded-md text-[10px] font-medium" style={{ backgroundColor: TT.surface2, color: TT.textMute }}>{eq}</span>
+                <span key={eq} className="px-2 py-0.5 rounded-md text-[10px] font-semibold" style={{ backgroundColor: TT.surface, color: TT.textSub, border: `1px solid ${TT.border}` }}>{eq}</span>
               ))}
               {clientProfile.goals.map((g, i) => (
-                <span key={`g${i}`} className="px-2 py-0.5 rounded-md text-[10px] font-medium" style={{ backgroundColor: TT.accentSoft, color: TT.accentInk }}>
+                <span key={`g${i}`} className="px-2 py-0.5 rounded-md text-[10px] font-bold" style={{ backgroundColor: TT.accent, color: '#06363B' }}>
                   {t(`trainerNotes.goals.${g.goal_type}`, g.goal_type.replace(/_/g, ' '))}{g.target_value ? ` → ${g.target_value}` : ''}
                 </span>
               ))}
@@ -1311,56 +1610,68 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           </div>
         )}
 
-        {/* Duration + Week selector (mobile) */}
-        <div className="md:hidden mb-4">
-          {/* Duration pills */}
-          <div className="flex items-center gap-2 mb-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider shrink-0" style={{ color: TT.textMute }}>{t('trainerPlans.duration', 'Duration')}</p>
-            <div className="flex gap-1.5 flex-wrap">
-              {PRESET_DURATIONS.map(w => (
-                <button key={w} onClick={() => setDuration(w)}
-                  className="px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors min-h-[44px] min-w-[44px]"
-                  style={durationWeeks === w
-                    ? { backgroundColor: TT.accent, color: '#06363B' }
-                    : { backgroundColor: TT.surface2, color: TT.textMute }
-                  }>
-                  {w}{t('trainerPlans.wSuffix', 'w')}
-                </button>
-              ))}
-              {/* Custom weeks — uneven counts, 12+ */}
-              <div className="flex items-center gap-1 px-2.5 rounded-lg min-h-[44px]"
-                style={isCustomDuration ? { backgroundColor: TT.accent } : { backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                <CustomWeeksInput value={durationWeeks} onCommit={setDuration}
-                  ariaLabel={t('trainerPlans.customWeeks', 'Custom weeks')}
-                  color={isCustomDuration ? '#06363B' : TT.text} />
-                <span className="text-[11px] font-semibold" style={{ color: isCustomDuration ? '#06363B' : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
-              </div>
+        {/* Duration + Week selector (mobile) — hidden for single sessions */}
+        <div className={planKind === 'session' ? 'hidden' : 'md:hidden mb-4'}>
+          {/* Duration — label on top so the preset pills + custom box align on one row */}
+          <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: TT.textMute }}>{t('trainerPlans.duration', 'Duration')}</p>
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {PRESET_DURATIONS.map(w => (
+              <button key={w} onClick={() => setDuration(w)}
+                className="rounded-lg text-[12.5px] font-bold transition-colors"
+                style={{ height: 44, minWidth: 48, padding: '0 12px', ...(durationWeeks === w
+                  ? { backgroundColor: TT.accent, color: '#06363B' }
+                  : { backgroundColor: TT.surface2, color: TT.textMute, border: `1px solid ${TT.border}` }) }}>
+                {w}{t('trainerPlans.wSuffix', 'w')}
+              </button>
+            ))}
+            {/* Custom weeks — same height as the presets, sits inline */}
+            <div className="flex items-center gap-1 rounded-lg"
+              style={{ height: 44, padding: '0 10px', ...(isCustomDuration ? { backgroundColor: TT.accent } : { backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }) }}>
+              <CustomWeeksInput value={durationWeeks} onCommit={setDuration}
+                ariaLabel={t('trainerPlans.customWeeks', 'Custom weeks')}
+                color={isCustomDuration ? '#06363B' : TT.text} />
+              <span className="text-[11px] font-semibold" style={{ color: isCustomDuration ? '#06363B' : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
             </div>
           </div>
-          {/* Week horizontal scroller */}
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1">
-            {allWeekNums.map(wk => {
-              const stats = weekStats(wk);
-              return (
-                <button key={wk} onClick={() => setSelectedWeek(wk)}
-                  className="shrink-0 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all min-h-[44px]"
-                  style={selectedWeek === wk
-                    ? { backgroundColor: TT.accent, color: '#06363B', boxShadow: TT.shadow }
-                    : { backgroundColor: TT.surface2, color: TT.textMute, border: `1px solid ${TT.border}` }
-                  }>
-                  {t('trainerPlans.weekAbbrev', 'Wk')} {wk}
-                  <span className="text-[10px] ml-1 opacity-70">({stats.dayCount}{t('trainerPlans.dShort', 'd')} · {stats.exCount}{t('trainerPlans.exShort', 'ex')})</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* Week nav — centered arrows + "Week X of Y" (matches the client program editor) */}
+          {allWeekNums.length > 1 && (() => {
+            const wkIdx = allWeekNums.indexOf(selectedWeek);
+            const total = allWeekNums.length;
+            const stats = weekStats(selectedWeek);
+            const arrow = (dir, on, act) => (
+              <button type="button" onClick={act} disabled={!on} aria-label={dir === 'next' ? t('common:next', 'Next') : t('common:prev', 'Previous')}
+                style={{ width: 44, height: 44, borderRadius: 13, flexShrink: 0, cursor: on ? 'pointer' : 'default',
+                  background: dir === 'next' ? TT.surface2 : 'transparent', border: dir === 'next' ? `1px solid ${TT.border}` : 'none',
+                  display: 'grid', placeItems: 'center', opacity: on ? 1 : 0.32, color: TT.text }}>
+                {dir === 'next' ? <ChevronRight size={19} strokeWidth={2.2} /> : <ChevronLeft size={19} strokeWidth={2.2} />}
+              </button>
+            );
+            return (
+              <div className="flex items-center justify-between" style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${TT.border}` }}>
+                {arrow('prev', wkIdx > 0, () => setSelectedWeek(allWeekNums[wkIdx - 1]))}
+                <div style={{ textAlign: 'center', minWidth: 0 }}>
+                  <div style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>
+                    {t('trainerPlans.weekLabel', 'Week')} {selectedWeek} <span style={{ color: TT.textMute, fontWeight: 700 }}>{t('trainerPlans.ofN', 'of {{n}}', { n: total })}</span>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: TT.textMute, fontFamily: TFont.mono, marginTop: 1 }}>
+                    {stats.dayCount}{t('trainerPlans.dShort', 'd')} · {stats.exCount}{t('trainerPlans.exShort', 'ex')}
+                  </div>
+                </div>
+                {arrow('next', wkIdx < total - 1, () => setSelectedWeek(allWeekNums[wkIdx + 1]))}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
       {/* ── Main content: 2 col desktop, 1 col mobile ── */}
       <div className="max-w-[480px] mx-auto md:max-w-5xl md:flex md:min-h-[calc(100vh-140px)] pb-24 md:pb-0">
-        {/* ── Left rail (desktop only) ── */}
-        <div className="hidden md:block w-64 flex-shrink-0 sticky top-[140px] self-start max-h-[calc(100vh-140px)] overflow-y-auto" style={{ borderRight: `1px solid ${TT.border}`, background: TT.surface2 }}>
+        {/* ── Left rail (desktop only) — hidden for single sessions, same as the
+            mobile duration/week block above. A session is one workout: its
+            Duration presets could push durationWeeks to 4+ while planKind
+            stayed 'session', and the save then wrote duration_weeks 0 with 4
+            weeks of JSON (reopens as a 1-week session that wants to prune). ── */}
+        <div className={planKind === 'session' ? 'hidden' : 'hidden md:block w-64 flex-shrink-0 sticky top-[140px] self-start max-h-[calc(100vh-140px)] overflow-y-auto'} style={{ borderRight: `1px solid ${TT.border}`, background: TT.surface2 }}>
           <div className="p-4 space-y-4">
             {/* Duration selector */}
             <div>
@@ -1485,7 +1796,11 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               <div className="text-center py-12">
                 <ClipboardList size={28} className="mx-auto mb-2" style={{ color: TT.textFaint }} />
                 <p className="text-[13px] mb-4" style={{ color: TT.textMute }}>{t('trainerPlans.noDaysYet', 'No days yet — add one below')}</p>
-                {clientId && (
+                {/* Same gate as the header button: auto-generate is only
+                    meaningful for ONE assignee with onboarding data, and it
+                    produces a 4-week program — incoherent for a single session
+                    (it also desyncs planKind from durationWeeks). */}
+                {assignedIds.length === 1 && clientProfile?.onboarding && planKind !== 'session' && (
                   <button
                     onClick={handleAutoGenerate}
                     disabled={generating}
@@ -1514,6 +1829,7 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
                 removeExercise={removeExercise}
                 updateExercise={updateExercise}
                 duplicateExercise={duplicateExercise}
+                onSwapExercise={(w, d, ei) => setSwapTarget({ wk: w, di: d, ei })}
                 reorderExercises={reorderExercises}
                 linkExercise={linkExercise}
                 unlinkSuperset={unlinkSuperset}
@@ -1568,31 +1884,74 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDiscard(false)} />
           <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
             <h3 className="text-[16px] font-bold" style={{ color: TT.text }}>
-              {t('trainerPlans.discardChangesTitle', 'Discard changes?')}
+              {t('trainerPlans.unsavedTitle', 'Save your changes?')}
             </h3>
             <p className="text-[13px]" style={{ color: TT.textSub }}>
-              {t('trainerPlans.discardChangesBody', 'You have unsaved changes in this plan. Leaving now will lose them.')}
+              {t('trainerPlans.unsavedBody', 'You have unsaved changes in this plan. Save them before leaving, or discard.')}
             </p>
-            <div className="flex items-center gap-3 pt-2">
-              <button onClick={() => setConfirmDiscard(false)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
-                style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
-                {t('trainerPlans.keepEditing', 'Keep editing')}
+            <div className="space-y-2.5 pt-2">
+              <button
+                onClick={() => { setConfirmDiscard(false); handleSave({ draft: isEdit ? (plan?.is_draft ?? false) : true }); }}
+                disabled={saving || !name?.trim()}
+                className="w-full py-2.5 rounded-xl text-[13px] font-bold transition-colors min-h-[44px]"
+                style={{ background: TT.accent, color: '#06363B', opacity: (saving || !name?.trim()) ? 0.5 : 1 }}>
+                {saving ? t('trainerPlans.saving', 'Saving…') : t('trainerPlans.saveAndLeave', 'Save changes')}
               </button>
-              <button onClick={onClose}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
-                style={{ background: TT.hotSoft, color: TT.hot }}>
-                {t('trainerPlans.discardConfirm', 'Discard')}
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setConfirmDiscard(false)}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
+                  style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
+                  {t('trainerPlans.keepEditing', 'Keep editing')}
+                </button>
+                <button onClick={onClose}
+                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors min-h-[44px]"
+                  style={{ background: TT.hotSoft, color: TT.hot }}>
+                  {t('trainerPlans.discardConfirm', 'Discard')}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Assign-to-members picker (multi-select) ── */}
+      {showAssignPicker && (
+        <div className="fixed inset-0 z-[92] flex items-center justify-center px-4" onClick={e => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAssignPicker(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+            <div className="flex items-center gap-2.5">
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: TT.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <UserPlus size={19} color={TT.accent} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[16px] font-bold leading-tight" style={{ color: TT.text }}>{t('trainerPlans.assignToMembers', 'Assign to members')}</h3>
+                <p className="text-[12px]" style={{ color: TT.textSub }}>{t('trainerPlans.assignMultiHint', 'Share this plan with one or more clients.')}</p>
+              </div>
+            </div>
+            {clients.length === 0 ? (
+              <p className="text-[13px] py-3 text-center" style={{ color: TT.textMute }}>{t('trainerPlans.noClientsAvailable', 'No active clients to assign.')}</p>
+            ) : (
+              <ClientPickList multi values={assignedIds} onToggle={toggleAssigned} clients={clients} maxHeight={280} />
+            )}
+            {assignedIds.length > 0 && (
+              <p className="text-[12px]" style={{ color: TT.textMute }}>
+                {t('trainerPlans.membersSelected', '{{n}} selected', { n: assignedIds.length })}{' · '}
+                <button type="button" onClick={() => setAssignedIds([])} style={{ color: TT.hot, fontWeight: 700 }}>{t('trainerPlans.clearAll', 'Clear')}</button>
+              </p>
+            )}
+            <button onClick={() => setShowAssignPicker(false)}
+              className="w-full py-2.5 rounded-xl text-[13px] font-bold min-h-[44px]"
+              style={{ background: TT.accent, color: '#06363B' }}>
+              {t('trainerPlans.done', 'Done')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Add-exercise picker (bottom sheet, multi-select) ── */}
-      {pickerTarget && createPortal(
+      {(pickerTarget || swapTarget) && createPortal(
         <div className="fixed inset-0 z-[95] flex flex-col justify-end">
-          <div className="absolute inset-0" style={{ background: 'rgba(8,10,12,0.5)' }} onClick={() => setPickerTarget(null)} />
+          <div className="absolute inset-0" style={{ background: 'rgba(8,10,12,0.5)' }} onClick={() => { setPickerTarget(null); setSwapTarget(null); }} />
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }}
             transition={{ type: 'spring', damping: 32, stiffness: 320 }}
@@ -1603,8 +1962,10 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
               exLabel={exLabel}
               muscleLabelFor={muscleLabelFor}
               t={t}
-              onClose={() => setPickerTarget(null)}
-              onAddMany={(list) => { addExercises(pickerTarget.wk, pickerTarget.di, list); setPickerTarget(null); }}
+              replaceMode={!!swapTarget}
+              onClose={() => { setPickerTarget(null); setSwapTarget(null); }}
+              onAddMany={(list) => { if (pickerTarget) addExercises(pickerTarget.wk, pickerTarget.di, list); setPickerTarget(null); }}
+              onReplace={(ex) => { if (swapTarget) updateExercise(swapTarget.wk, swapTarget.di, swapTarget.ei, 'id', ex.id); setSwapTarget(null); }}
             />
           </motion.div>
         </div>,
@@ -1637,13 +1998,22 @@ export default function TrainerPlans() {
   const [editing, setEditing]   = useState(null);
   const [filterClient, setFilterClient] = useState('all');
   const [filterStatus, setFilterStatus] = useState('active'); // 'active' | 'all' | 'archived'
-  const [expandedPlan, setExpandedPlan] = useState(null);
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'program' | 'session'
+  // Per-card collapse overrides (id → bool). Default: first card open, rest hidden.
+  const [planOverrides, setPlanOverrides] = useState({});
   const [confirmDeletePlan, setConfirmDeletePlan] = useState(null);
   // Duplicate-for-client picker (a straight duplicate locked the copy to the
   // original client, making duplicate-for-another-client impossible)
   const [duplicateTarget, setDuplicateTarget] = useState(null); // plan being duplicated
   const [duplicateClientId, setDuplicateClientId] = useState('');
   const [duplicating, setDuplicating] = useState(false);
+  // Assign-to-client picker — the ONLY way to (re)assign an existing plan. The
+  // builder select is edit-locked for existing plans, so without this a plan
+  // created without a client (or a single session) could never reach anyone.
+  const [assignTarget, setAssignTarget] = useState(null); // plan being assigned
+  const [assignIds, setAssignIds] = useState([]); // members it's shared with (0644)
+  const toggleAssignId = (id) => setAssignIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const [assigning, setAssigning] = useState(false);
 
   // Nutrition plans state
   const [mealPlans, setMealPlans] = useState(() => readTrainerCache(`tplans:meals:${profile?.id}`) || []);
@@ -1691,13 +2061,23 @@ export default function TrainerPlans() {
   }, [mealForm.client_id]);
 
   const [mealStep, setMealStep] = useState('settings'); // 'settings' | 'meals'
+  // Which step the modal OPENED at. Editing an existing plan with meals jumps
+  // straight to 'meals', and back-arrowing from there used to drop the trainer
+  // on the settings step — a page they never visited, so "back" moved them
+  // FORWARD into the creation wizard. When we entered at 'meals', back closes.
+  const [mealEntryStep, setMealEntryStep] = useState('settings');
   const [generatedMeals, setGeneratedMeals] = useState(null); // 7-day plan
+  const [editingMealPlanId, setEditingMealPlanId] = useState(null); // null = create; id = edit in place
+  // Shared meal plans (0645): ADDITIONAL members beyond the primary (mealForm.client_id).
+  const [mealShareIds, setMealShareIds] = useState([]);
+  const [showMealSharePicker, setShowMealSharePicker] = useState(false);
+  const toggleMealShare = (id) => setMealShareIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const [generatingMeals, setGeneratingMeals] = useState(false);
   const [mealPreviewDay, setMealPreviewDay] = useState(0);
   const [mealPreviewWeek, setMealPreviewWeek] = useState(0);
   const DAY_LABELS = [
-    t('trainerPlans.dayMon', 'Mon'), t('trainerPlans.dayTue', 'Tue'), t('trainerPlans.dayWed', 'Wed'),
-    t('trainerPlans.dayThu', 'Thu'), t('trainerPlans.dayFri', 'Fri'), t('trainerPlans.daySat', 'Sat'), t('trainerPlans.daySun', 'Sun'),
+    t('trainerPlans.daySun', 'Sun'), t('trainerPlans.dayMon', 'Mon'), t('trainerPlans.dayTue', 'Tue'),
+    t('trainerPlans.dayWed', 'Wed'), t('trainerPlans.dayThu', 'Thu'), t('trainerPlans.dayFri', 'Fri'), t('trainerPlans.daySat', 'Sat'),
   ];
 
   const MEAL_SLOTS = [
@@ -1764,12 +2144,63 @@ export default function TrainerPlans() {
     }, 50);
   };
 
+  // Macro targets EXACTLY as the trainer typed them — "none set" is a real
+  // state (a "Build it myself" plan can be name-only) and must stay
+  // representable as 0. These used to fall back to an invented
+  // 2000/150/200/60, which made `calories` permanently truthy: the "no
+  // targets" early-outs in computeDayFits + mealCompatibility could never
+  // fire, so every meal got a "N% fit" badge and days got a green "Macros
+  // fit" tag measured against numbers nobody entered.
   const dayTargets = () => ({
-    calories: parseInt(mealForm.target_calories) || 2000,
-    protein: parseInt(mealForm.target_protein_g) || 150,
-    carbs: parseInt(mealForm.target_carbs_g) || 200,
-    fat: parseInt(mealForm.target_fat_g) || 60,
+    calories: parseInt(mealForm.target_calories) || 0,
+    protein: parseInt(mealForm.target_protein_g) || 0,
+    carbs: parseInt(mealForm.target_carbs_g) || 0,
+    fat: parseInt(mealForm.target_fat_g) || 0,
   });
+  // Budget used to GENERATE a meal (the planner needs a non-zero target to
+  // pick against), so it keeps the old fallbacks. Never used for scoring or
+  // for any badge — only as an input to generateDayPlan.
+  const genBudgetTargets = () => {
+    const tg = dayTargets();
+    return {
+      calories: tg.calories || 2000,
+      protein: tg.protein || 150,
+      carbs: tg.carbs || 200,
+      fat: tg.fat || 60,
+    };
+  };
+
+  // "Build it myself" — skip AI generation and start from an empty week the
+  // trainer fills slot-by-slot via the Choose-Meal picker.
+  const handleBuildMyself = () => {
+    if (!mealForm.name.trim()) { showToast(t('trainerPlans.nameYourPlanFirst', 'Name your plan first'), 'error'); return; }
+    const empty = Array.from({ length: 7 }, (_, di) => ({
+      meals: MEAL_SLOTS.map((s, mi) => ({
+        id: `new_${di}_${mi}`, title: t('trainerPlans.newMeal', 'New meal'), title_es: t('trainerPlans.newMeal', 'New meal'),
+        slotType: s.type, calories: 0, protein: 0, carbs: 0, fat: 0,
+      })),
+      totals: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      fits: false,
+    }));
+    setGeneratedMeals(empty);
+    setMealsDirty(true);
+    setMealStep('meals');
+    setMealPreviewDay(0);
+    setMealPreviewWeek(0);
+  };
+
+  // Per-meal fit vs the client's target for that slot → a 0-100 compatibility %.
+  // Uses the slot's share of the daily target (breakfast 28% … dinner 38%).
+  const mealCompatibility = (meal, slotType) => {
+    const tgt = dayTargets();
+    if (!tgt.calories) return null;
+    const share = MEAL_SLOT_SHARE[slotType] ?? 0.25;
+    const st = { calories: tgt.calories * share, protein: tgt.protein * share, carbs: tgt.carbs * share, fat: tgt.fat * share };
+    const err = (a, b) => (b > 0 ? Math.min(1, Math.abs((a || 0) - b) / b) : ((a || 0) > 0 ? 1 : 0));
+    // Calories weighted highest, then protein, then carbs/fat.
+    const score = 1 - (err(meal.calories, st.calories) * 0.4 + err(meal.protein, st.protein) * 0.3 + err(meal.carbs, st.carbs) * 0.15 + err(meal.fat, st.fat) * 0.15);
+    return Math.max(0, Math.min(100, Math.round(score * 100)));
+  };
 
   const swapMeal = (dayIdx, mealIdx) => {
     const day = generatedMeals[dayIdx];
@@ -1780,11 +2211,15 @@ export default function TrainerPlans() {
     // (breakfast 28% / lunch 34% / dinner 38% / snack 14%, normalized over
     // the day's slots) instead of a flat 1/n split that over-fed snacks.
     const share = slotShareOf(slotType, day.meals);
+    // Generation needs a budget even when the trainer set no targets — that's
+    // what genBudgetTargets is for. `targets` (possibly all zeros) is only
+    // used below for the honest fits check.
+    const budget = genBudgetTargets();
     const slotBudget = {
-      calories: Math.round(targets.calories * share),
-      protein: Math.round(targets.protein * share),
-      carbs: Math.round(targets.carbs * share),
-      fat: Math.round(targets.fat * share),
+      calories: Math.round(budget.calories * share),
+      protein: Math.round(budget.protein * share),
+      carbs: Math.round(budget.carbs * share),
+      fat: Math.round(budget.fat * share),
     };
     // Exclude every meal used anywhere in the WEEK (not just this day) so a
     // swap can't reintroduce Tuesday's lunch on Thursday.
@@ -1819,19 +2254,42 @@ export default function TrainerPlans() {
   // Manual meal picker state
   const [mealPickerSlot, setMealPickerSlot] = useState(null); // { dayIdx, mealIdx } or null
   const [mealSearch, setMealSearch] = useState('');
+  const [mealCat, setMealCat] = useState('all');           // category filter chip
+  const [pickerPreview, setPickerPreview] = useState(null); // meal previewed before selecting
+  const [recipeTab, setRecipeTab] = useState('ingredients'); // preview: ingredients | instructions
   // Trainer's private custom meals (custom_meals table) — usable in plans and
   // visible only to the trainer (+ super-admin). Map DB rows to the meal shape.
   const [customMeals, setCustomMeals] = useState([]);
   const [showAddMeal, setShowAddMeal] = useState(false);
-  const [newMeal, setNewMeal] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '' });
+  const [newMeal, setNewMeal] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '', ingredients: '', instructions: '' });
   const [savingNewMeal, setSavingNewMeal] = useState(false);
   const [uploadingMealPhoto, setUploadingMealPhoto] = useState(false);
+  // Picker filters (behind a Filters button) + pagination (replaces the hard 60 cap).
+  const [showMealFilters, setShowMealFilters] = useState(false);
+  const [mealCalBand, setMealCalBand] = useState('all');       // 'all'|'lt300'|'300_500'|'500_700'|'gt700'
+  const [mealMacroFilter, setMealMacroFilter] = useState('all'); // 'all'|'high_protein'|'low_carb'|'low_fat'
+  const [mealFitsOnly, setMealFitsOnly] = useState(false);     // only meals that fit this slot's macro share
+  const [mealMine, setMealMine] = useState(false);             // only the trainer's own custom meals
+  const [mealVisible, setMealVisible] = useState(40);          // how many rows rendered (Show more adds 40)
+  // Saved/bookmarked meals — mirrors the member side (localStorage set).
+  const [savedMealIds, setSavedMealIds] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('trainer_saved_meals') || '[]')); } catch { return new Set(); } });
+  const toggleSaveMeal = (id) => setSavedMealIds(prev => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id);
+    try { localStorage.setItem('trainer_saved_meals', JSON.stringify([...next])); } catch { /* ignore */ }
+    return next;
+  });
+  const [editingCustomMealId, setEditingCustomMealId] = useState(null); // db id when editing a custom meal (null = create)
   const customMealToMeal = (r) => ({
     id: `custom_${r.id}`,
     title: r.name, title_es: r.name_es || r.name,
     calories: Number(r.calories) || 0, protein: Number(r.protein_g) || 0,
     carbs: Number(r.carbs_g) || 0, fat: Number(r.fat_g) || 0,
     category: r.category || 'custom', custom: true, image: r.image_url || null,
+    // items (0632) → ingredient names; steps (0643) → instructions — so the
+    // preview shows a custom meal's composition, not just frozen macros.
+    ingredients: Array.isArray(r.items) ? r.items.map(it => it?.name).filter(Boolean) : [],
+    ingredientAmounts: Array.isArray(r.items) ? r.items.map(it => (it?.servings != null ? String(it.servings) : '')) : [],
+    steps: Array.isArray(r.steps) ? r.steps : [],
   });
   // Optional meal photo → user-writable meal-photos bucket (own folder).
   const uploadMealPhoto = async (file) => {
@@ -1862,14 +2320,34 @@ export default function TrainerPlans() {
     return () => { alive = false; };
   }, [showMealModal, profile?.id]);
 
+  // Editing a meal plan → load its extra shared members (0645 junction), minus
+  // the primary (client_id, already the main select). Non-fatal pre-migration.
+  useEffect(() => {
+    if (!editingMealPlanId) { return; }
+    let cancelled = false;
+    supabase.from('trainer_meal_plan_members').select('member_id').eq('plan_id', editingMealPlanId)
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        const primary = mealForm.client_id;
+        setMealShareIds((data || []).map(r => r.member_id).filter(id => id && id !== primary));
+      });
+    return () => { cancelled = true; };
+  }, [editingMealPlanId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Close the meal-plan modal AND clear all of its working state, so reopening
   // starts fresh instead of showing the previous plan's data.
   const closeMealModal = () => {
     setShowMealModal(false);
+    // Clear the regenerate confirm too — it is a CHILD of this modal, so leaving
+    // it set stranded an orphan dialog floating over the plans list.
+    setConfirmRegen(false);
     setMealStep('settings');
+    setMealEntryStep('settings');
+    setEditingMealPlanId(null);
     setGeneratedMeals(null);
     setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4, start_date: '' });
-    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '' });
+    setMealShareIds([]);
+    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '', ingredients: '', instructions: '' });
     setShowAddMeal(false);
     setMealPickerSlot(null);
     setMealSearch('');
@@ -1879,35 +2357,99 @@ export default function TrainerPlans() {
   const addCustomMeal = async () => {
     if (!newMeal.name.trim() || savingNewMeal) return;
     setSavingNewMeal(true);
-    const { data, error } = await supabase.from('custom_meals').insert({
+    // One ingredient / one instruction per line.
+    const ingLines = (newMeal.ingredients || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const stepLines = (newMeal.instructions || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const payload = {
       created_by: profile.id, gym_id: profile.gym_id || null,
       name: newMeal.name.trim(),
       calories: Number(newMeal.calories) || 0, protein_g: Number(newMeal.protein) || 0,
       carbs_g: Number(newMeal.carbs) || 0, fat_g: Number(newMeal.fat) || 0,
       category: 'custom', image_url: newMeal.imageUrl || null,
-    }).select('*').single();
+    };
+    // items (0632) / steps (0643) only when provided — keeps a plain macro-only
+    // add working even before those migrations are applied.
+    if (ingLines.length) payload.items = ingLines.map(name => ({ name }));
+    if (stepLines.length) payload.steps = stepLines;
+    let data, error;
+    if (editingCustomMealId) {
+      // Editing an existing custom meal — don't rewrite ownership columns.
+      const { created_by, gym_id, ...upd } = payload;
+      ({ data, error } = await supabase.from('custom_meals').update(upd).eq('id', editingCustomMealId).select('*').single());
+    } else {
+      ({ data, error } = await supabase.from('custom_meals').insert(payload).select('*').single());
+    }
     setSavingNewMeal(false);
     if (error) { showToast(t('trainerPlans.addMealFailed', 'Could not add meal'), 'error'); return; }
     const meal = customMealToMeal(data);
-    setCustomMeals(prev => [meal, ...prev]);
-    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '' });
+    setCustomMeals(prev => editingCustomMealId ? prev.map(m => (m.id === meal.id ? meal : m)) : [meal, ...prev]);
+    const wasEdit = !!editingCustomMealId;
+    setEditingCustomMealId(null);
+    setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '', imageUrl: '', ingredients: '', instructions: '' });
     setShowAddMeal(false);
-    pickMeal(meal); // use the new meal immediately in the open slot
+    if (wasEdit) showToast(t('trainerPlans.mealUpdated', 'Meal updated'), 'success');
+    else pickMeal(meal); // new meal → drop it straight into the open slot
+  };
+
+  // Open the add-meal panel prefilled to EDIT one of the trainer's own meals.
+  const openEditCustomMeal = (meal) => {
+    setEditingCustomMealId(meal.id.startsWith('custom_') ? meal.id.slice(7) : meal.id);
+    setNewMeal({
+      name: meal.title || '',
+      calories: String(meal.calories ?? ''), protein: String(meal.protein ?? ''),
+      carbs: String(meal.carbs ?? ''), fat: String(meal.fat ?? ''),
+      imageUrl: meal.image || '',
+      ingredients: Array.isArray(meal.ingredients) ? meal.ingredients.join('\n') : '',
+      instructions: Array.isArray(meal.steps) ? meal.steps.join('\n') : '',
+    });
+    setPickerPreview(null);
+    setShowAddMeal(true);
   };
   // True once the trainer swapped/hand-picked a meal — Regenerate confirms
   // before throwing that work away.
   const [mealsDirty, setMealsDirty] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   // Lock the page behind any of this view's modals.
-  useScrollLock(showMealModal || !!mealPickerSlot || !!confirmDeletePlan || !!mealDetail || !!duplicateTarget || confirmRegen || !!confirmDeleteMealPlan);
+  useScrollLock(showMealModal || !!mealPickerSlot || !!confirmDeletePlan || !!mealDetail || !!duplicateTarget || !!assignTarget || showMealSharePicker || confirmRegen || !!confirmDeleteMealPlan);
   // Trainer's custom meals first, then the shared catalog.
+  // The slot being filled → drives the per-meal "fits this slot" compatibility %.
+  const pickerSlotType = mealPickerSlot
+    ? (generatedMeals?.[mealPickerSlot.dayIdx]?.meals?.[mealPickerSlot.mealIdx]?.slotType || 'meal')
+    : 'meal';
   const pickableMeals = [...customMeals, ...MEALS];
-  const filteredMeals = mealSearch.trim()
-    ? pickableMeals.filter(m => {
-        const q = mealSearch.toLowerCase();
-        return (m.title?.toLowerCase().includes(q) || m.title_es?.toLowerCase().includes(q) || m.category?.toLowerCase().includes(q));
-      }).slice(0, 40)
-    : pickableMeals.slice(0, 40);
+  const pickerCategories = [...new Set(pickableMeals.map(m => m.category).filter(Boolean))];
+  const activeMealFilters = (mealCat !== 'all' ? 1 : 0) + (mealCalBand !== 'all' ? 1 : 0) + (mealMacroFilter !== 'all' ? 1 : 0) + (mealFitsOnly ? 1 : 0) + (mealMine ? 1 : 0);
+  // Filter (category · calories · macro · ingredients · mine · fits) then score
+  // each by how well it fits the client's macros for this slot, best first.
+  const mealMatches = (() => {
+    const q = mealSearch.trim().toLowerCase();
+    let list = pickableMeals;
+    if (mealMine) list = list.filter(m => m.custom);
+    if (mealCat !== 'all') list = list.filter(m => m.category === mealCat);
+    if (mealCalBand !== 'all') list = list.filter(m => {
+      const c = Number(m.calories) || 0;
+      return mealCalBand === 'lt300' ? c < 300 : mealCalBand === '300_500' ? (c >= 300 && c <= 500) : mealCalBand === '500_700' ? (c > 500 && c <= 700) : c > 700;
+    });
+    if (mealMacroFilter !== 'all') list = list.filter(m => {
+      const cal = Number(m.calories) || 1;
+      if (mealMacroFilter === 'high_protein') return (Number(m.protein) || 0) * 4 / cal >= 0.30;
+      if (mealMacroFilter === 'low_carb') return (Number(m.carbs) || 0) * 4 / cal <= 0.25;
+      if (mealMacroFilter === 'low_fat') return (Number(m.fat) || 0) * 9 / cal <= 0.25;
+      return true;
+    });
+    if (q) list = list.filter(m =>
+      m.title?.toLowerCase().includes(q) || m.title_es?.toLowerCase().includes(q) ||
+      (Array.isArray(m.ingredients) && m.ingredients.some(ing => String(ing).toLowerCase().includes(q))));
+    let scored = list.map(m => ({ m, score: mealCompatibility(m, pickerSlotType) }));
+    if (mealFitsOnly) scored = scored.filter(x => x.score != null && x.score >= 70);
+    if (scored.some(x => x.score != null)) scored = [...scored].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    return scored;
+  })();
+  const filteredMeals = mealMatches.slice(0, mealVisible); // [{ m, score }]
+  // Reset the picker's filters + preview + add-meal panel whenever it closes.
+  useEffect(() => { if (!mealPickerSlot) { setPickerPreview(null); setMealCat('all'); setShowAddMeal(false); setShowMealFilters(false); setMealCalBand('all'); setMealMacroFilter('all'); setMealFitsOnly(false); setMealMine(false); setMealVisible(40); setEditingCustomMealId(null); } }, [mealPickerSlot]);
+  // Restart pagination whenever the query/filters change.
+  useEffect(() => { setMealVisible(40); }, [mealSearch, mealCat, mealCalBand, mealMacroFilter, mealFitsOnly, mealMine]);
 
   const pickMeal = (meal) => {
     if (!mealPickerSlot) return;
@@ -2037,6 +2579,28 @@ export default function TrainerPlans() {
       showToast(t('trainerPlans.loadFailed', 'Could not load your plans. Try again.'), 'error');
     }
     const loadedPlans = plansRes.data || [];
+    // Shared assignees (0644): fold the junction members into each plan (∪ the
+    // legacy client_id) so cards show the true member count. Non-fatal + skips
+    // cleanly when the table isn't migrated yet.
+    try {
+      const ids = loadedPlans.map(p => p.id);
+      if (ids.length) {
+        const { data: jm, error: jmErr } = await supabase
+          .from('trainer_plan_members').select('plan_id, member_id').in('plan_id', ids);
+        if (!jmErr) {
+          const byPlan = new Map();
+          (jm || []).forEach(r => {
+            if (!byPlan.has(r.plan_id)) byPlan.set(r.plan_id, new Set());
+            byPlan.get(r.plan_id).add(r.member_id);
+          });
+          loadedPlans.forEach(p => {
+            const set = byPlan.get(p.id) || new Set();
+            if (p.client_id) set.add(p.client_id);
+            p._memberIds = p.client_id ? [p.client_id, ...[...set].filter(id => id !== p.client_id)] : [...set];
+          });
+        }
+      }
+    } catch (e) { logger.error('TrainerPlans: member-count load failed (non-fatal):', e); }
     const loadedClients = (clientsRes.data || []).map(tc => tc.profiles).filter(Boolean);
     setPlans(loadedPlans);
     setClients(loadedClients);
@@ -2068,15 +2632,64 @@ export default function TrainerPlans() {
       .eq('trainer_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(100)
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (error) {
           logger.error('TrainerPlans: failed to load meal plans:', error);
           showToast(t('trainerPlans.loadMealPlansFailed', 'Could not load meal plans. Try again.'), 'error');
         }
-        if (!error) writeTrainerCache(`tplans:meals:${profile.id}`, data || []);
-        setMealPlans(data || []);
+        const loaded = data || [];
+        // Fold shared members (0645) into each plan's _memberIds (∪ client_id).
+        try {
+          const ids = loaded.map(p => p.id);
+          if (ids.length) {
+            const { data: jm, error: jmErr } = await supabase
+              .from('trainer_meal_plan_members').select('plan_id, member_id').in('plan_id', ids);
+            if (!jmErr) {
+              const byPlan = new Map();
+              (jm || []).forEach(r => { if (!byPlan.has(r.plan_id)) byPlan.set(r.plan_id, new Set()); byPlan.get(r.plan_id).add(r.member_id); });
+              loaded.forEach(p => { const set = byPlan.get(p.id) || new Set(); if (p.client_id) set.add(p.client_id); p._memberIds = p.client_id ? [p.client_id, ...[...set].filter(id => id !== p.client_id)] : [...set]; });
+            }
+          }
+        } catch (e) { logger.error('TrainerPlans: meal member-count load failed (non-fatal):', e); }
+        if (!error) writeTrainerCache(`tplans:meals:${profile.id}`, loaded);
+        setMealPlans(loaded);
         setMealPlansLoading(false);
       });
+  };
+
+  // Open the meal builder to EDIT an existing plan in place: prefill settings +
+  // hydrate the saved meals into the editable step-2 grid, jump straight to it.
+  const openMealEditor = (plan) => {
+    if (!plan) return;
+    setEditingMealPlanId(plan.id);
+    setMealForm({
+      client_id: plan.client_id || '',
+      name: plan.name || '',
+      description: plan.description || '',
+      target_calories: plan.target_calories != null ? String(plan.target_calories) : '',
+      target_protein_g: plan.target_protein_g != null ? String(plan.target_protein_g) : '',
+      target_carbs_g: plan.target_carbs_g != null ? String(plan.target_carbs_g) : '',
+      target_fat_g: plan.target_fat_g != null ? String(plan.target_fat_g) : '',
+      duration_weeks: plan.duration_weeks || 4,
+      start_date: plan.start_date || '',
+    });
+    const meals = Array.isArray(plan.meals) ? plan.meals : [];
+    if (meals.length) {
+      setGeneratedMeals(meals.map(d => ({
+        meals: (d.meals || []).map(m => ({ ...m, slotType: m.slotType || m.slot })),
+        totals: d.totals || null,
+      })));
+      setMealStep('meals');
+      setMealEntryStep('meals');
+    } else {
+      setGeneratedMeals(null);
+      setMealStep('settings');
+      setMealEntryStep('settings');
+    }
+    setMealsDirty(false);
+    setMealPreviewDay(0);
+    setMealPreviewWeek(0);
+    setShowMealModal(true);
   };
 
   const saveMealPlan = async () => {
@@ -2087,7 +2700,7 @@ export default function TrainerPlans() {
     // Single-active invariant (P2-2) applies PER CLIENT: ClientDetail reads the
     // active plan with .maybeSingle(), so retire this client's currently-active
     // plans first. General (client-less) plans can coexist, so skip when none.
-    if (mealForm.client_id) {
+    if (!editingMealPlanId && mealForm.client_id) {
       const { error: deactivateErr } = await supabase.from('trainer_meal_plans')
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('trainer_id', profile.id)
@@ -2112,9 +2725,7 @@ export default function TrainerPlans() {
     const startDate = mealForm.start_date ? new Date(`${mealForm.start_date}T00:00:00`) : new Date();
     const endDate = new Date(startDate.getTime() + durWeeks * 7 * 86400000);
     const toISODate = (d) => d.toISOString().split('T')[0];
-    const { error } = await supabase.from('trainer_meal_plans').insert({
-      gym_id: profile.gym_id,
-      trainer_id: profile.id,
+    const fields = {
       client_id: mealForm.client_id || null,
       name: mealForm.name.trim(),
       description: mealForm.description.trim() || null,
@@ -2126,18 +2737,40 @@ export default function TrainerPlans() {
       start_date: toISODate(startDate),
       end_date: toISODate(endDate),
       meals: mealsJson,
-    });
-    if (error) {
-      setMealSaving(false);
-      showToast(t('trainerPlans.errorSavingMealPlan', 'Failed to save meal plan'), 'error');
-      return;
+    };
+    // Edit in place when a plan is loaded; else create a new one.
+    let mealPlanId = editingMealPlanId;
+    if (editingMealPlanId) {
+      const { error } = await supabase.from('trainer_meal_plans').update({ ...fields, updated_at: new Date().toISOString() }).eq('id', editingMealPlanId);
+      if (error) { setMealSaving(false); showToast(t('trainerPlans.errorSavingMealPlan', 'Failed to save meal plan'), 'error'); return; }
+    } else {
+      const { data: ins, error } = await supabase.from('trainer_meal_plans').insert({ gym_id: profile.gym_id, trainer_id: profile.id, ...fields }).select('id').single();
+      if (error) { setMealSaving(false); showToast(t('trainerPlans.errorSavingMealPlan', 'Failed to save meal plan'), 'error'); return; }
+      mealPlanId = ins?.id;
     }
-    posthog?.capture('trainer_meal_plan_created');
+    // Sync the shared-members junction (0645) to primary ∪ extra share ids. Best-effort.
+    if (mealPlanId) {
+      const memberSet = [...new Set([fields.client_id, ...mealShareIds].filter(Boolean))];
+      try {
+        const NONE = '00000000-0000-0000-0000-000000000000';
+        await supabase.from('trainer_meal_plan_members').delete()
+          .eq('plan_id', mealPlanId).not('member_id', 'in', `(${memberSet.length ? memberSet.join(',') : NONE})`);
+        if (memberSet.length) {
+          await supabase.from('trainer_meal_plan_members').upsert(
+            memberSet.map(mid => ({ plan_id: mealPlanId, member_id: mid, assigned_by: profile.id })),
+            { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
+          );
+        }
+      } catch (e) { logger.error('TrainerPlans: meal junction sync failed (non-fatal):', e); }
+    }
+    posthog?.capture(editingMealPlanId ? 'trainer_meal_plan_edited' : 'trainer_meal_plan_created');
     setMealSaving(false);
-    setShowMealModal(false);
-    setMealForm({ client_id: '', name: '', description: '', target_calories: '', target_protein_g: '', target_carbs_g: '', target_fat_g: '', duration_weeks: 4, start_date: '' });
-    setGeneratedMeals(null);
-    setMealStep('settings');
+    // Reuse the single teardown instead of hand-rolling a partial one. The
+    // hand-rolled version forgot mealShareIds / mealEntryStep / mealsDirty, so
+    // after saving a plan shared with 2 members the NEXT "New plan" opened
+    // already reading "Also shared with 2" — and saving it wrote those members
+    // into the new plan's junction rows.
+    closeMealModal();
     loadMealPlans();
   };
 
@@ -2199,13 +2832,27 @@ export default function TrainerPlans() {
   };
 
   const toggleActive = async (plan) => {
+    // A plan is "live" only when active AND not a draft. Activating publishes
+    // a draft (clears is_draft) — otherwise it stayed a draft and nothing
+    // visibly changed. Deactivating just flips is_active off.
+    const isLive = plan.is_active && !plan.is_draft;
+    const patch = isLive
+      ? { is_active: false, updated_at: new Date().toISOString() }
+      : { is_active: true, is_draft: false, updated_at: new Date().toISOString() };
+    // Optimistic — the row reflects the new state instantly.
+    setPlans(prev => prev.map(p => (p.id === plan.id ? { ...p, ...patch } : p)));
     const { error } = await supabase.from('trainer_workout_plans')
-      .update({ is_active: !plan.is_active, updated_at: new Date().toISOString() })
-      .eq('id', plan.id);
+      .update(patch).eq('id', plan.id);
     if (error) {
       showToast(t('trainerPlans.errorToggleActive', 'Failed to update plan status'), 'error');
+      loadData(); // revert to server truth
       return;
     }
+    showToast(
+      isLive ? t('trainerPlans.planDeactivated', 'Plan deactivated')
+             : t('trainerPlans.planActivated', 'Plan activated'),
+      'success',
+    );
     loadData();
   };
 
@@ -2241,6 +2888,64 @@ export default function TrainerPlans() {
     loadData();
   };
 
+  const openAssign = (plan) => {
+    setAssignTarget(plan);
+    setAssignIds(plan._memberIds?.length ? plan._memberIds : (plan.client_id ? [plan.client_id] : []));
+  };
+
+  const confirmAssign = async () => {
+    const plan = assignTarget;
+    if (!plan) return;
+    setAssigning(true);
+    const ids = assignIds.filter(Boolean);
+    const newClientId = ids[0] || null; // legacy primary assignee
+    // A draft / inactive plan never appears on a member's list — publish it when
+    // handing it to real members, else "assign isn't working" (they see nothing).
+    const goLive = ids.length > 0 && (plan.is_draft || !plan.is_active);
+    const patch = {
+      client_id: newClientId,
+      updated_at: new Date().toISOString(),
+      ...(goLive ? { is_active: true, is_draft: false } : {}),
+    };
+    // Optimistic
+    setPlans(prev => prev.map(p => (p.id === plan.id ? { ...p, ...patch, _memberIds: ids } : p)));
+    const { error } = await supabase.from('trainer_workout_plans').update(patch).eq('id', plan.id);
+    if (error) {
+      setAssigning(false);
+      logger.error('TrainerPlans: failed to assign plan:', error);
+      showToast(t('trainerPlans.errorAssign', 'Failed to assign plan'), 'error');
+      loadData(); // revert to server truth
+      return;
+    }
+    // Sync the shared-members junction (0644) — best-effort, matching syncPlanMembers.
+    try {
+      const NONE = '00000000-0000-0000-0000-000000000000';
+      await supabase.from('trainer_plan_members').delete()
+        .eq('plan_id', plan.id).not('member_id', 'in', `(${ids.length ? ids.join(',') : NONE})`);
+      if (ids.length) {
+        await supabase.from('trainer_plan_members').upsert(
+          ids.map(mid => ({ plan_id: plan.id, member_id: mid, assigned_by: profile.id })),
+          { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
+        );
+      }
+    } catch (e) { logger.error('TrainerPlans: assign junction sync failed (non-fatal):', e); }
+    setAssigning(false);
+    posthog?.capture('trainer_plan_assigned', { count: ids.length, went_live: goLive, unassigned: ids.length === 0 });
+    const primaryName = clients.find(c => c.id === newClientId)?.full_name
+      || (newClientId === plan.client_id ? plan.profiles?.full_name : '')
+      || t('trainerPlans.aClient', 'a client');
+    showToast(
+      ids.length === 0 ? t('trainerPlans.planUnassigned', 'Plan unassigned')
+        : ids.length > 1 ? t('trainerPlans.planAssignedN', 'Shared with {{n}} members', { n: ids.length })
+          : goLive ? t('trainerPlans.planAssignedActive', 'Assigned to {{name}} · now active', { name: primaryName })
+            : t('trainerPlans.planAssigned', 'Assigned to {{name}}', { name: primaryName }),
+      'success',
+    );
+    setAssignTarget(null);
+    setAssignIds([]);
+    loadData();
+  };
+
   const deletePlan = async (plan) => {
     const { data, error } = await supabase.from('trainer_workout_plans').delete().eq('id', plan.id).select('id');
     if (error || !data?.length) {
@@ -2258,10 +2963,24 @@ export default function TrainerPlans() {
     if (filterStatus === 'active') result = result.filter(p => p.is_active && !p.is_draft);
     else if (filterStatus === 'archived') result = result.filter(p => !p.is_active && !p.is_draft);
     else if (filterStatus === 'draft') result = result.filter(p => p.is_draft);
-    // Client filter
-    if (filterClient !== 'all') result = result.filter(p => p.client_id === filterClient);
+    // Type filter — single sessions are duration_weeks === 0, programs are the rest.
+    if (filterType === 'session') result = result.filter(p => p.duration_weeks === 0);
+    else if (filterType === 'program') result = result.filter(p => p.duration_weeks !== 0);
+    // Client filter — a plan can be SHARED with several members (0644
+    // junction, folded into _memberIds), so match the primary assignee OR any
+    // shared one. Matching client_id alone made a plan shared with member X
+    // vanish from X's filter whenever the primary assignee was someone else —
+    // even though the card counts X and the assign sheet lists X.
+    if (filterClient !== 'all') {
+      result = result.filter(p => p.client_id === filterClient || (p._memberIds || []).includes(filterClient));
+    }
     return result;
-  }, [plans, filterClient, filterStatus]);
+  }, [plans, filterClient, filterStatus, filterType]);
+
+  // Only surface the Programs/Sessions type filter once at least one single
+  // session exists (nothing to filter otherwise). Keep it visible while a type
+  // filter is active so you can't get stuck on an empty "Sessions" view.
+  const hasSessions = useMemo(() => plans.some(p => p.duration_weeks === 0), [plans]);
 
   // Client-filter options: active clients ∪ clients that appear on plans
   // (covers plans assigned to since-deactivated clients).
@@ -2414,24 +3133,51 @@ export default function TrainerPlans() {
   return (
     <div style={{ background: TT.bg, minHeight: '100%' }} className="pb-2">
       <div style={{ padding: '8px 20px 12px' }}>
-        {/* Header row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
-          <div>
-            <TEyebrow color={TT.accent}>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
+        {/* Header — title gets its OWN full-width line, actions sit on a row
+            beneath it. Inline (space-between) they squeezed the heading into
+            two ragged lines and still pushed "New plan" off the right edge on a
+            phone. Back to side-by-side from md up, where there's room. */}
+        <div style={{ marginBottom: 14 }}>
+          <TEyebrow color={TT.accent}>{t('trainerPlans.heroLabel', 'Library')}</TEyebrow>
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <TPageTitle style={{ fontSize: 30 }}>
               {section === 'training'
                 ? t('trainerPlans.titleTraining', 'Training Plans')
                 : t('trainerPlans.titleNutrition', 'Nutrition Plans')}
             </TPageTitle>
+            {section === 'training' ? (
+              <div className="flex gap-2 md:flex-shrink-0">
+                {/* One-off reusable session — starts the builder already in session
+                    mode. Accent-outlined so it clearly reads as a button (strong
+                    secondary next to the solid teal "New plan"). */}
+                <button
+                  onClick={() => openBuilder({ duration_weeks: 0 })}
+                  aria-label={t('trainerPlans.newSession', 'New single session')}
+                  className="tt-tap tt-press"
+                  style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 42, padding: '0 14px', borderRadius: 12, background: TT.accentSoft, color: TT.accentInk, border: `1.5px solid ${TT.accent}`, fontFamily: TFont.display, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  <Dumbbell size={15} strokeWidth={2.4} /> {t('trainerPlans.sessionShort', 'Session')}
+                </button>
+                <TPrimaryButton
+                  onClick={() => openBuilder()}
+                  aria-label={t('trainerPlans.createPlan', 'New plan')}
+                  style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap' }}
+                >
+                  <Plus size={15} strokeWidth={2.4} />
+                  {t('trainerPlans.newPlan', 'New plan')}
+                </TPrimaryButton>
+              </div>
+            ) : (
+              <TPrimaryButton
+                onClick={() => setShowMealModal(true)}
+                aria-label={t('trainerPlans.createMealPlan', 'New meal plan')}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap' }}
+              >
+                <Plus size={15} strokeWidth={2.4} />
+                {t('trainerPlans.newPlan', 'New plan')}
+              </TPrimaryButton>
+            )}
           </div>
-          <TPrimaryButton
-            onClick={() => section === 'training' ? openBuilder() : setShowMealModal(true)}
-            aria-label={section === 'training' ? t('trainerPlans.createPlan', 'New plan') : t('trainerPlans.createMealPlan', 'New meal plan')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
-          >
-            <Plus size={15} strokeWidth={2.4} />
-            {t('trainerPlans.newPlan', 'New plan')}
-          </TPrimaryButton>
         </div>
 
         {/* Section tabs (Training / Nutrition) — underline tab bar */}
@@ -2497,9 +3243,13 @@ export default function TrainerPlans() {
               </div>
             </div>
 
-            {/* Status + client filter strip (small, above plans) */}
+            {/* Status + client filter strip (small, above plans).
+                WRAPS instead of scrolling horizontally: four status pills plus a
+                three-way segmented control plus a client select never fit one
+                phone-width row, so the type filter was permanently cut off at
+                the right edge with nothing to suggest it was scrollable. */}
             {plans.length > 0 && (
-              <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto', alignItems: 'center' }} className="scrollbar-hide">
+              <div style={{ display: 'flex', gap: 6, rowGap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }} className="scrollbar-hide">
                 {[
                   { key: 'active',   label: t('trainerPlans.active', 'Active') },
                   { key: 'draft',    label: t('trainerPlans.drafts', 'Drafts') },
@@ -2514,6 +3264,29 @@ export default function TrainerPlans() {
                     {tab.label}
                   </TTabPill>
                 ))}
+                {/* Type filter — Programs vs single Sessions. Distinct segmented
+                    control (not another pill) so the two filter axes read apart. */}
+                {(hasSessions || filterType !== 'all') && (
+                  <>
+                    <div style={{ width: 1, height: 22, background: TT.border, flexShrink: 0, margin: '0 3px' }} />
+                    <div className="flex flex-shrink-0 rounded-full p-[3px] gap-[2px]" style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}>
+                      {[
+                        { key: 'all',     label: t('trainerPlans.typeAll', 'All'), Icon: null },
+                        { key: 'program', label: t('trainerPlans.typePrograms', 'Programs'), Icon: Calendar },
+                        { key: 'session', label: t('trainerPlans.typeSessions', 'Sessions'), Icon: Dumbbell },
+                      ].map(({ key, label, Icon }) => {
+                        const on = filterType === key;
+                        return (
+                          <button key={key} type="button" onClick={() => setFilterType(key)}
+                            className="flex items-center gap-1 rounded-full px-2.5 min-h-[28px] text-[11.5px] font-bold transition-all whitespace-nowrap tt-tap"
+                            style={on ? { background: TT.accent, color: '#06363B' } : { background: 'transparent', color: TT.textMute }}>
+                            {Icon && <Icon size={12} strokeWidth={2.4} />}{label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
                 {/* Client filter — feeds the same memo the status pills do */}
                 {clientFilterOptions.length > 0 && (
                   <select
@@ -2565,159 +3338,131 @@ export default function TrainerPlans() {
                 />
               )
             ) : (
-              <TCard padded={0} style={{ overflow: 'hidden' }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5" style={{ alignItems: 'start' }}>
                 {filtered.map((plan, idx) => {
                   const { tone, type } = planTone(plan);
-                  const allDays = Object.values(plan.weeks || {}).flat();
-                  const totalDays = allDays.length;
-                  // Assigned clients = unique client_ids from this plan + (single client from plan.client_id if present)
-                  const assignedIds = plan.client_id ? [plan.client_id] : [];
-                  const assignedNames = plan.profiles?.full_name ? [plan.profiles.full_name] : [];
-                  const assignedCount = assignedIds.length;
-                  const isExpanded = expandedPlan === plan.id;
+                  const totalDays = Object.values(plan.weeks || {}).flat().length;
+                  const totalEx = countExercises(plan);
+                  const clientName = plan.profiles?.full_name;
+                  // Shared plans (0644): the true assignee count is the junction ∪ client_id.
+                  const assignedCount = plan._memberIds?.length ?? (plan.client_id ? 1 : 0);
+                  const isSession = plan.duration_weeks === 0; // single reusable session (sentinel)
+                  const kindLabel = isSession ? t('trainerPlans.singleSession', 'Single session') : type;
+                  // First card open, the rest collapsed — user can toggle any.
+                  const open = planOverrides[plan.id] ?? (idx === 0);
+                  // "Live" = published + active. Draft or archived → the CTA offers Activate.
+                  const isLive = plan.is_active && !plan.is_draft;
+                  const status = plan.is_draft
+                    ? { c: MK.amber, label: t('trainerPlans.draftBadge', 'DRAFT') }
+                    : plan.is_active
+                      ? { c: MK.teal, label: t('trainerPlans.active', 'Active') }
+                      : { c: MK.ink3, label: t('trainerPlans.inactive', 'Inactive') };
+                  const STATS = isSession
+                    ? [
+                        { c: MK.coach, v: totalDays || 1, l: t('trainerPlans.daysAbbrev', 'days') },
+                        { c: MK.amber, v: totalEx, l: t('trainerPlans.exercisesShort', 'exercises') },
+                      ]
+                    : [
+                        { c: MK.teal, v: plan.duration_weeks || 0, l: t('trainerPlans.weeks', 'weeks') },
+                        { c: MK.coach, v: totalDays, l: t('trainerPlans.daysAbbrev', 'days') },
+                        { c: MK.amber, v: totalEx, l: t('trainerPlans.exercisesShort', 'exercises') },
+                      ];
+                  const assignLabel = assignedCount > 0
+                    ? `${assignedCount} ${assignedCount === 1 ? t('trainerPlans.clientWord', 'client') : t('trainerPlans.clientsWord', 'clients')}`
+                    : t('trainerPlans.unassigned', 'Unassigned');
                   return (
                     <motion.div
                       key={plan.id}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.22, delay: Math.min(idx * 0.03, 0.3) }}
-                      style={{ borderTop: idx > 0 ? `1px solid ${TT.border}` : 'none' }}
+                      style={{ background: MK.surface, borderRadius: 24, boxShadow: MK.shadow, overflow: 'hidden' }}
                     >
-                      {/* Library row — tap to edit, trailing button toggles options */}
+                      {/* tone-gradient header — tap toggles the card open/closed */}
                       <div
+                        className="tt-tap"
                         role="button"
                         tabIndex={0}
-                        onClick={() => openBuilder(plan)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') openBuilder(plan); }}
-                        className="tt-tap"
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 13,
-                          padding: '13px 15px', cursor: 'pointer',
-                        }}
+                        aria-expanded={open}
+                        onClick={() => setPlanOverrides(o => ({ ...o, [plan.id]: !open }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlanOverrides(o => ({ ...o, [plan.id]: !open })); } }}
+                        style={{ background: `linear-gradient(135deg, ${soft(tone, 18)}, ${soft(tone, 7)})`, padding: '15px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
                       >
-                        <div style={{
-                          width: 38, height: 38, borderRadius: 11,
-                          background: `${tone}1F`, flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <ClipboardList size={18} color={tone} strokeWidth={2} />
+                        <div style={{ width: 46, height: 46, borderRadius: 14, background: MK.surface, boxShadow: MK.shadow, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <ClipboardList size={23} color={tone} strokeWidth={2} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                          }}>
-                            <span style={{
-                              fontSize: 14.5, fontWeight: 700, color: TT.text,
-                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                              minWidth: 0,
-                            }}>{plan.name}</span>
-                            {plan.is_draft ? (
-                              <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>
-                                {t('trainerPlans.draftBadge', 'DRAFT')}
-                              </TPill>
-                            ) : !plan.is_active && (
-                              <TPill tone="neutral" size="s" style={{ flexShrink: 0 }}>
-                                {t('trainerPlans.inactiveBadge', 'INACTIVE')}
-                              </TPill>
-                            )}
-                          </div>
-                          <div style={{
-                            fontSize: 11.5, color: TT.textSub, marginTop: 2,
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                          }}>
-                            {type} · {plan.duration_weeks || 0} {t('trainerPlans.weeks', 'weeks')} · {totalDays} {t('trainerPlans.daysAbbrev', 'days')} · {assignedCount === 0
-                              ? t('trainerPlans.genericPlan', 'Generic')
-                              : `${assignedCount} ${assignedCount === 1 ? t('trainerPlans.clientWord', 'client') : t('trainerPlans.clientsWord', 'clients')}`}
+                          <div className="truncate" style={{ fontFamily: MK.disp, fontSize: 19, fontWeight: 900, color: MK.ink, letterSpacing: -0.6 }}>{plan.name}</div>
+                          <div className="truncate" style={{ fontSize: 12.5, color: inkOf(tone), marginTop: 2, fontWeight: 600 }}>
+                            {kindLabel} · {assignLabel}
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setExpandedPlan(isExpanded ? null : plan.id); }}
-                          aria-label={t('trainerPlans.moreOptions', 'More options')}
-                          aria-expanded={isExpanded}
-                          style={{
-                            width: 32, height: 32, borderRadius: 8,
-                            background: isExpanded ? TT.surface2 : 'transparent', border: 'none',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: TT.textMute, cursor: 'pointer', flexShrink: 0,
-                          }}
-                        >
-                          {isExpanded ? <ChevronUp size={16} /> : <MoreHorizontal size={16} />}
-                        </button>
+                        <MkTag c={status.c} dot size="s">{status.label}</MkTag>
+                        <ChevronDown size={20} color={inkOf(tone)} style={{ flexShrink: 0, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }} />
                       </div>
-
-                      {/* Expanded action strip — keeps every option accessible */}
-                      {isExpanded && (
-                        <div style={{
-                          padding: '4px 15px 14px 66px',
-                          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => openBuilder(plan)}
-                            style={{
-                              padding: '6px 10px', borderRadius: 8, border: 'none',
-                              background: TT.accent, fontSize: 11, fontWeight: 700,
-                              color: '#06363B', cursor: 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                            }}
-                          >
-                            <Pencil size={11} /> {t('trainerPlans.edit', 'Edit')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => duplicatePlan(plan)}
-                            style={{
-                              padding: '6px 10px', borderRadius: 8,
-                              border: `1px solid ${TT.borderSolid}`,
-                              background: TT.surface2, fontSize: 11, fontWeight: 700,
-                              color: TT.text, cursor: 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                            }}
-                          >
-                            <Copy size={11} /> {t('trainerPlans.duplicate', 'Duplicate')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleActive(plan)}
-                            style={{
-                              padding: '6px 10px', borderRadius: 8,
-                              border: `1px solid ${TT.borderSolid}`,
-                              background: TT.surface2, fontSize: 11, fontWeight: 700,
-                              color: TT.text, cursor: 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                            }}
-                          >
-                            {plan.is_active
-                              ? <><ToggleRight size={11} /> {t('trainerPlans.deactivate', 'Deactivate')}</>
-                              : <><ToggleLeft size={11} /> {t('trainerPlans.activate', 'Activate')}</>}
-                          </button>
-                          <div style={{ flex: 1 }} />
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeletePlan(plan)}
-                            aria-label={t('trainerPlans.delete', 'Delete')}
-                            style={{
-                              padding: '6px 10px', borderRadius: 8, border: 'none',
-                              background: TT.hotSoft, fontSize: 11, fontWeight: 700,
-                              color: TT.hot, cursor: 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                            }}
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                          <p style={{
-                            width: '100%', fontSize: 10, color: TT.textMute, marginTop: 4,
-                          }}>
+                      {/* body — hidden when collapsed */}
+                      {open && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }} style={{ padding: 18 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STATS.length},1fr)`, gap: 9, marginBottom: 14 }}>
+                            {STATS.map((s, i) => (
+                              <div key={i} style={{ background: soft(s.c, 15), borderRadius: 15, padding: '12px 9px', textAlign: 'center' }}>
+                                <div style={{ fontFamily: MK.disp, fontSize: 22, fontWeight: 900, color: s.c, letterSpacing: -0.8, lineHeight: 1 }}>{s.v}</div>
+                                <div style={{ fontFamily: MK.disp, fontSize: 10.5, fontWeight: 800, color: inkOf(s.c), textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 6 }}>{s.l}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* who it's assigned to — the Assign/Change button is the
+                              primary way to hand a plan to a client (builder select
+                              is edit-locked). Unassigned → loud teal "Assign". */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+                            <div style={{ width: 30, height: 30, borderRadius: 9, background: soft(assignedCount > 0 ? MK.coach : MK.teal, 14), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Users size={15} color={assignedCount > 0 ? MK.coach : MK.teal} />
+                            </div>
+                            <span className="truncate" style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: MK.ink2 }}>
+                              {assignedCount > 1
+                                ? t('trainerPlans.sharedWithN', 'Shared with {{n}} members', { n: assignedCount })
+                                : assignedCount === 1
+                                  ? t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: clientName || t('trainerPlans.aClient', 'a client') })
+                                  : t('trainerPlans.noClientsAssigned', 'Not assigned to any client')}
+                            </span>
+                            <MkBtn
+                              size="s"
+                              variant={assignedCount > 0 ? 'secondary' : 'soft'}
+                              accent={MK.teal}
+                              icon={<UserPlus size={14} />}
+                              onClick={() => openAssign(plan)}
+                              style={{ flexShrink: 0 }}
+                            >
+                              {assignedCount > 0 ? t('trainerPlans.change', 'Change') : t('trainerPlans.assign', 'Assign')}
+                            </MkBtn>
+                          </div>
+                          {plan.description && <p className="line-clamp-2" style={{ fontSize: 12.5, color: MK.ink2, marginBottom: 14 }}>{plan.description}</p>}
+                          {/* actions — Edit + Activate/Deactivate (flips) + duplicate + delete */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 14, borderTop: `1px solid ${MK.line}` }}>
+                            <MkBtn size="s" icon={<Pencil size={14} />} onClick={() => openBuilder(plan)} style={{ flex: '1 1 auto' }}>
+                              {t('trainerPlans.edit', 'Edit')}
+                            </MkBtn>
+                            <MkBtn size="s" variant="soft" accent={isLive ? MK.coral : MK.teal}
+                              onClick={() => toggleActive(plan)} style={{ flex: '1 1 auto' }}>
+                              {isLive ? t('trainerPlans.deactivate', 'Deactivate') : t('trainerPlans.activate', 'Activate')}
+                            </MkBtn>
+                            <MkIconBtn size={40} onClick={() => duplicatePlan(plan)}>
+                              <Copy size={17} color={MK.ink2} />
+                            </MkIconBtn>
+                            <MkIconBtn size={40} soft={soft(MK.coral, 15)} onClick={() => setConfirmDeletePlan(plan)}>
+                              <Trash2 size={17} color={inkOf(MK.coral)} />
+                            </MkIconBtn>
+                          </div>
+                          <div style={{ fontSize: 11, color: MK.ink3, marginTop: 12 }}>
                             {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
                             {plan.updated_at !== plan.created_at && ` · ${t('trainerPlans.updated', 'Updated')} ${format(new Date(plan.updated_at), 'MMM d, yyyy', { locale: dateFnsLocale })}`}
-                          </p>
-                        </div>
+                          </div>
+                        </motion.div>
                       )}
                     </motion.div>
                   );
                 })}
-              </TCard>
+              </div>
             )}
           </div>
 
@@ -2768,54 +3513,48 @@ export default function TrainerPlans() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              {filteredMealPlans.map(plan => (
-                <TCard key={plan.id} padded={16}
-                  role="button" tabIndex={0}
-                  onClick={() => { setMealDetail(plan); setMealDetailDay(0); setMealDetailWeek(0); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { setMealDetail(plan); setMealDetailDay(0); } }}
-                  className="tt-tap"
-                  style={{ cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 13 }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                      background: `${TT.accent}1F`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <UtensilsCrossed size={20} color={TT.accent} strokeWidth={2.2} />
+              {filteredMealPlans.map(plan => {
+                const macros = { protein: plan.target_protein_g || 0, carbs: plan.target_carbs_g || 0, fat: plan.target_fat_g || 0 };
+                const hasMacros = plan.target_calories || macros.protein || macros.carbs || macros.fat;
+                return (
+                  <div key={plan.id} className="tt-tap" role="button" tabIndex={0}
+                    onClick={() => { setMealDetail(plan); setMealDetailDay(0); setMealDetailWeek(0); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { setMealDetail(plan); setMealDetailDay(0); } }}
+                    style={{ background: MK.surface, borderRadius: 24, boxShadow: MK.shadow, overflow: 'hidden', cursor: 'pointer' }}>
+                    {/* teal-gradient header */}
+                    <div style={{ background: `linear-gradient(135deg, ${soft(MK.teal, 16)}, ${soft(MK.teal, 7)})`, padding: '17px 18px', display: 'flex', alignItems: 'center', gap: 13 }}>
+                      <div style={{ width: 48, height: 48, borderRadius: 15, background: MK.surface, boxShadow: MK.shadow, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <UtensilsCrossed size={24} color={MK.tealDark} strokeWidth={2} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="truncate" style={{ fontFamily: MK.disp, fontSize: 20, fontWeight: 900, color: MK.ink, letterSpacing: -0.6 }}>{plan.name}</div>
+                        <div style={{ fontSize: 12.5, color: inkOf(MK.teal), marginTop: 2, fontWeight: 600 }}>
+                          {(plan._memberIds?.length ?? (plan.client_id ? 1 : 0)) > 1
+                            ? t('trainerPlans.sharedWithN', 'Shared with {{n}} members', { n: plan._memberIds.length })
+                            : plan.profiles?.full_name
+                              ? t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: plan.profiles.full_name })
+                              : t('trainerPlans.noClientShort', 'General plan')}
+                        </div>
+                      </div>
+                      <MkTag c={plan.is_active ? MK.teal : MK.ink3} dot size="s">{plan.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}</MkTag>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[14.5px] font-bold truncate" style={{ color: TT.text }}>{plan.name}</p>
-                          {plan.profiles?.full_name && (
-                            <p className="text-[11.5px] mt-0.5" style={{ color: TT.textSub }}>
-                              {t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: plan.profiles.full_name })}
-                            </p>
-                          )}
+                    {/* body */}
+                    <div style={{ padding: 18 }}>
+                      {hasMacros ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                          <MacroRing kcal={plan.target_calories || 0} size={70} stroke={8} value={1} />
+                          <div style={{ flex: 1 }}><MacroCells macros={macros} /></div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <TPill tone={plan.is_active ? 'good' : 'neutral'} size="s">
-                            {plan.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}
-                          </TPill>
-                          <ChevronRight size={16} style={{ color: TT.textMute }} />
-                        </div>
+                      ) : null}
+                      {plan.description && <p className="line-clamp-2" style={{ fontSize: 12.5, color: MK.ink2, marginBottom: 14 }}>{plan.description}</p>}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTop: `1px solid ${MK.line}` }}>
+                        <span style={{ fontSize: 11.5, color: MK.ink3 }}>{t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MK.disp, fontSize: 12.5, fontWeight: 800, color: MK.tealDark }}>{t('trainerPlans.openPlan', 'Open plan')}<ChevronRight size={15} color={MK.tealDark} strokeWidth={2.4} /></span>
                       </div>
-                      {plan.description && (
-                        <p className="text-[12px] mt-2 line-clamp-2" style={{ color: TT.textSub }}>{plan.description}</p>
-                      )}
-                      <div className="flex items-center gap-3.5 mt-2 text-[11px]">
-                        {plan.target_calories ? <span style={{ color: TT.accent }} className="font-semibold">{plan.target_calories} {t('common:cal', 'cal')}</span> : null}
-                        {plan.target_protein_g ? <span style={{ color: '#60A5FA' }}>{t('trainerPlans.proteinShort', 'P:')} {plan.target_protein_g}g</span> : null}
-                        {plan.target_carbs_g ? <span style={{ color: '#34D399' }}>{t('trainerPlans.carbsShort', 'C:')} {plan.target_carbs_g}g</span> : null}
-                        {plan.target_fat_g ? <span style={{ color: '#F472B6' }}>{t('trainerPlans.fatShort', 'F:')} {plan.target_fat_g}g</span> : null}
-                      </div>
-                      <p className="text-[10px] mt-2" style={{ color: TT.textFaint }}>
-                        {t('trainerPlans.created', 'Created')} {format(new Date(plan.created_at), 'MMM d, yyyy', { locale: dateFnsLocale })}
-                      </p>
                     </div>
                   </div>
-                </TCard>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -2830,197 +3569,168 @@ export default function TrainerPlans() {
           "behind" them). */}
       {showMealModal && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={closeMealModal}>
-          <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
-              <div className="flex items-center gap-2">
-                {mealStep === 'meals' && (
-                  <button onClick={() => setMealStep('settings')} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
-                    <ArrowLeft size={18} />
-                  </button>
-                )}
-                <h2 className="text-[16px] font-bold" style={{ color: TT.text }}>
-                  {mealStep === 'settings' ? t('trainerPlans.createMealPlan', 'Create Meal Plan') : t('trainerPlans.weeklyMeals', 'Weekly Meals')}
-                </h2>
-              </div>
-              <button onClick={closeMealModal} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
-                <X size={18} />
-              </button>
-            </div>
+          <div className="w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col" style={{ position: 'relative', borderRadius: 26, background: MK.bg, boxShadow: MK.shadowLg }} onClick={e => e.stopPropagation()}>
 
-            {/* ── STEP 1: Settings ── */}
+            {/* ── STEP 1: EDIT (settings) — "Warmth (B)" ── */}
             {mealStep === 'settings' && (
               <>
-                <div className="p-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide" style={{ padding: '22px 20px 18px' }}>
+                  <MkSheetHead title={editingMealPlanId ? t('trainerPlans.editMealPlan', 'Edit meal plan') : t('trainerPlans.createMealPlan', 'Create meal plan')} onClose={closeMealModal} />
+
                   {/* Client */}
-                  <div>
-                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.client', 'Client')}</label>
-                    <select value={mealForm.client_id} onChange={e => { setMealForm(f => ({ ...f, client_id: e.target.value })); setMealGoalOverride(null); setGeneratedMeals(null); }}
-                      className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
-                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }}>
-                      <option value="">{t('trainerPlans.noClientGeneral', 'No client (general plan)')}</option>
-                      {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Client profile + goal override + auto-calculate */}
-                  {mealClientProfile?.onboarding && (
-                    <div className="rounded-xl p-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: TT.accent }}>{t('trainerPlans.clientProfile', 'Client Profile')}</p>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] mb-3">
-                        <span><span style={{ color: TT.textMute }}>{t('trainerPlans.level', 'Level')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{mealClientProfile.onboarding.fitness_level || '—'}</span></span>
-                        <span><span style={{ color: TT.textMute }}>{t('trainerPlans.goal', 'Goal')}:</span> <span className="font-semibold capitalize" style={{ color: TT.text }}>{mealClientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${mealClientProfile.onboarding.primary_goal}`, mealClientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'}</span></span>
-                        <span><span style={{ color: TT.textMute }}>{t('trainerPlans.daysWeek', 'Days/wk')}:</span> <span className="font-semibold" style={{ color: TT.text }}>{mealClientProfile.onboarding.training_days_per_week || '—'}</span></span>
-                        {mealClientProfile.latestWeight && (
-                          <span><span style={{ color: TT.textMute }}>{t('trainerPlans.weight', 'Weight')}:</span> <span className="font-semibold" style={{ color: TT.text }}>{Math.round(mealClientProfile.latestWeight)} {t('common:lbs', 'lbs')}</span></span>
-                        )}
+                  <MkSec style={{ marginTop: 22 }}><MkSectionHead icon={<User size={17} strokeWidth={2.1} />} tint={MK.coach}>{t('trainerPlans.client', 'Client')}</MkSectionHead>
+                    <div style={{ position: 'relative', height: 56, borderRadius: 18, background: MK.surface, boxShadow: MK.shadow, display: 'flex', alignItems: 'center', gap: 12, padding: '0 15px' }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 999, flexShrink: 0, background: `linear-gradient(145deg, ${MK.coach}, ${mpShade(MK.coach, -16)})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MK.disp, fontWeight: 800, fontSize: 16 }}>
+                        {mealForm.client_id ? ((clients.find(c => c.id === mealForm.client_id)?.full_name || '?').trim().charAt(0).toUpperCase()) : <User size={18} />}
                       </div>
-                      <div className="pt-2" style={{ borderTop: `1px solid ${TT.border}` }}>
-                        <p className="text-[10px] font-medium mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.nutritionGoal', 'Nutrition goal')}</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {GOAL_OPTIONS.map(g => {
-                            const clientGoal = mealClientProfile.onboarding.primary_goal;
-                            const isActive = mealGoalOverride ? mealGoalOverride === g : clientGoal === g;
-                            return (
-                              <button key={g} onClick={() => setMealGoalOverride(g === clientGoal ? null : g)}
-                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all relative"
-                                style={isActive ? { backgroundColor: TT.accent, color: '#06363B' } : { backgroundColor: TT.surface2, color: TT.textMute }}>
-                                {t(`trainerNotes.goals.${g}`, g.replace(/_/g, ' '))}
-                                {!mealGoalOverride && clientGoal === g && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full" style={{ background: TT.good }} />}
-                              </button>
-                            );
-                          })}
+                      <div className="truncate" style={{ flex: 1, minWidth: 0, fontFamily: MK.disp, fontSize: 16, fontWeight: 800, color: mealForm.client_id ? MK.ink : MK.ink3 }}>
+                        {mealForm.client_id ? (clients.find(c => c.id === mealForm.client_id)?.full_name || '—') : t('trainerPlans.noClientGeneral', 'No client (general plan)')}
+                      </div>
+                      <ChevronDown size={20} color={MK.ink3} />
+                      {/* Full-row invisible select so tapping anywhere (incl. the chevron) opens the native picker */}
+                      <select value={mealForm.client_id} onChange={e => { setMealForm(f => ({ ...f, client_id: e.target.value })); setMealGoalOverride(null); setGeneratedMeals(null); }}
+                        aria-label={t('trainerPlans.client', 'Client')}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', margin: 0, padding: 0, opacity: 0, border: 'none', outline: 'none', cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none' }}>
+                        <option value="">{t('trainerPlans.noClientGeneral', 'No client (general plan)')}</option>
+                        {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                      </select>
+                    </div>
+                    {/* Share the SAME plan with additional members (0645) */}
+                    <button type="button" onClick={() => setShowMealSharePicker(true)}
+                      className="tt-tap" style={{ width: '100%', marginTop: 10, display: 'flex', alignItems: 'center', gap: 11, minHeight: 48, borderRadius: 14, background: mealShareIds.length ? soft(MK.teal, 14) : MK.surface, boxShadow: mealShareIds.length ? 'none' : MK.shadow, padding: '0 14px', border: mealShareIds.length ? `1px solid ${MK.teal}` : 'none', cursor: 'pointer' }}>
+                      <Users size={17} color={MK.teal} style={{ flexShrink: 0 }} />
+                      <span className="truncate" style={{ flex: 1, minWidth: 0, textAlign: 'left', fontFamily: MK.disp, fontSize: 14, fontWeight: 800, color: mealShareIds.length ? inkOf(MK.teal) : MK.ink3 }}>
+                        {mealShareIds.length === 0 ? t('trainerPlans.shareWithMore', 'Share with more members') : t('trainerPlans.alsoSharedN', 'Also shared with {{n}}', { n: mealShareIds.length })}
+                      </span>
+                      <Plus size={17} color={mealShareIds.length ? inkOf(MK.teal) : MK.ink3} />
+                    </button>
+                  </MkSec>
+
+                  {/* Plan details — FIRST after the client. Naming the plan is
+                      the one thing you always do here, and it used to sit below
+                      the profile card + goal pills + auto-calc button, so you
+                      had to scroll past everything to type a name. */}
+                  <MkSec><MkSectionHead icon={<Pencil size={16} strokeWidth={2.1} />} tint={MK.amber}>{t('trainerPlans.planDetails', 'Plan details')}</MkSectionHead>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <div>
+                        <div style={{ fontFamily: MK.disp, fontSize: 11.5, fontWeight: 800, color: MK.ink2, marginBottom: 8 }}>{t('trainerPlans.planName', 'Plan name')}</div>
+                        <input value={mealForm.name} onChange={e => setMealForm(f => ({ ...f, name: e.target.value }))} placeholder={t('trainerPlans.mealPlanNamePlaceholder', 'e.g. Cutting Phase, Bulking Plan')}
+                          style={{ width: '100%', height: 48, borderRadius: 14, background: MK.inset, boxShadow: `inset 0 0 0 1.5px ${MK.border}`, padding: '0 15px', fontFamily: MK.disp, fontSize: 15.5, fontWeight: 700, color: MK.ink, outline: 'none' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontFamily: MK.disp, fontSize: 11.5, fontWeight: 800, color: MK.ink2, marginBottom: 8 }}>{t('trainerPlans.description', 'Description')}</div>
+                        <textarea value={mealForm.description} onChange={e => setMealForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder={t('trainerPlans.mealDescPlaceholder', 'Optional notes about the plan…')}
+                          style={{ width: '100%', minHeight: 76, borderRadius: 14, background: MK.inset, boxShadow: `inset 0 0 0 1.5px ${MK.border}`, padding: '13px 15px', fontSize: 14.5, color: MK.ink, outline: 'none', resize: 'none', fontFamily: MK.disp }} />
+                      </div>
+                    </div>
+                  </MkSec>
+
+                  {/* Client profile + goal + auto-calc */}
+                  {mealClientProfile?.onboarding && (
+                    <MkSec><MkSectionHead icon={<Gauge size={17} strokeWidth={2.1} />}>{t('trainerPlans.clientProfile', 'Client profile')}</MkSectionHead>
+                      <MkCard pad={16}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 9 }}>
+                          {[[t('trainerPlans.level', 'Level'), mealClientProfile.onboarding.fitness_level || '—'],
+                            [t('trainerPlans.goal', 'Goal'), mealClientProfile.onboarding.primary_goal ? t(`trainerNotes.goals.${mealClientProfile.onboarding.primary_goal}`, mealClientProfile.onboarding.primary_goal.replace(/_/g, ' ')) : '—'],
+                            [t('trainerPlans.daysWeek', 'Days / wk'), mealClientProfile.onboarding.training_days_per_week || '—'],
+                            [t('trainerPlans.weight', 'Weight'), mealClientProfile.latestWeight ? `${Math.round(mealClientProfile.latestWeight)} ${t('common:lbs', 'lbs')}` : '—']].map((s, i) => (
+                            <div key={i} style={{ background: MK.inset, borderRadius: 13, padding: '11px 14px' }}>
+                              <div style={{ fontFamily: MK.disp, fontSize: 10.5, fontWeight: 700, color: MK.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s[0]}</div>
+                              <div className="capitalize" style={{ fontFamily: MK.disp, fontSize: 15, fontWeight: 900, color: MK.ink, marginTop: 2 }}>{s[1]}</div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                      <button onClick={handleAutoCalculateMacros}
-                        className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-bold transition-colors min-h-[44px]"
-                        style={{ backgroundColor: TT.accentSoft, color: TT.accentInk }}>
-                        <Zap size={14} />
-                        {t('trainerPlans.autoCalculateMacros', 'Auto-Calculate Macros')}
-                      </button>
-                    </div>
+                        <div style={{ fontFamily: MK.disp, fontSize: 12, fontWeight: 800, color: MK.ink2, textTransform: 'uppercase', letterSpacing: 0.7, margin: '18px 0 11px' }}>{t('trainerPlans.nutritionGoal', 'Nutrition goal')}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {GOAL_OPTIONS.map(g => { const cg = mealClientProfile.onboarding.primary_goal; const on = mealGoalOverride ? mealGoalOverride === g : cg === g;
+                            return <MkPill key={g} on={on} c={MK.teal} size="s" onClick={() => setMealGoalOverride(g === cg ? null : g)}>{t(`trainerNotes.goals.${g}`, g.replace(/_/g, ' '))}</MkPill>; })}
+                        </div>
+                        <div style={{ marginTop: 16 }}><MkBtn variant="soft" block icon={<Zap size={17} color={inkOf(MK.teal)} />} onClick={handleAutoCalculateMacros}>{t('trainerPlans.autoCalculateMacros', 'Auto-calculate macros')}</MkBtn></div>
+                      </MkCard>
+                    </MkSec>
                   )}
 
-                  {/* Client food preferences (allergies + diet) — seeded from the
-                      client's saved prefs, editable here, fed to meal generation. */}
-                  {mealClientProfile?.onboarding && (
-                    <div className="rounded-xl p-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-1" style={{ color: TT.accent }}>{t('trainerPlans.preferences', 'Client preferences')}</p>
-                      <p className="text-[10px] mb-2" style={{ color: TT.textMute }}>{t('trainerPlans.prefsHint', 'Used to filter the generated meals')}</p>
-                      <p className="text-[10px] font-medium mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.allergiesLabel', 'Allergies')}</p>
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        {[...new Set([...COMMON_ALLERGENS, ...mealPrefs.allergies])].map(a => {
-                          const on = mealPrefs.allergies.includes(a);
-                          return (
-                            <button key={a} type="button" onClick={() => togglePref('allergies', a)}
-                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors capitalize"
-                              style={on ? { background: TT.hot, color: '#fff' } : { background: TT.surface, color: TT.textMute, border: `1px solid ${TT.border}` }}>
-                              {prefLabel(a)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="text-[10px] font-medium mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.dietLabel', 'Diet')}</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {[...new Set([...COMMON_DIETS, ...mealPrefs.restrictions])].map(d => {
-                          const on = mealPrefs.restrictions.includes(d);
-                          return (
-                            <button key={d} type="button" onClick={() => togglePref('restrictions', d)}
-                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors capitalize"
-                              style={on ? { background: TT.accent, color: '#06363B' } : { background: TT.surface, color: TT.textMute, border: `1px solid ${TT.border}` }}>
-                              {prefLabel(d)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Name */}
-                  <div>
-                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.planName', 'Plan Name')}</label>
-                    <input value={mealForm.name} onChange={e => setMealForm(f => ({ ...f, name: e.target.value }))}
-                      placeholder={t('trainerPlans.mealPlanNamePlaceholder', 'e.g. Cutting Phase, Bulking Plan')}
-                      className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
-                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
-                  </div>
-
-                  {/* Description */}
-                  <div>
-                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.description', 'Description')}</label>
-                    <textarea value={mealForm.description} onChange={e => setMealForm(f => ({ ...f, description: e.target.value }))} rows={2}
-                      placeholder={t('trainerPlans.mealDescPlaceholder', 'Optional notes about the plan...')}
-                      className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none resize-none"
-                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
-                  </div>
-
-                  {/* Macro targets */}
-                  <div>
-                    <label className="text-[12px] font-medium mb-2 block" style={{ color: TT.textSub }}>{t('trainerPlans.macroTargets', 'Macro Targets')}</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { key: 'target_calories', label: t('trainerPlans.calories', 'Calories'), placeholder: '2200', color: TT.accent },
-                        { key: 'target_protein_g', label: t('trainerPlans.proteinG', 'Protein (g)'), placeholder: '180', color: '#60A5FA' },
-                        { key: 'target_carbs_g', label: t('trainerPlans.carbsG', 'Carbs (g)'), placeholder: '250', color: '#34D399' },
-                        { key: 'target_fat_g', label: t('trainerPlans.fatG', 'Fat (g)'), placeholder: '65', color: '#F472B6' },
-                      ].map(({ key, label, placeholder, color }) => (
-                        <div key={key} className="rounded-xl p-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                          <span className="text-[10px] font-bold uppercase tracking-wider block mb-1" style={{ color }}>{label}</span>
-                          <input type="number" inputMode="numeric" value={mealForm[key]} onChange={e => setMealForm(f => ({ ...f, [key]: e.target.value }))}
-                            placeholder={placeholder} className="w-full bg-transparent text-[20px] font-bold outline-none" style={{ color: TT.text }} />
+                  {/* Macro targets — editable colored cards */}
+                  <MkSec><MkSectionHead icon={<Target size={17} strokeWidth={2.1} />} action={t('trainerPlans.autoCalcShort', 'Auto-calc')} onAction={handleAutoCalculateMacros}>{t('trainerPlans.macroTargets', 'Macro targets')}</MkSectionHead>
+                    <div style={{ display: 'flex', gap: 7 }}>
+                      {[{ key: 'target_calories', label: t('trainerNotes.nutrition.cal', 'Cal'), c: MK.cal }, { key: 'target_protein_g', label: t('trainerNotes.nutrition.protein', 'Protein'), c: MK.pro }, { key: 'target_carbs_g', label: t('trainerNotes.nutrition.carbs', 'Carbs'), c: MK.carb }, { key: 'target_fat_g', label: t('trainerNotes.nutrition.fat', 'Fat'), c: MK.fat }].map(({ key, label, c }) => (
+                        <div key={key} style={{ flex: 1, minWidth: 0, background: soft(c, 13), borderRadius: 14, padding: '11px 4px 12px', textAlign: 'center', overflow: 'hidden' }}>
+                          <div style={{ fontFamily: MK.disp, fontSize: 10, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: inkOf(c) }}>{label}</div>
+                          <input type="number" inputMode="numeric" value={mealForm[key]} onChange={e => setMealForm(f => ({ ...f, [key]: e.target.value }))} placeholder="0"
+                            style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', textAlign: 'center', fontFamily: MK.disp, fontSize: 19, fontWeight: 900, color: MK.ink, letterSpacing: -0.5, marginTop: 4 }} />
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </MkSec>
 
-                  {/* Plan length — how many weeks the client follows this plan */}
-                  <div>
-                    <label className="text-[12px] font-medium mb-2 block" style={{ color: TT.textSub }}>{t('trainerPlans.planLength', 'Plan length')}</label>
-                    <div className="flex gap-1.5 flex-wrap items-center">
-                      {[1, 2, 4, 6, 8, 12].map(w => (
-                        <button key={w} type="button" onClick={() => setMealForm(f => ({ ...f, duration_weeks: w }))}
-                          className="px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors min-h-[44px] min-w-[44px]"
-                          style={Number(mealForm.duration_weeks) === w
-                            ? { backgroundColor: TT.accent, color: '#06363B' }
-                            : { backgroundColor: TT.surface2, color: TT.textMute, border: `1px solid ${TT.border}` }}>
-                          {w}{t('trainerPlans.wSuffix', 'w')}
-                        </button>
-                      ))}
-                      <div className="flex items-center gap-1 px-2.5 rounded-lg min-h-[44px]"
-                        style={![1, 2, 4, 6, 8, 12].includes(Number(mealForm.duration_weeks)) ? { backgroundColor: TT.accent } : { backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                        <input type="number" inputMode="numeric" min={1} max={52} value={mealForm.duration_weeks}
-                          onChange={e => { const v = parseInt(e.target.value, 10); setMealForm(f => ({ ...f, duration_weeks: isNaN(v) ? '' : Math.max(1, Math.min(52, v)) })); }}
-                          aria-label={t('trainerPlans.customWeeks', 'Custom weeks')}
-                          className="w-9 bg-transparent text-center text-[12px] font-semibold outline-none"
-                          style={{ color: ![1, 2, 4, 6, 8, 12].includes(Number(mealForm.duration_weeks)) ? '#06363B' : TT.text }} />
-                        <span className="text-[11px] font-semibold" style={{ color: ![1, 2, 4, 6, 8, 12].includes(Number(mealForm.duration_weeks)) ? '#06363B' : TT.textMute }}>{t('trainerPlans.wSuffix', 'w')}</span>
-                      </div>
+                  {/* Plan length */}
+                  <MkSec><MkSectionHead icon={<Calendar size={17} strokeWidth={2.1} />} tint={MK.coach}>{t('trainerPlans.planLength', 'Plan length')}</MkSectionHead>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+                      {[1, 2, 4, 6, 8, 12].map(w => <MkPill key={w} on={Number(mealForm.duration_weeks) === w} c={MK.coach} onClick={() => setMealForm(f => ({ ...f, duration_weeks: w }))}>{w}{t('trainerPlans.wSuffix', 'w')}</MkPill>)}
+                      {(() => { const custom = ![1, 2, 4, 6, 8, 12].includes(Number(mealForm.duration_weeks)); return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 3, height: 40, padding: '0 13px', borderRadius: 999, ...(custom ? { background: MK.coach } : { background: soft(MK.coach, 13), boxShadow: `inset 0 0 0 1.5px ${MK.border}` }) }}>
+                          <input type="number" inputMode="numeric" min={1} max={52} value={mealForm.duration_weeks}
+                            onChange={e => { const v = parseInt(e.target.value, 10); setMealForm(f => ({ ...f, duration_weeks: isNaN(v) ? '' : Math.max(1, Math.min(52, v)) })); }}
+                            aria-label={t('trainerPlans.customWeeks', 'Custom weeks')} style={{ width: 26, background: 'transparent', border: 'none', outline: 'none', textAlign: 'center', fontFamily: MK.disp, fontSize: 13.5, fontWeight: 800, color: custom ? '#fff' : inkOf(MK.coach) }} />
+                          <span style={{ fontFamily: MK.disp, fontSize: 12, fontWeight: 800, color: custom ? '#fff' : inkOf(MK.coach) }}>{t('trainerPlans.wSuffix', 'w')}</span>
+                        </div>
+                      ); })()}
                     </div>
-                  </div>
+                    <div style={{ fontFamily: MK.disp, fontSize: 11.5, fontWeight: 800, color: MK.ink2, marginBottom: 8 }}>{t('trainerPlans.startDate', 'Start date (optional)')}</div>
+                    <div style={{ height: 48, borderRadius: 14, background: MK.inset, boxShadow: `inset 0 0 0 1.5px ${MK.border}`, display: 'flex', alignItems: 'center', gap: 10, padding: '0 15px' }}>
+                      <Calendar size={17} color={MK.teal} strokeWidth={2} />
+                      <input type="date" value={mealForm.start_date} onChange={e => setMealForm(f => ({ ...f, start_date: e.target.value }))}
+                        style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontFamily: MK.mono, fontSize: 15, fontWeight: 700, color: MK.ink }} />
+                    </div>
+                  </MkSec>
 
-                  {/* Start date (optional) — set so the plan isn't generic */}
-                  <div>
-                    <label className="text-[12px] font-medium mb-1 block" style={{ color: TT.textSub }}>{t('trainerPlans.startDate', 'Start date (optional)')}</label>
-                    <input type="date" value={mealForm.start_date} onChange={e => setMealForm(f => ({ ...f, start_date: e.target.value }))}
-                      className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
-                      style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
-                  </div>
+                  {/* Preferences */}
+                  {mealClientProfile?.onboarding && (
+                    <MkSec><MkSectionHead icon={<Leaf size={17} strokeWidth={2.1} />} tint={MK.good}>{t('trainerPlans.preferences', 'Preferences')}</MkSectionHead>
+                      <MkCard pad={16}>
+                        <div style={{ fontSize: 12.5, color: MK.ink2, marginBottom: 14 }}>{t('trainerPlans.prefsHint', 'Used to filter the generated meals')}</div>
+                        <div style={{ fontFamily: MK.disp, fontSize: 11, fontWeight: 800, color: MK.ink3, textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 10 }}>{t('trainerPlans.allergiesLabel', 'Allergies')}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {[...new Set([...COMMON_ALLERGENS, ...mealPrefs.allergies])].map(a => <MkPill key={a} on={mealPrefs.allergies.includes(a)} c={MK.coral} size="s" onClick={() => togglePref('allergies', a)}>{prefLabel(a)}</MkPill>)}
+                        </div>
+                        <div style={{ fontFamily: MK.disp, fontSize: 11, fontWeight: 800, color: MK.ink3, textTransform: 'uppercase', letterSpacing: 0.7, margin: '18px 0 10px' }}>{t('trainerPlans.dietLabel', 'Diet')}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {[...new Set([...COMMON_DIETS, ...mealPrefs.restrictions])].map(d => <MkPill key={d} on={mealPrefs.restrictions.includes(d)} c={MK.good} size="s" onClick={() => togglePref('restrictions', d)}>{prefLabel(d)}</MkPill>)}
+                        </div>
+                      </MkCard>
+                    </MkSec>
+                  )}
                 </div>
 
                 {/* Footer — Step 1 */}
-                <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-                  <button onClick={closeMealModal}
-                    className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-medium min-h-[44px]"
-                    style={{ backgroundColor: TT.surface2, color: TT.textSub }}>
-                    {t('trainerPlans.cancel', 'Cancel')}
-                  </button>
-                  <button onClick={handleGenerateMeals}
-                    disabled={generatingMeals || !mealForm.target_calories || !mealForm.target_protein_g || !mealForm.name.trim()}
-                    className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-bold min-h-[44px] transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
-                    style={{ background: TT.accent, color: '#06363B' }}>
-                    {generatingMeals ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                    {generatingMeals ? t('trainerPlans.generating', 'Generating…') : t('trainerPlans.generateMeals', 'Generate Meals')}
-                  </button>
+                <div style={{ flexShrink: 0, background: MK.bgElev, boxShadow: `0 -1px 0 ${MK.line}`, padding: '14px 20px 30px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* When meals already exist (came back, or editing) — regenerating is opt-in, not forced. */}
+                  {generatedMeals && (
+                    <MkBtn variant="ghost" block disabled={generatingMeals || !mealForm.target_calories || !mealForm.target_protein_g}
+                      icon={generatingMeals ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={15} />}
+                      onClick={() => { if (mealsDirty) setConfirmRegen(true); else handleGenerateMeals(); }}>
+                      {generatingMeals ? t('trainerPlans.generating', 'Generating…') : t('trainerPlans.regenerateFromSettings', 'Regenerate from these settings')}
+                    </MkBtn>
+                  )}
+                  {/* Fresh create — two paths: let the trainer build it themselves, or generate with AI */}
+                  {!generatedMeals && (
+                    <MkBtn variant="soft" block icon={<Pencil size={16} color={inkOf(MK.teal)} />} disabled={generatingMeals || !mealForm.name.trim()} onClick={handleBuildMyself}>
+                      {t('trainerPlans.buildItMyself', 'Build it myself')}
+                    </MkBtn>
+                  )}
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <MkBtn variant="secondary" block onClick={closeMealModal}>{t('trainerPlans.cancel', 'Cancel')}</MkBtn>
+                    {generatedMeals ? (
+                      <MkBtn variant="primary" block icon={<ChevronRight size={17} color="#fff" />} onClick={() => setMealStep('meals')}>
+                        {t('trainerPlans.continueToMeals', 'Continue to meals')}
+                      </MkBtn>
+                    ) : (
+                      <MkBtn variant="primary" block disabled={generatingMeals || !mealForm.target_calories || !mealForm.target_protein_g || !mealForm.name.trim()}
+                        icon={generatingMeals ? <Loader2 size={17} color="#fff" className="animate-spin" /> : <Zap size={17} color="#fff" />} onClick={handleGenerateMeals}>
+                        {generatingMeals ? t('trainerPlans.generating', 'Generating…') : t('trainerPlans.generateWithAI', 'Generate with AI')}
+                      </MkBtn>
+                    )}
+                  </div>
                 </div>
               </>
             )}
@@ -3028,271 +3738,465 @@ export default function TrainerPlans() {
             {/* ── STEP 2: Meal Preview ── */}
             {mealStep === 'meals' && generatedMeals && (
               <>
-                <div className="flex-1 min-h-0 overflow-y-auto">
-                  {/* Week selector — the same 7-day plan repeats for N weeks.
-                      Dates derive from the chosen start date (or today). */}
+                {/* Generous bottom padding so the last card / "Add meal" clears
+                    the fixed Regenerate+Save footer instead of sitting flush
+                    under its edge. */}
+                <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide" style={{ padding: '22px 20px 36px' }}>
+                  {/* Back exits when the modal opened here (editing an existing
+                      plan). Settings is still reachable via the right action, so
+                      nothing is lost — it just stops pretending to be "back". */}
+                  <MkSheetHead
+                    title={t('trainerPlans.weeklyMeals', 'Weekly meals')}
+                    back={mealEntryStep === 'meals' ? closeMealModal : () => setMealStep('settings')}
+                    onClose={closeMealModal}
+                    right={mealEntryStep === 'meals' ? (
+                      <button type="button" onClick={() => setMealStep('settings')}
+                        aria-label={t('trainerPlans.planSettings', 'Plan settings')}
+                        className="tt-tap"
+                        style={{ width: 38, height: 38, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', background: MK.surface, boxShadow: `inset 0 0 0 1.5px ${MK.border}`, border: 'none', cursor: 'pointer' }}>
+                        <SlidersHorizontal size={17} color={MK.ink2} />
+                      </button>
+                    ) : undefined}
+                  />
                   {(() => {
                     const dw = Math.max(1, Number(mealForm.duration_weeks) || 1);
-                    const previewStart = mealForm.start_date
-                      ? new Date(`${mealForm.start_date}T00:00:00`)
-                      : new Date();
+                    const previewStart = mealForm.start_date ? new Date(`${mealForm.start_date}T00:00:00`) : new Date();
                     const dayDate = (i) => new Date(previewStart.getTime() + (mealPreviewWeek * 7 + i) * 86400000);
                     return (
-                      <>
-                        {dw > 1 && (
-                          <div className="px-4 pt-3">
-                            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                              {Array.from({ length: dw }, (_, w) => (
-                                <button key={w} onClick={() => setMealPreviewWeek(w)} className="shrink-0 tt-tap"
-                                  style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', border: 'none', cursor: 'pointer',
-                                    ...(mealPreviewWeek === w ? { background: TT.accent, color: '#06363B' } : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }) }}>
-                                  {t('trainerPlans.weekN', 'Week {{n}}', { n: w + 1 })}
-                                </button>
-                              ))}
-                            </div>
-                            <p className="text-[10px] mt-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.weeklyRotationNote', 'The same weekly plan repeats each week.')}</p>
-                          </div>
-                        )}
-                        {/* Day selector — Atelier filter chips, with date numbers */}
-                        <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
-                          {DAY_LABELS.map((label, i) => (
-                            <button key={i} onClick={() => setMealPreviewDay(i)}
-                              className="shrink-0 tt-tap"
-                              style={{
-                                padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
-                                whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
-                                ...(mealPreviewDay === i
-                                  ? { background: TT.text, color: TT.onInverse }
-                                  : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
-                              }}>
-                              {label} {dayDate(i).getDate()}
-                            </button>
-                          ))}
+                      <MkSec style={{ marginTop: 20 }}>
+                        {dw > 1 && <MkWeekPicker idx={mealPreviewWeek} total={dw} onPrev={() => setMealPreviewWeek(w => Math.max(0, w - 1))} onNext={() => setMealPreviewWeek(w => Math.min(dw - 1, w + 1))} />}
+                        {dw > 1 && <MkNote>{t('trainerPlans.weeklyRotationNote', 'The same weekly plan repeats each week.')}</MkNote>}
+                        <div style={{ marginTop: dw > 1 ? 14 : 0 }}>
+                          {/* Label comes from the DATE, not the slot index: the
+                              chip shows a real calendar day number, so pairing it
+                              with DAY_LABELS[i] read "Sun 23" on a Thursday
+                              whenever start_date wasn't a Sunday. */}
+                          <MkChipStrip dark value={mealPreviewDay} options={DAY_LABELS.map((_, i) => { const dd = dayDate(i); return { v: i, l: `${DAY_LABELS[dd.getDay()]} ${dd.getDate()}` }; })} onChange={setMealPreviewDay} />
                         </div>
-                      </>
+                      </MkSec>
                     );
                   })()}
 
-                  {/* Day totals */}
                   {generatedMeals[mealPreviewDay] && (
-                    <div className="px-4 pt-3">
-                      <div className="flex items-center gap-3 mb-3 text-[11px]">
-                        <span style={{ color: TT.accent }} className="font-bold">{generatedMeals[mealPreviewDay].totals?.calories || 0} {t('common:cal', 'cal')}</span>
-                        <span style={{ color: '#60A5FA' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.protein || 0}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
-                        <span style={{ color: '#34D399' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.carbs || 0}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
-                        <span style={{ color: '#F472B6' }} className="font-semibold">{generatedMeals[mealPreviewDay].totals?.fat || 0}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
-                        {generatedMeals[mealPreviewDay].fits && (
-                          <span className="text-[10px] font-bold ml-auto" style={{ color: TT.goodInk }}>✓ {t('trainerPlans.macrosFit', 'Macros fit')}</span>
-                        )}
+                    <div>
+                      {/* day totals bar */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '20px 0 16px', background: MK.surface, borderRadius: 16, boxShadow: MK.shadow, padding: '13px 15px' }}>
+                        <MacroReadout kcal={generatedMeals[mealPreviewDay].totals?.calories} macros={{ protein: generatedMeals[mealPreviewDay].totals?.protein, carbs: generatedMeals[mealPreviewDay].totals?.carbs, fat: generatedMeals[mealPreviewDay].totals?.fat }} size={13} />
+                        {generatedMeals[mealPreviewDay].fits && <MkTag c={MK.good} size="s"><Check size={13} color={inkOf(MK.good)} strokeWidth={2.6} style={{ display: 'inline', marginRight: 2 }} />{t('trainerPlans.macrosFit', 'Macros fit')}</MkTag>}
                       </div>
 
                       {/* Meal cards */}
-                      <div className="space-y-2.5 pb-4">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
                         {(generatedMeals[mealPreviewDay].meals || []).map((meal, mi) => {
-                          // Match the slot row by the meal's own tag (set at
-                          // generation/swap) — index only as a fallback.
                           const slot = MEAL_SLOTS.find(s => s.type === meal.slotType) || MEAL_SLOTS[mi] || MEAL_SLOTS[3];
-                          const mealLabel = slot.label;
-                          const mealColor = slot.color;
+                          const slotC = MK_SLOT_C[slot.type] || MK.teal;
                           const mealTitle = i18n.language === 'es' && meal.title_es ? meal.title_es : meal.title;
                           return (
-                            <div key={mi} className="rounded-xl p-3 flex gap-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                              {/* Meal image */}
-                              {mealImgSrc(meal.image) ? (
-                                <img src={mealImgSrc(meal.image)} alt={mealTitle} className="w-16 h-16 rounded-xl object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
-                              ) : (
-                                <div className="w-16 h-16 rounded-xl shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}>
-                                  <UtensilsCrossed size={20} style={{ color: TT.textMute }} />
-                                </div>
-                              )}
-                              {/* Content */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between gap-2 mb-1">
-                                  <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: mealColor }}>{mealLabel}</span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button onClick={() => swapMeal(mealPreviewDay, mi)}
-                                      className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded-lg transition-colors"
-                                      style={{ backgroundColor: TT.surface2, color: TT.textMute }}
-                                      title={t('trainerPlans.swapMeal', 'Swap meal')}>
-                                      <RefreshCw size={11} />
-                                    </button>
-                                    <button onClick={() => { setMealPickerSlot({ dayIdx: mealPreviewDay, mealIdx: mi }); setMealSearch(''); }}
-                                      className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded-lg transition-colors"
-                                      style={{ backgroundColor: TT.accentSoft, color: TT.accent }}
-                                      title={t('trainerPlans.chooseMeal', 'Choose meal')}>
-                                      <Pencil size={11} />
-                                    </button>
-                                    <button onClick={() => removeMeal(mealPreviewDay, mi)}
-                                      className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded-lg transition-colors"
-                                      style={{ backgroundColor: TT.hotSoft, color: TT.hot }}
-                                      title={t('trainerPlans.removeMeal', 'Remove meal')}>
-                                      <Trash2 size={11} />
-                                    </button>
+                            <div key={mi} style={{ background: MK.surface, borderRadius: 20, boxShadow: MK.shadow, overflow: 'hidden' }}>
+                              <div style={{ height: 5, background: slotC }} />
+                              <div style={{ padding: 15 }}>
+                                <div style={{ display: 'flex', gap: 13 }}>
+                                  <FoodTile src={mealImgSrc(meal.image) || null} label={mealTitle} size={64} r={16} tint={slotC} />
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                      <MkTag c={slotC} size="s">{slot.label}</MkTag>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <MkIconBtn size={31} r={10} onClick={() => swapMeal(mealPreviewDay, mi)}><RefreshCw size={15} color={MK.ink2} /></MkIconBtn>
+                                        <MkIconBtn size={31} r={10} soft={soft(MK.teal, 15)} onClick={() => { setMealPickerSlot({ dayIdx: mealPreviewDay, mealIdx: mi }); setMealSearch(''); }}><Pencil size={15} color={inkOf(MK.teal)} /></MkIconBtn>
+                                        <MkIconBtn size={31} r={10} soft={soft(MK.coral, 15)} onClick={() => removeMeal(mealPreviewDay, mi)}><Trash2 size={15} color={inkOf(MK.coral)} /></MkIconBtn>
+                                      </div>
+                                    </div>
+                                    <div className="truncate" style={{ fontFamily: MK.disp, fontSize: 15.5, fontWeight: 800, color: MK.ink, letterSpacing: -0.3, lineHeight: 1.15, margin: '8px 0 7px' }}>{mealTitle}</div>
+                                    <MacroReadout kcal={meal.calories} macros={{ protein: meal.protein, carbs: meal.carbs, fat: meal.fat }} size={11.5} gap={8} />
                                   </div>
                                 </div>
-                                <p className="text-[13px] font-semibold truncate mb-1" style={{ color: TT.text }}>{mealTitle}</p>
-                                <div className="flex items-center gap-2.5 text-[10px]">
-                                  <span style={{ color: TT.accent }}>{meal.calories} {t('common:cal', 'cal')}</span>
-                                  <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
-                                  <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
-                                  <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
-                                </div>
-                                {/* Optional eating time + notes (some diets are time-dependent) */}
-                                <div className="flex items-center gap-2 mt-2">
-                                  <div className="flex items-center gap-1 rounded-lg px-2 py-1" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.border}` }}>
-                                    <Clock size={11} style={{ color: TT.textMute }} />
-                                    <input type="time" value={meal.time || ''} onChange={e => updateMealField(mealPreviewDay, mi, 'time', e.target.value)}
-                                      aria-label={t('trainerPlans.mealTime', 'Meal time')}
-                                      className="bg-transparent text-[11px] outline-none" style={{ color: TT.text, width: 64 }} />
+                                <div style={{ display: 'flex', gap: 9, marginTop: 13 }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 14px', borderRadius: 999, background: MK.inset }}>
+                                    <Clock size={15} color={MK.ink3} />
+                                    <input type="time" value={meal.time || ''} onChange={e => updateMealField(mealPreviewDay, mi, 'time', e.target.value)} aria-label={t('trainerPlans.mealTime', 'Meal time')}
+                                      style={{ background: 'transparent', border: 'none', outline: 'none', fontFamily: MK.mono, fontSize: 13, fontWeight: 700, color: MK.ink, width: 66 }} />
                                   </div>
-                                  <input type="text" value={meal.notes || ''} onChange={e => updateMealField(mealPreviewDay, mi, 'notes', e.target.value)}
-                                    placeholder={t('trainerPlans.mealNotes', 'Notes (optional)')}
-                                    className="flex-1 min-w-0 rounded-lg px-2 py-1 text-[11px] outline-none" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.border}`, color: TT.text }} />
+                                  <input type="text" value={meal.notes || ''} onChange={e => updateMealField(mealPreviewDay, mi, 'notes', e.target.value)} placeholder={t('trainerPlans.mealNotes', 'Notes (optional)')}
+                                    style={{ flex: 1, minWidth: 0, height: 40, padding: '0 15px', borderRadius: 999, background: MK.inset, border: 'none', outline: 'none', fontSize: 13, color: MK.ink }} />
                                 </div>
                               </div>
                             </div>
                           );
                         })}
                         {/* Add another meal to this day */}
-                        <button type="button" onClick={() => addMealToDay(mealPreviewDay)}
-                          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12.5px] font-bold"
-                          style={{ background: TT.accentSoft, color: TT.accentInk, border: `1px dashed ${TT.accent}` }}>
-                          <Plus size={14} /> {t('trainerPlans.addMeal', 'Add meal')}
+                        <button type="button" className="tt-tap" onClick={() => addMealToDay(mealPreviewDay)}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, height: 48, borderRadius: 15, background: soft(MK.teal, 13), color: inkOf(MK.teal), border: `1.5px dashed ${MK.teal}55`, fontFamily: MK.disp, fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
+                          <Plus size={16} strokeWidth={2.4} /> {t('trainerPlans.addMeal', 'Add meal')}
                         </button>
                       </div>
 
-                      {/* ── Meal Picker Overlay ── */}
-                      {mealPickerSlot && (
-                        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={() => setMealPickerSlot(null)}>
-                          <div className="rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
+                      {/* ── Meal Picker Overlay ──
+                          PORTALED to body on purpose. It used to render inline
+                          here, and although it is `fixed z-[110]`, it sat inside
+                          the builder's own stacking context — so the builder's
+                          Regenerate / Save footer painted OVER it, covering the
+                          "Use this meal" button and still swallowing taps (which
+                          saved the plan and threw you off the page). A portal
+                          escapes every ancestor stacking context. */}
+                      {mealPickerSlot && createPortal(
+                        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={() => setMealPickerSlot(null)}>
+                          <div className="rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden" style={{ position: 'relative', backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
+                            {/* Tap-a-meal PREVIEW — see the dish, macros, ingredients + steps before using it */}
+                            {pickerPreview && (() => {
+                              const m = pickerPreview;
+                              const pTitle = i18n.language === 'es' && m.title_es ? m.title_es : m.title;
+                              const ings = Array.isArray(m.ingredients) ? m.ingredients : [];
+                              const amts = Array.isArray(m.ingredientAmounts) ? m.ingredientAmounts : [];
+                              const steps = (i18n.language === 'es' && Array.isArray(m.steps_es) && m.steps_es.length ? m.steps_es : (Array.isArray(m.steps) ? m.steps : []));
+                              return (
+                                <div className="absolute inset-0 z-10 flex flex-col" style={{ background: TT.surface, borderRadius: 16, overflow: 'hidden' }}>
+                                  <div className="flex items-center gap-2 p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
+                                    <button onClick={() => setPickerPreview(null)} aria-label={t('common:back', 'Back')} style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: TT.surface2, border: 'none', cursor: 'pointer', color: TT.text }}><ArrowLeft size={17} /></button>
+                                    <h3 className="text-[15px] font-bold flex-1 truncate" style={{ color: TT.text, fontFamily: TFont.display }}>{pTitle}</h3>
+                                    <button onClick={() => toggleSaveMeal(m.id)} aria-label={t('trainerPlans.save', 'Save')} style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: TT.surface2, border: 'none', cursor: 'pointer' }}><Bookmark size={16} style={{ color: savedMealIds.has(m.id) ? '#D4AF37' : TT.textMute, fill: savedMealIds.has(m.id) ? '#D4AF37' : 'none' }} /></button>
+                                    <button onClick={() => setMealPickerSlot(null)} aria-label={t('common:close', 'Close')} style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: TT.textMute }}><X size={16} /></button>
+                                  </div>
+                                  <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                                    {mealImgSrc(m.image) ? (
+                                      <img src={mealImgSrc(m.image)} alt={pTitle} className="w-full h-52 rounded-2xl object-cover" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
+                                    ) : (
+                                      <div className="w-full h-52 rounded-2xl flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}><UtensilsCrossed size={34} style={{ color: TT.textMute }} /></div>
+                                    )}
+                                    {/* Tag chip (accent pill + green dot) · prep · custom — member style */}
+                                    <div className="flex items-center gap-1.5 mt-3.5 flex-wrap">
+                                      {m.category && (
+                                        <span className="inline-flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', color: TT.accentInk, background: TT.accentSoft, padding: '4px 10px', borderRadius: 999 }}>
+                                          <span style={{ width: 6, height: 6, borderRadius: 999, background: '#2ECC71' }} />
+                                          {t(`trainerClientDetail.mealCategories.${m.category}`, m.category.replace(/_/g, ' '))}
+                                        </span>
+                                      )}
+                                      {m.prepTime ? <span style={{ fontSize: 11, fontWeight: 700, color: TT.textSub, background: TT.surface2, padding: '4px 10px', borderRadius: 999 }}>{m.prepTime} {t('trainerPlans.min', 'min')}</span> : null}
+                                      {m.custom && <span style={{ fontSize: 11, fontWeight: 700, color: TT.accentInk, background: TT.accentSoft, padding: '4px 10px', borderRadius: 999 }}>{t('trainerPlans.customTag', 'Custom')}</span>}
+                                    </div>
+                                    {/* Title + slot-fit line */}
+                                    <h2 style={{ fontFamily: TFont.display, fontSize: 24, fontWeight: 800, color: TT.text, letterSpacing: -0.8, lineHeight: 1.12, marginTop: 12 }}>{pTitle}</h2>
+                                    {(() => { const sc = mealCompatibility(m, pickerSlotType); return sc != null ? (
+                                      <p style={{ fontSize: 12.5, color: TT.textSub, marginTop: 4, fontWeight: 600 }}>{t('trainerPlans.fitsSlot', '{{n}}% fit for this slot', { n: sc })}</p>
+                                    ) : null; })()}
+                                    {/* Macro card — the member's MealMacroCard, verbatim */}
+                                    <div className="mt-3.5">
+                                      <MealMacroCard calories={m.calories} protein={m.protein} carbs={m.carbs} fat={m.fat} background={TT.surface2} />
+                                    </div>
+                                    {/* Recipe — Ingredients | Instructions as TABS (member-side
+                                        pattern). Stacked, they made one long scroll where the
+                                        steps were buried under the ingredient list. */}
+                                    {(ings.length > 0 || steps.length > 0) && (
+                                      <div className="mt-4">
+                                        <div className="flex rounded-xl p-[3px] gap-[3px] mb-3" style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}>
+                                          {[['ingredients', t('trainerPlans.ingredients', 'Ingredients'), ings.length],
+                                            ['instructions', t('trainerPlans.instructions', 'Instructions'), steps.length]].map(([key, lab, n]) => {
+                                            const on = recipeTab === key;
+                                            return (
+                                              <button key={key} type="button" onClick={() => setRecipeTab(key)}
+                                                className="flex flex-1 items-center justify-center gap-1.5 rounded-[9px] min-h-[34px] text-[12.5px] font-bold transition-all"
+                                                style={on
+                                                  ? { background: TT.accent, color: '#06363B', border: 'none' }
+                                                  : { background: 'transparent', color: TT.textMute, border: 'none' }}>
+                                                {lab}
+                                                {n > 0 && <span style={{ fontSize: 10.5, opacity: 0.75 }}>{n}</span>}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                        {recipeTab === 'ingredients' ? (
+                                          ings.length > 0 ? (
+                                            <div className="rounded-[22px] overflow-hidden" style={{ background: TT.surface2 }}>
+                                              {ings.map((ing, i) => (
+                                                <div key={i} className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderTop: i > 0 ? `1px solid ${TT.border}` : 'none' }}>
+                                                  <span className="text-[14px] font-medium" style={{ color: TT.text }}>{humanizeIngredient(ing)}</span>
+                                                  {amts[i] ? <span className="text-[12.5px] font-semibold tabular-nums shrink-0" style={{ color: TT.textMute }}>{amts[i]}</span> : null}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <p className="text-[12.5px] py-6 text-center" style={{ color: TT.textMute }}>{t('trainerPlans.noIngredients', 'No ingredients listed')}</p>
+                                          )
+                                        ) : (
+                                          steps.length > 0 ? (
+                                            <div className="rounded-[22px] px-4 py-4 flex flex-col gap-4" style={{ background: TT.surface2 }}>
+                                              {steps.map((s, i) => (
+                                                <div key={i} className="flex gap-3 text-[13px]">
+                                                  <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 8, background: TT.accentSoft, color: TT.accentInk, fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{i + 1}</span>
+                                                  <span style={{ color: TT.text, lineHeight: 1.65 }}>{s}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <p className="text-[12.5px] py-6 text-center" style={{ color: TT.textMute }}>{t('trainerPlans.noInstructions', 'No instructions listed')}</p>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+                                    <button onClick={() => pickMeal(m)} className="w-full py-3 rounded-xl text-[14px] font-bold flex items-center justify-center gap-2" style={{ background: TT.accent, color: '#06363B' }}>
+                                      <Check size={16} strokeWidth={2.6} /> {t('trainerPlans.useThisMeal', 'Use this meal')}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                            {/* Add-your-own-meal — full panel (name, photo, macros, ingredients, instructions) */}
+                            {showAddMeal && (
+                              <div className="absolute inset-0 z-20 flex flex-col" style={{ background: TT.surface, borderRadius: 16, overflow: 'hidden' }}>
+                                <div className="flex items-center gap-2 p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
+                                  <button onClick={() => { setShowAddMeal(false); setEditingCustomMealId(null); }} aria-label={t('common:back', 'Back')} style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: TT.surface2, border: 'none', cursor: 'pointer', color: TT.text }}><ArrowLeft size={17} /></button>
+                                  <h3 className="text-[15px] font-bold flex-1" style={{ color: TT.text, fontFamily: TFont.display }}>{editingCustomMealId ? t('trainerPlans.editMealTitle', 'Edit meal') : t('trainerPlans.newMealTitle', 'New meal')}</h3>
+                                  <button onClick={() => setMealPickerSlot(null)} aria-label={t('common:close', 'Close')} style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: TT.textMute }}><X size={16} /></button>
+                                </div>
+                                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+                                  <input value={newMeal.name} onChange={e => setNewMeal(n => ({ ...n, name: e.target.value }))}
+                                    placeholder={t('trainerPlans.mealName', 'Meal name')} className="w-full outline-none"
+                                    style={{ background: TT.surface2, border: `1px solid ${TT.border}`, borderRadius: 12, padding: '12px 13px', color: TT.text, fontFamily: TFont.display, fontSize: 15, fontWeight: 700 }} />
+                                  <div className="flex items-center gap-2">
+                                    {newMeal.imageUrl ? (
+                                      <img src={newMeal.imageUrl} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" />
+                                    ) : (
+                                      <div className="w-14 h-14 rounded-xl shrink-0 flex items-center justify-center" style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}>
+                                        <UtensilsCrossed size={18} style={{ color: TT.textMute }} />
+                                      </div>
+                                    )}
+                                    <label className="flex-1 cursor-pointer rounded-xl py-2.5 px-3 text-[12.5px] font-semibold text-center" style={{ background: TT.surface2, border: `1px dashed ${TT.border}`, color: TT.textSub, opacity: uploadingMealPhoto ? 0.6 : 1 }}>
+                                      {uploadingMealPhoto ? t('trainerPlans.uploading', 'Uploading…') : newMeal.imageUrl ? t('trainerPlans.changePhoto', 'Change photo') : t('trainerPlans.addPhoto', 'Add photo (optional)')}
+                                      <input type="file" accept="image/*" className="hidden" disabled={uploadingMealPhoto}
+                                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadMealPhoto(f); e.target.value = ''; }} />
+                                    </label>
+                                    {newMeal.imageUrl && (
+                                      <button type="button" onClick={() => setNewMeal(n => ({ ...n, imageUrl: '' }))} className="min-w-[34px] min-h-[34px] flex items-center justify-center rounded-xl" style={{ background: TT.hotSoft, color: TT.hot }}><X size={14} /></button>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.macrosPerServing', 'Macros (per serving)')}</p>
+                                    <div className="grid grid-cols-4 gap-2">
+                                      {[['calories', t('trainerNotes.nutrition.cal', 'Cal'), TT.accent], ['protein', t('trainerNotes.nutrition.protein', 'Protein'), '#60A5FA'], ['carbs', t('trainerNotes.nutrition.carbs', 'Carbs'), '#34D399'], ['fat', t('trainerNotes.nutrition.fat', 'Fat'), '#F472B6']].map(([k, lab, color]) => (
+                                        <div key={k}>
+                                          <p className="text-[10px] font-bold text-center mb-1" style={{ color }}>{lab}</p>
+                                          <input type="number" inputMode="numeric" min="0" value={newMeal[k]} onChange={e => setNewMeal(n => ({ ...n, [k]: e.target.value }))}
+                                            placeholder="0" className="w-full outline-none"
+                                            style={{ background: TT.surface2, border: `1px solid ${TT.border}`, borderRadius: 10, padding: '10px 6px', color: TT.text, textAlign: 'center', fontFamily: TFont.display, fontWeight: 800, fontSize: 15 }} />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.ingredients', 'Ingredients')} <span className="normal-case font-medium" style={{ color: TT.textFaint }}>· {t('trainerPlans.onePerLine', 'one per line')}</span></p>
+                                    <textarea value={newMeal.ingredients} onChange={e => setNewMeal(n => ({ ...n, ingredients: e.target.value }))} rows={4}
+                                      placeholder={t('trainerPlans.ingredientsPh', '2 eggs\n1 cup oats\n1 scoop whey')}
+                                      className="w-full outline-none resize-none" style={{ background: TT.surface2, border: `1px solid ${TT.border}`, borderRadius: 12, padding: '11px 12px', color: TT.text, fontSize: 13.5, lineHeight: 1.6 }} />
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.instructions', 'Instructions')} <span className="normal-case font-medium" style={{ color: TT.textFaint }}>· {t('trainerPlans.oneStepPerLine', 'one step per line')}</span></p>
+                                    <textarea value={newMeal.instructions} onChange={e => setNewMeal(n => ({ ...n, instructions: e.target.value }))} rows={4}
+                                      placeholder={t('trainerPlans.instructionsPh', 'Whisk the eggs\nCook on medium heat\nTop with berries')}
+                                      className="w-full outline-none resize-none" style={{ background: TT.surface2, border: `1px solid ${TT.border}`, borderRadius: 12, padding: '11px 12px', color: TT.text, fontSize: 13.5, lineHeight: 1.6 }} />
+                                  </div>
+                                </div>
+                                <div className="p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+                                  <button type="button" onClick={addCustomMeal} disabled={!newMeal.name.trim() || savingNewMeal}
+                                    className="w-full py-3 rounded-xl text-[14px] font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                                    style={{ background: TT.accent, color: '#06363B' }}>
+                                    {savingNewMeal ? <Loader2 size={16} className="animate-spin" /> : (editingCustomMealId ? <Check size={16} /> : <Plus size={16} />)}
+                                    {editingCustomMealId ? t('trainerPlans.saveMealChangesShort', 'Save changes') : t('trainerPlans.saveAndUseMeal', 'Save & use')}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             <div className="p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
                               <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-[15px] font-bold" style={{ color: TT.text }}>
+                                <h3 className="text-[15px] font-bold" style={{ color: TT.text, fontFamily: TFont.display }}>
                                   {t('trainerPlans.chooseMeal', 'Choose Meal')}
                                 </h3>
                                 <button onClick={() => setMealPickerSlot(null)} className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg" style={{ color: TT.textMute }}>
                                   <X size={16} />
                                 </button>
                               </div>
-                              <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: TT.textMute }} />
-                                <input value={mealSearch} onChange={e => setMealSearch(e.target.value)}
-                                  placeholder={t('trainerPlans.searchMeals', 'Search meals...')}
-                                  autoFocus
-                                  className="w-full rounded-xl pl-10 pr-4 py-2.5 text-[16px] sm:text-[14px] outline-none"
-                                  style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
+                              {/* Search (name + ingredients) + Filters button */}
+                              <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: TT.textMute }} />
+                                  <input value={mealSearch} onChange={e => setMealSearch(e.target.value)}
+                                    placeholder={t('trainerPlans.searchMealsIng', 'Search meals or ingredients…')}
+                                    className="w-full rounded-xl pl-10 pr-4 py-2.5 text-[16px] sm:text-[14px] outline-none"
+                                    style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }} />
+                                </div>
+                                <button type="button" onClick={() => setShowMealFilters(s => !s)} aria-label={t('trainerPlans.filters', 'Filters')}
+                                  style={{ position: 'relative', width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0,
+                                    border: `1px solid ${(showMealFilters || activeMealFilters) ? TT.accent : TT.border}`, background: (showMealFilters || activeMealFilters) ? TT.accentSoft : TT.surface2, color: (showMealFilters || activeMealFilters) ? TT.accentInk : TT.textSub }}>
+                                  <SlidersHorizontal size={16} />
+                                  {activeMealFilters > 0 && <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16, borderRadius: 999, background: TT.accent, color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'grid', placeItems: 'center', padding: '0 3px' }}>{activeMealFilters}</span>}
+                                </button>
                               </div>
                               {/* Add your own meal → saved to the trainer's private custom-meal library */}
-                              <button type="button" onClick={() => setShowAddMeal(s => !s)}
+                              <button type="button" onClick={() => setShowAddMeal(true)}
                                 className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12.5px] font-bold"
                                 style={{ background: TT.accentSoft, color: TT.accentInk, border: `1px dashed ${TT.accent}` }}>
                                 <Plus size={14} /> {t('trainerPlans.addCustomMeal', 'Add your own meal')}
                               </button>
-                              {showAddMeal && (
-                                <div className="mt-2 rounded-xl p-3 space-y-2" style={{ background: TT.surface2, border: `1px solid ${TT.border}` }}>
-                                  <input value={newMeal.name} onChange={e => setNewMeal(n => ({ ...n, name: e.target.value }))}
-                                    placeholder={t('trainerPlans.mealName', 'Meal name')}
-                                    className="w-full rounded-lg px-3 py-2 text-[16px] sm:text-[14px] outline-none"
-                                    style={{ background: TT.surface, border: `1px solid ${TT.border}`, color: TT.text }} />
-                                  <div className="grid grid-cols-4 gap-2">
-                                    {[['calories', t('trainerNotes.nutrition.cal', 'Cal')], ['protein', t('trainerClientDetail.macros.gramsProtein', 'P')], ['carbs', t('trainerClientDetail.macros.gramsCarbs', 'C')], ['fat', t('trainerClientDetail.macros.gramsFat', 'F')]].map(([k, lab]) => (
-                                      <input key={k} type="number" inputMode="numeric" min="0" value={newMeal[k]} onChange={e => setNewMeal(n => ({ ...n, [k]: e.target.value }))}
-                                        placeholder={lab}
-                                        className="w-full rounded-lg px-2 py-2 text-[14px] text-center outline-none"
-                                        style={{ background: TT.surface, border: `1px solid ${TT.border}`, color: TT.text }} />
-                                    ))}
-                                  </div>
-                                  {/* Optional photo */}
-                                  <div className="flex items-center gap-2">
-                                    {newMeal.imageUrl ? (
-                                      <img src={newMeal.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                                    ) : (
-                                      <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center" style={{ background: TT.surface, border: `1px solid ${TT.border}` }}>
-                                        <UtensilsCrossed size={16} style={{ color: TT.textMute }} />
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto p-2.5">
+                              {filteredMeals.map(({ m: meal, score }) => {
+                                const title = i18n.language === 'es' && meal.title_es ? meal.title_es : meal.title;
+                                const saved = savedMealIds.has(meal.id);
+                                const p = Number(meal.protein) || 0, c = Number(meal.carbs) || 0, f = Number(meal.fat) || 0;
+                                const tot = p + c + f || 1;
+                                const cc = score == null ? TT.textMute : score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : TT.textMute;
+                                return (
+                                  <div key={meal.id} className="w-full flex items-center gap-3 p-2.5 rounded-2xl" style={{ color: TT.text, background: TT.surface, boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)', marginBottom: 8 }}>
+                                    <button onClick={() => { setRecipeTab('ingredients'); setPickerPreview(meal); }} className="flex-1 min-w-0 flex items-center gap-3 text-left active:scale-[0.99]" style={{ color: TT.text }}>
+                                      {mealImgSrc(meal.image) ? (
+                                        // Shimmer until the photo decodes — an
+                                        // un-loaded <img> is a flat grey square,
+                                        // which reads as broken on a slow link.
+                                        <MealThumb src={mealImgSrc(meal.image)} alt={title} />
+                                      ) : (
+                                        <div className="w-14 h-14 rounded-xl shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}>
+                                          <UtensilsCrossed size={18} style={{ color: TT.textMute }} />
+                                        </div>
+                                      )}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="text-[13.5px] font-bold truncate" style={{ fontFamily: TFont.display }}>{title}</p>
+                                          {meal.custom && (
+                                            <span className="shrink-0 text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: TT.accentSoft, color: TT.accentInk }}>{t('trainerPlans.customTag', 'Custom')}</span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                          <span style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.4 }}>{meal.calories}<span className="text-[10px] font-semibold" style={{ color: TT.textMute }}> kcal</span></span>
+                                          {score != null && <span style={{ fontSize: 10, fontWeight: 800, color: cc, background: `${cc}1A`, padding: '1px 6px', borderRadius: 999 }}>{score}% {t('trainerPlans.fit', 'fit')}</span>}
+                                        </div>
+                                        <div className="flex mt-1.5 rounded-full overflow-hidden" style={{ height: 4, background: TT.surface2, gap: 1.5 }}>
+                                          <div style={{ flex: p / tot, background: '#2EC4C4' }} />
+                                          <div style={{ flex: c / tot, background: '#FF7A3D' }} />
+                                          <div style={{ flex: f / tot, background: '#FFC24A' }} />
+                                        </div>
+                                        <div className="flex justify-between mt-1 text-[10px] font-semibold">
+                                          <span style={{ color: '#2EC4C4' }}>{p}P</span>
+                                          <span style={{ color: '#FF7A3D' }}>{c}C</span>
+                                          <span style={{ color: '#FFC24A' }}>{f}F</span>
+                                        </div>
                                       </div>
-                                    )}
-                                    <label className="flex-1 cursor-pointer rounded-lg py-2 px-3 text-[12px] font-semibold text-center" style={{ background: TT.surface, border: `1px dashed ${TT.border}`, color: TT.textSub, opacity: uploadingMealPhoto ? 0.6 : 1 }}>
-                                      {uploadingMealPhoto ? t('trainerPlans.uploading', 'Uploading…') : newMeal.imageUrl ? t('trainerPlans.changePhoto', 'Change photo') : t('trainerPlans.addPhoto', 'Add photo (optional)')}
-                                      <input type="file" accept="image/*" className="hidden" disabled={uploadingMealPhoto}
-                                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadMealPhoto(f); e.target.value = ''; }} />
-                                    </label>
-                                    {newMeal.imageUrl && (
-                                      <button type="button" onClick={() => setNewMeal(n => ({ ...n, imageUrl: '' }))}
-                                        className="min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg" style={{ background: TT.hotSoft, color: TT.hot }}>
-                                        <X size={14} />
+                                    </button>
+                                    {meal.custom && (
+                                      <button onClick={(e) => { e.stopPropagation(); openEditCustomMeal(meal); }} aria-label={t('trainerPlans.editMeal', 'Edit meal')}
+                                        className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: TT.surface2 }}>
+                                        <Pencil size={14} style={{ color: TT.textSub }} />
                                       </button>
                                     )}
+                                    <button onClick={(e) => { e.stopPropagation(); toggleSaveMeal(meal.id); }} aria-label={t('trainerPlans.save', 'Save')}
+                                      className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: TT.surface2 }}>
+                                      <Bookmark size={15} style={{ color: saved ? '#D4AF37' : TT.textMute, fill: saved ? '#D4AF37' : 'none' }} />
+                                    </button>
                                   </div>
-                                  <button type="button" onClick={addCustomMeal} disabled={!newMeal.name.trim() || savingNewMeal}
-                                    className="w-full py-2 rounded-lg text-[13px] font-bold disabled:opacity-40 flex items-center justify-center gap-1.5"
-                                    style={{ background: TT.accent, color: '#06363B' }}>
-                                    {savingNewMeal ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                    {t('trainerPlans.saveAndUseMeal', 'Save & use')}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-h-0 overflow-y-auto p-2">
-                              {filteredMeals.map(meal => {
-                                const title = i18n.language === 'es' && meal.title_es ? meal.title_es : meal.title;
-                                return (
-                                  <button key={meal.id} onClick={() => pickMeal(meal)}
-                                    className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl transition-colors active:scale-[0.98]"
-                                    style={{ color: TT.text }}>
-                                    {mealImgSrc(meal.image) ? (
-                                      <img src={mealImgSrc(meal.image)} alt={title} className="w-12 h-12 rounded-lg object-cover shrink-0" style={{ backgroundColor: TT.surface2 }} loading="lazy" />
-                                    ) : (
-                                      <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface2 }}>
-                                        <UtensilsCrossed size={16} style={{ color: TT.textMute }} />
-                                      </div>
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-[13px] font-semibold truncate flex items-center gap-1.5">
-                                        <span className="truncate">{title}</span>
-                                        {meal.custom && (
-                                          <span className="shrink-0 text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: TT.accentSoft, color: TT.accentInk }}>
-                                            {t('trainerPlans.customTag', 'Custom')}
-                                          </span>
-                                        )}
-                                      </p>
-                                      <div className="flex items-center gap-2.5 mt-0.5 text-[10px]">
-                                        <span style={{ color: TT.accent }}>{meal.calories} {t('common:cal', 'cal')}</span>
-                                        <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
-                                        <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
-                                        <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
-                                      </div>
-                                      <span className="text-[9px] font-medium capitalize mt-0.5 block" style={{ color: TT.textMute }}>
-                                        {meal.category ? t(`trainerClientDetail.mealCategories.${meal.category}`, meal.category.replace(/_/g, ' ')) : ''}
-                                      </span>
-                                    </div>
-                                  </button>
                                 );
                               })}
+                              {mealMatches.length > filteredMeals.length && (
+                                <button type="button" onClick={() => setMealVisible(v => v + 40)} className="w-full py-3 text-[12.5px] font-bold tt-tap" style={{ color: TT.accentInk }}>
+                                  {t('trainerPlans.showMoreMeals', 'Show more ({{n}} left)', { n: mealMatches.length - filteredMeals.length })}
+                                </button>
+                              )}
                               {filteredMeals.length === 0 && (
                                 <p className="text-center py-8 text-[13px]" style={{ color: TT.textMute }}>{t('trainerPlans.noMealsFound', 'No meals found')}</p>
                               )}
                             </div>
                           </div>
-                        </div>
+
+                          {/* Filters — their OWN sheet. Expanded inline they shoved
+                              the meal list off screen and read as a panel dumped
+                              mid-page. A sheet also gives the pill rows room to
+                              scroll properly instead of clipping at both edges. */}
+                          {showMealFilters && !showAddMeal && (() => {
+                            const chip = (on) => ({ padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', ...(on ? { background: TT.accent, color: '#06363B' } : { background: TT.surface2, color: TT.textSub, boxShadow: `inset 0 0 0 1px ${TT.border}` }) });
+                            const label = (s) => <div className="text-[10.5px] font-bold uppercase tracking-wide mt-4 mb-2" style={{ color: TT.textMute }}>{s}</div>;
+                            // A real element, not padding: mobile WebKit collapses
+                            // trailing padding on a horizontal-scroll flex row.
+                            const tail = <span aria-hidden className="shrink-0 w-3" />;
+                            const resetAll = () => { setMealCat('all'); setMealCalBand('all'); setMealMacroFilter('all'); setMealFitsOnly(false); setMealMine(false); };
+                            return (
+                              // stopPropagation is load-bearing: this sheet is a
+                              // SIBLING of the picker card, so it sits directly
+                              // under the portal root whose onClick closes the
+                              // whole Choose-Meal modal. Without it, tapping
+                              // outside the filters dismissed the picker too and
+                              // left the meal slot unfilled.
+                              <div className="absolute inset-0 z-30 flex flex-col justify-end" onClick={(e) => { e.stopPropagation(); setShowMealFilters(false); }}>
+                                <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.45)' }} />
+                                <div onClick={e => e.stopPropagation()} className="relative rounded-t-[22px] flex flex-col"
+                                  style={{ background: TT.surface, borderTop: `1px solid ${TT.borderSolid}`, maxHeight: '86%' }}>
+                                  <div className="flex items-center gap-2 px-4 pt-4 pb-2 shrink-0">
+                                    <h3 className="text-[16px] font-bold flex-1" style={{ color: TT.text, fontFamily: TFont.display }}>{t('trainerPlans.filters', 'Filters')}</h3>
+                                    {activeMealFilters > 0 && (
+                                      <button type="button" onClick={resetAll} className="text-[12.5px] font-bold tt-tap" style={{ color: TT.hot }}>
+                                        {t('trainerPlans.resetFilters', 'Reset')}
+                                      </button>
+                                    )}
+                                    <button type="button" onClick={() => setShowMealFilters(false)} aria-label={t('common:close', 'Close')}
+                                      style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, display: 'grid', placeItems: 'center', background: TT.surface2, border: 'none', cursor: 'pointer', color: TT.textMute }}>
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                  <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 -mx-0">
+                                    <div className="flex gap-2 flex-wrap">
+                                      {mealForm.target_calories && <button type="button" onClick={() => setMealFitsOnly(v => !v)} style={chip(mealFitsOnly)}>{t('trainerPlans.fitsClient', 'Fits client')}</button>}
+                                      <button type="button" onClick={() => setMealMine(v => !v)} style={chip(mealMine)}>{t('trainerPlans.myMeals', 'My meals')}</button>
+                                    </div>
+                                    {label(t('trainerPlans.caloriesLabel', 'Calories'))}
+                                    <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">
+                                      {[['all', t('trainerPlans.allCat', 'All')], ['lt300', '< 300'], ['300_500', '300–500'], ['500_700', '500–700'], ['gt700', '700+']].map(([v, d]) => (
+                                        <button key={v} type="button" onClick={() => setMealCalBand(v)} className="shrink-0" style={chip(mealCalBand === v)}>{d}</button>
+                                      ))}
+                                      {tail}
+                                    </div>
+                                    {label(t('trainerPlans.macros', 'Macros'))}
+                                    <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">
+                                      {[['all', t('trainerPlans.allCat', 'All')], ['high_protein', t('trainerPlans.highProtein', 'High protein')], ['low_carb', t('trainerPlans.lowCarb', 'Low carb')], ['low_fat', t('trainerPlans.lowFat', 'Low fat')]].map(([v, d]) => (
+                                        <button key={v} type="button" onClick={() => setMealMacroFilter(v)} className="shrink-0" style={chip(mealMacroFilter === v)}>{d}</button>
+                                      ))}
+                                      {tail}
+                                    </div>
+                                    {pickerCategories.length > 1 && (<>
+                                      {label(t('trainerPlans.category', 'Category'))}
+                                      <div className="flex gap-2 flex-wrap pb-1">
+                                        {['all', ...pickerCategories].map(cat => (
+                                          <button key={cat} type="button" onClick={() => setMealCat(cat)} style={chip(mealCat === cat)}>
+                                            {cat === 'all' ? t('trainerPlans.allCat', 'All') : t(`trainerClientDetail.mealCategories.${cat}`, cat.replace(/_/g, ' '))}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </>)}
+                                  </div>
+                                  <div className="px-4 pt-2 shrink-0" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+                                    <button type="button" onClick={() => setShowMealFilters(false)}
+                                      className="w-full py-3 rounded-xl text-[14px] font-bold"
+                                      style={{ background: TT.accent, color: '#06363B', border: 'none' }}>
+                                      {t('trainerPlans.showNMeals', 'Show {{n}} meals', { n: mealMatches.length })}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>,
+                        document.body,
                       )}
                     </div>
                   )}
                 </div>
 
                 {/* Footer — Step 2 */}
-                <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-                  <button onClick={() => { if (mealsDirty) { setConfirmRegen(true); } else { handleGenerateMeals(); } }} disabled={generatingMeals}
-                    className="py-3 sm:py-2.5 px-4 rounded-xl text-[13px] font-semibold min-h-[44px] flex items-center gap-1.5"
-                    style={{ backgroundColor: TT.surface2, color: TT.textSub }}>
-                    {generatingMeals ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                <div style={{ flexShrink: 0, background: MK.bgElev, boxShadow: `0 -1px 0 ${MK.line}`, padding: '14px 20px 30px', display: 'flex', gap: 12 }}>
+                  <MkBtn variant="secondary" block disabled={generatingMeals} onClick={() => { if (mealsDirty) { setConfirmRegen(true); } else { handleGenerateMeals(); } }}
+                    icon={generatingMeals ? <Loader2 size={16} color={MK.ink} className="animate-spin" /> : <RefreshCw size={16} color={MK.ink} strokeWidth={2} />}>
                     {t('trainerPlans.regenerate', 'Regenerate')}
-                  </button>
-                  <button onClick={saveMealPlan} disabled={mealSaving}
-                    className="flex-1 py-3 sm:py-2.5 rounded-xl text-[14px] font-bold min-h-[44px] transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
-                    style={{ background: TT.accent, color: '#06363B' }}>
-                    {mealSaving ? <Loader2 size={16} className="animate-spin" /> : <UtensilsCrossed size={16} />}
-                    {mealSaving ? t('trainerPlans.saving', 'Saving...') : t('trainerPlans.assignMealPlan', 'Assign Meal Plan')}
-                  </button>
+                  </MkBtn>
+                  <MkBtn variant="primary" block disabled={mealSaving} onClick={saveMealPlan}
+                    icon={mealSaving ? <Loader2 size={17} color="#fff" className="animate-spin" /> : <UtensilsCrossed size={17} color="#fff" strokeWidth={2.1} />}>
+                    {mealSaving ? t('trainerPlans.saving', 'Saving...') : (editingMealPlanId ? t('trainerPlans.saveMealChanges', 'Save changes') : t('trainerPlans.assignMealPlan', 'Save'))}
+                  </MkBtn>
                 </div>
               </>
             )}
@@ -3332,181 +4236,107 @@ export default function TrainerPlans() {
         </div>
       )}
 
-      {/* ── Saved meal-plan detail viewer ── */}
-      {mealDetail && (
+      {/* ── Saved meal-plan detail viewer — "Warmth (B)" ── */}
+      {mealDetail && (() => {
+        const dw = Math.max(1, Number(mealDetail.duration_weeks) || 1);
+        const dr = planWeekDates(mealDetail, mealDetailWeek);
+        const hasMacros = mealDetail.target_calories || mealDetail.target_protein_g || mealDetail.target_carbs_g || mealDetail.target_fat_g;
+        const targetMac = { protein: mealDetail.target_protein_g || 0, carbs: mealDetail.target_carbs_g || 0, fat: mealDetail.target_fat_g || 0 };
+        const hasMeals = Array.isArray(mealDetail.meals) && mealDetail.meals.length > 0;
+        const openEdit = () => { const p = mealDetail; setMealDetail(null); openMealEditor(p); };
+        const day = hasMeals ? mealDetail.meals[Math.min(mealDetailDay, mealDetail.meals.length - 1)] : null;
+        const ws = planWeekDates(mealDetail, mealDetailWeek)?.ws || (mealDetail.created_at ? new Date(mealDetail.created_at) : null);
+        return (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" onClick={() => setMealDetail(null)}>
-          <div className="rounded-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col" style={{ backgroundColor: TT.surface, border: `1px solid ${TT.borderSolid}` }} onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3 p-4 shrink-0" style={{ borderBottom: `1px solid ${TT.border}` }}>
-              <div className="min-w-0">
-                <h2 className="text-[16px] font-bold truncate" style={{ color: TT.text }}>{mealDetail.name}</h2>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <TPill tone={mealDetail.is_active ? 'good' : 'neutral'} size="s">
-                    {mealDetail.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}
-                  </TPill>
-                  {mealDetail.profiles?.full_name && (
-                    <span className="text-[11px]" style={{ color: TT.textMute }}>
-                      {t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: mealDetail.profiles.full_name })}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button onClick={() => setMealDetail(null)} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg shrink-0" style={{ color: TT.textMute }}>
-                <X size={18} />
-              </button>
-            </div>
+          <div className="w-full max-w-md overflow-hidden max-h-[88vh] flex flex-col" style={{ borderRadius: 26, background: MK.bg, boxShadow: MK.shadowLg }} onClick={e => e.stopPropagation()}>
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide" style={{ padding: '22px 20px 18px' }}>
+              <MkSheetHead title={mealDetail.name} onClose={() => setMealDetail(null)}
+                sub={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <MkTag c={mealDetail.is_active ? MK.teal : MK.ink3} dot size="s">{mealDetail.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}</MkTag>
+                  {mealDetail.profiles?.full_name && <span style={{ color: MK.ink2 }}>{t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: mealDetail.profiles.full_name })}</span>}
+                </span>}
+                right={<MkBtn variant="soft" size="s" icon={<Pencil size={15} color={inkOf(MK.teal)} strokeWidth={2.2} />} onClick={openEdit}>{t('trainerPlans.edit', 'Edit')}</MkBtn>} />
 
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {mealDetail.description && (
-                <p className="text-[12px] px-4 pt-3" style={{ color: TT.textSub }}>{mealDetail.description}</p>
+              {hasMacros && (
+                <MkSec><MkSectionHead icon={<Target size={17} strokeWidth={2.1} />}>{t('trainerPlans.macroTargets', 'Macro Targets')}</MkSectionHead>
+                  <MkCard pad={0} style={{ overflow: 'hidden' }}>
+                    <div style={{ background: `linear-gradient(160deg, ${soft(MK.teal, 10)}, ${MK.surface})`, padding: '20px 18px 18px', display: 'flex', alignItems: 'center', gap: 18 }}>
+                      <MacroRing kcal={mealDetail.target_calories || 0} size={100} stroke={11} value={1} />
+                      <div>
+                        <div style={{ fontFamily: MK.disp, fontSize: 13, fontWeight: 800, color: inkOf(MK.teal), textTransform: 'uppercase', letterSpacing: 0.8 }}>{t('trainerPlans.dailyTarget', 'Daily target')}</div>
+                        <div style={{ fontSize: 13, color: MK.ink2, marginTop: 6, lineHeight: 1.4, maxWidth: 150 }}>{t('trainerPlans.dailyTargetSub', 'Calories & macro split for every day of the plan.')}</div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '16px 18px 18px' }}><MacroCells big macros={targetMac} /></div>
+                  </MkCard>
+                </MkSec>
               )}
 
-              {/* Macro targets */}
-              {(mealDetail.target_calories || mealDetail.target_protein_g || mealDetail.target_carbs_g || mealDetail.target_fat_g) ? (
-                <div className="px-4 pt-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.macroTargets', 'Macro Targets')}</p>
-                  <div className="flex items-center gap-3 text-[11px] flex-wrap">
-                    {mealDetail.target_calories ? <span style={{ color: TT.accent }} className="font-bold">{mealDetail.target_calories} {t('common:cal', 'cal')}</span> : null}
-                    {mealDetail.target_protein_g ? <span style={{ color: '#60A5FA' }} className="font-semibold">{mealDetail.target_protein_g}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span> : null}
-                    {mealDetail.target_carbs_g ? <span style={{ color: '#34D399' }} className="font-semibold">{mealDetail.target_carbs_g}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span> : null}
-                    {mealDetail.target_fat_g ? <span style={{ color: '#F472B6' }} className="font-semibold">{mealDetail.target_fat_g}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span> : null}
+              <MkSec><MkSectionHead icon={<Calendar size={17} strokeWidth={2.1} />} tint={MK.coach}>{t('trainerPlans.timeframe', 'Time frame')}</MkSectionHead>
+                <MkCard pad={16}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: dw > 1 ? 14 : 0, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: MK.disp, fontSize: 17, fontWeight: 900, color: MK.ink }}>{dw} {dw === 1 ? t('trainerPlans.week', 'week') : t('trainerPlans.weeks', 'weeks')}</span>
+                    {dr && <span style={{ fontSize: 12.5, color: MK.ink3 }}>· {format(dr.ws, 'd MMM', { locale: dateFnsLocale })} – {format(dr.we, 'd MMM', { locale: dateFnsLocale })}</span>}
                   </div>
-                </div>
-              ) : null}
+                  {dw > 1 && <MkWeekPicker idx={mealDetailWeek} total={dw} onPrev={() => setMealDetailWeek(w => Math.max(0, w - 1))} onNext={() => setMealDetailWeek(w => Math.min(dw - 1, w + 1))} />}
+                  {dw > 1 && <MkNote>{t('trainerPlans.weeklyRotationNote', 'The same weekly plan repeats each week.')}</MkNote>}
+                </MkCard>
+              </MkSec>
 
-              {Array.isArray(mealDetail.meals) && mealDetail.meals.length > 0 ? (
-                <>
-                  {/* Time frame + week selector — the weekly plan repeats for N weeks */}
-                  {(Number(mealDetail.duration_weeks) > 1 || mealDetail.start_date) && (() => {
-                    const dw = Math.max(1, Number(mealDetail.duration_weeks) || 1);
-                    const dr = planWeekDates(mealDetail, mealDetailWeek);
-                    return (
-                      <div className="px-4 pt-3">
-                        <div className="flex items-center justify-between mb-2 gap-2">
-                          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: TT.textMute }}>{t('trainerPlans.timeframe', 'Time frame')}</p>
-                          <span className="text-[11px] font-semibold text-right" style={{ color: TT.textSub }}>
-                            {dw} {dw === 1 ? t('trainerPlans.week', 'week') : t('trainerPlans.weeks', 'weeks')}{dr ? ` · ${format(dr.ws, 'd MMM', { locale: dateFnsLocale })} – ${format(dr.we, 'd MMM', { locale: dateFnsLocale })}` : ''}
-                          </span>
-                        </div>
-                        {dw > 1 && (
-                          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                            {Array.from({ length: dw }, (_, w) => (
-                              <button key={w} onClick={() => setMealDetailWeek(w)} className="shrink-0 tt-tap"
-                                style={{ padding: '7px 13px', borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', border: 'none',
-                                  ...(mealDetailWeek === w ? { background: TT.accent, color: '#06363B' } : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }) }}>
-                                {t('trainerPlans.weekN', 'Week {{n}}', { n: w + 1 })}
-                              </button>
-                            ))}
+              {hasMeals ? (
+                <MkSec><MkSectionHead icon={<UtensilsCrossed size={17} strokeWidth={2.1} />} tint={MK.hot} action={t('trainerPlans.weeklyMeals', 'Weekly')} onAction={openEdit}>{t('trainerPlans.mealsLabel', 'Meals')}</MkSectionHead>
+                  {/* Same rule as the builder: when we know the real date, the
+                      weekday label must come from THAT date, not the slot index. */}
+                  <div style={{ marginBottom: 14 }}>
+                    <MkChipStrip dark value={mealDetailDay}
+                      options={mealDetail.meals.map((d, i) => { const dd = ws ? new Date(ws.getTime() + i * 86400000) : null; const lab = dd ? DAY_LABELS[dd.getDay()] : (DAY_LABELS[i] || `${t('trainerPlans.day', 'Day')} ${d.day || i + 1}`); return { v: i, l: `${lab}${dd ? ` ${dd.getDate()}` : ''}` }; })}
+                      onChange={setMealDetailDay} />
+                  </div>
+                  {day?.totals && <div style={{ marginBottom: 14, paddingLeft: 2 }}><MacroReadout kcal={day.totals.calories} macros={{ protein: day.totals.protein, carbs: day.totals.carbs, fat: day.totals.fat }} size={13} /></div>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {(day?.meals || []).map((meal, mi) => {
+                      const slot = MEAL_SLOTS.find(s => s.type === (meal.slotType || meal.slot)) || MEAL_SLOTS[mi] || MEAL_SLOTS[3];
+                      const slotC = MK_SLOT_C[slot.type] || MK.teal;
+                      const full = mealById.get(meal.id);
+                      const mealTitle = i18n.language === 'es' && (meal.title_es || full?.title_es) ? (meal.title_es || full?.title_es) : (meal.title || full?.title);
+                      return (
+                        <div key={mi} className="tt-tap" onClick={openEdit} style={{ background: MK.surface, borderRadius: 20, boxShadow: MK.shadow, overflow: 'hidden', cursor: 'pointer' }}>
+                          <div style={{ display: 'flex', gap: 13, padding: 13, alignItems: 'center' }}>
+                            {/* Prefer the image PERSISTED on the plan row —
+                                saveMealPlan writes meal.image, and a custom
+                                meal (custom_<uuid>) isn't in the MEALS catalog
+                                at all, so resolving via `full` alone turned an
+                                uploaded photo into a placeholder after save.
+                                Catalog image is the fallback for older rows
+                                saved before meal.image was persisted. */}
+                            <FoodTile src={mealImgSrc(meal.image) || mealImgSrc(full?.image) || null} label={mealTitle} size={62} r={16} tint={slotC} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <MkTag c={slotC} size="s" style={{ marginBottom: 6 }}>{slot.label}</MkTag>
+                              <div className="truncate" style={{ fontFamily: MK.disp, fontSize: 15, fontWeight: 800, color: MK.ink, letterSpacing: -0.3, lineHeight: 1.15, marginBottom: 7 }}>{mealTitle}</div>
+                              <MacroReadout kcal={meal.calories} macros={{ protein: meal.protein, carbs: meal.carbs, fat: meal.fat }} size={11.5} gap={8} />
+                            </div>
                           </div>
-                        )}
-                        {dw > 1 && <p className="text-[10px] mt-1.5" style={{ color: TT.textMute }}>{t('trainerPlans.weeklyRotationNote', 'The same weekly plan repeats each week.')}</p>}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Day selector — Atelier filter chips, with date numbers.
-                      Week start = chosen start date for the selected week, else
-                      the plan's creation date. */}
-                  {(() => {
-                    const ws = planWeekDates(mealDetail, mealDetailWeek)?.ws
-                      || (mealDetail.created_at ? new Date(mealDetail.created_at) : null);
-                    const dayDate = (i) => (ws ? new Date(ws.getTime() + i * 86400000) : null);
-                    return (
-                      <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-3" style={{ borderBottom: `1px solid ${TT.border}` }}>
-                        {mealDetail.meals.map((day, i) => {
-                          const dd = dayDate(i);
-                          return (
-                            <button key={i} onClick={() => setMealDetailDay(i)}
-                              className="shrink-0 tt-tap"
-                              style={{
-                                padding: '8px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
-                                whiteSpace: 'nowrap', cursor: 'pointer', border: 'none',
-                                ...(mealDetailDay === i
-                                  ? { background: TT.text, color: TT.onInverse }
-                                  : { background: TT.surface, color: TT.textSub, boxShadow: 'inset 0 0 0 1px var(--tt-border)' }),
-                              }}>
-                              {DAY_LABELS[i] || `${t('trainerPlans.day', 'Day')} ${day.day || i + 1}`}{dd ? ` ${dd.getDate()}` : ''}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-
-                  {(() => {
-                    const day = mealDetail.meals[Math.min(mealDetailDay, mealDetail.meals.length - 1)];
-                    if (!day) return null;
-                    return (
-                      <div className="px-4 pt-3">
-                        {day.totals && (
-                          <div className="flex items-center gap-3 mb-3 text-[11px]">
-                            <span style={{ color: TT.accent }} className="font-bold">{day.totals.calories || 0} {t('common:cal', 'cal')}</span>
-                            <span style={{ color: '#60A5FA' }} className="font-semibold">{day.totals.protein || 0}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
-                            <span style={{ color: '#34D399' }} className="font-semibold">{day.totals.carbs || 0}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
-                            <span style={{ color: '#F472B6' }} className="font-semibold">{day.totals.fat || 0}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
-                          </div>
-                        )}
-                        <div className="space-y-2.5 pb-4">
-                          {(day.meals || []).map((meal, mi) => {
-                            const slot = MEAL_SLOTS.find(s => s.type === (meal.slotType || meal.slot)) || MEAL_SLOTS[mi] || MEAL_SLOTS[3];
-                            const full = mealById.get(meal.id);
-                            const mealTitle = i18n.language === 'es' && (meal.title_es || full?.title_es)
-                              ? (meal.title_es || full?.title_es)
-                              : (meal.title || full?.title);
-                            const img = foodImageUrl(full?.image);
-                            return (
-                              <div key={mi} className="rounded-xl p-3 flex gap-3" style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}` }}>
-                                {img ? (
-                                  <img src={img} alt={mealTitle} className="w-16 h-16 rounded-xl object-cover shrink-0" loading="lazy" />
-                                ) : (
-                                  <div className="w-16 h-16 rounded-xl shrink-0 flex items-center justify-center" style={{ backgroundColor: TT.surface }}>
-                                    <UtensilsCrossed size={20} style={{ color: TT.textMute }} />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: slot.color }}>{slot.label}</span>
-                                  <p className="text-[13px] font-semibold truncate mb-1" style={{ color: TT.text }}>{mealTitle}</p>
-                                  <div className="flex items-center gap-2.5 text-[10px]">
-                                    <span style={{ color: TT.accent }}>{meal.calories} {t('common:cal', 'cal')}</span>
-                                    <span style={{ color: '#60A5FA' }}>{meal.protein}g {t('trainerClientDetail.macros.gramsProtein', 'P')}</span>
-                                    <span style={{ color: '#34D399' }}>{meal.carbs}g {t('trainerClientDetail.macros.gramsCarbs', 'C')}</span>
-                                    <span style={{ color: '#F472B6' }}>{meal.fat}g {t('trainerClientDetail.macros.gramsFat', 'F')}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
                         </div>
-                      </div>
-                    );
-                  })()}
-                </>
+                      );
+                    })}
+                  </div>
+                </MkSec>
               ) : (
-                <div className="text-center py-12 px-4">
-                  <UtensilsCrossed size={28} className="mx-auto mb-2" style={{ color: TT.textMute }} />
-                  <p className="text-[13px]" style={{ color: TT.textMute }}>
-                    {t('trainerPlans.noMealsInPlan', 'This plan only has macro targets — no generated meals were saved.')}
-                  </p>
-                </div>
+                <MkSec style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <UtensilsCrossed size={28} color={MK.ink3} style={{ margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: 13, color: MK.ink3 }}>{t('trainerPlans.noMealsInPlan', 'This plan only has macro targets — no generated meals were saved.')}</p>
+                </MkSec>
               )}
             </div>
 
-            {/* Footer actions */}
-            <div className="flex items-center gap-3 p-4 shrink-0" style={{ borderTop: `1px solid ${TT.border}`, paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-              <button onClick={() => toggleMealPlanActive(mealDetail)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px] tt-tap"
-                style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
-                {mealDetail.is_active ? t('trainerPlans.deactivate', 'Deactivate') : t('trainerPlans.activate', 'Activate')}
-              </button>
-              <button onClick={() => setConfirmDeleteMealPlan(mealDetail)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px] tt-tap"
-                style={{ background: TT.hotSoft, color: TT.hot }}>
-                {t('trainerPlans.delete', 'Delete')}
-              </button>
+            <div style={{ flexShrink: 0, background: MK.bgElev, boxShadow: `0 -1px 0 ${MK.line}`, padding: '14px 20px 30px', display: 'flex', gap: 12 }}>
+              <MkBtn variant="secondary" block onClick={() => toggleMealPlanActive(mealDetail)}>{mealDetail.is_active ? t('trainerPlans.deactivate', 'Deactivate') : t('trainerPlans.activate', 'Activate')}</MkBtn>
+              <MkBtn variant="danger" block icon={<Trash2 size={17} color={inkOf(MK.coral)} strokeWidth={2.1} />} onClick={() => setConfirmDeleteMealPlan(mealDetail)}>{t('trainerPlans.delete', 'Delete')}</MkBtn>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Duplicate plan → "which client?" picker */}
       {duplicateTarget && (
@@ -3519,21 +4349,17 @@ export default function TrainerPlans() {
             <p className="text-[13px]" style={{ color: TT.textSub }}>
               {t('trainerPlans.duplicateForBody', 'Who is the copy for?')}
             </p>
-            <select
+            <ClientPickList
               value={duplicateClientId}
-              onChange={e => setDuplicateClientId(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-[16px] sm:text-[14px] outline-none min-h-[44px]"
-              style={{ backgroundColor: TT.surface2, border: `1px solid ${TT.border}`, color: TT.text }}
-            >
-              <option value="">{t('trainerPlans.selectClient', 'Select client...')}</option>
-              {/* Original client first (even if deactivated) so "same client" stays possible */}
-              {duplicateTarget.client_id && !clients.some(c => c.id === duplicateTarget.client_id) && (
-                <option value={duplicateTarget.client_id}>
-                  {(duplicateTarget.profiles?.full_name || t('trainerPlans.formerClient', 'Former client'))}{` ${t('trainerPlans.clientInactiveSuffix', '(inactive)')}`}
-                </option>
-              )}
-              {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-            </select>
+              onChange={setDuplicateClientId}
+              clients={clients}
+              extra={
+                // Original client first (even if deactivated) so "same client" stays possible
+                duplicateTarget.client_id && !clients.some(c => c.id === duplicateTarget.client_id)
+                  ? [{ id: duplicateTarget.client_id, name: `${duplicateTarget.profiles?.full_name || t('trainerPlans.formerClient', 'Former client')} ${t('trainerPlans.clientInactiveSuffix', '(inactive)')}` }]
+                  : []
+              }
+            />
             <div className="flex items-center gap-3 pt-2">
               <button onClick={() => setDuplicateTarget(null)}
                 className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px]"
@@ -3551,9 +4377,116 @@ export default function TrainerPlans() {
         </div>
       )}
 
-      {/* Regenerate confirmation (manual picks/swaps would be discarded) */}
+      {/* Assign-to-client sheet — the primary way to (re)assign an existing plan */}
+      {assignTarget && (() => {
+        const current = assignTarget._memberIds?.length ? assignTarget._memberIds : (assignTarget.client_id ? [assignTarget.client_id] : []);
+        const dirty = [...assignIds].sort().join(',') !== [...current].sort().join(',');
+        const willGoLive = assignIds.length > 0 && (assignTarget.is_draft || !assignTarget.is_active);
+        // Assigned-but-deactivated members → show as toggleable rows so they can be kept or removed.
+        const inactiveRows = assignIds.filter(id => !clients.some(c => c.id === id)).map(id => ({
+          id, name: `${(id === assignTarget.client_id ? assignTarget.profiles?.full_name : '') || t('trainerPlans.formerClient', 'Former client')} ${t('trainerPlans.clientInactiveSuffix', '(inactive)')}`,
+        }));
+        return (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAssignTarget(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+            <div className="flex items-center gap-2.5">
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: TT.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <UserPlus size={19} color={TT.accent} />
+              </div>
+              <h3 className="text-[16px] font-bold leading-tight" style={{ color: TT.text }}>
+                {t('trainerPlans.assignTitle', 'Assign "{{name}}"', { name: assignTarget.name })}
+              </h3>
+            </div>
+            <p className="text-[13px]" style={{ color: TT.textSub }}>
+              {assignTarget.duration_weeks === 0
+                ? t('trainerPlans.assignBodySessionMulti', 'Share this session with one or more clients.')
+                : t('trainerPlans.assignBodyMulti', 'Share this plan with one or more clients.')}
+            </p>
+            {clients.length === 0 && inactiveRows.length === 0 ? (
+              <p className="text-[13px] py-3 text-center" style={{ color: TT.textMute }}>{t('trainerPlans.noClientsAvailable', 'No active clients to assign.')}</p>
+            ) : (
+              <ClientPickList multi values={assignIds} onToggle={toggleAssignId} clients={clients} extra={inactiveRows} />
+            )}
+            {willGoLive && (
+              <p className="text-[12px] rounded-lg px-3 py-2 flex items-start gap-1.5" style={{ color: TT.accentInk, background: TT.accentSoft }}>
+                <Check size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                {t('trainerPlans.assignWillActivate', 'This will activate the plan so they can see it in their app.')}
+              </p>
+            )}
+            <div className="flex items-center gap-3 pt-2">
+              <button onClick={() => setAssignTarget(null)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold min-h-[44px]"
+                style={{ background: TT.surface2, color: TT.textSub, border: `1px solid ${TT.border}` }}>
+                {t('trainerPlans.cancel', 'Cancel')}
+              </button>
+              <button onClick={confirmAssign} disabled={assigning || !dirty}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold min-h-[44px] disabled:opacity-40 flex items-center justify-center gap-1.5"
+                style={{ background: TT.accent, color: '#06363B' }}>
+                {assigning ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                {assignIds.length === 0 ? t('trainerPlans.unassign', 'Unassign') : assignIds.length > 1 ? t('trainerPlans.assignN', 'Assign {{n}}', { n: assignIds.length }) : t('trainerPlans.assign', 'Assign')}
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* Meal-plan: share with additional members (0645) */}
+      {showMealSharePicker && (() => {
+        const pickable = clients.filter(c => c.id !== mealForm.client_id); // primary is the main select
+        return (
+        // z MUST beat the Create Meal Plan modal (z-100) that opens it — at
+        // z-95 this rendered BEHIND that modal, so tapping "Share with more
+        // members" looked like a dead button.
+        <div className="fixed inset-0 z-[135] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowMealSharePicker(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
+            <div className="flex items-center gap-2.5">
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: TT.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Users size={19} color={TT.accent} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[16px] font-bold leading-tight" style={{ color: TT.text }}>{t('trainerPlans.shareWithMore', 'Share with more members')}</h3>
+                <p className="text-[12px]" style={{ color: TT.textSub }}>{t('trainerPlans.mealShareHint', 'Everyone gets the same plan; edit it once for all.')}</p>
+              </div>
+            </div>
+            {pickable.length === 0 ? (
+              <div className="py-6 text-center">
+                <Users size={26} style={{ color: TT.textMute, margin: '0 auto 8px' }} />
+                <p className="text-[13.5px] font-bold" style={{ color: TT.text }}>{t('trainerPlans.noOtherClients', 'No other clients to share with.')}</p>
+                <p className="text-[12px] mt-1" style={{ color: TT.textMute }}>
+                  {t('trainerPlans.noOtherClientsHint', 'Add more clients and they’ll show up here.')}
+                </p>
+              </div>
+            ) : (
+              <ClientPickList multi values={mealShareIds} onToggle={toggleMealShare} clients={pickable} maxHeight={280} />
+            )}
+            {mealShareIds.length > 0 && (
+              <p className="text-[12px]" style={{ color: TT.textMute }}>
+                {t('trainerPlans.membersSelected', '{{n}} selected', { n: mealShareIds.length })}{' · '}
+                <button type="button" onClick={() => setMealShareIds([])} style={{ color: TT.hot, fontWeight: 700 }}>{t('trainerPlans.clearAll', 'Clear')}</button>
+              </p>
+            )}
+            <button onClick={() => setShowMealSharePicker(false)}
+              className="w-full py-2.5 rounded-xl text-[13px] font-bold min-h-[44px]"
+              style={{ background: TT.accent, color: '#06363B' }}>
+              {t('trainerPlans.done', 'Done')}
+            </button>
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* Regenerate confirmation (manual picks/swaps would be discarded).
+          z MUST beat the meal modal that opens it. At an equal z-[100] the
+          modal — being portaled to body, i.e. a LATER sibling of #root — painted
+          over this dialog: the confirm was visible through the translucent
+          backdrop but untappable, and taps fell through to the modal's own
+          backdrop, which ran closeMealModal and threw away the whole
+          in-progress plan. */}
       {confirmRegen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[135] flex items-center justify-center px-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmRegen(false)} />
           <div className="relative w-full max-w-sm rounded-2xl p-6 space-y-4" style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, boxShadow: TT.shadowLg }}>
             <h3 className="text-[16px] font-bold" style={{ color: TT.text }}>

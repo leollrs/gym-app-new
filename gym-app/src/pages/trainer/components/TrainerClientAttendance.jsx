@@ -49,7 +49,7 @@ export default function TrainerClientAttendance({ clientId }) {
 
   const cells = useMemo(() => {
     const first = startOfMonth(viewMonth);
-    const lead = (getDay(first) + 6) % 7; // Monday-start offset
+    const lead = getDay(first); // Sunday-start offset
     const total = getDaysInMonth(viewMonth);
     const out = [];
     for (let i = 0; i < lead; i++) out.push(null);
@@ -58,7 +58,7 @@ export default function TrainerClientAttendance({ clientId }) {
   }, [viewMonth]);
 
   const weekdayLabels = useMemo(() =>
-    [1, 2, 3, 4, 5, 6, 0].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateFnsLocale })), [dateFnsLocale]);
+    [0, 1, 2, 3, 4, 5, 6].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateFnsLocale })), [dateFnsLocale]);
 
   const withCount = withTrainer.size;
   const totalDays = withTrainer.size + alone.size;

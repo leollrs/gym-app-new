@@ -13,7 +13,9 @@ import { BUCKET_BY_ID, STATE_HEX } from '../lib/readinessBuckets';
 //   sex       : 'male' | 'female' (optional; falls back to the male assets)
 //   accent    : active-toggle color (default teal)
 //   maxWidth  : figure max width in px
-export default function MuscleFigure({ readiness, sex, accent = '#19B8B8', maxWidth = 320, labels = {} }) {
+//   onMuscleTap      : (bucketId) => void — makes muscles tappable (optional)
+//   selectedBucketId : currently-highlighted bucket id (optional)
+export default function MuscleFigure({ readiness, sex, accent = '#19B8B8', maxWidth = 320, labels = {}, onMuscleTap, selectedBucketId }) {
   const [view, setView] = useState('front');
   const isFront = view === 'front';
   const assets = getMuscleAssets(sex);
@@ -28,9 +30,10 @@ export default function MuscleFigure({ readiness, sex, accent = '#19B8B8', maxWi
       <button key={v} type="button" onClick={() => setView(v)}
         style={{
           padding: '6px 16px', borderRadius: 999, fontSize: 12, fontWeight: 800, cursor: 'pointer',
-          border: on ? 'none' : '1px solid rgba(15,20,25,0.12)',
+          border: on ? 'none' : '1px solid var(--color-border)',
           background: on ? accent : 'transparent',
-          color: on ? '#fff' : 'rgba(15,20,25,0.55)',
+          // Theme-aware: hardcoded near-black was invisible on dark.
+          color: on ? '#fff' : 'var(--color-text-secondary)',
         }}>
         {label}
       </button>
@@ -45,8 +48,8 @@ export default function MuscleFigure({ readiness, sex, accent = '#19B8B8', maxWi
       </div>
       <div style={{
         position: 'relative', width: '100%', maxWidth, margin: '0 auto',
-        borderRadius: 18, background: 'rgba(15,20,25,0.04)',
-        border: '1px solid rgba(15,20,25,0.08)', padding: 8, overflow: 'hidden',
+        borderRadius: 18, background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)', padding: 8, overflow: 'hidden',
       }}>
         <div style={{ position: 'relative', width: '100%', aspectRatio: `${dim.w} / ${dim.h}` }}>
           <img
@@ -58,15 +61,19 @@ export default function MuscleFigure({ readiness, sex, accent = '#19B8B8', maxWi
               const bucket = BUCKET_BY_ID.get(poly.bucketId);
               const agg = bucket ? aggregateRegions(readiness, bucket.regionIds) : { state: 'fresh' };
               const c = STATE_HEX[agg.state] || STATE_HEX.rest;
+              const isSel = !!selectedBucketId && poly.bucketId === selectedBucketId;
+              const tappable = !!onMuscleTap && !!bucket;
               return (
                 <polygon
                   key={poly.id}
                   points={poly.points}
+                  onClick={tappable ? () => onMuscleTap(poly.bucketId) : undefined}
                   fill={c}
-                  fillOpacity={0.55}
-                  stroke="rgba(0,0,0,0.6)"
-                  strokeWidth={1.4}
+                  fillOpacity={isSel ? 0.85 : 0.55}
+                  stroke={isSel ? accent : 'rgba(0,0,0,0.6)'}
+                  strokeWidth={isSel ? 3 : 1.4}
                   strokeLinejoin="round"
+                  style={tappable ? { cursor: 'pointer', transition: 'fill-opacity .2s, stroke .2s, stroke-width .2s', filter: isSel ? `drop-shadow(0 0 6px ${accent}aa)` : undefined } : undefined}
                 />
               );
             })}

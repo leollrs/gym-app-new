@@ -55,6 +55,24 @@ export function foodImageUrl(path) {
 }
 
 /**
+ * Equipment-station image → its Supabase Storage public URL.
+ * Dedicated "equipment-images" bucket (kept separate from food/meal images),
+ * files stored at the root as "<slug>.jpg" (e.g. "treadmill.jpg"). Accepts a
+ * bare slug ("treadmill"), a legacy "/equipment/<slug>.jpg" path, or a full URL.
+ */
+export function equipmentImageUrl(slugOrPath) {
+  if (!slugOrPath) return null;
+  const s = String(slugOrPath);
+  if (s.startsWith('http') || s.startsWith('data:') || s.startsWith('blob:')) return s;
+  let clean = s.startsWith('/') ? s.slice(1) : s;
+  clean = clean.replace(/^equipment\//, '');          // strip legacy folder prefix
+  clean = clean.replace(/\.png$/i, '.jpg');           // all images re-exported as JPG
+  if (!/\.(jpe?g|webp)$/i.test(clean)) clean = `${clean}.jpg`; // bare slug → add .jpg
+  const { data } = supabase.storage.from('equipment-images').getPublicUrl(clean);
+  return data?.publicUrl || null;
+}
+
+/**
  * Convert a local program image path (e.g. "/programs/starting-strength.jpg")
  * to its Supabase Storage public URL.
  * The bucket is "program-images" and files are stored at the root (e.g. "starting-strength.jpg"),

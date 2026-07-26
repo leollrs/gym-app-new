@@ -10,6 +10,12 @@ import { supabase } from './supabase';
 
 // Monday (local) of the week containing `d`, as YYYY-MM-DD — the period key for
 // weekly check-ins and the anchor for the current habit week.
+//
+// DELIBERATELY MONDAY — do NOT "fix" this to Sunday to match the rest of the
+// app's week display. This value is written to checkin_responses.period_start
+// and is part of the (template_id, profile_id, period_start) conflict key.
+// Re-anchoring it would orphan every existing response row and let members
+// submit a second answer for the same week.
 export function mondayOf(d = new Date()) {
   const date = new Date(d);
   const day = (date.getDay() + 6) % 7; // 0 = Monday

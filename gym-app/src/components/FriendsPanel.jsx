@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { Search, X, Check, Clock, UserPlus, Users, Share2, ChevronDown } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
+import { useScrollLock } from '../hooks/useScrollLock';
 import UserAvatar from './UserAvatar';
 import { PROD_WEB_URL } from '../lib/appUrls';
 import posthogClient from 'posthog-js';
@@ -70,12 +71,13 @@ export default function FriendsPanel({ userId, gymId, gymName, friendships, load
   const [showSent, setShowSent] = useState(false);
   const [cancelingId, setCancelingId] = useState(null);
 
-  // Lock body scroll while the modal is open.
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
+  // Lock body scroll while the modal is open. Uses the shared ref-counted hook
+  // (matches CreatePostModal in SocialFeed, the same-file host's sibling modal)
+  // instead of a hand-rolled `body.style.overflow` toggle: the hook locks BOTH
+  // <html> and <body> via the `modal-scroll-lock` class (which also kills
+  // touch scroll-chaining on #main-content), and ref-counting means a stacked
+  // modal can't restore a stale `overflow` value on unmount.
+  useScrollLock(true);
 
   useEffect(() => {
     if (!userId) return;

@@ -270,7 +270,7 @@ export default function PlatformLayout({ children }) {
           </div>
         </header>
 
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pb-[calc(72px+var(--safe-area-bottom,env(safe-area-inset-bottom)))] md:pb-0">
+        <div ref={scrollContainerRef} data-scroll-container className="flex-1 overflow-y-auto pb-[calc(72px+var(--safe-area-bottom,env(safe-area-inset-bottom)))] md:pb-0">
           {children}
         </div>
       </main>

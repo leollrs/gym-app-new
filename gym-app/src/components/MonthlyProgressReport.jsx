@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useScrollLock } from '../hooks/useScrollLock';
 import logger from '../lib/logger';
 import { epley1RM } from '../lib/overloadEngine';
 import { ACHIEVEMENT_DEFS } from '../lib/achievements';
@@ -161,6 +162,13 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+
+  // Freeze the page behind the report while it's open as a modal. `isOpen` is
+  // undefined in the inline (non-modal) usage, so this is a no-op there. Must
+  // run BEFORE the `if (isModal && !isOpen) return null` bail-out below.
+  // The hook is ref-counted, so hosts that also lock (TrainerClientDetail) are
+  // safe to double-count.
+  useScrollLock(!!isOpen);
 
   // Don't allow navigating into the future
   const canGoNext = isAfter(startOfMonth(new Date()), addMonths(month, 1)) ||

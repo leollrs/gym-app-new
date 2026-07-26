@@ -247,7 +247,7 @@ export default function TrainerLayout({ children }) {
           </div>
         </header>
 
-        <div className="trainer-scroll-region flex-1 overflow-y-auto pt-[calc(52px+env(safe-area-inset-top))] pb-[calc(76px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
+        <div data-scroll-container className="trainer-scroll-region flex-1 overflow-y-auto pt-[calc(52px+env(safe-area-inset-top))] pb-[calc(76px+env(safe-area-inset-bottom))] md:pt-0 md:pb-0">
           {children}
         </div>
       </main>

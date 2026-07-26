@@ -269,7 +269,7 @@ export default function MuscleExercisesSheet({
               <button
                 type="button"
                 onClick={onClose}
-                aria-label={t('common.close', 'Close')}
+                aria-label={t('common:close', 'Close')}
                 className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
               >
                 <X size={16} style={{ color: 'var(--color-text-muted)' }} />

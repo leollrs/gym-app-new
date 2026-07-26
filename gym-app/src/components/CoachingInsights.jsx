@@ -63,8 +63,8 @@ export default function CoachingInsights() {
       const now = new Date();
       const fourWeeksAgo = subDays(now, 28);
       const eightWeeksAgo = subDays(now, 56);
-      const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+      const weekStart = startOfWeek(now, { weekStartsOn: 0 });
+      const weekEnd = endOfWeek(now, { weekStartsOn: 0 });
       const sevenDaysAgo = subDays(now, 7);
 
       // Fetch all data in parallel
@@ -191,7 +191,7 @@ export default function CoachingInsights() {
         // Group by week
         const weekVolumes = {};
         for (const s of fourWeekSessions) {
-          const wk = startOfWeek(new Date(s.completed_at), { weekStartsOn: 1 }).toISOString();
+          const wk = startOfWeek(new Date(s.completed_at), { weekStartsOn: 0 }).toISOString();
           weekVolumes[wk] = (weekVolumes[wk] || 0) + (parseFloat(s.total_volume_lbs) || 0);
         }
         const weekVals = Object.values(weekVolumes);
@@ -301,7 +301,7 @@ export default function CoachingInsights() {
       // Check if volume has increased for 4+ consecutive weeks
       const weeklyVolumes = {};
       for (const s of sessions) {
-        const wk = startOfWeek(new Date(s.completed_at), { weekStartsOn: 1 }).getTime();
+        const wk = startOfWeek(new Date(s.completed_at), { weekStartsOn: 0 }).getTime();
         weeklyVolumes[wk] = (weeklyVolumes[wk] || 0) + (parseFloat(s.total_volume_lbs) || 0);
       }
       const sortedWeeks = Object.entries(weeklyVolumes)

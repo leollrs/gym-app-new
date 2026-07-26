@@ -16,6 +16,7 @@ import { formatDistanceToNow, subDays, startOfWeek } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import useFocusTrap from '../../hooks/useFocusTrap';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont, statusTone, avatarIdx } from './components/designTokens';
@@ -28,6 +29,8 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const focusTrapRef = useFocusTrap(true, onClose);
+  // Mounted only while open → lock unconditionally (ref-counted).
+  useScrollLock(true);
 
   // Same canonical model as the roster list + chips (lib/clientStatus) so the
   // preview never disagrees with the row that opened it.
@@ -252,6 +255,8 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
   const [coachedIds, setCoachedIds] = useState(() => new Set());
   const debounceRef = useRef(null);
   const focusTrapRef = useFocusTrap(true, onClose);
+  // Mounted only while open → lock unconditionally (ref-counted).
+  useScrollLock(true);
 
   const searchMembers = useCallback(async (query) => {
     // Commas/parens break the PostgREST .or() filter grammar (they are its
@@ -493,6 +498,8 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [assigning, setAssigning] = useState(false);
   const focusTrapRef = useFocusTrap(true, onClose);
+  // Mounted only while open → lock unconditionally (ref-counted).
+  useScrollLock(true);
 
   useEffect(() => {
     supabase
@@ -661,6 +668,8 @@ const ComposeMessageModal = ({ selectedClients, onClose, onDone, senderId }) => 
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState({ sent: 0, total: 0 });
   const focusTrapRef = useFocusTrap(true, onClose);
+  // Mounted only while open → lock unconditionally (ref-counted).
+  useScrollLock(true);
 
   const handleSend = async () => {
     const text = message.trim();
@@ -886,6 +895,8 @@ export default function TrainerClients() {
   const [blockingClient, setBlockingClient] = useState(false);
   const removeTrapRef = useFocusTrap(!!removeTarget, () => setRemoveTarget(null));
   const blockTrapRef = useFocusTrap(!!blockTarget, () => setBlockTarget(null));
+  // Inline (non-portaled) remove/block confirms — freeze the roster behind them.
+  useScrollLock(!!removeTarget || !!blockTarget);
 
   const handleMessageClient = async (clientId) => {
     const { data: convId, error } = await supabase.rpc('get_or_create_conversation', { p_other_user: clientId });
@@ -1004,7 +1015,7 @@ export default function TrainerClients() {
       );
       if (recSessError) logger.error('TrainerClients: failed to load recent sessions:', recSessError);
 
-      const weekStartMs = startOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
+      const weekStartMs = startOfWeek(new Date(), { weekStartsOn: 0 }).getTime();
       const recentCounts = {};
       const weekCounts = {};
       (recentSessions || []).forEach(s => {
@@ -1176,8 +1187,8 @@ export default function TrainerClients() {
     { id: 'churn',       label: t('trainerClients.tabChurn', 'Churn'),           count: statusCount('churn') },
     { id: 'new',         label: t('trainerClients.tabNew', 'New'),               count: statusCount('new') },
     { id: 'no_program',  label: t('trainerClients.tabNoPlan', 'No plan'),        count: clients.filter(c => !c.assigned_program_id).length },
-    { id: 'has_program', label: t('trainerClients.tabHasProgram', 'On program'), count: clients.filter(c => c.assigned_program_id).length },
-    { id: 'removed',     label: t('trainerClients.tabRemoved', 'Removed'),       count: removedClients ? removedClients.length : null },
+    // 'On program' + 'Removed' trimmed from the chip row (too many filters).
+    // 'No plan' stays (actionable); removed clients live behind the link below.
   ];
 
   return (
@@ -1293,6 +1304,16 @@ export default function TrainerClients() {
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {/* Removed clients live behind a persistent link (kept out of the chip row) */}
+        {!loading && clients.length > 0 && filter !== 'removed' && (
+          <div style={{ marginTop: -4, marginBottom: 14 }}>
+            <button type="button" onClick={() => setFilter('removed')} className="tt-tap"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: TT.textMute, padding: 0, textDecoration: 'underline' }}>
+              {t('trainerClients.viewRemoved', 'View removed clients')}
+            </button>
           </div>
         )}
 

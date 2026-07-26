@@ -56,7 +56,7 @@ export default function ProductQRModal({ memberId, memberName, gymId, product, o
               className="flex items-center justify-center"
               style={{ width: 220, height: 220 }}
               role="status"
-              aria-label={t('common.loading', { defaultValue: 'Loading' })}
+              aria-label={t('common:loading', { defaultValue: 'Loading' })}
             >
               <div
                 className="w-8 h-8 rounded-full animate-spin"

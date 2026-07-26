@@ -145,7 +145,7 @@ export default function OnboardingTargets({ initial, context = {}, onSave, onClo
     >
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: '1px solid var(--color-border-subtle)' }}>
-        <button type="button" onClick={onClose} aria-label={tt('common.close', 'Close')}
+        <button type="button" onClick={onClose} aria-label={tt('common:close', 'Close')}
           style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 4 }}>
           <X size={22} />
         </button>

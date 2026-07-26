@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Camera, ScanLine } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { handleScannedValue as routerHandleScannedValue } from '../../lib/scanRouter';
@@ -90,7 +91,14 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
 
   const isNative = Capacitor.isNativePlatform();
 
-  return (
+  // Portal to <body> so the overlay is positioned against the viewport, not an
+  // ancestor. This renders inside MemberPurchasesTab, which lives in a
+  // SwipeableTabContent panel whose track has `transform: translateX(...)` +
+  // `will-change: transform` — that makes it the containing block for
+  // `position: fixed`, and the track's wrapper is `overflow-hidden`. Inline, the
+  // scanner was glued inside the tab panel: it scrolled with the page and its
+  // close X could end up off-screen. Same escape hatch as PrintPreviewModal.
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex flex-col bg-[#05070B]">
       {/* Header */}
       <div className="relative flex items-center justify-center py-4 px-4 border-b border-white/[0.06]">
@@ -161,7 +169,8 @@ export default function QRScannerModal({ isOpen, onClose, onScan }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

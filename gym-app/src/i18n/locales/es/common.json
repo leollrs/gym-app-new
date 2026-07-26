@@ -504,5 +504,9 @@
     "distance": "Distancia",
     "pace": "Ritmo",
     "bpm": "PPM"
-  }
+  },
+  "clear": "Limpiar",
+  "prev": "Anterior",
+  "increase": "Aumentar",
+  "decrease": "Disminuir"
 }

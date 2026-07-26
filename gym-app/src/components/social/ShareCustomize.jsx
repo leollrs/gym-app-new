@@ -100,7 +100,7 @@ export default function ShareCustomize({
         <button
           type="button"
           onClick={onClose}
-          aria-label={t('common.back', 'Back')}
+          aria-label={t('common:back', 'Back')}
           className="w-9 h-9 rounded-full flex items-center justify-center"
           style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
         >

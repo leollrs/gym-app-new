@@ -45,8 +45,8 @@ function normalizeHexColor(value, fallbackHex = DEFAULT_PRIMARY) {
   return fallbackHex;
 }
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const DAY_VALUES = [1, 2, 3, 4, 5, 6, 0]; // Monday=1 ... Sunday=0
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_VALUES = [0, 1, 2, 3, 4, 5, 6]; // Sunday=0 ... Saturday=6 (matches gym_hours.day_of_week)
 
 // Compress image on the client before upload
 async function compressImage(file, maxSize = 512, quality = 0.8) {

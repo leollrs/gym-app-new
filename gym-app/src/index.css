@@ -964,7 +964,16 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  /* `clip`, NOT `hidden`. Per CSS Overflow 3 a `visible` value on the other axis
+     computes to `auto`, so `overflow-x: hidden` silently made this element a
+     scroll container. Its height is content-driven, so its scrollTop is always 0
+     while <body> does the real scrolling — and `position: sticky` resolves
+     against the nearest scroll container, so EVERY member page header stopped
+     sticking and just scrolled away. `clip` clips identically without creating a
+     scrollport. The `hidden` line stays first as the fallback: browsers without
+     `clip` (iOS < 16) ignore the second declaration and keep today's behaviour. */
   overflow-x: hidden;
+  overflow-x: clip;
   background-color: var(--color-bg-primary);
   /* Header is fixed with its own safe-area padding; only offset by header height */
   padding-top: calc(52px + var(--safe-area-top, env(safe-area-inset-top)));
@@ -974,6 +983,17 @@ button {
   .app-wrapper {
     padding-top: 0;
   }
+}
+
+/* Member page headers pin BELOW the fixed app bar. `top: 0` would pin them at
+   viewport y=0 — behind it — because .app-wrapper's 52px offset is padding
+   INSIDE the body scrollport, not on the scrollport itself. Mirrors the
+   .app-wrapper padding above exactly: only < 768px, where the bar is fixed. */
+.sticky-under-appbar {
+  top: calc(52px + var(--safe-area-top, env(safe-area-inset-top)));
+}
+@media (min-width: 768px) {
+  .sticky-under-appbar { top: 0; }
 }
 
 /* Desktop sidebar offset — sidebar is 240px fixed on left */
@@ -1168,6 +1188,31 @@ button {
 /* ── Skeleton shimmer ───────────────────────────────────── */
 @keyframes shimmer {
   100% { transform: translateX(100%); }
+}
+
+/* Media placeholder — a sweeping shimmer painted as the element's own
+   background, so it works on a bare <video>/<img> with no extra DOM: the
+   media's pixels simply paint over it once the first frame decodes. Used
+   by LazyVideoTile + ExerciseVideoThumb so exercise tiles read as "loading"
+   instead of "broken" on a slow connection. */
+@keyframes ttMediaShimmer {
+  0%   { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+.tt-media-loading {
+  background-color: var(--color-surface-hover, rgba(127, 127, 127, 0.12));
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--color-text-primary, #fff) 9%, transparent) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: ttMediaShimmer 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-media-loading { animation: none; }
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────── */

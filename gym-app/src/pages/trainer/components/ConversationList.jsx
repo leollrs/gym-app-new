@@ -230,22 +230,27 @@ function SwipeRow({ lang,
             </div>
           </div>
         </button>
-        {/* Pin shortcut — always visible (faint when unpinned) so the tap
-            target is never invisible on touch devices; full opacity when
-            pinned, hovered, or focused. Hidden while swipe-open. */}
+        {/* Pin shortcut. It used to be a 13px glyph at 40% opacity with no
+            surface — invisible in practice, so nobody could tell the control
+            existed or what it did. Now a real chip: its own background + border
+            so it reads as a button, and it fills with the accent when pinned.
+            Hidden while swipe-open. */}
         {!isOpen && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
-            className={`absolute top-1 right-1 min-w-[32px] min-h-[32px] flex items-center justify-center rounded-lg transition-opacity ${
-              isPinned ? 'opacity-100' : 'opacity-40 hover:opacity-100 focus:opacity-100'
-            }`}
-            style={{ color: isPinned ? TT.accent : TT.textMute }}
+            className="absolute top-1.5 right-1.5 w-[34px] h-[34px] flex items-center justify-center rounded-[11px] transition-colors tt-tap"
+            style={{
+              background: isPinned ? TT.accentSoft : TT.surface2,
+              border: `1px solid ${isPinned ? TT.accent : TT.border}`,
+              color: isPinned ? TT.accentInk : TT.textSub,
+            }}
             aria-label={isPinned
               ? t('trainerMessages.list.unpinAria', 'Unpin')
               : t('trainerMessages.list.pinAria', 'Pin')}
+            aria-pressed={isPinned}
           >
-            <Pin size={13} fill={isPinned ? TT.accent : 'none'} />
+            <Pin size={15} strokeWidth={2.2} fill={isPinned ? 'currentColor' : 'none'} />
           </button>
         )}
       </motion.div>

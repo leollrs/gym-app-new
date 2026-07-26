@@ -24,6 +24,7 @@ import { stripExif } from '../lib/stripExif';
 import logger from '../lib/logger';
 import AvatarPicker from '../components/AvatarPicker';
 import MyTrainerCard from '../components/MyTrainerCard';
+import MySessionsCard from '../components/MySessionsCard';
 import UserAvatar from '../components/UserAvatar';
 import ShareAchievementSheet from '../components/share/ShareAchievementSheet';
 import ShareMonthSheet from '../components/share/ShareMonthSheet';
@@ -1069,6 +1070,9 @@ const Profile = () => {
       {/* ── My Trainer card (only when the member has an active trainer) ──── */}
       <MyTrainerCard />
 
+      {/* ── Training-sessions wallet (only when they have prepaid sessions) ── */}
+      <MySessionsCard />
+
       {/* ── Underline tabs (Profile A) ──────────────────────────────────── */}
       <div
         className="flex mb-5"
@@ -1594,7 +1598,13 @@ const Profile = () => {
           )}
 
           {/* ── Sticky save bar ────────────────────────────────────── */}
-          {editingGoals && goalsDraft && (
+          {/* Portaled to <body>: the enclosing `.animate-fade-in` wrapper ends its
+              keyframe on `transform: translateY(0)` with `animation-fill-mode:
+              forwards`, so it keeps a non-`none` transform forever — which makes
+              it the containing block for `position: fixed`. Left in place, this bar
+              parked at the END of the long goals form (user had to scroll to the
+              bottom to find Save) and was only as wide as the 480px column. */}
+          {editingGoals && goalsDraft && createPortal(
             <div className="fixed bottom-[56px] md:bottom-0 left-0 right-0 z-50 flex gap-3 px-4 py-3 md:pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))] bg-[var(--color-bg-primary)] border-t border-[var(--color-border-subtle)]">
               <button type="button"
                 onClick={() => setEditingGoals(false)}
@@ -1608,7 +1618,8 @@ const Profile = () => {
                 style={{ background: 'var(--color-accent)' }}>
                 {savingGoals ? t('profile.savingEllipsis') : t('profile.saveChanges')}
               </button>
-            </div>
+            </div>,
+            document.body,
           )}
         </div>
       )}

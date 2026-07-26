@@ -253,7 +253,7 @@ export default function DeletedWorkoutsModal({ open, onClose, onRestored }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, WebkitOverflowScrolling: 'touch' }}>
           {loading ? (
             <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '32px 12px', fontSize: 13 }}>
-              {t('common.loading', { ns: 'common', defaultValue: 'Loading…' })}
+              {t('common:loading', { ns: 'common', defaultValue: 'Loading…' })}
             </p>
           ) : items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 16px' }}>

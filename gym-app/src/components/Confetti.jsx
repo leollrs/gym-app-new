@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 // ── Particle colors (gold / amber / orange / white) ────────────────────────────
 const COLORS = ['#D4AF37', '#F59E0B', '#FF8A00', '#E5E7EB'];
@@ -108,11 +109,18 @@ export default function Confetti({
 
   if (!active) return null;
 
-  return (
+  // Portal to <body> so the canvas is fixed to the VIEWPORT. Call sites live
+  // inside transformed ancestors (the Progress SwipeableTabView track's
+  // `transform: translateX(...)`, `.animate-fade-in`'s forwards-filled
+  // `translateY(0)`), which would otherwise make `position: fixed` resolve
+  // against that box — so the burst played off-screen whenever the user was
+  // scrolled down to the goal card that triggered it.
+  return createPortal(
     <canvas
       ref={canvasRef}
       className="fixed inset-0 pointer-events-none z-[201]"
       style={{ width: '100vw', height: '100vh' }}
-    />
+    />,
+    document.body,
   );
 }

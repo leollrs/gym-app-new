@@ -244,6 +244,64 @@ export function aggregateRegions(readinessMap, regionIds) {
   };
 }
 
+/**
+ * What the member actually DID for a muscle bucket in the window — the exercises
+ * they performed that hit any of `regionIds`, with set counts + volume. Powers the
+ * trainer-side drill-down (tap a muscle on the figure → "here's what they trained
+ * for it this week, and the recovery effect"). Reuses the exact exercise→region
+ * contribution logic as computeReadiness so attribution matches the body map.
+ *
+ * @param {Array}    sessions   - completed sessions with nested workout_sets
+ * @param {string[]} regionIds  - the bucket's engine region ids
+ * @param {object}   [options]  - { windowDays=7, now=new Date(), minContribution=0.25 }
+ * @returns {{ exercises: Array<{exerciseId,exercise,sets,volume,reps,contribution}>, totalSets:number, totalVolume:number }}
+ */
+export function bucketExerciseBreakdown(sessions, regionIds, options = {}) {
+  const { windowDays = 7, now = new Date(), minContribution = 0.25 } = options;
+  const windowMs = windowDays * MS_PER_DAY;
+  const nowMs = now.getTime();
+  const wanted = Array.isArray(regionIds) ? regionIds : [];
+  const byEx = new Map();
+  if (!Array.isArray(sessions) || wanted.length === 0) return { exercises: [], totalSets: 0, totalVolume: 0 };
+
+  for (const session of sessions) {
+    const completedAt = session.completed_at ? new Date(session.completed_at).getTime() : null;
+    if (!completedAt || nowMs - completedAt > windowMs) continue;
+    const sets = Array.isArray(session.workout_sets) ? session.workout_sets : [];
+    for (const set of sets) {
+      if (!set || set.completed === false) continue;
+      const ex = EXERCISE_LOOKUP.get(set.exercise_id);
+      if (!ex) continue;
+      const scores = ex.muscleScores || {};
+      const primary = ex.primaryRegions || [];
+      const secondary = ex.secondaryRegions || [];
+      // Best contribution this exercise makes to the wanted bucket.
+      let contribution = 0;
+      for (const rid of wanted) {
+        let s = 0;
+        if (typeof scores[rid] === 'number') s = scores[rid] / 100;
+        else if (primary.includes(rid)) s = 0.9;
+        else if (secondary.includes(rid)) s = 0.4;
+        if (s > contribution) contribution = s;
+      }
+      if (contribution < minContribution) continue;
+      const reps = Number(set.reps) || 0;
+      const weight = Number(set.weight_lbs) || 0;
+      const cur = byEx.get(set.exercise_id) || { exerciseId: set.exercise_id, exercise: ex, sets: 0, volume: 0, reps: 0, contribution: 0 };
+      cur.sets += 1;
+      cur.volume += weight * reps;
+      cur.reps += reps;
+      cur.contribution = Math.max(cur.contribution, contribution);
+      byEx.set(set.exercise_id, cur);
+    }
+  }
+
+  const exercises = Array.from(byEx.values()).sort((a, b) => b.sets - a.sets || b.volume - a.volume);
+  const totalSets = exercises.reduce((s, e) => s + e.sets, 0);
+  const totalVolume = exercises.reduce((s, e) => s + e.volume, 0);
+  return { exercises, totalSets, totalVolume: Math.round(totalVolume) };
+}
+
 // Counts of how many *bucket* regions sit in each state, given a list of buckets.
 // Each bucket is { id, regionIds: [...] } — see READINESS_BUCKETS in the modal.
 export function bucketCounts(readinessMap, buckets) {

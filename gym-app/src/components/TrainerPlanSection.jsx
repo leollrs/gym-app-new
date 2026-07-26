@@ -343,13 +343,28 @@ export default function TrainerPlanSection() {
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
-    supabase
-      .from('trainer_workout_plans')
-      .select('id, name, description, duration_weeks, weeks, is_active, updated_at, trainer_id, profiles!trainer_workout_plans_trainer_id_fkey(full_name)')
-      .eq('client_id', user.id)
-      .eq('is_active', true)
-      .order('updated_at', { ascending: false })
-      .then(({ data, error }) => {
+    (async () => {
+      try {
+        // A plan reaches this member either as the legacy single client_id OR
+        // shared with them via trainer_plan_members (0644). Pull the junction
+        // ids first (missing table pre-migration → just falls back to client_id).
+        let junctionIds = [];
+        const { data: jm, error: jmErr } = await supabase
+          .from('trainer_plan_members')
+          .select('plan_id')
+          .eq('member_id', user.id);
+        if (!jmErr) junctionIds = (jm || []).map(r => r.plan_id).filter(Boolean);
+
+        let q = supabase
+          .from('trainer_workout_plans')
+          .select('id, name, description, duration_weeks, weeks, is_active, updated_at, trainer_id, profiles!trainer_workout_plans_trainer_id_fkey(full_name)')
+          .eq('is_active', true)
+          .order('updated_at', { ascending: false });
+        q = junctionIds.length
+          ? q.or(`client_id.eq.${user.id},id.in.(${junctionIds.join(',')})`)
+          : q.eq('client_id', user.id);
+
+        const { data, error } = await q;
         if (cancelled) return;
         if (error) {
           // RLS/read failure → quietly hide the section, never block Workouts
@@ -358,10 +373,10 @@ export default function TrainerPlanSection() {
           return;
         }
         setPlans(data || []);
-      })
-      .catch(err => {
+      } catch (err) {
         if (!cancelled) { logger.error('TrainerPlanSection: failed to load trainer plans:', err); setPlans([]); }
-      });
+      }
+    })();
     return () => { cancelled = true; };
   }, [user?.id]);
 
@@ -394,7 +409,9 @@ export default function TrainerPlanSection() {
                   {plan.profiles?.full_name
                     ? `${t('trainerPlanViewer.byCoach', 'From {{name}}', { name: plan.profiles.full_name })} · `
                     : ''}
-                  {t('trainerPlanViewer.planMeta', '{{weeks}} wk · {{days}} days', { weeks: plan.duration_weeks || Object.keys(plan.weeks || {}).length, days: totalDays })}
+                  {plan.duration_weeks === 0
+                    ? t('trainerPlanViewer.singleSession', 'Single session')
+                    : t('trainerPlanViewer.planMeta', '{{weeks}} wk · {{days}} days', { weeks: plan.duration_weeks || Object.keys(plan.weeks || {}).length, days: totalDays })}
                 </p>
               </div>
               <ChevronRight size={16} className="flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }} />

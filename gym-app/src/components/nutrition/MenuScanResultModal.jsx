@@ -143,7 +143,7 @@ export default function MenuScanResultModal({
         <div className="flex items-center justify-between px-4 pt-4 pb-3">
           <button
             onClick={onClose}
-            aria-label={t('common.close', 'Close')}
+            aria-label={t('common:close', 'Close')}
             className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
             style={{
               background: 'var(--color-bg-surface)',
@@ -351,7 +351,7 @@ export default function MenuScanResultModal({
               </div>
               <button
                 onClick={() => !saving && setConfirmItem(null)}
-                aria-label={t('common.close', 'Close')}
+                aria-label={t('common:close', 'Close')}
                 className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform"
                 style={{
                   background: 'var(--color-bg-surface)',

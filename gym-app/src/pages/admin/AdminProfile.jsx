@@ -120,7 +120,7 @@ export default function AdminProfile() {
     queryFn: async () => {
       // Monday 00:00 of the current week. The "Actions" KPI is scoped to this
       // week — the all-time count grew unboundedly large and wasn't useful.
-      const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString();
+      const weekStart = startOfWeek(new Date(), { weekStartsOn: 0 }).toISOString();
       const [actionsRes, membersRes, profileRes] = await Promise.all([
         supabase.from('admin_audit_log').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('actor_id', profile.id).gte('created_at', weekStart),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('role', 'member'),

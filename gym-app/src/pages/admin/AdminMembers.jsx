@@ -31,6 +31,7 @@ import PasswordResetApprovalModal from './components/PasswordResetApprovalModal'
 
 import { translateSignal as translateChurnSignal } from '../../lib/churn/signalI18n';
 import { fetchMembers, fetchAllInvites, getInviteStatus, MEMBERS_PAGE_SIZE } from '../../lib/admin/memberQueries';
+import { useScrollLock } from '../../hooks/useScrollLock';
 export { translateChurnSignal };
 
 // Members directory page size for the numbered pagination. 7 rows render in full
@@ -203,14 +204,12 @@ export default function AdminMembers() {
   const [exporting, setExporting] = useState(null);
   const exportMenuRef = useRef(null);
 
-  // Lock body scroll while any bulk action / quick message / QR invite modal is open
-  const anyAdminMembersModalOpen = !!qrInvite || !!bulkAction || !!quickMsgMemberId;
-  useEffect(() => {
-    if (!anyAdminMembersModalOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [anyAdminMembersModalOpen]);
+  // Lock body scroll while any bulk action / quick message / QR invite modal is
+  // open. The house hook (ref-counted) also freezes #main-content and kills
+  // touch-action scroll-chaining via index.css `.modal-scroll-lock`, which a bare
+  // `document.body.style.overflow` does not — and it composes with nested modals
+  // instead of clobbering their saved value.
+  useScrollLock(!!qrInvite || !!bulkAction || !!quickMsgMemberId);
 
   // Close export menu on outside click
   useEffect(() => {

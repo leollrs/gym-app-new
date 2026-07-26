@@ -37,6 +37,7 @@ import CreateCampaignModal from './components/CreateCampaignModal';
 import BulkMessageModal from './components/BulkMessageModal';
 import MemberDetailPanel from './components/MemberDetailPanel';
 import { outcomeConfig, METHOD_I18N } from './components/churnDisplay';
+import { useScrollLock } from '../../hooks/useScrollLock';
 
 // ── Data fetcher ──────────────────────────────────────────
 async function fetchChurnData(gymId) {
@@ -196,13 +197,12 @@ export default function AdminChurn() {
   const [selectedMember, setSelectedMember] = useState(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
-  // Lock body scroll while the mobile member-detail sheet is open
-  useEffect(() => {
-    if (!mobileDetailOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [mobileDetailOpen]);
+  // Lock body scroll while the mobile member-detail sheet is open. The house hook
+  // (ref-counted) also freezes #main-content and kills touch-action scroll-chaining
+  // via index.css `.modal-scroll-lock`, which a bare `document.body.style.overflow`
+  // does not — and it composes with nested modals instead of clobbering their
+  // saved value.
+  useScrollLock(mobileDetailOpen);
 
   // A/B campaign state
   const [createCampaignModal, setCreateCampaignModal] = useState(false);

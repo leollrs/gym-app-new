@@ -504,5 +504,9 @@
     "distance": "Distance",
     "pace": "Pace",
     "bpm": "BPM"
-  }
+  },
+  "clear": "Clear",
+  "prev": "Previous",
+  "increase": "Increase",
+  "decrease": "Decrease"
 }

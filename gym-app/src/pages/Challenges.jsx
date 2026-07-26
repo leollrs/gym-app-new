@@ -1032,22 +1032,27 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
     setMyInvites(prev => prev.filter(i => i.id !== invite.id));
   };
 
-  if (loading) return (
+  // Portal to <body> so the overlay ESCAPES the SwipeableTabView track's
+  // `transform: translateX(...)` (a transformed ancestor makes `position: fixed`
+  // resolve against IT, not the viewport — on the Upcoming/Ended tabs the track
+  // sits at -100%/-200%, which pushed this dialog fully off-screen).
+  if (loading) return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4" role="dialog" aria-modal="true" aria-label={t('challenges.team.joinTeam', 'Join Team Challenge')}>
       <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-3xl p-6 pb-10">
         <div className="flex justify-center py-8" role="status" aria-busy={true} aria-label={t('challenges.loading', 'Loading')}><div className="w-6 h-6 border-2 border-[var(--color-accent,#2EC4C4)]/30 border-t-[var(--color-accent,#2EC4C4)] rounded-full animate-spin" /></div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4" role="dialog" aria-modal="true" aria-label={step === 'create' ? t('challenges.team.createTeam', 'Create Team') : t('challenges.team.joinTeam', 'Join Team Challenge')} onClick={onClose}>
       <div className="w-full max-w-[480px] bg-[var(--color-bg-card)] rounded-3xl p-6 pb-10 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[18px] font-bold text-[var(--color-text-primary)]">
             {step === 'create' ? t('challenges.team.createTeam', 'Create Team') : t('challenges.team.joinTeam', 'Join Team Challenge')}
           </h3>
-          <button type="button" onClick={onClose} aria-label={t('common.close', 'Close')} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">✕</button>
+          <button type="button" onClick={onClose} aria-label={t('common:close', 'Close')} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">✕</button>
         </div>
 
         {/* Incoming invites */}
@@ -1127,7 +1132,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setStep('choose')}
                 className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] border border-[var(--color-border)]">
-                {t('common.back', 'Back')}
+                {t('common:back', 'Back')}
               </button>
               <button type="button" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}
                 className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50" style={{ background: 'var(--color-accent,#2EC4C4)' }}>
@@ -1137,7 +1142,8 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -2460,7 +2466,7 @@ export default function Challenges({ embedded = false }) {
     <div className={`${embedded ? '' : 'min-h-screen pb-28 md:pb-12'}`} style={{ background: 'var(--color-bg-primary)' }}>
       {/* Header */}
       {!embedded && (
-      <div className="sticky top-0 z-20" style={{
+      <div className="sticky sticky-under-appbar z-20" style={{
         background: 'var(--color-bg-primary)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',

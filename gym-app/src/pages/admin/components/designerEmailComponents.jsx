@@ -349,7 +349,7 @@ function EmailWelcomePoster({ lang = 'es', name, gymName, logoUrl, coachName, E 
 
 function EmailRecapMagazine({ lang = 'es', name, gymName, logoUrl, coachName, v, E = BASE_E }) {
   const days = [3, 4, 2, 5, 0, 3, 4];
-  const labels = lang === 'es' ? ['L', 'M', 'M', 'J', 'V', 'S', 'D'] : ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const labels = lang === 'es' ? ['D', 'L', 'M', 'M', 'J', 'V', 'S'] : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const stats = lang === 'es'
     ? [{ k: '4', l: 'Sesiones', d: '+1 vs semana pasada' }, { k: v.streak_count, l: 'Días de racha', d: 'mejor del mes' }, { k: '12,4k', l: 'Pasos / día', d: 'promedio' }, { k: '+5kg', l: 'En sentadilla', d: 'PR nuevo' }]
     : [{ k: '4', l: 'Sessions', d: '+1 vs last week' }, { k: v.streak_count, l: 'Streak days', d: 'best this month' }, { k: '12.4k', l: 'Steps / day', d: 'average' }, { k: '+5kg', l: 'On squat', d: 'new PR' }];

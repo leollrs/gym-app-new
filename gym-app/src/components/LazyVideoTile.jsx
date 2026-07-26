@@ -22,6 +22,11 @@ export default function LazyVideoTile({ src, className = '', style }) {
   // This is what makes the cache work — src stays attached so the
   // browser doesn't re-fetch when we scroll past.
   const [hasLoaded, setHasLoaded] = useState(false);
+  // First decoded frame. Until then the element paints the shimmer class as
+  // its own background — no wrapper div, so every caller's layout is
+  // untouched. On a slow connection this is the difference between a tile
+  // that reads as "loading" and one that reads as broken.
+  const [hasFrame, setHasFrame] = useState(false);
 
   useEffect(() => {
     const node = ref.current;
@@ -58,7 +63,11 @@ export default function LazyVideoTile({ src, className = '', style }) {
       muted
       playsInline
       preload="metadata"
-      className={className}
+      onLoadedData={() => setHasFrame(true)}
+      // Also clear on error: a 404'd or undecodable video would otherwise
+      // shimmer forever, which reads as "still loading" rather than "no video".
+      onError={() => setHasFrame(true)}
+      className={`${className}${hasFrame ? '' : ' tt-media-loading'}`}
       style={style}
     />
   );

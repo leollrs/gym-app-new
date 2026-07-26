@@ -302,7 +302,7 @@ const estimateRoutineMinutes = (rows) => {
   return Math.max(1, Math.round(secs / 60));
 };
 
-const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart, onStats, showDelete = false }) => {
+const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart, onStats, showDelete = false, canEdit = true }) => {
   const { t } = useTranslation('pages');
   const [exercises, setExercises] = useState(() => routineExerciseCache.get(routineId) || []);
   const [loaded, setLoaded] = useState(() => routineExerciseCache.has(routineId));
@@ -404,7 +404,9 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart, onSta
       >
         <Play size={16} fill="currentColor" style={{ marginLeft: -2 }} /> {t('workouts.startWorkout')}
       </Link>
+      {(canEdit || showDelete) && (
       <div className="flex gap-2 mt-2.5">
+        {canEdit && (
         <button
           onClick={onEdit}
           className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-[13px] text-[13.5px] font-bold transition-transform active:scale-[0.98]"
@@ -412,6 +414,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart, onSta
         >
           <Pencil size={14} /> {t('workouts.edit')}
         </button>
+        )}
         {showDelete && (
           <button
             onClick={onDelete}
@@ -423,6 +426,7 @@ const RoutineDetail = ({ routineId, onEdit, onDelete, deletingId, onStart, onSta
           </button>
         )}
       </div>
+      )}
       {/* Tapped-exercise info card — reuses the library's rich detail modal (video,
           muscle diagram, cues). Lazy; renders above the routine sheet (z-[10000]). */}
       {infoExercise && (
@@ -686,6 +690,10 @@ const Workouts = () => {
   const wCacheKey = `workouts-${user?.id}`;
   const [gymPrograms, setGymPrograms]       = useCachedState(`${wCacheKey}-gymPrograms`, []);
   const [programsLoading, setProgramsLoading] = useState(false);
+  // source_program_id → allow_client_edit, for coach-managed program COPIES
+  // (trainer_client_programs). A member can view but not restructure a program
+  // their coach controls unless the coach flipped allow_client_edit on.
+  const [coachEditLock, setCoachEditLock] = useState(() => new Map());
   const [enrolledIds, setEnrolledIds]       = useCachedState(`${wCacheKey}-enrolled`, new Set());
   const [selectedProgram, setSelectedProgram] = useState(null);
 
@@ -731,9 +739,27 @@ const Workouts = () => {
           .eq('gym_id', profile.gym_id).eq('is_published', true).order('created_at', { ascending: false }).limit(50));
       }
       const { data: enrolled } = await enrolledP;
-      setGymPrograms(progs || []);
+      // Overlay any per-client program COPIES (a trainer's edits, migration 0640)
+      // onto their source templates, so the member trains the edited version
+      // transparently — everything downstream (start flow, materialization to
+      // generated_programs.template_weeks) reads `.weeks`. Guarded: pre-0640
+      // schemas have no table, so templates pass through unchanged.
+      let merged = progs || [];
+      try {
+        const { data: copies } = await supabase
+          .from('trainer_client_programs')
+          .select('source_program_id, name, name_es, weeks, duration_weeks, allow_client_edit')
+          .eq('client_id', user.id).eq('is_active', true);
+        const bySrc = new Map((copies || []).filter(c => c.source_program_id).map(c => [c.source_program_id, c]));
+        setCoachEditLock(new Map((copies || []).filter(c => c.source_program_id).map(c => [c.source_program_id, !!c.allow_client_edit])));
+        if (bySrc.size) merged = merged.map(p => {
+          const c = bySrc.get(p.id);
+          return c ? { ...p, weeks: c.weeks || p.weeks, duration_weeks: c.duration_weeks ?? p.duration_weeks, name: c.name || p.name, name_es: c.name_es ?? p.name_es } : p;
+        });
+      } catch { /* trainer_client_programs not deployed yet → templates unchanged */ }
+      setGymPrograms(merged);
       setEnrolledIds(new Set((enrolled || []).map(r => r.program_id)));
-      try { localStorage.setItem('offline_gym_programs', JSON.stringify(progs || [])); } catch {}
+      try { localStorage.setItem('offline_gym_programs', JSON.stringify(merged)); } catch {}
     } catch {
       // Offline fallback
       try {
@@ -1091,6 +1117,12 @@ const Workouts = () => {
       ...(Array.isArray(sm.routine_ids_b) ? sm.routine_ids_b : []),
     ]);
   }, [programActive, generatedProgram]);
+  // Coach-managed lock: when the active program is a per-client COPY the coach
+  // controls (trainer_client_programs) and they haven't allowed edits, the member
+  // can view but not restructure it (program editor + its routines' edit buttons).
+  const activeProgSrcId = programActive && generatedProgram?.template_id?.startsWith('gym_')
+    ? generatedProgram.template_id.slice(4) : null;
+  const activeEditLocked = activeProgSrcId != null && coachEditLock.has(activeProgSrcId) && !coachEditLock.get(activeProgSrcId);
   const isActiveRoutine = useCallback((routine) => {
     if (!programActive || !routine) return false;
     if (activeProgramRoutineIds.size > 0) return activeProgramRoutineIds.has(routine.id);
@@ -2316,7 +2348,7 @@ const Workouts = () => {
                               </div>
                             </div>
                             {isExpanded && (
-                              <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} onStart={() => posthog?.capture('routine_started', { routine_name: routine.name })} />
+                              <RoutineDetail routineId={routine.id} onEdit={() => navigate(`/workouts/${routine.id}/edit`)} onDelete={(e) => handleDelete(e, routine.id)} deletingId={deletingId} onStart={() => posthog?.capture('routine_started', { routine_name: routine.name })} canEdit={!(activeEditLocked && activeProgramRoutineIds.has(routine.id))} />
                             )}
                           </div>
                         );
@@ -2764,11 +2796,19 @@ const Workouts = () => {
               <div className="relative px-6 pt-5 pb-4" style={{ background: 'linear-gradient(135deg, var(--color-accent), var(--color-accent-dark, color-mix(in srgb, var(--color-accent) 68%, #000)))' }}>
                 <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.12, backgroundImage: 'repeating-linear-gradient(135deg,#fff 0 1px,transparent 1px 10px)' }} />
                 <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
-                  <button onClick={() => { setBuilderProgram(prog); setShowBuilder(true); }} aria-label={t('workouts.editProgram', 'Edit')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-bold active:scale-95 transition-transform"
-                    style={{ background: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 20%, transparent)', color: 'var(--color-text-on-accent, #fff)' }}>
-                    <Pencil size={13} />{t('workouts.editProgram', 'Edit')}
-                  </button>
+                  {activeEditLocked ? (
+                    <span aria-label={t('workouts.coachManaged', "Coach's plan")} title={t('workouts.coachManagedHint', 'Your coach manages this program')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-bold"
+                      style={{ background: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 16%, transparent)', color: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 82%, transparent)' }}>
+                      <Lock size={12} />{t('workouts.coachManaged', "Coach's plan")}
+                    </span>
+                  ) : (
+                    <button onClick={() => { setBuilderProgram(prog); setShowBuilder(true); }} aria-label={t('workouts.editProgram', 'Edit')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-bold active:scale-95 transition-transform"
+                      style={{ background: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 20%, transparent)', color: 'var(--color-text-on-accent, #fff)' }}>
+                      <Pencil size={13} />{t('workouts.editProgram', 'Edit')}
+                    </button>
+                  )}
                   <button onClick={() => { loadExerciseNames(); openMyProgram(prog); }} aria-label={t('workouts.programInfo', 'Program info')}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-bold active:scale-95 transition-transform"
                     style={{ background: 'color-mix(in srgb, var(--color-text-on-accent, #fff) 20%, transparent)', color: 'var(--color-text-on-accent, #fff)' }}>
@@ -3282,6 +3322,7 @@ const Workouts = () => {
                 onStart={() => { posthog?.capture('routine_started', { routine_name: routine.name }); setExpandedRoutineId(null); }}
                 onStats={({ minutes }) => setDetailMinutes(minutes)}
                 showDelete
+                canEdit={!(activeEditLocked && activeProgramRoutineIds.has(expandedRoutineId))}
               />
             </div>
           </div>

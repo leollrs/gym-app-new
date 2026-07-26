@@ -172,7 +172,7 @@ export default function WellnessCheckinModal({ open, onClose, onSaved }) {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onClose?.(); }}
                   className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/[0.08] transition-colors"
-                  aria-label={t('common.close', 'Close')}
+                  aria-label={t('common:close', 'Close')}
                 >
                   <X size={16} style={{ color: 'var(--color-text-muted)' }} />
                 </button>

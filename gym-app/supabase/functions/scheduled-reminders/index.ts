@@ -664,6 +664,64 @@ async function checkWeightLogReminder(supabase: ReturnType<typeof createClient>,
 //  MAIN HANDLER
 // ═══════════════════════════════════════════════════════════════
 
+// ── Trainer attendance reconciliation (session outcomes) ────
+// One global pass per tick (NOT per-member). For past 1-on-1/intake sessions
+// still 'scheduled'/'confirmed': if the client logged a completed workout
+// inside the session window → auto-mark it 'completed' (the durable server-side
+// backstop for the client-side auto-mark in TrainerCalendar). If NOT → nudge
+// the trainer (in-app + push, deduped per session) to mark attendance.
+async function checkUnmarkedSessions(supabase: ReturnType<typeof createClient>, nowMs: number) {
+  const WINDOW = 90 * 60000; // ±90 min around the session window
+  const fromIso = new Date(nowMs - 48 * 3600 * 1000).toISOString(); // don't reprocess ancient ones
+  const toIso = new Date(nowMs - 2 * 3600 * 1000).toISOString();    // ended ≥2h ago (grace period)
+  const { data: sessions } = await supabase
+    .from('trainer_sessions')
+    .select('id, trainer_id, client_id, gym_id, scheduled_at, duration_mins, client:profiles!trainer_sessions_client_id_fkey (full_name)')
+    .in('status', ['scheduled', 'confirmed'])
+    .not('client_id', 'is', null)
+    .gte('scheduled_at', fromIso)
+    .lte('scheduled_at', toIso)
+    .limit(500);
+  if (!sessions?.length) return { autoMarked: 0, nudged: 0 };
+
+  const clientIds = [...new Set(sessions.map((s) => s.client_id))];
+  const trainerIds = [...new Set(sessions.map((s) => s.trainer_id))];
+  const [{ data: workouts }, { data: trainers }] = await Promise.all([
+    supabase.from('workout_sessions').select('profile_id, started_at')
+      .in('profile_id', clientIds).eq('status', 'completed')
+      .gte('started_at', new Date(nowMs - 50 * 3600 * 1000).toISOString()),
+    supabase.from('profiles').select('id, language').in('id', trainerIds),
+  ]);
+  const byClient: Record<string, number[]> = {};
+  (workouts || []).forEach((w) => { (byClient[w.profile_id] ||= []).push(new Date(w.started_at).getTime()); });
+  const langOf: Record<string, string> = {};
+  (trainers || []).forEach((tp) => { langOf[tp.id] = tp.language || 'en'; });
+
+  const toComplete: string[] = [];
+  let nudged = 0;
+  for (const s of sessions) {
+    const st = new Date(s.scheduled_at).getTime();
+    const en = st + (s.duration_mins || 60) * 60000;
+    const trained = (byClient[s.client_id] || []).some((tms) => tms >= st - WINDOW && tms <= en + WINDOW);
+    if (trained) { toComplete.push(s.id); continue; }
+    // No workout data → nudge the trainer once (dedup per session id).
+    const lang = langOf[s.trainer_id] || 'en';
+    const name = (s.client as { full_name?: string } | null)?.full_name || msg(lang, 'your client', 'tu cliente');
+    const title = msg(lang, 'Mark session attendance', 'Marca la asistencia');
+    const body = msg(lang, `Did ${name} show up? Tap to mark the session.`, `¿${name} asistió? Toca para marcar la sesión.`);
+    const inserted = await insertNotif(supabase, s.trainer_id, s.gym_id, 'client_no_show', title, body, `session_unmarked_${s.id}`);
+    if (inserted) { nudged++; await sendPush(supabase, s.trainer_id, title, body, { route: '/trainer/calendar', type: 'session_unmarked' }, false); }
+  }
+  if (toComplete.length) {
+    // auto_marked so the pack trigger (0648) does NOT bill a prepaid session on
+    // this heuristic — the trainer confirms in-app to bill it.
+    await supabase.from('trainer_sessions')
+      .update({ status: 'completed', auto_marked: true, updated_at: new Date().toISOString() })
+      .in('id', toComplete);
+  }
+  return { autoMarked: toComplete.length, nudged };
+}
+
 Deno.serve(async (req) => {
   // ── Auth: require valid cron secret OR service-role token ──
   // Existing pg_cron job (migration 0280) sends Authorization: Bearer <service_role_key>.
@@ -816,12 +874,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // One global pass (not per-member): reconcile past trainer sessions —
+    // auto-mark attended-by-workout, nudge the trainer on the rest.
+    let sessionRecon = { autoMarked: 0, nudged: 0 };
+    try { sessionRecon = await checkUnmarkedSessions(supabase, nowMs); }
+    catch (e) { console.warn('checkUnmarkedSessions failed:', e); }
+
     const duration = Date.now() - startTime;
-    console.log(`Processed ${totalProcessed} members in ${duration}ms`);
+    console.log(`Processed ${totalProcessed} members in ${duration}ms; sessions auto-marked ${sessionRecon.autoMarked}, nudged ${sessionRecon.nudged}`);
 
     return new Response(JSON.stringify({
       message: 'Reminders processed',
       members_processed: totalProcessed,
+      session_recon: sessionRecon,
       duration_ms: duration,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 

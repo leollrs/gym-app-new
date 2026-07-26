@@ -19,7 +19,7 @@ import Skeleton from '../../components/Skeleton';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont } from './components/designTokens';
 import {
-  TCard, TEyebrow, TPageTitle, TDarkButton, TPrimaryButton, TPill,
+  TCard, TEyebrow, TPageTitle, TPrimaryButton, TPill,
 } from './components/designPrimitives';
 
 // Shared form styles (match TrainerProfile)
@@ -453,7 +453,7 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
 
   // ── Week view (Mon-first agenda; current week, so one-off dates land) ──
   const renderWeek = () => {
-    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
     return (
       <div>
         {[0, 1, 2, 3, 4, 5, 6].map(offset => {
@@ -481,12 +481,12 @@ function MyClassesTab({ classes, gymId, t, tc, dateLocale }) {
   // ── Month view (calendar; tap a day → day view) ──
   const renderMonth = () => {
     const first = startOfMonth(monthDate);
-    const lead = (getDay(first) + 6) % 7; // Monday-first offset
+    const lead = getDay(first); // Sunday-first offset
     const days = getDaysInMonth(monthDate);
     const cells = [];
     for (let i = 0; i < lead; i++) cells.push(null);
     for (let d = 1; d <= days; d++) cells.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), d));
-    const weekdayLabels = [1, 2, 3, 4, 5, 6, 0].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateLocale }));
+    const weekdayLabels = [0, 1, 2, 3, 4, 5, 6].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateLocale }));
     return (
       <>
         <Stepper
@@ -560,7 +560,7 @@ function BookingsTab({ classes, t, dateLocale }) {
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
   const [rangeStart, rangeEnd] = useMemo(() => {
-    if (view === 'week') return [startOfWeek(anchorDate, { weekStartsOn: 1 }), endOfWeek(anchorDate, { weekStartsOn: 1 })];
+    if (view === 'week') return [startOfWeek(anchorDate, { weekStartsOn: 0 }), endOfWeek(anchorDate, { weekStartsOn: 0 })];
     if (view === 'month') return [startOfMonth(anchorDate), endOfMonth(anchorDate)];
     return [anchorDate, anchorDate];
   }, [view, anchorDate]);
@@ -764,7 +764,7 @@ function BookingsTab({ classes, t, dateLocale }) {
 
   // ── Week view: 7 day-summary rows ──
   const renderWeek = () => {
-    const ws = startOfWeek(anchorDate, { weekStartsOn: 1 });
+    const ws = startOfWeek(anchorDate, { weekStartsOn: 0 });
     const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -806,12 +806,12 @@ function BookingsTab({ classes, t, dateLocale }) {
   // ── Month view: calendar with booking-count badges ──
   const renderMonth = () => {
     const first = startOfMonth(anchorDate);
-    const lead = (getDay(first) + 6) % 7;
+    const lead = getDay(first); // Sunday-first offset
     const daysIn = getDaysInMonth(anchorDate);
     const cells = [];
     for (let i = 0; i < lead; i++) cells.push(null);
     for (let d = 1; d <= daysIn; d++) cells.push(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), d));
-    const weekdayLabels = [1, 2, 3, 4, 5, 6, 0].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateLocale }));
+    const weekdayLabels = [0, 1, 2, 3, 4, 5, 6].map(d => format(new Date(2024, 0, 7 + d), 'EEEEE', { locale: dateLocale }));
     return (
       <TCard padded={12}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
@@ -1607,11 +1607,11 @@ export default function TrainerClasses() {
             </TEyebrow>
             <TPageTitle>{t('trainerClasses.title')}</TPageTitle>
           </div>
-          <TDarkButton onClick={() => setShowProposeClass(true)}>
+          <TPrimaryButton onClick={() => setShowProposeClass(true)}>
             <Plus size={14} strokeWidth={2.4} />
             <span className="hidden sm:inline">{t('trainerClasses.addClass', '+ Add class')}</span>
             <span className="sm:hidden">{t('trainerClasses.propose', 'Propose')}</span>
-          </TDarkButton>
+          </TPrimaryButton>
         </div>
 
         {/* Tab bar — sub-tab navigation */}

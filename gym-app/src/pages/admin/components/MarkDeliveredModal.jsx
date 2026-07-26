@@ -118,7 +118,7 @@ export default function MarkDeliveredModal({ card, gymId, onClose }) {
           </div>
           <button
             onClick={onClose}
-            aria-label={t('common.close', { defaultValue: 'Close' })}
+            aria-label={t('common:close', { defaultValue: 'Close' })}
             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)' }}
           >

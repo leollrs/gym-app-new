@@ -16,7 +16,12 @@ const RATING_EMOJIS = [
 const SessionSummary = ({ workout, sessionPRs, totalVolume, duration, completedSets, totalSets, onConfirm, onCancel, saving, error, onRetry, sessionRating, onRatingChange }) => {
   const { t } = useTranslation('pages');
   return (
-  <div className="fixed inset-0 z-[150] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+  // z-160, ABOVE the pause overlay (SessionHeader, z-150). Both mount as
+  // children of the same session shell and the pause overlay is later in JSX, so
+  // at equal z it covered this one: the 2-hour auto-end, a Watch "end workout",
+  // and resuming a "save for later" draft all open Finish while isPaused is
+  // still true — the trainer tapped Finish and just kept staring at PAUSED.
+  <div className="fixed inset-0 z-[160] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
     <div className="rounded-3xl w-full max-w-lg pb-10 pt-6 px-6 animate-fade-in border border-white/10 shadow-[0_24px_80px_rgba(0,0,0,0.45)]" style={{ background: 'var(--color-bg-card)' }}>
       <h2 className="font-black text-[22px] mb-1 truncate" style={{ color: 'var(--color-text-primary)' }}>{t('sessionSummary.thatsAWrap')}</h2>
       <p className="text-[14px] mb-6 truncate" style={{ color: 'var(--color-text-subtle)' }}>{localizeRoutineName(workout)} · {duration}</p>

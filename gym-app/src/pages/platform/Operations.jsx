@@ -131,7 +131,7 @@ function ConfirmModal({ open, title, message, onConfirm, onCancel }) {
   const { t } = useTranslation('pages');
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative bg-[#0F172A] border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
         <h3 className="text-[15px] font-bold text-[#E5E7EB] mb-2">{title}</h3>
@@ -254,7 +254,7 @@ function MaintenanceSetupModal({ open, onClose, onSave, saving, isActive, initia
   }`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
       <div className="relative bg-[#0F172A] border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
         <h3 className="text-[15px] font-bold text-[#E5E7EB] mb-1">

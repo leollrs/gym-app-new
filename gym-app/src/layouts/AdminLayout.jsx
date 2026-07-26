@@ -305,7 +305,13 @@ export default function AdminLayout({ children }) {
     <ScanClaimProvider>
     <InsightsRangeProvider>
     {isImpersonating && (
-      <div className="w-full px-4 py-2 flex items-center justify-center gap-3 text-[12px] font-semibold sticky top-0 z-[120]" style={{ background: '#D4AF37', color: '#000' }}>
+      /* z-[55]: above page chrome (mobile header + bottom nav are z-50) but BELOW
+         every admin overlay (more-menu z-[60]/z-[70], QRScannerModal z-[70],
+         MemberDetail z-[120], PrintPreviewModal z-[100]). At the old z-[120] this
+         banner painted over open dialogs — including the QR scanner's close X,
+         which made the scanner impossible to dismiss. Safe-area top padding keeps
+         the text out from under the status bar on notched devices. */
+      <div className="w-full px-4 py-2 flex items-center justify-center gap-3 text-[12px] font-semibold sticky top-0 z-[55]" style={{ background: '#D4AF37', color: '#000', paddingTop: 'calc(0.5rem + var(--safe-area-top, env(safe-area-inset-top)))' }}>
         <Eye className="w-3.5 h-3.5 flex-shrink-0" />
         <span className="text-center">{t('impersonation.banner', { gym: impersonatedGymName, defaultValue: 'Viewing {{gym}} as admin (super-admin) — some edits may be restricted' })}</span>
         <button

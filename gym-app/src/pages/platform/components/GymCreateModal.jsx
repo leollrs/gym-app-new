@@ -163,8 +163,11 @@ export default function GymCreateModal({ onClose, onCreated, t, showToast, profi
   };
 
   return (
-    // Center-aligned modal (per project rule: never bottom-sheet)
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // Center-aligned modal (per project rule: never bottom-sheet).
+    // z-[100] (not z-50) so it clears PlatformLayout's fixed bottom nav (z-50,
+    // rendered after <main> so it wins any same-z tie) — otherwise the nav
+    // painted over the Create button and swallowed taps meant for it.
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={created ? onCreated : onClose} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-xl w-full max-w-md p-6 animate-fade-in-up">
         <div className="flex items-center justify-between mb-5">

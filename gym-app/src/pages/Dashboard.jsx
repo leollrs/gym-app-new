@@ -800,8 +800,11 @@ const Dashboard = () => {
             r.name.startsWith('Auto:') && new Date(r.created_at || 0) >= programStart
           );
           if (programRoutines.length > 0) {
-            const todayIndex = todayDow === 0 ? 6 : todayDow - 1;
-            pickedRoutine = programRoutines[todayIndex % programRoutines.length] || programRoutines[0];
+            // Sunday=0, matching every other weekday index in the app. This is a
+            // rotation offset (no label attached), so the old Monday-first shift
+            // wasn't visibly wrong — it just picked a different routine than the
+            // rest of the app's day math would imply.
+            pickedRoutine = programRoutines[todayDow % programRoutines.length] || programRoutines[0];
           }
         }
 

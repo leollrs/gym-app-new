@@ -1,6 +1,6 @@
 export default function PageHeader({ title, subtitle, accentLabel, children }) {
   return (
-    <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
+    <div className="sticky sticky-under-appbar z-30 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
       <div className="max-w-[720px] md:max-w-5xl mx-auto px-4 md:px-6 pt-3 pb-1">
         {accentLabel && (
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] mb-0.5" style={{ color: 'var(--color-accent)' }}>

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus, X, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-  Trash2, Bell, BellOff, Repeat, Dumbbell,
+  Trash2, Bell, BellOff, Repeat, Dumbbell, AlertTriangle, Check, CalendarClock, StickyNote,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { cacheGet, cacheSet, cacheHas, trainerKey } from '../../hooks/useTrainerCache';
@@ -208,13 +208,24 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     return null;
   };
 
+  // The custom-minutes field stores '' when cleared (parseInt → NaN) and the
+  // preset row shows no selection for it, so nothing signalled the empty state.
+  // `Math.max(1, Math.round(''))` used to silently save a 1-MINUTE session,
+  // which then gave checkConflicts and the auto-attendance window a 1-minute
+  // span — real overlaps went undetected. Require an explicit 1–480 value.
+  const durationMins = Math.round(Number(duration));
+  const durationValid = Number.isFinite(durationMins) && durationMins >= 1 && durationMins <= 480;
+
   const handleSave = async () => {
     if (!clientId) { const msg = t('pages:trainerCalendar.selectClientError'); setError(msg); showToast(msg, 'error'); return; }
+    if (!durationValid) {
+      const msg = t('pages:trainerCalendar.durationError', 'Pick a session length (1–480 minutes)');
+      setError(msg); showToast(msg, 'error'); return;
+    }
     setSaving(true);
     setError('');
 
     const scheduledAt = new Date(`${dateVal}T${timeVal}`).toISOString();
-    const durationMins = Math.max(1, Math.round(duration));
 
     try {
       const conflict = await checkConflicts(scheduledAt, durationMins, isEdit ? session.id : null);
@@ -392,6 +403,21 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
     onSaved();
   };
 
+  // Bring a cancelled session back to 'scheduled' so it can be rescheduled/edited.
+  const handleRestore = async () => {
+    setSaving(true);
+    const { error } = await supabase.from('trainer_sessions')
+      .update({ status: 'scheduled', updated_at: new Date().toISOString() })
+      .eq('id', session.id);
+    if (error) {
+      setSaving(false);
+      showToast(t('pages:trainerCalendar.errorRestoreSession', 'Failed to restore session'), 'error');
+      return;
+    }
+    showToast(t('pages:trainerCalendar.sessionRestored', 'Session restored'), 'success');
+    onSaved();
+  };
+
   const inputStyle = {
     width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box',
     background: TT.surface2,
@@ -414,7 +440,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
           background: TT.surface, border: `1px solid ${TT.borderSolid}`,
           borderRadius: 18, width: '100%', maxWidth: 540,
           maxHeight: '85vh', display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
+          overflow: 'hidden', position: 'relative',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -508,7 +534,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
             <label style={{ display: 'block', fontSize: 12, color: TT.textSub, fontWeight: 700, marginBottom: 6 }}>
               {t('pages:trainerCalendar.durationLabel')}
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {DURATIONS.map(d => (
                 <button key={d} onClick={() => setDuration(d)}
                   style={{
@@ -521,6 +547,27 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
                   {t('trainerCalendar.minutesShort', '{{d}}m', { d })}
                 </button>
               ))}
+              {/* Custom minutes — next to the presets */}
+              {(() => {
+                const isCustom = !DURATIONS.includes(Number(duration));
+                // Cleared field = no duration at all → paint it as an error so the
+                // disabled Save button has a visible cause.
+                const isEmpty = !durationValid;
+                const cellFg = isEmpty ? TT.hot : (isCustom ? TT.accentInk : TT.textSub);
+                return (
+                  <div style={{ minHeight: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '0 8px',
+                    background: isEmpty ? TT.hotSoft : (isCustom ? TT.accentSoft : TT.surface2),
+                    border: `1px solid ${isEmpty ? TT.hot : (isCustom ? 'transparent' : TT.borderSolid)}` }}>
+                    <input type="number" inputMode="numeric" min={1} max={480} value={isCustom ? duration : ''}
+                      placeholder={t('trainerCalendar.customShort', 'Custom')}
+                      onChange={e => { const v = parseInt(e.target.value, 10); setDuration(isNaN(v) ? '' : Math.max(1, Math.min(480, v))); }}
+                      aria-label={t('trainerCalendar.customDuration', 'Custom duration (minutes)')}
+                      aria-invalid={isEmpty || undefined}
+                      style={{ flex: 1, minWidth: 0, width: '100%', background: 'transparent', border: 'none', outline: 'none', textAlign: 'center', fontSize: 12, fontWeight: 800, color: cellFg }} />
+                    <span style={{ fontSize: 11, fontWeight: 800, color: isEmpty ? TT.hot : (isCustom ? TT.accentInk : TT.textMute) }}>m</span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -676,7 +723,7 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
                 {visibleWorkoutPlans.map(w => (
                   <option key={w.id} value={w.id}>
                     {w._type === 'plan'
-                      ? `${t('pages:trainerCalendar.planPrefix', 'Plan')}: ${w.name}${w._clientName ? ` · ${w._clientName}` : ''}`
+                      ? `${w._isSession ? t('pages:trainerCalendar.sessionPrefix', 'Session') : t('pages:trainerCalendar.planPrefix', 'Plan')}: ${w.name}${w._clientName ? ` · ${w._clientName}` : ''}`
                       : `${w.name}${w._days ? ` (${w._days} ${t('pages:trainerCalendar.days')})` : ''}`}
                   </option>
                 ))}
@@ -699,69 +746,121 @@ const SessionModal = ({ session, clients, date, onClose, onSaved, trainerId, gym
         </div>
 
         <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 10, padding: '16px 20px',
-          borderTop: `1px solid ${TT.border}`, alignItems: 'center', flexShrink: 0,
+          display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 20px',
+          borderTop: `1px solid ${TT.border}`, flexShrink: 0,
         }}>
+          {/* Primary row — Cancel | Update, 50/50 */}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={onClose}
+              style={{
+                flex: 1, minHeight: 44, borderRadius: 12,
+                fontSize: 13, fontWeight: 700, color: TT.textSub,
+                background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
+              }}
+            >
+              {t('pages:trainerCalendar.cancel')}
+            </button>
+            <button onClick={handleSave} disabled={saving || !durationValid}
+              style={{
+                flex: 1, minHeight: 44, borderRadius: 12,
+                fontSize: 13, fontWeight: 800, color: '#06363B', background: TT.accent, border: 'none',
+                opacity: (saving || !durationValid) ? 0.6 : 1,
+              }}
+            >
+              {saving ? t('pages:trainerCalendar.saving') : isEdit ? t('pages:trainerCalendar.update') : t('pages:trainerCalendar.create')}
+            </button>
+          </div>
+          {/* Restore — bring a cancelled session back so it can be rescheduled */}
+          {isEdit && isCancelled && (
+            <button onClick={handleRestore} disabled={saving}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                width: '100%', minHeight: 44, borderRadius: 12,
+                fontSize: 13, fontWeight: 800, color: TT.accentInk, background: TT.accentSoft,
+                border: `1px solid ${TT.accent}`, opacity: saving ? 0.6 : 1,
+              }}
+            >
+              <CalendarClock size={14} />
+              {t('pages:trainerCalendar.restoreSession', 'Restore & reschedule')}
+            </button>
+          )}
+          {/* Destructive — full-width red, opens a confirmation */}
           {isEdit && (
-            confirmDelete ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, color: TT.textSub }}>
+            <button onClick={() => setConfirmDelete(true)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                width: '100%', minHeight: 44, borderRadius: 12,
+                fontSize: 13, fontWeight: 800, color: TT.hot, background: TT.hotSoft, border: 'none',
+              }}
+            >
+              <Trash2 size={14} />
+              {isCancelled
+                ? t('pages:trainerCalendar.delete')
+                : t('pages:trainerCalendar.cancelSession', 'Cancel session')}
+            </button>
+          )}
+        </div>
+
+        {/* Confirmation dialog */}
+        {confirmDelete && (
+          <div
+            style={{
+              position: 'absolute', inset: 0, zIndex: 10, display: 'flex',
+              alignItems: 'center', justifyContent: 'center', padding: 16,
+              background: 'rgba(0,0,0,0.45)',
+            }}
+            onClick={e => { e.stopPropagation(); if (!deleting) setConfirmDelete(false); }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: TT.surface, border: `1px solid ${TT.borderSolid}`, borderRadius: 16,
+                width: '100%', maxWidth: 360, padding: 20, boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                  background: TT.hotSoft, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <AlertTriangle size={18} style={{ color: TT.hot }} />
+                </div>
+                <p style={{ fontFamily: TFont.display, fontSize: 15, fontWeight: 800, color: TT.text }}>
                   {isCancelled
-                    ? t('pages:trainerCalendar.deleteSessionConfirm')
-                    : t('pages:trainerCalendar.cancelSessionConfirm', 'Cancel this session? The client will be notified.')}
-                </span>
+                    ? t('pages:trainerCalendar.deleteSessionTitle', 'Delete session?')
+                    : t('pages:trainerCalendar.cancelSessionTitle', 'Cancel session?')}
+                </p>
+              </div>
+              <p style={{ fontSize: 13, color: TT.textSub, lineHeight: 1.5, marginBottom: 16 }}>
+                {isCancelled
+                  ? t('pages:trainerCalendar.deleteSessionConfirm')
+                  : t('pages:trainerCalendar.cancelSessionConfirm', 'Cancel this session? The client will be notified.')}
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+                  style={{
+                    flex: 1, minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 700,
+                    color: TT.textSub, background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
+                  }}
+                >
+                  {t('pages:trainerCalendar.keepSession', 'Keep')}
+                </button>
                 <button onClick={isCancelled ? handleDelete : handleCancelSession} disabled={deleting}
                   style={{
-                    padding: '8px 12px', minHeight: 44, borderRadius: 10,
-                    fontSize: 12, fontWeight: 800,
-                    background: TT.hotSoft, color: TT.hot, border: 'none',
+                    flex: 1, minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 800,
+                    color: '#fff', background: TT.hot, border: 'none', opacity: deleting ? 0.6 : 1,
                   }}
                 >
-                  {deleting ? t('pages:trainerCalendar.deleting') : t('pages:trainerCalendar.confirm')}
-                </button>
-                <button onClick={() => setConfirmDelete(false)}
-                  style={{
-                    padding: '8px 12px', minHeight: 44, borderRadius: 10,
-                    fontSize: 12, fontWeight: 700, background: TT.surface2, color: TT.textSub, border: 'none',
-                  }}
-                >
-                  {t('pages:trainerCalendar.cancel')}
+                  {deleting
+                    ? t('pages:trainerCalendar.deleting')
+                    : isCancelled
+                      ? t('pages:trainerCalendar.delete')
+                      : t('pages:trainerCalendar.cancelSession', 'Cancel session')}
                 </button>
               </div>
-            ) : (
-              <button onClick={() => setConfirmDelete(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  padding: '10px 14px', minHeight: 44, borderRadius: 12,
-                  fontSize: 13, fontWeight: 700, color: TT.hot, background: 'transparent', border: 'none',
-                }}
-              >
-                <Trash2 size={14} />{' '}
-                {isCancelled
-                  ? t('pages:trainerCalendar.delete')
-                  : t('pages:trainerCalendar.cancelSession', 'Cancel session')}
-              </button>
-            )
-          )}
-          <div className="hidden sm:block flex-1" />
-          <button onClick={onClose}
-            style={{
-              padding: '10px 14px', minHeight: 44, borderRadius: 12,
-              fontSize: 13, fontWeight: 700, color: TT.textSub, background: 'transparent', border: 'none',
-            }}
-          >
-            {t('pages:trainerCalendar.cancel')}
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            style={{
-              padding: '10px 18px', minHeight: 44, borderRadius: 12,
-              fontSize: 13, fontWeight: 800, color: '#06363B', background: TT.accent, border: 'none',
-              opacity: saving ? 0.6 : 1,
-            }}
-          >
-            {saving ? t('pages:trainerCalendar.saving') : isEdit ? t('pages:trainerCalendar.update') : t('pages:trainerCalendar.create')}
-          </button>
-        </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   , document.body);
@@ -806,6 +905,9 @@ export default function TrainerSchedule() {
   // which made day-view hour slots start at e.g. 7:43:12 — sessions matched
   // one row early and anything in the first hour matched NO row at all.
   const selectedDay = startOfDay(addDays(new Date(), dayOffset));
+
+  // Midnight today — the boundary the month grid uses to grey out elapsed days.
+  const todayStart = startOfDay(new Date());
 
   const monthAnchor = addMonths(new Date(), monthOffset);
   const monthStart = startOfMonth(monthAnchor);
@@ -939,6 +1041,7 @@ export default function TrainerSchedule() {
     const mapped = [
       ...(plans || []).map(p => ({
         id: p.id, name: p.name, _type: 'plan',
+        _isSession: p.duration_weeks === 0, // single reusable session vs multi-week program
         _days: countDays(p.weeks) || null,
         _clientId: p.client_id,
         _clientName: p.profiles?.full_name || null,
@@ -969,13 +1072,87 @@ export default function TrainerSchedule() {
       setLoading(false);
       return; // keep prior sessions
     }
-    setSessions(data || []);
-    cacheSet(CK_sessions, data || []);
+    let sessions = data || [];
+
+    // ── Auto-detect attendance ─────────────────────────────────────────────
+    // A client who logged a completed workout during (± a buffer of) the
+    // session window clearly showed up. Tag those sessions (`_trained`) and
+    // AUTO-MARK any that are already past + still pending as completed — so the
+    // trainer doesn't have to. Idempotent: once completed they stop matching.
+    try {
+      const clientIds = [...new Set(sessions.map(s => s.client_id).filter(Boolean))];
+      if (clientIds.length) {
+        const rangeStart = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0);
+        const rangeEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+        const { data: workouts } = await supabase
+          .from('workout_sessions')
+          .select('profile_id, started_at')
+          .in('profile_id', clientIds)
+          .eq('status', 'completed')
+          .gte('started_at', rangeStart.toISOString())
+          .lte('started_at', rangeEnd.toISOString());
+        const byClient = {};
+        (workouts || []).forEach(w => { (byClient[w.profile_id] ||= []).push(new Date(w.started_at).getTime()); });
+        const BUFFER = 45 * 60000; // ±45 min around the session window (tightened to cut false positives)
+        const nowMs = Date.now();
+        const autoComplete = [];
+        sessions = sessions.map(s => {
+          if (!s.client_id) return s;
+          const st = new Date(s.scheduled_at).getTime();
+          const en = st + (s.duration_mins || 60) * 60000;
+          const trained = (byClient[s.client_id] || []).some(tms => tms >= st - BUFFER && tms <= en + BUFFER);
+          if (!trained) return s;
+          const isPastPending = en < nowMs && (s.status === 'scheduled' || s.status === 'confirmed');
+          // Auto-mark attendance (convenience) but flag it auto_marked so the pack
+          // trigger (0648) does NOT bill a prepaid session on this heuristic — the
+          // trainer confirms to bill. The confirm strip still shows (see needsConfirm).
+          if (isPastPending) { autoComplete.push(s.id); return { ...s, status: 'completed', _trained: true, auto_marked: true }; }
+          return { ...s, _trained: true };
+        });
+        if (autoComplete.length) {
+          // Fire-and-forget; the local state already reflects the change.
+          supabase.from('trainer_sessions')
+            .update({ status: 'completed', auto_marked: true, updated_at: new Date().toISOString() })
+            .in('id', autoComplete)
+            .then(({ error: upErr }) => { if (upErr) logger.error('TrainerCalendar: auto-mark attended failed:', upErr); });
+        }
+      }
+    } catch (e) {
+      logger.error('TrainerCalendar: auto-detect attendance skipped:', e);
+    }
+
+    setSessions(sessions);
+    cacheSet(CK_sessions, sessions);
     setLoading(false);
   };
 
   const handleSaved = () => {
     setModal(null);
+    loadSessions();
+  };
+
+  // Quick attendance confirm straight from the calendar (no modal needed) —
+  // for past sessions still sitting as scheduled/confirmed.
+  const markSessionStatus = async (session, newStatus) => {
+    // An explicit trainer mark is a CONFIRMED status → clear auto_marked so the
+    // pack trigger (0648) bills the session when confirming a completion.
+    setSessions(prev => prev.map(s => (s.id === session.id ? { ...s, status: newStatus, auto_marked: false } : s)));
+    const { error } = await supabase.from('trainer_sessions')
+      .update({ status: newStatus, auto_marked: false, updated_at: new Date().toISOString() })
+      .eq('id', session.id);
+    if (error) {
+      logger.error('TrainerCalendar: markSessionStatus failed:', error);
+      showToast(t('trainerCalendar.errorUpdateStatus', 'Failed to update session'), 'error');
+      loadSessions(); // revert to server truth
+      return;
+    }
+    posthog?.capture('trainer_session_status_changed', { status: newStatus, source: 'quick_confirm' });
+    showToast(
+      newStatus === 'completed' ? t('trainerCalendar.markedAttended', 'Marked as attended')
+        : newStatus === 'no_show' ? t('trainerCalendar.markedNoShow', 'Marked as no-show')
+        : t('trainerCalendar.sessionUpdated', 'Session updated'),
+      'success',
+    );
     loadSessions();
   };
 
@@ -989,13 +1166,13 @@ export default function TrainerSchedule() {
     || (viewMode === 'week' && weekOffset === 0)
     || (viewMode === 'month' && monthOffset === 0);
 
-  // All day/week/month lists derive from this map. Cancelled sessions are
-  // EXCLUDED — they used to occupy day-view hour slots and hide the real
-  // booking behind them. (Counters below still read the raw `sessions`.)
+  // Day-view map. Cancelled sessions stay in the list (rendered dimmed +
+  // strikethrough, sorted to the bottom) so they remain reachable — tapping one
+  // opens the modal where it can be restored/rescheduled or deleted. The
+  // "upcoming" list below still excludes them. (Counters read the raw `sessions`.)
   const sessionsByDay = useMemo(() => {
     const map = {};
     sessions.forEach(s => {
-      if (s.status === 'cancelled') return;
       const key = format(new Date(s.scheduled_at), 'yyyy-MM-dd');
       if (!map[key]) map[key] = [];
       map[key].push(s);
@@ -1003,9 +1180,21 @@ export default function TrainerSchedule() {
     return map;
   }, [sessions]);
 
+  // sessionsByDay deliberately KEEPS cancelled sessions so they stay visible and
+  // restorable — but they must not be counted as bookings. Every "N sessions"
+  // figure and every dot/indicator goes through this instead of `.length`,
+  // otherwise a day whose only session was cancelled looks fully booked and the
+  // hero total disagrees with the day cards beneath it.
+  const liveCount = (list) => (list || []).filter(s => s.status !== 'cancelled').length;
+
   const dayViewSessions = useMemo(() => {
     const key = format(selectedDay, 'yyyy-MM-dd');
-    return (sessionsByDay[key] || []).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+    return (sessionsByDay[key] || []).sort((a, b) => {
+      // Cancelled last, otherwise chronological.
+      const ac = a.status === 'cancelled', bc = b.status === 'cancelled';
+      if (ac !== bc) return ac ? 1 : -1;
+      return new Date(a.scheduled_at) - new Date(b.scheduled_at);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionsByDay, dayOffset]);
 
@@ -1098,7 +1287,7 @@ export default function TrainerSchedule() {
     : days;
   // Dots come from sessionsByDay (cancelled excluded) — day view now fetches
   // the whole week, so every strip day has real counts.
-  const stripCounts = stripDays.map(d => (sessionsByDay[format(d, 'yyyy-MM-dd')] || []).length);
+  const stripCounts = stripDays.map(d => liveCount(sessionsByDay[format(d, 'yyyy-MM-dd')]));
   const stripWeekLabel = `${format(stripDays[0], 'MMM d', { locale: dateFnsLocale })} — ${format(stripDays[6], 'MMM d', { locale: dateFnsLocale })}`;
 
   // Tone for a session's left edge — group→coach, intake→warn, else status visual.
@@ -1292,7 +1481,7 @@ export default function TrainerSchedule() {
                           {format(day, 'EEE d', { locale: dateFnsLocale })}
                         </div>
                         <div style={{ flex: 1, fontSize: 11, color: TT.textMute }}>
-                          {dSessions.length} {dSessions.length === 1 ? t('trainerCalendar.sessionSingular', 'session') : t('trainerCalendar.sessionsLower', 'sessions')}
+                          {liveCount(dSessions)} {liveCount(dSessions) === 1 ? t('trainerCalendar.sessionSingular', 'session') : t('trainerCalendar.sessionsLower', 'sessions')}
                         </div>
                         <button
                           onClick={() => setModal({ date: day })}
@@ -1318,49 +1507,106 @@ export default function TrainerSchedule() {
                           const isIntake = isIntakeTitle(s.title);
                           const pillTone = isGroup ? 'coach' : isIntake ? 'warn' : 'teal';
                           const fullName = s.profiles?.full_name || t('trainerCalendar.client', 'Client');
+                          // Past session still awaiting confirmation → offer a quick attend/no-show.
+                          const isPending = s.status === 'scheduled' || s.status === 'confirmed';
+                          // Auto-detected attendance (0648): completed but not trainer-confirmed. Attendance
+                          // is recorded, but it still shows the confirm strip so the trainer confirms
+                          // (which bills a pack session) or corrects it — a pack is never auto-billed.
+                          const isAutoMarked = s.status === 'completed' && s.auto_marked;
+                          const needsConfirm = !isGroup && ((sEnd < now && isPending) || isAutoMarked);
+                          // A trainer-CONFIRMED outcome → show it visually (color + accent + dim/strike).
+                          const marked = (s.status === 'completed' && !s.auto_marked) || s.status === 'no_show' || s.status === 'cancelled';
+                          const sv = statusVisuals(s.status);
+                          const dimmed = s.status === 'no_show' || s.status === 'cancelled';
                           return (
-                            <button
-                              key={s.id}
-                              onClick={() => setModal({ session: s })}
-                              style={{
-                                width: '100%',
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '8px 10px', borderRadius: 10,
-                                background: isNow ? `${TT.accent}15` : TT.surface2,
-                                marginTop: j > 0 ? 4 : 0,
-                                border: isNow ? `1px solid ${TT.accent}` : '1px solid transparent',
-                                textAlign: 'left', cursor: 'pointer',
-                              }}
-                            >
-                              <div style={{
-                                fontSize: 11, fontFamily: TFont.mono, fontWeight: 800,
-                                color: isNow ? TT.accentInk : TT.text, minWidth: 56,
-                              }}>
-                                {format(start, 'HH:mm')}
-                              </div>
-                              <TAvatar
-                                name={fullName}
-                                size={24}
-                                idx={avatarIdx(s.profiles?.id || s.client_id)}
-                                src={s.profiles?.avatar_url}
-                              />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: TT.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {fullName}
+                            <div key={s.id} style={{ marginTop: j > 0 ? 4 : 0 }}>
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setModal({ session: s })}
+                                onKeyDown={(e) => { if (e.key === 'Enter') setModal({ session: s }); }}
+                                className="tt-tap"
+                                style={{
+                                  width: '100%',
+                                  display: 'flex', alignItems: 'center', gap: 10,
+                                  padding: '8px 10px',
+                                  borderRadius: needsConfirm ? '10px 10px 0 0' : 10,
+                                  background: isNow ? `${TT.accent}15` : marked ? sv.soft : TT.surface2,
+                                  border: isNow ? `1px solid ${TT.accent}` : '1px solid transparent',
+                                  borderLeft: marked ? `3px solid ${sv.tone}` : undefined,
+                                  opacity: dimmed ? 0.7 : 1,
+                                  textAlign: 'left', cursor: 'pointer',
+                                }}
+                              >
+                                <div style={{
+                                  fontSize: 11, fontFamily: TFont.mono, fontWeight: 800,
+                                  color: isNow ? TT.accentInk : TT.text, minWidth: 56,
+                                }}>
+                                  {format(start, 'HH:mm')}
                                 </div>
-                                {s.details?.workout_name && (
-                                  <div style={{ marginTop: 2 }}>
-                                    <WorkoutChip name={s.details.workout_name} />
+                                <TAvatar
+                                  name={fullName}
+                                  size={24}
+                                  idx={avatarIdx(s.profiles?.id || s.client_id)}
+                                  src={s.profiles?.avatar_url}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: TT.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: s.status === 'cancelled' ? 'line-through' : 'none' }}>
+                                    {fullName}
                                   </div>
+                                  {s.details?.workout_name && (
+                                    <div style={{ marginTop: 2 }}>
+                                      <WorkoutChip name={s.details.workout_name} />
+                                    </div>
+                                  )}
+                                </div>
+                                {s.notes && <StickyNote size={12} strokeWidth={2.2} style={{ color: TT.textMute, flexShrink: 0 }} />}
+                                {s._trained && !marked && <TPill tone="good" size="s">{t('trainerCalendar.trained', 'Trained')}</TPill>}
+                                {needsConfirm && !isAutoMarked && <TPill tone="warn" size="s">{t('trainerCalendar.pending', 'Pending')}</TPill>}
+                                {marked ? (
+                                  <TPill tone={s.status === 'completed' ? 'good' : s.status === 'no_show' ? 'warn' : 'hot'} size="s">
+                                    {s.status === 'completed' ? t('trainerCalendar.attendedShort', 'Attended')
+                                      : s.status === 'no_show' ? t('trainerCalendar.noShowShort', 'No-show')
+                                      : t('trainerCalendar.cancelledShort', 'Cancelled')}
+                                  </TPill>
+                                ) : (
+                                  <TPill tone={pillTone} size="s">
+                                    {isGroup ? t('trainerCalendar.kindGroup', 'Group')
+                                      : isIntake ? t('trainerCalendar.kindIntake', 'Intake')
+                                      : t('trainerCalendar.kind1on1', '1-on-1')}
+                                  </TPill>
                                 )}
+                                {isNow && <TPill tone="hot" size="s">{t('trainerCalendar.now', 'NOW')}</TPill>}
                               </div>
-                              <TPill tone={pillTone} size="s">
-                                {isGroup ? t('trainerCalendar.kindGroup', 'Group')
-                                  : isIntake ? t('trainerCalendar.kindIntake', 'Intake')
-                                  : t('trainerCalendar.kind1on1', '1-on-1')}
-                              </TPill>
-                              {isNow && <TPill tone="hot" size="s">{t('trainerCalendar.now', 'NOW')}</TPill>}
-                            </button>
+                              {/* Quick attendance confirm for past pending sessions */}
+                              {needsConfirm && (
+                                <div style={{
+                                  display: 'flex', gap: 6, padding: '7px 8px',
+                                  background: TT.surface2, borderRadius: '0 0 10px 10px',
+                                  borderTop: `1px solid ${TT.border}`,
+                                }}>
+                                  <button type="button" onClick={() => markSessionStatus(s, 'completed')}
+                                    style={{ flex: 1, minHeight: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
+                                      background: TT.goodSoft, color: TT.good, fontSize: 11.5, fontWeight: 800,
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                    <Check size={13} strokeWidth={2.6} />{t('trainerCalendar.attended', 'Attended')}
+                                  </button>
+                                  <button type="button" onClick={() => markSessionStatus(s, 'no_show')}
+                                    style={{ flex: 1, minHeight: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
+                                      background: TT.warnSoft, color: TT.warn, fontSize: 11.5, fontWeight: 800,
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                    <X size={13} strokeWidth={2.6} />{t('trainerCalendar.noShow', 'No-show')}
+                                  </button>
+                                  <button type="button" onClick={() => setModal({ session: s })}
+                                    aria-label={t('trainerCalendar.reschedule', 'Reschedule')}
+                                    style={{ minHeight: 34, padding: '0 10px', borderRadius: 8, border: `1px solid ${TT.borderSolid}`, cursor: 'pointer',
+                                      background: TT.surface, color: TT.textSub, fontSize: 11.5, fontWeight: 700,
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                    <CalendarClock size={13} strokeWidth={2.2} />{t('trainerCalendar.reschedule', 'Reschedule')}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           );
                         })
                       )}
@@ -1483,8 +1729,13 @@ export default function TrainerSchedule() {
                 const key = format(day, 'yyyy-MM-dd');
                 const inMonth = isSameMonth(day, monthAnchor);
                 const today = isToday(day);
+                // Elapsed days used to render identically to upcoming ones, so a
+                // month read as one undifferentiated block. Fade them and drop
+                // the number's weight so "already happened" is visible at a
+                // glance; they stay tappable (past sessions are still reviewable).
+                const past = !today && day < todayStart;
                 const dSessions = sessionsByDay[key] || [];
-                const count = dSessions.length;
+                const count = liveCount(dSessions);
                 return (
                   <button
                     key={key + idx}
@@ -1492,13 +1743,13 @@ export default function TrainerSchedule() {
                     style={{
                       aspectRatio: '1', borderRadius: 8,
                       background: today ? TT.accent : count > 0 ? TT.accentSoft : TT.surface2,
-                      color: today ? '#06363B' : TT.text,
+                      color: today ? '#06363B' : past ? TT.textMute : TT.text,
                       display: 'flex', flexDirection: 'column',
                       alignItems: 'center', justifyContent: 'center',
-                      fontSize: 12, fontWeight: today ? 800 : 600,
+                      fontSize: 12, fontWeight: today ? 800 : past ? 500 : 600,
                       position: 'relative',
                       border: 'none', cursor: 'pointer',
-                      opacity: inMonth ? 1 : 0.3,
+                      opacity: !inMonth ? 0.3 : past ? 0.55 : 1,
                     }}
                   >
                     {format(day, 'd')}
@@ -1506,7 +1757,8 @@ export default function TrainerSchedule() {
                       <div style={{ display: 'flex', gap: 1.5, marginTop: 2 }}>
                         {Array.from({ length: Math.min(count, 3) }).map((_, j) => (
                           <div key={j} style={{
-                            width: 3, height: 3, borderRadius: 999, background: TT.accent,
+                            width: 3, height: 3, borderRadius: 999,
+                            background: past ? TT.textMute : TT.accent,
                           }} />
                         ))}
                       </div>
@@ -1690,7 +1942,7 @@ export default function TrainerSchedule() {
                   const inMonth = isSameMonth(day, monthAnchor);
                   const today = isToday(day);
                   const dSessions = sessionsByDay[key] || [];
-                  const count = dSessions.length;
+                  const count = liveCount(dSessions);
                   return (
                     <button
                       key={key + idx}
@@ -1753,7 +2005,7 @@ export default function TrainerSchedule() {
                                   {format(day, 'EEE d', { locale: dateFnsLocale })}
                                 </div>
                                 <div style={{ flex: 1, fontSize: 11, color: TT.textMute }}>
-                                  {dSessions.length} {dSessions.length === 1 ? t('trainerCalendar.sessionSingular', 'session') : t('trainerCalendar.sessionsLower', 'sessions')}
+                                  {liveCount(dSessions)} {liveCount(dSessions) === 1 ? t('trainerCalendar.sessionSingular', 'session') : t('trainerCalendar.sessionsLower', 'sessions')}
                                 </div>
                                 <button
                                   onClick={() => setModal({ date: day })}

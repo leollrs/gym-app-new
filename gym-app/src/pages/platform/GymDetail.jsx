@@ -107,7 +107,7 @@ function ChallengeModal({ challenge, onSave, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
@@ -201,7 +201,7 @@ function ProgramModal({ program, onSave, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
@@ -286,7 +286,7 @@ function AchievementModal({ achievement, onSave, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
@@ -370,7 +370,7 @@ function RewardModal({ reward, onSave, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
       <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
         <div className="flex items-center justify-between mb-5">
@@ -459,9 +459,12 @@ function AddMemberModal({ gymId, onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={onClose} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClose(); }} />
-      <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
+      {/* max-h + overflow-y-auto: the structured NameFields make this the tallest
+          dialog here, and on a short phone the Create button used to sit off-screen
+          with no way to scroll to it. */}
+      <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[15px] font-semibold text-[#E5E7EB] flex items-center gap-2"><UserPlus className="w-4 h-4 text-[#D4AF37]" />{t('platform.gymDetail.modals.addMember')}</h3>
           <button onClick={onClose} className="p-1 text-[#6B7280] hover:text-[#E5E7EB] transition-colors" aria-label="Close dialog"><X className="w-4 h-4" /></button>
@@ -1207,7 +1210,7 @@ export default function GymDetail() {
 
       {/* Delete Confirmation */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => setDeleteConfirm(null)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setDeleteConfirm(null); }} />
           <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-sm w-full mx-4">
             <h3 className="text-[15px] font-semibold text-[#E5E7EB] mb-2">{t(`platform.gymDetail.deleteEntity.title.${deleteConfirm.type}`, t('platform.gymDetail.deleteEntity.titleFallback', { type: deleteConfirm.type, defaultValue: 'Delete {{type}}?' }))}</h3>
@@ -1222,7 +1225,7 @@ export default function GymDetail() {
 
       {/* Pause Gym Modal */}
       {lifecycleModal === 'pause' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => { setLifecycleModal(null); setPauseReason(''); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLifecycleModal(null); setPauseReason(''); } }} />
           <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0"><Pause className="w-5 h-5 text-amber-400" /></div><div><h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.lifecycle.pauseTitle')}</h3><p className="text-[11px] text-[#6B7280]">{gym.name}</p></div></div>
@@ -1238,7 +1241,7 @@ export default function GymDetail() {
 
       {/* Reactivate Gym Modal */}
       {lifecycleModal === 'reactivate' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => setLifecycleModal(null)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setLifecycleModal(null); }} />
           <div className="relative bg-[#0F172A] border border-white/8 rounded-2xl p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0"><Play className="w-5 h-5 text-emerald-400" /></div><div><h3 className="text-[15px] font-semibold text-[#E5E7EB]">{t('platform.gymDetail.lifecycle.reactivateTitle')}</h3><p className="text-[11px] text-[#6B7280]">{gym.name}</p></div></div>
@@ -1255,7 +1258,7 @@ export default function GymDetail() {
           it pauses + cancels the plan and is fully reversible via Reactivate.
           Permanent deletion lives in GymOps / Data & costs). */}
       {lifecycleModal === 'delete' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="button" tabIndex={0} aria-label="Close dialog" onClick={() => { setLifecycleModal(null); setDeleteGymConfirmName(''); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setLifecycleModal(null); setDeleteGymConfirmName(''); } }} />
           <div className="relative bg-[#0F172A] border border-red-500/20 rounded-2xl p-6 max-w-md w-full mx-4">
             <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-5 h-5 text-red-400" /></div><div><h3 className="text-[15px] font-semibold text-red-400">{t('platform.gymDetail.lifecycle.deactivateTitle', 'Deactivate Gym')}</h3><p className="text-[11px] text-[#6B7280]">{gym.name}</p></div></div>

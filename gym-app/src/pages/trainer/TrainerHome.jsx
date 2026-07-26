@@ -26,11 +26,11 @@ import {
 
 // ─────────────────────────────────────────────────────────────────────
 // Build a 7-bar weekly activity sparkline from the client's recent sessions.
-// Monday-start, matching the weekStart the fetch queries with (weekStartsOn:1).
+// Sunday-start, matching the weekStart the fetch queries with (weekStartsOn:0).
 // ─────────────────────────────────────────────────────────────────────
 function buildWeekBars(profileId, weekSessions) {
   const bars = [0, 0, 0, 0, 0, 0, 0];
-  const ws = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const ws = startOfWeek(new Date(), { weekStartsOn: 0 });
   weekSessions.forEach(s => {
     if (s.profile_id !== profileId) return;
     const d = new Date(s.started_at);
@@ -79,7 +79,16 @@ export default function TrainerHome() {
   const [liveDrafts, setLiveDrafts] = useState([]);
   const [recentPRs, setRecentPRs] = useState(() => homeCache?.recentPRs || []);
   // gym_programs.id → name for the roster's assigned programs; null = fetch failed.
-  const [programNames, setProgramNames] = useState(() => homeCache?.programNames || {});
+  // `|| {}` would flatten a cached null (= "lookup failed, show '—'") back into
+  // "no programs exist", mislabelling every assigned client as "No program" —
+  // so only an ABSENT key falls back to {}.
+  const [programNames, setProgramNames] = useState(
+    () => (homeCache?.programNames === undefined ? {} : homeCache.programNames),
+  );
+  // profile_id → member_onboarding.training_days_per_week — the real weekly
+  // adherence target per client (same source TrainerClients uses), so Home and
+  // Clients can't disagree on the same number.
+  const [planDays, setPlanDays] = useState(() => homeCache?.planDays || {});
 
   useEffect(() => { document.title = `${t('trainerHome.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -95,8 +104,8 @@ export default function TrainerHome() {
   // Write-through cache of the stable data for instant loads next visit.
   useEffect(() => {
     if (loading) return;
-    writeTrainerCache(homeCacheKey, { clients, weekSessions, todaySessions, churnScores, moneyOverview, upcomingSessions, recentPRs, programNames });
-  }, [loading, clients, weekSessions, todaySessions, churnScores, moneyOverview, upcomingSessions, recentPRs, programNames, homeCacheKey]);
+    writeTrainerCache(homeCacheKey, { clients, weekSessions, todaySessions, churnScores, moneyOverview, upcomingSessions, recentPRs, programNames, planDays });
+  }, [loading, clients, weekSessions, todaySessions, churnScores, moneyOverview, upcomingSessions, recentPRs, programNames, planDays, homeCacheKey]);
 
   // Cheap freshness: silently refetch when the tab/app comes back to the
   // foreground (no skeleton flash). Pull-to-refresh is deferred to v2.
@@ -160,7 +169,7 @@ export default function TrainerHome() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString();
+      const weekStart = startOfWeek(new Date(), { weekStartsOn: 0 }).toISOString();
       const todayStart = startOfDay(new Date()).toISOString();
       const todayEnd = endOfDay(new Date()).toISOString();
       const sevenDaysAgo = subDays(new Date(), 7).toISOString();
@@ -227,11 +236,12 @@ export default function TrainerHome() {
         setLiveClientIds(new Set());
         setLiveDrafts([]);
         setProgramNames({});
+        setPlanDays({});
         setLoading(false);
         return;
       }
 
-      const [churnRes, weekRes, prsRes, liveRes, progRes] = await Promise.all([
+      const [churnRes, weekRes, prsRes, liveRes, progRes, onbRes] = await Promise.all([
         selectInBatches(
           (ids) => supabase.from('churn_risk_scores').select('profile_id, score, computed_at')
             .in('profile_id', ids).order('computed_at', { ascending: false }),
@@ -268,12 +278,22 @@ export default function TrainerHome() {
         programIds.length
           ? supabase.from('gym_programs').select('id, name').in('id', programIds)
           : Promise.resolve({ data: [], error: null }),
+        // Plan days/week per client — the adherence denominator. Same query
+        // TrainerClients runs (trainer read policy: onboarding_trainer_read,
+        // 0002); without it weeklyAdherence silently falls back to /3 and a
+        // 5-day client reads 100% here but 60% on Clients.
+        selectInBatches(
+          (ids) => supabase.from('member_onboarding')
+            .select('profile_id, training_days_per_week').in('profile_id', ids),
+          clientIds,
+        ),
       ]);
 
       if (churnRes.error) logger.error('TrainerHome: churn fetch failed:', churnRes.error);
       if (weekRes.error)  logger.error('TrainerHome: week fetch failed:',  weekRes.error);
       if (prsRes.error)   logger.error('TrainerHome: prs fetch failed:',   prsRes.error);
       if (liveRes.error)  logger.error('TrainerHome: live drafts fetch failed:', liveRes.error);
+      if (onbRes.error)   logger.error('TrainerHome: plan days fetch failed:', onbRes.error);
 
       const cmap = {};
       // Rows come newest-first (order by computed_at desc) — keep the first
@@ -285,6 +305,14 @@ export default function TrainerHome() {
       setRecentPRs(prsRes.data || []);
       setLiveDrafts(liveRes.data || []);
       setLiveClientIds(new Set((liveRes.data || []).map(r => r.profile_id)));
+
+      // Keep the last known targets on a failed read — blanking the map would
+      // silently drop every client back to the /3 fallback.
+      if (!onbRes.error) {
+        const dmap = {};
+        (onbRes.data || []).forEach(r => { dmap[r.profile_id] = r.training_days_per_week; });
+        setPlanDays(dmap);
+      }
 
       if (progRes.error) {
         // Don't render "No program" on a failed read — '—' (unknown) instead.
@@ -349,7 +377,7 @@ export default function TrainerHome() {
   // same week the fetch queries).
   const weekDaySpark = useMemo(() => {
     const bars = [0, 0, 0, 0, 0, 0, 0];
-    const ws = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const ws = startOfWeek(new Date(), { weekStartsOn: 0 });
     weekSessions.forEach(s => {
       const d = new Date(s.started_at);
       const idx = Math.floor((d - ws) / (1000 * 60 * 60 * 24));
@@ -408,7 +436,13 @@ export default function TrainerHome() {
   const heroWhen = !heroSession ? '' : (heroIsToday
     ? (minsUntilNext != null && minsUntilNext > 0 ? t('trainerHome.nextIn', 'Next · in {{n}} min', { n: minsUntilNext }) : t('trainerHome.nextNow', 'Up next'))
     : t('trainerHome.nextOn', 'Next · {{when}}', { when: isTomorrow(new Date(heroSession.scheduled_at)) ? t('trainerHome.tomorrow', 'tomorrow') : format(new Date(heroSession.scheduled_at), 'EEE d', { locale: dateFnsLocale }) }));
-  const upcomingList = allUpcoming.slice(heroIdx + 1); // everything after the hero (today's rest + future)
+  // Everything EXCEPT the hero — not `slice(heroIdx + 1)`. Slicing dropped every
+  // session before the hero, i.e. exactly today's earlier sessions the trainer
+  // never marked complete: at 3pm an unresolved 8am booking vanished from the
+  // hero AND the lineup while the header still counted it as a session today.
+  // Those are the rows a trainer most needs to see (to go mark them), so they
+  // stay in the list, in chronological order.
+  const upcomingList = allUpcoming.filter((_, i) => i !== heroIdx);
   // "Today's lineup" is strictly today — future-day sessions stay out, and the
   // count/hours line is computed from the SAME list it sits above.
   const lineupToday = upcomingList.filter(s => todayUpcoming.some(x => x.id === s.id));
@@ -517,7 +551,9 @@ export default function TrainerHome() {
       });
       const bars = buildWeekBars(c.id, weekSessions);
       const sessionCount = bars.reduce((a, b) => a + b, 0);
-      const adh = weeklyAdherence(sessionCount).pct / 100;
+      // Real per-client target (member_onboarding), not the /3 fallback —
+      // TrainerClients passes the same argument, so the two pages agree.
+      const adh = weeklyAdherence(sessionCount, planDays[c.id]).pct / 100;
       const isLive = liveClientIds.has(c.id);
       // When the client is mid-workout, show that prominently instead of the
       // stale "last active 2 days ago" label.
@@ -539,7 +575,7 @@ export default function TrainerHome() {
         programId: c.assigned_program_id || null,
       };
     });
-  }, [clients, churnScores, weekSessions, liveClientIds, dateFnsLocale, t]);
+  }, [clients, churnScores, weekSessions, liveClientIds, planDays, dateFnsLocale, t]);
 
   // ── Today's sessions horizontal strip ──
   // ── Quick handlers ──
@@ -834,11 +870,18 @@ export default function TrainerHome() {
                 const cName = s.profiles?.full_name || s.profiles?.username || t('trainerCalendar.client', 'Client');
                 const d = new Date(s.scheduled_at);
                 const isLive = !!cId && liveClientIds.has(cId);
+                // Its slot has passed but it was never marked complete — flag it
+                // so "Today" doesn't read as "still to come".
+                const isOverdue = !isLive && sessionEndMs(s) < Date.now();
                 return (
                   <button key={s.id} type="button" onClick={() => navigate(`/trainer/clients/${cId}`)} className="tt-tap"
                     style={{ minWidth: 156, padding: 12, borderRadius: 14, background: TT.surface, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, flexShrink: 0, textAlign: 'left', cursor: 'pointer' }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: isLive ? TT.good : TT.accentInk, letterSpacing: 0.6, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                      {isLive ? `● ${t('trainerHome.trainingNow', 'Training now')}` : t('trainerHome.todayShort', 'Today')}
+                    <div style={{ fontSize: 9, fontWeight: 800, color: isLive ? TT.good : isOverdue ? TT.hot : TT.accentInk, letterSpacing: 0.6, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      {isLive
+                        ? `● ${t('trainerHome.trainingNow', 'Training now')}`
+                        : isOverdue
+                          ? t('trainerCalendar.pending', 'Pending')
+                          : t('trainerHome.todayShort', 'Today')}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 }}>
                       <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.4, lineHeight: 1 }}>{format(d, 'h:mm', { locale: dateFnsLocale })}</div>
@@ -877,7 +920,14 @@ export default function TrainerHome() {
                   // CTA; the rest get the quieter secondary treatment.
                   const isTop = idx === 0;
                   return (
-                    <TCard key={c.id} padded={13} style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
+                    // The whole row is tappable → opens the client. It already
+                    // LOOKED tappable (card + avatar + name), so people tapped the
+                    // row and nothing happened; only the trailing button worked.
+                    // The button keeps its own action via stopPropagation.
+                    <TCard key={c.id} padded={13} style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative', cursor: 'pointer' }}
+                      role="button" tabIndex={0} className="tt-tap"
+                      onClick={() => navigate(`/trainer/clients/${c.id}`)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/trainer/clients/${c.id}`); }}>
                       <div style={{ position: 'absolute', left: 0, top: 14, bottom: 14, width: 3, borderRadius: 999, background: tone }} />
                       <TAvatar name={name} size={40} idx={avatarIdx(c.id)} src={c.avatar_url} />
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -885,12 +935,12 @@ export default function TrainerHome() {
                         <div style={{ fontSize: 12, color: tone, fontWeight: 700, marginTop: 2 }}>{reason}</div>
                       </div>
                       {isTop ? (
-                        <TPrimaryButton onClick={() => openConversation(c.id)}
+                        <TPrimaryButton onClick={(e) => { e.stopPropagation(); openConversation(c.id); }}
                           style={{ padding: '8px 13px', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
                           {t('trainerHome.reachOut', 'Reach out')}
                         </TPrimaryButton>
                       ) : (
-                        <button type="button" onClick={() => openConversation(c.id)}
+                        <button type="button" onClick={(e) => { e.stopPropagation(); openConversation(c.id); }}
                           className="tt-btn tt-btn--secondary"
                           style={{ padding: '8px 13px', borderRadius: 14, fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
                           {t('trainerHome.greet', 'Say hi')}

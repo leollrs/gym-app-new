@@ -1972,7 +1972,7 @@ export default function Rewards() {
       </AnimatePresence>
 
       {/* ── Sticky Header ─────────────────────────────────────── */}
-      <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border-subtle)]">
+      <div className="sticky sticky-under-appbar z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border-subtle)]">
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-5 pb-4">
           <div className="flex items-center gap-3 mb-4">
             <div

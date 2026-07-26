@@ -66,7 +66,7 @@ export default function PermissionExplainerModal({ open, type, status, onAgree, 
         <button type="button" onClick={onCancel}
           className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
           style={{ background: 'var(--color-bg-elevated, var(--color-surface-hover))' }}
-          aria-label={t('common.close', 'Close')}>
+          aria-label={t('common:close', 'Close')}>
           <X size={14} style={{ color: 'var(--color-text-muted)' }} />
         </button>
 

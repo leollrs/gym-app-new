@@ -14,6 +14,7 @@ import { getRiskTier } from '../../../lib/churnScore';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { exportSelectedMembersCSV } from '../../../lib/exportData';
 import { composeFullName, areNamePartsValid, isValidNamePart, splitFullName } from '../../../lib/admin/memberName';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 import posthog from 'posthog-js';
 import { Avatar, AdminModal, PhoneInput } from '../../../components/admin';
 import { StatusBadge } from '../../../components/admin/StatusBadge';
@@ -145,6 +146,10 @@ function MStatPip({ value, label }) {
 }
 
 export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onStatusChanged }) {
+  // Mounted only while open (AdminMembers renders it behind `selected &&`), so
+  // the lock is unconditional. Ref-counted, so the nested modals this dialog
+  // opens (status confirm / cancellation survey) keep the page frozen.
+  useScrollLock(true);
   const { user: authUser } = useAuth();
   const adminId = authUser?.id;
   const { showToast } = useToast();
@@ -195,12 +200,6 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
     retry: false,
   });
 
-  // Lock body scroll while member detail modal is mounted
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
   const [statusConflict, setStatusConflict] = useState(false);
 
   // Permanent deletion state

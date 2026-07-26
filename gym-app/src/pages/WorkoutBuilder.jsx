@@ -1128,7 +1128,7 @@ const WorkoutBuilder = () => {
             style={{ background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.35)', color: '#60a5fa' }}>
             <Link2 size={12} />{t('activeSession.circuit', 'Circuit')}
           </button>
-          <button onClick={() => setSelectedIndices(new Set())} aria-label={t('common.clear', 'Clear')}
+          <button onClick={() => setSelectedIndices(new Set())} aria-label={t('common:clear', 'Clear')}
             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 active:scale-90" style={{ color: 'var(--color-text-muted)' }}>
             <X size={15} />
           </button>

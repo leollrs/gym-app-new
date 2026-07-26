@@ -238,7 +238,7 @@ export default function FoodScanResultModal({
             <button onClick={onClose}
               className="w-[34px] h-[34px] rounded-full flex items-center justify-center focus:outline-none"
               style={{ background: 'var(--color-bg-primary)', border: '1px solid var(--color-border-subtle)' }}
-              aria-label={t('common.close', 'Close')}>
+              aria-label={t('common:close', 'Close')}>
               <X size={15} style={{ color: 'var(--color-text-primary)' }} />
             </button>
             {onToggleFavorite && (

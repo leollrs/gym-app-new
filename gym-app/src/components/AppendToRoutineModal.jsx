@@ -115,7 +115,7 @@ export default function AppendToRoutineModal({ open, onClose, exercise }) {
           <button
             type="button"
             onClick={onClose}
-            aria-label={t('common.close', { defaultValue: 'Close' })}
+            aria-label={t('common:close', { defaultValue: 'Close' })}
             className="ml-3 -mt-1 rounded-full p-1.5"
             style={{ color: 'var(--color-text-muted)' }}
           >

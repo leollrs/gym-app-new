@@ -309,6 +309,18 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
   , document.body);
 }
 
+// The per-conversation encryption seed is kept in a ref TAGGED with the
+// conversation it was fetched for, and may only be read back for that same
+// conversation. messageEncryption.js derives the AES key from `seed + convId`,
+// so encrypting with another thread's seed (or a null seed — `null + id`
+// stringifies happily and produces a key nobody can reproduce) yields
+// ciphertext that neither side can EVER decrypt. Making the read id-checked
+// turns that corruption into a recoverable "not ready yet" instead.
+function seedForConv(ref, convId) {
+  if (!convId || !ref || ref.convId !== convId) return null;
+  return ref.seed || null;
+}
+
 // ── Main page ─────────────────────────────────────────────────────
 export default function TrainerMessages() {
   const { profile } = useAuth();
@@ -347,7 +359,13 @@ export default function TrainerMessages() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const encryptionSeedRef = useRef(null);
+  // { convId, seed } — always read through seedForConv() so a seed can never
+  // be applied to a different conversation than the one it was fetched for.
+  const encryptionSeedRef = useRef({ convId: null, seed: null });
+  // Render-visible mirror of "the ref holds the seed for the OPEN thread".
+  // The ref itself can't gate the UI (writing it doesn't re-render), and
+  // sending before the seed lands is unrecoverable data corruption.
+  const [seedReady, setSeedReady] = useState(false);
 
   // Modals
   const [showShare, setShowShare] = useState(false);
@@ -524,13 +542,37 @@ export default function TrainerMessages() {
     return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); supabase.removeChannel(channel); };
   }, [profile?.id, loadConversations]);
 
+  // ── Reset per-thread state on EVERY conversation change ───────────
+  // This must run for any activeConvId transition, not just A→null. When the
+  // reset lived inside the loader's `!activeConvId` branch, switching A→B kept
+  // A's messages, A's otherUser, A's draft and — critically — A's encryption
+  // seed alive until the conversation row for B resolved. Sending inside that
+  // window encrypted with seedA + convB, which is permanently undecryptable
+  // for BOTH sides. Stale otherUser also mis-routed the push notification, the
+  // header name and WorkoutShareModal's target client to the previous client.
+  //
+  // Declared BEFORE the loader effect on purpose: React runs effects in
+  // declaration order, so the wipe always lands before the new thread loads.
+  // Keyed on activeConvId ONLY, so a threadReloadKey retry doesn't eat a draft.
+  useEffect(() => {
+    encryptionSeedRef.current = { convId: null, seed: null };
+    setSeedReady(false);
+    setMessages([]);
+    setOtherUser(null);
+    setInput('');
+    setThreadError(false);
+    setHasOlderMessages(false);
+    setLoadingOlder(false);
+    setSending(false);
+    setShowShare(false);
+    skipAutoScrollRef.current = false;
+    if (inputRef.current) inputRef.current.style.height = 'auto';
+  }, [activeConvId]);
+
   // ── Load active thread ───────────────
   useEffect(() => {
     if (!activeConvId || !profile?.id) {
-      setMessages([]);
-      setOtherUser(null);
-      setThreadError(false);
-      setHasOlderMessages(false);
+      setThreadLoading(false);
       return undefined;
     }
     let cancelled = false;
@@ -556,7 +598,13 @@ export default function TrainerMessages() {
           return;
         }
 
-        encryptionSeedRef.current = conv.encryption_seed;
+        // Tag the seed with the conversation it belongs to, then flip the
+        // render-visible flag that unlocks the Send button.
+        encryptionSeedRef.current = { convId: activeConvId, seed: conv.encryption_seed };
+        // !! so this can never disagree with seedForConv() — an enabled Send
+        // button that the send guard then refuses would be a dead end. The
+        // column is NOT NULL (mig 0228), so this only guards a partial read.
+        setSeedReady(!!conv.encryption_seed);
         const otherId = conv.participant_1 === profile.id ? conv.participant_2 : conv.participant_1;
 
         const { data: u } = await supabase
@@ -630,7 +678,7 @@ export default function TrainerMessages() {
       const older = (olderDesc || []).reverse();
       const decrypted = await Promise.all(older.map(async m => ({
         ...m,
-        body: await decryptMessage(m.body, activeConvId, encryptionSeedRef.current),
+        body: await decryptMessage(m.body, activeConvId, seedForConv(encryptionSeedRef.current, activeConvId)),
       })));
       setHasOlderMessages((olderDesc || []).length === 200);
       if (decrypted.length) {
@@ -667,7 +715,7 @@ export default function TrainerMessages() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: `conversation_id=eq.${activeConvId}` },
         (payload) => {
-          decryptMessage(payload.new.body, activeConvId, encryptionSeedRef.current).then(decryptedBody => {
+          decryptMessage(payload.new.body, activeConvId, seedForConv(encryptionSeedRef.current, activeConvId)).then(decryptedBody => {
             setMessages(prev => {
               if (prev.some(m => m.id === payload.new.id)) return prev;
               // Reconcile with optimistic temp rows (id `temp-…`): when the
@@ -864,10 +912,24 @@ export default function TrainerMessages() {
 
   const sendText = useCallback(async (plaintext) => {
     if (!plaintext?.trim() || !activeConvId || !profile?.id) return;
+    // Hard integrity gate. The disabled Send button is not sufficient on its
+    // own — Enter-to-send and WorkoutShareModal's onShare both call in here
+    // directly. Encrypting with a missing/stale seed writes ciphertext that
+    // can never be decrypted by anyone, so refuse rather than corrupt.
+    const seed = seedForConv(encryptionSeedRef.current, activeConvId);
+    if (!seed) {
+      showToast(t('trainerMessages.thread.notReady', {
+        defaultValue: 'Still opening this conversation — try again in a moment.',
+      }), 'info');
+      return;
+    }
     setSending(true);
+    // Hoisted out of the try so the catch can mark THIS row failed rather than
+    // every optimistic row on screen (which, after a thread switch, belongs to
+    // a different client's thread).
+    const tempId = `temp-${Date.now()}`;
     try {
-      const body = await encryptMessage(plaintext, activeConvId, encryptionSeedRef.current);
-      const tempId = `temp-${Date.now()}`;
+      const body = await encryptMessage(plaintext, activeConvId, seed);
       // Optimistic
       setMessages(prev => [...prev, {
         id: tempId,
@@ -914,17 +976,22 @@ export default function TrainerMessages() {
       }
     } catch (err) {
       logger.error('TrainerMessages: send failed', err);
-      // Mark optimistic message as failed (simple visual fade)
-      setMessages(prev => prev.map(m => m._optimistic ? { ...m, _failed: true } : m));
+      // Mark THIS optimistic message as failed (simple visual fade)
+      setMessages(prev => prev.map(m => (m.id === tempId ? { ...m, _failed: true } : m)));
     } finally {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [activeConvId, profile?.id, profile?.gym_id, profile?.full_name, otherUser?.id, t]);
+  }, [activeConvId, profile?.id, profile?.gym_id, profile?.full_name, otherUser?.id, t, showToast]);
+
+  // Sending is only safe once THIS thread's encryption seed has resolved.
+  const canSend = !!activeConvId && seedReady && !sending;
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text) return;
+    // Check readiness BEFORE clearing the box, so a too-early send doesn't
+    // silently eat the trainer's draft.
+    if (!text || !canSend) return;
     setInput('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
     sendText(text);
@@ -1286,7 +1353,10 @@ export default function TrainerMessages() {
                   <button
                     type="button"
                     onClick={handleSend}
-                    disabled={!input.trim() || sending}
+                    // canSend covers sending + "this thread's encryption seed
+                    // has actually resolved". Typing while the thread loads is
+                    // fine; committing a message before the seed lands is not.
+                    disabled={!input.trim() || !canSend}
                     className="shrink-0 transition-all active:scale-95 disabled:opacity-30"
                     style={{
                       width: 44,

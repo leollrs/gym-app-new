@@ -422,7 +422,7 @@ const INJURY_OPTIONS = [
   { value: 'ankles',      key: 'ankles' },
 ];
 
-const SHORT_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const SHORT_DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 const TIME_PREFERENCES = [
   { value: 'morning',   key: 'morning',   subKey: 'morningSub',   icon: Sunrise },
@@ -2048,6 +2048,12 @@ const Onboarding = () => {
     // Best-effort: only week 1 gates the visible preview.
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    // LOCAL date string — `ws` carries local wall-clock time, so toISOString()
+    // rolled to the NEXT day for anyone onboarding after 20:00 in Puerto Rico
+    // (UTC-4). The Nutrition planner reads a local key, so those rows were
+    // written under a week_start it never queries: a member who signed up in
+    // the evening got a plan they could not see.
+    const localDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const PLAN_WEEKS = 4;
     for (let w = 0; w < PLAN_WEEKS; w++) {
       const ws = new Date(startOfWeek);
@@ -2063,7 +2069,7 @@ const Onboarding = () => {
         .upsert({
           profile_id: user.id,
           gym_id: gymId,
-          week_start: ws.toISOString().split('T')[0],
+          week_start: localDateStr(ws),
           plan_data: wkPlan,
           macro_targets: macros,
           is_active: w === 0, // only the current week is the "active" one
@@ -2153,7 +2159,7 @@ const Onboarding = () => {
   };
 
   const dayShort = (index) => t(`common:days.${SHORT_DAY_KEYS[index]}`);
-  const FULL_DAYS_EN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const FULL_DAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   // ── RENDER ───────────────────────────────────────────────
 
@@ -2778,7 +2784,7 @@ const Onboarding = () => {
             <div style={{ display: 'flex', gap: 6 }}>
               {FULL_DAYS_EN.map((dayEN, idx) => {
                 const active = data.preferred_training_days.includes(dayEN);
-                const dow = idx === 6 ? 0 : idx + 1;
+                const dow = idx; // gym_hours.day_of_week is Sunday=0
                 const hourRow = gymHours.find(h => h.day_of_week === dow);
                 const isClosed = hourRow?.is_closed === true;
                 return (
@@ -4493,7 +4499,7 @@ const Onboarding = () => {
                 overflowX: 'auto', scrollbarWidth: 'none',
               }}>
                 {generatedMealPlan.map((_, i) => {
-                  const dayLetters = i18n.language === 'es' ? ['L','M','X','J','V','S','D'] : ['M','T','W','T','F','S','S'];
+                  const dayLetters = i18n.language === 'es' ? ['D','L','M','X','J','V','S'] : ['S','M','T','W','T','F','S'];
                   const sel = i === previewDayIdx;
                   return (
                     <button

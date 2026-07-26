@@ -301,7 +301,7 @@ export default function PersonalInfo() {
     >
       {/* Header */}
       <div
-        className="sticky top-0 z-30 backdrop-blur-2xl"
+        className="sticky sticky-under-appbar z-30 backdrop-blur-2xl"
         style={{
           background: 'color-mix(in srgb, var(--color-bg-primary) 90%, transparent)',
           borderBottom: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',

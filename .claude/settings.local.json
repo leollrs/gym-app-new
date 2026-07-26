@@ -14,7 +14,9 @@
       "WebSearch",
       "Bash(ls -la ~/Downloads/tugympr-ceb888d11687.json 2>&1)",
       "Read(//Users/leollorens/Downloads/**)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(supabase functions *)",
+      "Bash(supabase --version)"
     ]
   }
 }

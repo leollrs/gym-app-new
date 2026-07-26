@@ -20,7 +20,7 @@ const DURATIONS = [30, 45, 60, 90];
 // SAFETY: if the load fails we show an error + Retry and NEVER render the
 // editable-empty editor — saving from that state would wipe the client's
 // real schedule.
-export default function TrainerClientSchedule({ clientId }) {
+export default function TrainerClientSchedule({ clientId, hideHeader = false }) {
   const { t, i18n } = useTranslation('pages');
   const { showToast } = useToast();
   const dateFnsLocale = i18n.language?.startsWith('es') ? es : enUS;
@@ -67,15 +67,21 @@ export default function TrainerClientSchedule({ clientId }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const toggleDay = (d) => setDays(prev => {
-    const next = new Set(prev);
-    if (next.has(d)) { next.delete(d); }
-    else {
-      next.add(d);
-      setDayConfig(cfg => cfg[d]?.length ? cfg : { ...cfg, [d]: [{ time: sharedTime, duration: sharedDuration }] });
-    }
-    return next;
-  });
+  // Both updaters are PURE and called side by side. Previously setDayConfig was
+  // called from INSIDE the setDays updater — React may invoke an updater more
+  // than once (queue replay / render-phase update), so nesting a setState there
+  // made rapid taps re-run the queue and flip days the trainer never touched.
+  // Seeding unconditionally is safe: save() only reads dayConfig for days that
+  // are actually selected, and keeping a deselected day's times means re-picking
+  // that day restores what you had.
+  const toggleDay = (d) => {
+    setDays(prev => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d); else next.add(d);
+      return next;
+    });
+    setDayConfig(cfg => (cfg[d]?.length ? cfg : { ...cfg, [d]: [{ time: sharedTime, duration: sharedDuration }] }));
+  };
 
   const setSlot = (d, idx, patch) => setDayConfig(cfg => {
     const rows = cfg[d] ? [...cfg[d]] : [{ time: sharedTime, duration: sharedDuration }];
@@ -96,16 +102,17 @@ export default function TrainerClientSchedule({ clientId }) {
     return { ...cfg, [d]: rows };
   });
 
+  // Same rule as toggleDay: deciding whether the day drops out happens OUTSIDE
+  // the updater, so nothing schedules state from inside another updater.
   const removeSlot = (d, idx) => {
+    const emptied = (dayConfig[d] || []).filter((_, i) => i !== idx).length === 0;
     setDayConfig(cfg => {
       const rows = (cfg[d] || []).filter((_, i) => i !== idx);
-      const next = { ...cfg, [d]: rows };
-      if (rows.length === 0) {
-        delete next[d];
-        setDays(prev => { const n = new Set(prev); n.delete(d); return n; });
-      }
+      const next = { ...cfg };
+      if (rows.length === 0) delete next[d]; else next[d] = rows;
       return next;
     });
+    if (emptied) setDays(prev => { const n = new Set(prev); n.delete(d); return n; });
   };
 
   // When switching to per-day, seed each selected day's rows from the shared values.
@@ -159,9 +166,11 @@ export default function TrainerClientSchedule({ clientId }) {
   if (loadError) {
     return (
       <>
-        <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, marginBottom: 11 }}>
-          {t('trainerSchedule.title', 'Weekly schedule')}
-        </div>
+        {!hideHeader && (
+          <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, marginBottom: 11 }}>
+            {t('trainerSchedule.title', 'Weekly schedule')}
+          </div>
+        )}
         <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 'var(--tt-card-radius, 20px)', boxShadow: TT.shadow, padding: 18, marginBottom: 22, textAlign: 'center' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: TT.text, marginBottom: 4 }}>
             {t('trainerSchedule.loadError', "Couldn't load the schedule")}
@@ -191,9 +200,11 @@ export default function TrainerClientSchedule({ clientId }) {
 
   return (
     <>
-      <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, marginBottom: 11 }}>
-        {t('trainerSchedule.title', 'Weekly schedule')}
-      </div>
+      {!hideHeader && (
+        <div style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, letterSpacing: -0.3, marginBottom: 11 }}>
+          {t('trainerSchedule.title', 'Weekly schedule')}
+        </div>
+      )}
       <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 'var(--tt-card-radius, 20px)', boxShadow: TT.shadow, padding: 16, marginBottom: 22 }}>
         {/* Day pills */}
         <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between' }}>

@@ -34,6 +34,10 @@ export default function ExerciseVideoThumb({ exercise, size = 46, radius = 13, f
   const tint = tintFor(exercise?.muscle);
   const ref = useRef(null);
   const [inView, setInView] = useState(false);
+  // Until the first frame decodes the box would be a flat empty rectangle —
+  // indistinguishable from a broken tile on a weak connection. Shimmer until
+  // then, then let the frame paint over it.
+  const [hasFrame, setHasFrame] = useState(false);
 
   useEffect(() => {
     if (!src || inView) return;
@@ -61,8 +65,8 @@ export default function ExerciseVideoThumb({ exercise, size = 46, radius = 13, f
     );
   }
   return (
-    <div ref={ref} className={className}
-      style={{ ...box, background: 'var(--color-bg-primary)', border: fill ? 'none' : '1px solid var(--color-border-subtle)' }}>
+    <div ref={ref} className={`${className}${hasFrame ? '' : ' tt-media-loading'}`}
+      style={{ ...box, background: hasFrame ? 'var(--color-bg-primary)' : undefined, border: fill ? 'none' : '1px solid var(--color-border-subtle)' }}>
       {inView && (
         <video
           src={`${src}#t=0.1`}
@@ -70,6 +74,9 @@ export default function ExerciseVideoThumb({ exercise, size = 46, radius = 13, f
           playsInline
           preload="metadata"
           tabIndex={-1}
+          onLoadedData={() => setHasFrame(true)}
+          // Clear on error too, so a broken video doesn't shimmer indefinitely.
+          onError={() => setHasFrame(true)}
           className="w-full h-full object-cover"
           style={{ pointerEvents: 'none' }}
         />

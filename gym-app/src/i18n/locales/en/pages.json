@@ -365,7 +365,6 @@
     "logOut": "Log out",
     "logoutConfirmTitle": "Log out?",
     "logoutConfirmBody": "You'll need to sign in again to use the app.",
-    "cancel": "Cancel",
     "fullName": "Full name",
     "username": "username",
     "editNameUsername": "Edit name & username",
@@ -913,7 +912,7 @@
   },
   "nutrition": {
     "title": "Nutrition",
-    "macroMatch": "Macro Match",
+    "macroMatch": "{{pct}}% match",
     "caloriesLeft": "Calories Left",
     "overBy": "Over by",
     "eaten": "Eaten",
@@ -999,8 +998,16 @@
     "perMeal": "Avg per meal",
     "loadMore": "Load more",
     "needsMore": "Needs {{n}} more",
-    "ingCat": { "protein": "Protein", "carb": "Carbs", "veg": "Veggies", "fruit": "Fruit", "dairy": "Dairy", "fat": "Fats & Nuts" },
+    "ingCat": {
+      "protein": "Protein",
+      "carb": "Carbs",
+      "veg": "Veggies",
+      "fruit": "Fruit",
+      "dairy": "Dairy",
+      "fat": "Fats & Nuts"
+    },
     "scanFood": "Scan food",
+    "scanFoodFab": "Food",
     "scanFoodHint": "Take a photo of your meal",
     "barcodeLabel": "Barcode",
     "barcodeHint": "Scan a product barcode",
@@ -1013,7 +1020,7 @@
     "confidence_medium": "medium confidence",
     "confidence_low": "low confidence",
     "identifiedItems": "Identified items",
-    "addItem": "Add",
+    "addItem": "Add item…",
     "itemName": "Item name",
     "usdaVerified": "USDA verified",
     "aiEstimate": "AI estimate",
@@ -1103,7 +1110,6 @@
     "autoPlan": "Auto-plan",
     "planGenerated": "Plan generated!",
     "mealTypeLabel": "Meal",
-    "regenerate": "Regenerate",
     "showLess": "Show less",
     "estimatedEntry": "Estimated",
     "estimateDisclaimer": "Estimated values —",
@@ -1276,7 +1282,6 @@
     "toBuy": "To buy",
     "removeItemQ": "Remove item?",
     "removeItemBody": "Remove {{name}} from your list?",
-    "remove": "Remove",
     "uncheckAllQ": "Clear all checks?",
     "uncheckAllBody": "Keeps your whole list — just clears the checkmarks so you can shop it again.",
     "clearChecks": "Clear checks",
@@ -1289,7 +1294,6 @@
     "moveToList": "Move to list",
     "inKitchenHidden": "{{count}} already in your kitchen — hidden",
     "showKitchen": "Show",
-    "addItem": "Add item…",
     "addItemPlaceholder": "Add an item…",
     "addBtn": "Add",
     "backToShop": "Back to shop",
@@ -1425,7 +1429,16 @@
     "noCustomMeals": "Build your own meal",
     "noCustomMealsHint": "Pick foods, set portions, add a photo",
     "addMealFailed": "Could not add meal",
-    "customTag": "Custom"
+    "customTag": "Custom",
+    "sortAZ": "A–Z",
+    "sortProtein": "Protein",
+    "sortCalories": "Calories",
+    "addToWeek": "Add to week",
+    "addedToWeek": "Added to this week's plan",
+    "photoUploadFailed": "Could not upload photo",
+    "addPhoto": "Add photo",
+    "nMeals_one": "{{count}} meal",
+    "inKitchenHidden_one": "{{count}} already in your kitchen — hidden"
   },
   "sessionSummary": {
     "workoutComplete": "Workout Complete",
@@ -2272,6 +2285,9 @@
     "viewList": "List",
     "viewGrid": "Grid",
     "sortAZ": "A–Z",
+    "sortZA": "Z–A",
+    "scanEquipmentFab": "Equipment",
+    "equipmentEntry": "Scan gym equipment",
     "sortMuscle": "Muscle",
     "viewCompact": "Names list",
     "muscle": "Muscle",
@@ -2482,7 +2498,8 @@
     "deleteError": "Failed to delete exercise. Please try again.",
     "backToWorkouts": "Back to Workouts",
     "seeAllInFilter": "See all {{filter}}",
-    "filter": "Filter"
+    "filter": "Filter",
+    "commonMistakes": "Common Mistakes"
   },
   "leaderboard": {
     "title": "Leaderboard",
@@ -8408,7 +8425,13 @@
       "weeks": "weeks",
       "daysWk": "days/wk",
       "assigned": "Assigned",
-      "assign": "Assign"
+      "assign": "Assign",
+      "confirmRemoveTitle": "Remove program?",
+      "confirmRemoveBody": "This unassigns the current program. Logged workouts are kept.",
+      "confirmRemoveBtn": "Remove",
+      "confirmAssignTitle": "Assign program?",
+      "confirmAssignBody": "Assign “{{name}}” to this client?",
+      "confirmAssignReplaceBody": "This replaces the current program with “{{name}}”."
     },
     "nutrition": {
       "logFailed": "Couldn't log that food. Try again.",
@@ -9437,7 +9460,8 @@
       "open": "Open payments",
       "setup": "Set client fees to track payments",
       "pending": "{{count}} pending · ${{amount}}",
-      "allPaid": "All paid up ✓"
+      "allPaid": "All paid up ✓",
+      "pending_one": "{{count}} pending · ${{amount}}"
     },
     "sessionsWord": "sessions",
     "hoursToday": "{{h}} today",
@@ -9540,9 +9564,9 @@
     "viewAll": "View all",
     "noRoster": "No clients yet",
     "allOnTrack": "Everyone is on track",
-    "deskSummary": "Desk summary",
+    "deskSummary": "{{sessions}} sessions today · {{att}} need attention",
     "todaysSchedule": "Today's schedule",
-    "scheduleSub": "Sessions and check-ins",
+    "scheduleSub": "{{count}} sessions today",
     "programFallback": "No program",
     "sessionsCount": "{{count}} sessions",
     "openClient": "Open client",
@@ -9558,9 +9582,13 @@
     "trainingNow": "Training now",
     "attentionReasonNever": "Hasn't trained yet",
     "watchLive": "Watch live",
-    "livePaused": "Paused"
+    "livePaused": "Paused",
+    "sessionsCount_one": "{{count}} session"
   },
   "trainerCalendar": {
+    "restoreSession": "Restore & reschedule",
+    "sessionRestored": "Session restored",
+    "errorRestoreSession": "Failed to restore session",
     "title": "Calendar",
     "accentLabel": "Schedule",
     "day": "Day",
@@ -9683,7 +9711,9 @@
     "planPrefix": "Plan",
     "sessionsThisMonth": "Sessions this month",
     "noSessionsThisMonth": "No sessions this month",
-    "dayDetail": "Day detail"
+    "dayDetail": "Day detail",
+    "recurringSessionsCreated_one": "{{count}} recurring session created",
+    "durationError": "Pick a session length (1–480 minutes)"
   },
   "trainerSocial": {
     "title": "Activity",
@@ -9749,7 +9779,8 @@
       "loadOlderFailed": "Couldn’t load earlier messages.",
       "errorTitle": "Couldn’t load this conversation",
       "errorDesc": "Check your connection and try again.",
-      "retry": "Retry"
+      "retry": "Retry",
+      "notReady": "Still opening this conversation — try again in a moment."
     },
     "actions": {
       "shareWorkout": "Share workout",
@@ -10129,7 +10160,7 @@
     "addClass": "Add class",
     "analyticsEmptyDesc": "Once you have bookings, you'll see analytics here",
     "emptyDesc": "Your classes will appear here",
-    "eyebrow": "Classes",
+    "eyebrow": "Classes · {{count}}",
     "filterAll": "All",
     "filterPast": "Past",
     "filterThisWeek": "This week",
@@ -10168,7 +10199,8 @@
     "promoted": "Member confirmed",
     "errorPromote": "Could not confirm this member",
     "unmarkAttended": "Tap to unmark",
-    "futureAttendance": "You can mark attendance once the day arrives"
+    "futureAttendance": "You can mark attendance once the day arrives",
+    "exerciseCount_one": "{{count}} exercise"
   },
   "adminAnalytics": {
     "onboardingCompletion": "Onboarding Completion",
@@ -10465,6 +10497,40 @@
     "bulkImportN": "Import {{count}}"
   },
   "trainerPlans": {
+    "shareWithMore": "Share with more members",
+    "alsoSharedN": "Also shared with {{n}}",
+    "mealShareHint": "Everyone gets the same plan; edit it once for all.",
+    "noOtherClients": "No other clients to share with.",
+    "assignMembers": "Assign members",
+    "oneMember": "1 member",
+    "nMembers": "{{n}} members",
+    "assignToMembers": "Assign to members",
+    "assignMultiHint": "Share this plan with one or more clients.",
+    "assignBodyMulti": "Share this plan with one or more clients.",
+    "assignBodySessionMulti": "Share this session with one or more clients.",
+    "noClientsAvailable": "No active clients to assign.",
+    "membersSelected": "{{n}} selected",
+    "assignN": "Assign {{n}}",
+    "planAssignedN": "Shared with {{n}} members",
+    "sharedWithN": "Shared with {{n}} members",
+    "sharedTemplateHint": "One plan, edited once for everyone.",
+    "manage": "Manage",
+    "done": "Done",
+    "errorAssign": "Failed to assign plan",
+    "planUnassigned": "Plan unassigned",
+    "planAssignedActive": "Assigned to {{name}} · now active",
+    "planAssigned": "Assigned to {{name}}",
+    "change": "Change",
+    "unassign": "Unassign",
+    "assignTitle": "Assign \"{{name}}\"",
+    "assignBody": "Who should this plan go to?",
+    "assignBodySession": "Who should this session go to?",
+    "noClientUnassign": "No client (unassigned)",
+    "assignWillActivate": "This will activate the plan so they can see it in their app.",
+    "assignClientAria": "Assign to client",
+    "typeAll": "All",
+    "typePrograms": "Programs",
+    "typeSessions": "Sessions",
     "title": "Workout Plans",
     "titleTraining": "Workout Plans",
     "titleNutrition": "Nutrition Plans",
@@ -10482,6 +10548,17 @@
     "inactiveBadge": "INACTIVE",
     "details": "Details",
     "descPlaceholder": "Goals and approach for this plan...",
+    "ingredients": "Ingredients",
+    "instructions": "Instructions",
+    "filters": "Filters",
+    "planSettings": "Plan settings",
+    "resetFilters": "Reset",
+    "showNMeals": "Show {{n}} meals",
+    "noOtherClientsHint": "Add more clients and they’ll show up here.",
+    "noIngredients": "No ingredients listed",
+    "noInstructions": "No instructions listed",
+    "notesTitle": "Plan notes",
+    "notesHint": "Goals, approach, anything the member should know",
     "duration": "Duration",
     "weeks": "Weeks",
     "weekLabel": "Week",
@@ -10920,7 +10997,11 @@
     "restore": "Restore",
     "restored": "{{name}} is back on your roster",
     "restoreFailed": "Could not restore the client. Try again.",
-    "viewRemoved": "View removed clients"
+    "viewRemoved": "View removed clients",
+    "programAssignedSuccess_one": "Program assigned to {{count}} client",
+    "assignProgramDesc_one": "Select a program to assign to {{count}} selected client",
+    "messageAllDesc_one": "Send a direct message to {{count}} selected client",
+    "selectedCount_one": "{{count}} selected"
   },
   "nps": {
     "survey": {
@@ -10972,7 +11053,70 @@
     "unavailable": "Recovery unavailable",
     "unavailableHint": "Couldn't load this client's recovery data right now."
   },
+  "trainerInvoices": {
+    "title": "Invoices",
+    "newForClient": "New invoice",
+    "clientEmpty": "No invoices for this client yet",
+    "clientEmptySub": "Bill for sessions, packs or anything else — send as a PDF via WhatsApp or text.",
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "newTitle": "New invoice",
+    "editTitle": "Edit invoice",
+    "client": "Client",
+    "pickClient": "Select a client…",
+    "items": "Items",
+    "itemDesc": "Description (e.g. 4 PT sessions)",
+    "qty": "Qty",
+    "unitPrice": "Unit price",
+    "addItem": "Add item",
+    "dueDate": "Due date",
+    "notes": "Note to client (optional)",
+    "notesPh": "Thanks for training with me!",
+    "total": "Total",
+    "saveDraft": "Save draft",
+    "saveSend": "Save & send",
+    "savedDraft": "Draft saved",
+    "billedTo": "Billed to",
+    "sendNow": "Send invoice",
+    "resend": "Resend",
+    "markPaid": "Mark as paid",
+    "markedPaid": "Marked as paid",
+    "reopen": "Mark unpaid",
+    "reopened": "Reopened",
+    "void": "Void invoice",
+    "voided": "Invoice voided",
+    "deleteDraft": "Delete draft",
+    "confirmDelete": "Tap again to delete draft",
+    "paidOn": "Paid {{date}}",
+    "preparing": "Preparing…",
+    "sendMessage": "Hi {{name}}, here's your invoice from {{trainer}} — {{amount}}.",
+    "pdfSaved": "Invoice PDF saved — attach it in WhatsApp, email or text."
+  },
+  "sessions": {
+    "title": "Training Sessions",
+    "subtitle": "Your prepaid sessions with your trainer",
+    "back": "Go back",
+    "emptyTitle": "No prepaid sessions yet",
+    "emptyBody": "When your trainer sells you a session pack, it'll show up here.",
+    "nPack": "{{n}}-session pack",
+    "ofLeft": "of {{total}} sessions left",
+    "expires": "Expires {{date}}",
+    "from": "From {{date}}",
+    "past": "Past packs",
+    "usedOf": "{{used}} of {{total}} used",
+    "tagExpired": "Expired",
+    "tagDone": "Done",
+    "leftCount": "{{count}} session left",
+    "leftCount_other": "{{count}} sessions left"
+  },
   "trainerPayment": {
+    "thisMonth": "This month",
+    "invoiceRow": "Invoice",
+    "lifetimeTotal": "${{n}} total",
     "title": "Payment",
     "error": "Something went wrong",
     "paidThisMonth": "Paid this month",
@@ -11084,7 +11228,9 @@
     "pack": "Pack",
     "packLeft": "{{n}} of {{total}} sessions left",
     "inactiveClient": "Inactive",
-    "exportError": "Could not export the file"
+    "exportError": "Could not export the file",
+    "nClients_one": "{{count}} client",
+    "yearPayments_one": "{{count}} payment collected"
   },
   "trainerSchedule": {
     "title": "Weekly schedule",
@@ -11103,7 +11249,8 @@
     "loadErrorHint": "Editing is disabled so the saved schedule isn’t overwritten. Check your connection and try again.",
     "retry": "Retry",
     "addSlot": "Add another time",
-    "removeSlot": "Remove time"
+    "removeSlot": "Remove time",
+    "perWeek_one": "{{count}} session/week · auto-booked 8 weeks out"
   },
   "trainerAttendance": {
     "title": "Attendance",
@@ -11115,6 +11262,10 @@
     "retry": "Retry"
   },
   "trainerClientDetail": {
+    "editSessionTitle": "Update this session",
+    "currentStatus": "Current",
+    "confirmChange": "Confirm change",
+    "sessionUpdated": "Session updated",
     "title": "Client details",
     "back": "Back",
     "tabs": {
@@ -11123,7 +11274,13 @@
       "body": "Body",
       "notes": "Notes",
       "coaching": "Check-ins",
-      "plan": "Plan"
+      "plan": "Plan",
+      "today": "Today",
+      "info": "Info",
+      "training": "Training",
+      "nutrition": "Nutrition",
+      "progress": "Progress",
+      "payments": "Payments"
     },
     "snapshot": {
       "title": "Snapshot",
@@ -11237,8 +11394,7 @@
     "heatmap": {
       "event_one": "{{count}} event",
       "event_other": "{{count}} events",
-      "event": "{{count}} event",
-      "event_other": "{{count}} events"
+      "event": "{{count}} event"
     },
     "mealCategories": {
       "breakfast": "Breakfast",
@@ -11267,6 +11423,7 @@
     "noUpcomingSession": "No upcoming session",
     "clientLabel": "Client",
     "weekN": "Week {{w}}",
+    "ofN": "of {{n}}",
     "memberSince": "Member since {{m}}",
     "currentPlan": "Current plan",
     "adjust": "Adjust",
@@ -11283,6 +11440,7 @@
     "notesCoach": "Coach notes",
     "weekDaysPerWeek": "Week {{w}} · {{d}} days/wk",
     "reportPill": "Report",
+    "shareReport": "Share monthly report",
     "clientGoals": {
       "title": "Client goals"
     },
@@ -11301,7 +11459,38 @@
     "dayN": "Day {{n}}",
     "program": {
       "empty": "This program has no content yet.",
-      "restWeek": "Rest / no sessions"
+      "restWeek": "Rest / no sessions",
+      "superset": "Superset",
+      "circuit": "Circuit"
+    },
+    "editor": {
+      "title": "Edit program",
+      "save": "Save",
+      "saved": "Program saved for this client",
+      "namePlaceholder": "Program name",
+      "addExercise": "Add exercise",
+      "swapTitle": "Swap exercise",
+      "searchExercises": "Search exercises…",
+      "searchAny": "Search any exercise…",
+      "noMatches": "No matches",
+      "setsShort": "Sets",
+      "repsShort": "Reps",
+      "restShort": "Rest",
+      "addDay": "Add day",
+      "group": "Group",
+      "ungroup": "Ungroup",
+      "editForClient": "Edit for client",
+      "editedTag": "Edited",
+      "resetToTemplate": "Reset to gym template",
+      "resetDone": "Reverted to the gym template",
+      "programLength": "Program length",
+      "addWeek": "Add week",
+      "removeWeek": "Remove week",
+      "confirmResetTitle": "Reset to gym template?",
+      "confirmResetBody": "Discards your custom edits — the client goes back to the shared gym program.",
+      "confirmResetBtn": "Reset",
+      "confirmEditTitle": "Edit this program?",
+      "confirmEditBody": "Assigns “{{name}}” to this client as an editable copy you can customize."
     },
     "prefs": {
       "title": "Preferences",
@@ -11331,6 +11520,10 @@
       },
       "avoidLabel": "Foods to avoid",
       "avoidPlaceholder": "e.g. cilantro, mushrooms"
+    },
+    "mealEditor": {
+      "noRecipeDetail": "No recipe details saved for this meal — macros only.",
+      "viewMeal": "View meal details"
     }
   },
   "trainerProfile": {
@@ -11383,6 +11576,9 @@
       "perMonth": "/mo",
       "perSession": "/sess",
       "rateHint": "Pre-fills new clients’ fees. Optional.",
+      "payInstr": "How clients pay you",
+      "payInstrPlaceholder": "e.g. ATH Móvil @coachluis · Zelle 787-000-0000",
+      "payInstrHint": "Shown on every invoice you send. Payment happens off-app.",
       "usernameTaken": "That username is taken",
       "phonePublicHint": "Visible to gym members as a Call button on your public profile.",
       "firstName": "First name",
@@ -11499,10 +11695,10 @@
     },
     "reviews": {
       "recent": "Recent reviews",
-      "summary": "Average rating",
+      "summary": "{{count}} reviews · {{pct}}% recommend",
       "empty": "No reviews yet",
       "anon": "Anonymous",
-      "seeAll": "See all reviews"
+      "seeAll": "See {{n}}"
     },
     "schedule": {
       "openCalendar": "Open calendar",
@@ -11755,7 +11951,10 @@
     "actionNotify": "Alert me",
     "actionNudge": "Nudge the member",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "descInactivityNudge_one": "Nudge a client after {{count}} day without a workout",
+    "descInactivityAlert_one": "Alert me when a client goes {{count}} day without a workout",
+    "days_one": "{{count}} day"
   },
   "trainerCoaching": {
     "checkinsTitle": "Check-ins",
@@ -14348,6 +14547,8 @@
     "planMeta": "{{weeks}} wk · {{days}} days"
   },
   "trainerMealPlan": {
+    "prepMin": "{{n}} min",
+    "serves": "Serves {{n}}",
     "sectionTitle": "Meal plan from your coach",
     "byCoach": "From {{name}}",
     "dailyTargets": "Daily targets",

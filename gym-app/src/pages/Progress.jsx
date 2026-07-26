@@ -74,7 +74,7 @@ export default function Progress() {
   return (
     <div className="bg-[var(--color-bg-primary)]">
       {/* Sticky header */}
-      <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
+      <div className="sticky sticky-under-appbar z-30 backdrop-blur-2xl" style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-primary) 95%, transparent)' }}>
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 md:px-6 pt-3" data-tour="tour-progress-page">
           <h1
             className="mb-3 truncate"

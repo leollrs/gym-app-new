@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase';
 import logger from '../../lib/logger';
 import i18n from 'i18next';
 import ViewSwitcherModal from '../../components/ViewSwitcherModal';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { TT, TFont } from './components/designTokens';
 import { TCard, TEyebrow, TPageTitle, TIconButton, TPrimaryButton } from './components/designPrimitives';
 import TrainerAutomations from './components/TrainerAutomations';
@@ -63,6 +64,8 @@ function ChangePasswordModal({ open, onClose }) {
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
   const [saving, setSaving] = useState(false);
+  // Freeze the page behind the modal (hook must run before the early return).
+  useScrollLock(open);
 
   if (!open) return null;
 

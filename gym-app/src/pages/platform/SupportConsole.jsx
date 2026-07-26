@@ -897,9 +897,16 @@ export default function SupportConsole() {
           )}
         </div>
 
-        {/* Right: detail pane */}
+        {/* Right: detail pane.
+            Mobile is a full-screen pane, so it needs z-[90]: PlatformLayout's
+            bottom nav is z-50 and rendered AFTER <main>, so at z-50 the nav won
+            the tie — it painted over the pane's bottom action grid and stayed
+            tappable "behind" what is supposed to be a modal. z-[90] also stays
+            BELOW this file's own z-[100] dialogs (role / status / reset / invite
+            / move) so they still open on top of the pane. The bottom padding
+            clears the home indicator now that the pane covers the nav. */}
         {selectedMember && (
-          <div className={`${selectedMember ? 'fixed inset-0 z-50 bg-[#05070B] md:static md:z-auto md:bg-transparent overflow-y-auto' : ''} md:w-[45%] md:sticky md:top-6 md:max-h-[calc(100vh-48px)] md:overflow-y-auto`}>
+          <div className={`${selectedMember ? 'fixed inset-0 z-[90] bg-[#05070B] md:static md:z-auto md:bg-transparent overflow-y-auto pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-0' : ''} md:w-[45%] md:sticky md:top-6 md:max-h-[calc(100vh-48px)] md:overflow-y-auto`}>
             <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-white/6">
               <button onClick={() => { setSelectedMember(null); setDetailData(null); }} className="text-[#6B7280] hover:text-[#E5E7EB] transition-colors">
                 <X size={20} />

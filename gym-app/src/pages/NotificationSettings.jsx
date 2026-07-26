@@ -129,7 +129,7 @@ export default function NotificationSettings() {
   return (
     <div className="min-h-screen pb-28 md:pb-12" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
       {/* Header */}
-      <div className="sticky top-0 z-30 backdrop-blur-2xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
+      <div className="sticky sticky-under-appbar z-30 backdrop-blur-2xl" style={{ backgroundColor: 'var(--color-bg-nav)', borderBottom: '1px solid var(--color-border-default)' }}>
         <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => navigate(-1)}
             aria-label={t('settings.goBack', 'Go back')}

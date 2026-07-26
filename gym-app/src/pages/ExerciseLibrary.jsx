@@ -3246,25 +3246,33 @@ export const ExerciseLibraryPage = () => {
         </button>
       </div>
 
-      {/* Equipment scan — floating bottom-right FAB, matching the Nutrition scan
-          FAB. Opens the equipment browser (scan a machine → its exercises).
+      {/* Equipment scan — floating bottom-right FAB. Deliberately a LABELED pill
+          rather than a bare scan glyph: Nutrition has its own scan FAB in the
+          same corner, and two identical accent circles are indistinguishable.
+          The icon pairing (scan + dumbbell) and the word both say "equipment".
           Portaled to body so it's never clipped; gated on the active route so
           it can't leak onto other kept-alive pages. */}
       {isExercisesActive && createPortal(
         <button
           onClick={() => navigate('/equipment')}
-          aria-label={t('exerciseLibrary.equipmentEntry', 'Scan equipment')}
-          className="flex items-center justify-center active:scale-90 transition-all"
+          aria-label={t('exerciseLibrary.equipmentEntry', 'Scan gym equipment')}
+          className="flex items-center active:scale-95 transition-all"
           style={{
             position: 'fixed', zIndex: 50, right: 18,
             bottom: 'calc(90px + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
-            width: 58, height: 58, borderRadius: 999, border: 'none',
+            height: 52, padding: '0 17px', gap: 8, borderRadius: 999, border: 'none',
             background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #fff)',
             boxShadow: '0 8px 24px color-mix(in srgb, var(--color-accent) 38%, transparent), 0 2px 6px rgba(0,0,0,0.15)',
             cursor: 'pointer',
           }}
         >
-          <ScanLine size={24} strokeWidth={2.2} />
+          <span style={{ position: 'relative', display: 'flex' }}>
+            <ScanLine size={21} strokeWidth={2.3} />
+            <Dumbbell size={11} strokeWidth={3} style={{ position: 'absolute', right: -2, bottom: -2 }} />
+          </span>
+          <span style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+            {t('exerciseLibrary.scanEquipmentFab', 'Equipment')}
+          </span>
         </button>,
         document.body
       )}

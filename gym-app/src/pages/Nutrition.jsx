@@ -555,7 +555,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
           <button onClick={onClose}
             className="absolute top-4 left-4 min-w-[44px] min-h-[44px] w-10 h-10 rounded-full flex items-center justify-center focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)' }}
-            aria-label={t('common.close', 'Close')}>
+            aria-label={t('common:close', 'Close')}>
             <ChevronLeft size={18} style={{ color: '#1f2937' }} />
           </button>
           {/* bookmark */}
@@ -816,7 +816,7 @@ const MealLogSheet = ({ meal, onClose, onLog, lang = 'en' }) => {
         <div className="flex items-center justify-between px-4 pt-4 pb-3">
           <button
             onClick={onClose}
-            aria-label={t('common.close', 'Close')}
+            aria-label={t('common:close', 'Close')}
             className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
             style={{
               background: 'var(--color-bg-surface)',
@@ -1042,7 +1042,7 @@ const BarcodeResultModal = ({ product, onClose, onLog }) => {
               <ScanLine size={16} className="text-[#D4AF37]" />
               <h3 className="text-[16px] font-bold text-[#E5E7EB]">{t('nutrition.scannedProduct')}</h3>
             </div>
-            <button onClick={onClose} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center" aria-label={t('common.close', 'Close')}>
+            <button onClick={onClose} className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full bg-white/[0.06] flex items-center justify-center" aria-label={t('common:close', 'Close')}>
               <X size={15} className="text-[#6B7280]" />
             </button>
           </div>
@@ -1219,7 +1219,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, o
               {t('nutrition.logFood')}
             </div>
             <button onClick={onClose} className="w-[34px] h-[34px] rounded-full flex items-center justify-center focus:outline-none"
-              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common.close', 'Close')}>
+              style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common:close', 'Close')}>
               <X size={16} style={{ color: 'var(--color-text-primary)' }} />
             </button>
           </div>
@@ -1235,7 +1235,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, o
               className="w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--color-text-muted)]"
               style={{ color: 'var(--color-text-primary)' }} />
             {query && (
-              <button onClick={() => setQuery('')} className="flex-shrink-0 focus:outline-none" aria-label={t('common.clear', 'Clear')}>
+              <button onClick={() => setQuery('')} className="flex-shrink-0 focus:outline-none" aria-label={t('common:clear', 'Clear')}>
                 <X size={15} style={{ color: 'var(--color-text-muted)' }} />
               </button>
             )}
@@ -1311,7 +1311,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, o
                       className="w-full bg-transparent text-[13px] outline-none placeholder:text-[var(--color-text-muted)]"
                       style={{ color: 'var(--color-text-primary)' }} />
                     {ingQuery && (
-                      <button onClick={() => setIngQuery('')} className="flex-shrink-0 focus:outline-none" aria-label={t('common.clear', 'Clear')}>
+                      <button onClick={() => setIngQuery('')} className="flex-shrink-0 focus:outline-none" aria-label={t('common:clear', 'Clear')}>
                         <X size={14} style={{ color: 'var(--color-text-muted)' }} />
                       </button>
                     )}
@@ -1339,7 +1339,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, o
 
               {ingLoading && tab === 'ingredients' ? (
                 <div className="py-8 text-center" aria-busy={true}>
-                  <div className="w-6 h-6 rounded-full animate-spin mx-auto" style={{ border: `2px solid var(--color-border-subtle)`, borderTopColor: TU.accent }} role="status"><span className="sr-only">{t('common.loading', 'Loading')}</span></div>
+                  <div className="w-6 h-6 rounded-full animate-spin mx-auto" style={{ border: `2px solid var(--color-border-subtle)`, borderTopColor: TU.accent }} role="status"><span className="sr-only">{t('common:loading', 'Loading')}</span></div>
                 </div>
               ) : foodRows.length === 0 ? (
                 <div className="py-8 text-center">
@@ -1455,7 +1455,7 @@ const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' 
       <div className="relative w-full max-w-md flex flex-col rounded-[24px] overflow-hidden" style={{ background: 'var(--color-bg-primary)', maxHeight: '88vh', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}>
         <div className="px-5 pt-3 pb-3 shrink-0 flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
           <div style={{ fontFamily: TU.display, fontSize: 20, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.createMeal', 'Create meal')}</div>
-          <button onClick={onClose} className="w-[34px] h-[34px] rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common.close', 'Close')}><X size={16} style={{ color: 'var(--color-text-primary)' }} /></button>
+          <button onClick={onClose} className="w-[34px] h-[34px] rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common:close', 'Close')}><X size={16} style={{ color: 'var(--color-text-primary)' }} /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -1491,7 +1491,7 @@ const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' 
                 className="w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--color-text-muted)]" style={{ color: 'var(--color-text-primary)' }} />
               {searching && <Loader size={15} className="animate-spin" style={{ color: 'var(--color-text-muted)' }} />}
               {query && !searching && (
-                <button onClick={() => { setQuery(''); setResults([]); }} className="flex-shrink-0 focus:outline-none" aria-label={t('common.clear', 'Clear')}>
+                <button onClick={() => { setQuery(''); setResults([]); }} className="flex-shrink-0 focus:outline-none" aria-label={t('common:clear', 'Clear')}>
                   <X size={15} style={{ color: 'var(--color-text-muted)' }} />
                 </button>
               )}
@@ -1532,7 +1532,7 @@ const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' 
                     <span className="min-w-[28px] text-center text-[12px] font-bold" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{servings}{'×'}</span>
                     <button onClick={() => bump(food.id, 0.5)} className="w-6 h-6 rounded-full flex items-center justify-center text-[14px] font-bold" style={{ background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>+</button>
                   </div>
-                  <button onClick={() => drop(food.id)} className="w-7 h-7 flex items-center justify-center flex-shrink-0" aria-label={t('common.remove', 'Remove')}><Trash2 size={14} style={{ color: 'var(--color-text-muted)' }} /></button>
+                  <button onClick={() => drop(food.id)} className="w-7 h-7 flex items-center justify-center flex-shrink-0" aria-label={t('common:remove', 'Remove')}><Trash2 size={14} style={{ color: 'var(--color-text-muted)' }} /></button>
                 </div>
               ))}
             </div>
@@ -1594,7 +1594,7 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
             </div>
           </div>
           <button onClick={onClose} className="w-[34px] h-[34px] rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common.close', 'Close')}>
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common:close', 'Close')}>
             <X size={16} style={{ color: 'var(--color-text-primary)' }} />
           </button>
         </div>
@@ -1735,7 +1735,13 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
     setSaving(false);
   };
 
-  return (
+  // Portaled to body. One of the three mount sites is inside the `loading`
+  // early-return, which is NOT wrapped in the page's own portal — and when
+  // Nutrition renders embedded in Progress's SwipeableTabView, that track has a
+  // transform, which becomes the containing block for `position: fixed`. The
+  // sheet then resolved `inset:0` a full viewport-width off-screen: after an AI
+  // food photo the shutter looked like it had done nothing.
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose} role="presentation">
       <div className="absolute inset-0" style={{ background: 'rgba(20,14,8,0.55)', backdropFilter: 'blur(6px)' }} />
       <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto"
@@ -1749,7 +1755,7 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
         <button onClick={onClose}
           className="absolute top-3.5 right-3.5 w-[34px] h-[34px] rounded-full flex items-center justify-center z-10 focus:outline-none"
           style={{ background: 'var(--color-bg-primary)', border: '1px solid var(--color-border-subtle)' }}
-          aria-label={t('common.close', 'Close')}>
+          aria-label={t('common:close', 'Close')}>
           <X size={15} style={{ color: 'var(--color-text-primary)' }} />
         </button>
 
@@ -1971,7 +1977,8 @@ const FoodPhotoResultModal = ({ result, analyzing, error, photoPreview, onClose,
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -2042,7 +2049,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
         {/* Back button */}
         <button onClick={onClose} className="absolute top-4 left-4 min-w-[44px] min-h-[44px] w-10 h-10 rounded-full flex items-center justify-center z-10 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
           style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid var(--color-border-default)' }}
-          aria-label={t('common.back', 'Back')}>
+          aria-label={t('common:back', 'Back')}>
           <ChevronLeft size={18} className="text-white/85" />
         </button>
 
@@ -2222,7 +2229,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
             {t('nutrition.goals', 'Goals')}
           </div>
           <button onClick={onClose} className="w-[34px] h-[34px] rounded-full flex items-center justify-center focus:outline-none"
-            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common.close', 'Close')}>
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common:close', 'Close')}>
             <X size={16} style={{ color: 'var(--color-text-primary)' }} />
           </button>
         </div>
@@ -2629,7 +2636,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
 };
 
 // ── WEEKLY NUTRITION SUMMARY ─────────────────────────────────
-const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 const WeeklyNutritionSummary = ({ userId, targets, startExpanded = false }) => {
   const { t, i18n } = useTranslation('pages');
@@ -2769,8 +2776,7 @@ const WeeklyNutritionSummary = ({ userId, targets, startExpanded = false }) => {
   const getDayLabel = (dateStr) => {
     const d = new Date(dateStr + 'T12:00:00');
     const jsDay = d.getDay(); // 0=Sun
-    const dayMap = [6, 0, 1, 2, 3, 4, 5]; // JS Sun=0 → our index 6 (sun), Mon=1 → 0 (mon)
-    return t(`nutrition.days.${DAY_KEYS[dayMap[jsDay]]}`);
+    return t(`nutrition.days.${DAY_KEYS[jsDay]}`); // DAY_KEYS is Sunday-first, so getDay() indexes it directly
   };
 
   const isToday = (dateStr) => dateStr === todayStr();
@@ -3108,6 +3114,40 @@ const Stepper = ({ value, min, max, onChange, label }) => (
   </div>
 );
 
+// The planner keeps its plan in memory as { [date]: { [slot]: meal } }. It's
+// mirrored to generated_meal_plans.plan_data so it persists server-side (survives
+// reinstall / new device, and the client's coach can read it via RLS). We store
+// that native shape verbatim, tagged, for a lossless round-trip — and can still
+// read back a coach plan adopted via "Add to My Plan" (a flat 7-day array).
+const PLAN_FORMAT = 'planner_v1';
+function planToPlanData(days, savedAt) {
+  return { format: PLAN_FORMAT, days: days || {}, savedAt: savedAt || Date.now() };
+}
+function planDataToPlan(planData, weekDates, slotKeys) {
+  if (!planData) return {};
+  if (planData.format === PLAN_FORMAT && planData.days && typeof planData.days === 'object') return planData.days;
+  // Legacy / "Add to My Plan" shape: flat 7-day array [{ meals:[...], totals }].
+  if (Array.isArray(planData)) {
+    const out = {};
+    planData.forEach((day, i) => {
+      const date = weekDates[i]; if (!date) return;
+      const meals = Array.isArray(day?.meals) ? day.meals : [];
+      if (!meals.length) return;
+      out[date] = {};
+      meals.forEach((m, j) => {
+        const slot = slotKeys[j] || slotKeys[slotKeys.length - 1] || 'meal';
+        out[date][slot] = {
+          id: m.id ?? null, title: m.title || m.name || '', title_es: m.title_es || m.name_es || null,
+          calories: m.calories || 0, protein: m.protein || 0, carbs: m.carbs || 0, fat: m.fat || 0,
+          image: m.image || (m.id != null ? mealImageById(m.id) : null), slot, eaten: !!m.eaten,
+        };
+      });
+    });
+    return out;
+  }
+  return {};
+}
+
 const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false, onAddRecipeToGrocery, onRemoveRecipeFromGrocery, onMarkMealEaten, groceryList = [] }) => {
   // Full-screen planner only mounts when showPlanner is true, so lock unconditionally.
   useScrollLock(true);
@@ -3220,10 +3260,38 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     return () => window.removeEventListener('tugympr:meal-plan-changed', reload);
   }, [storageKey]);
 
+  // Hydrate the week from the server (generated_meal_plans) so the plan survives a
+  // reinstall / new device and reflects edits made elsewhere. Local-first: only
+  // overwrite in-memory state when there's nothing local OR the server copy is
+  // newer (by savedAt). Best-effort — a failure leaves the localStorage copy intact.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from('generated_meal_plans')
+        .select('plan_data').eq('profile_id', userId).eq('week_start', weekStart).maybeSingle();
+      if (cancelled || error || !data?.plan_data) return;
+      const serverDays = planDataToPlan(data.plan_data, weekDates, slotKeys);
+      if (!serverDays || Object.keys(serverDays).length === 0) return;
+      const serverSavedAt = data.plan_data.savedAt || 0;
+      let localSavedAt = 0, hasLocal = false;
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) { const p = JSON.parse(raw); hasLocal = !!(p.days && Object.keys(p.days).length); localSavedAt = p.savedAt || 0; }
+      } catch { /* ignore */ }
+      if (!hasLocal || serverSavedAt > localSavedAt) {
+        setPlan(serverDays);
+        try { localStorage.setItem(storageKey, JSON.stringify({ weekStart, days: serverDays, savedAt: serverSavedAt })); } catch { /* ignore */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, weekStart, storageKey, weekDates, slotKeys]);
+
   // Persist plan
   const savePlan = useCallback((newPlan) => {
     setPlan(newPlan);
-    const planToSave = { weekStart, days: newPlan };
+    const savedAt = Date.now();
+    const planToSave = { weekStart, days: newPlan, savedAt };
     const planJson = JSON.stringify(planToSave);
     if (planJson.length > 500000) { // 500KB limit
       console.warn('Meal plan too large to save');
@@ -3236,18 +3304,21 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
         localStorage.setItem(legacyStorageKey, planJson);
       }
     } catch (err) {
-      // localStorage save failed — continue silently
+      // localStorage save failed — the server mirror below still persists it
     }
-    // Attempt Supabase save
-    if (userId) {
-      supabase.from('meal_plans').upsert({
-        profile_id: userId,
-        week_start: weekStart,
-        plan_data: newPlan,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'profile_id,week_start' }).then(() => {}, () => {});
+    // Server mirror → generated_meal_plans (correct columns + trainer-readable
+    // RLS) so the plan survives reinstall / new device and the coach can see it.
+    // The old code wrote to meal_plans using columns that don't exist there, so
+    // it silently failed and the plan lived only in this device's localStorage.
+    if (userId && profile?.gym_id) {
+      supabase.from('generated_meal_plans').upsert({
+        profile_id: userId, gym_id: profile.gym_id, week_start: weekStart,
+        plan_data: planToPlanData(newPlan, savedAt),
+        macro_targets: { calories: targets?.daily_calories || null, protein: targets?.daily_protein_g || null, carbs: targets?.daily_carbs_g || null, fat: targets?.daily_fat_g || null },
+        is_active: true,
+      }, { onConflict: 'profile_id,week_start' }).then(({ error }) => { if (error) console.warn('[meal-plan sync]', error.message); });
     }
-  }, [storageKey, legacyStorageKey, weekStart, userId, weekOffset]);
+  }, [storageKey, legacyStorageKey, weekStart, userId, weekOffset, profile?.gym_id, targets]);
 
   // Build one week's day→slot meal map from a fresh generation, merged onto a
   // base (so we never overwrite meals the user already placed).
@@ -3298,16 +3369,20 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   }, [userId]);
 
   const writeWeekDays = useCallback((ws, days) => {
-    const planJson = JSON.stringify({ weekStart: ws, days });
+    const savedAt = Date.now();
+    const planJson = JSON.stringify({ weekStart: ws, days, savedAt });
     if (planJson.length <= 500000) {
       try { localStorage.setItem(`meal_plan_${userId || 'anon'}_${ws}`, planJson); } catch { /* quota */ }
     }
-    if (userId) {
-      supabase.from('meal_plans').upsert({
-        profile_id: userId, week_start: ws, plan_data: days, updated_at: new Date().toISOString(),
-      }, { onConflict: 'profile_id,week_start' }).then(() => {}, () => {});
+    if (userId && profile?.gym_id) {
+      supabase.from('generated_meal_plans').upsert({
+        profile_id: userId, gym_id: profile.gym_id, week_start: ws,
+        plan_data: planToPlanData(days, savedAt),
+        macro_targets: { calories: targets?.daily_calories || null, protein: targets?.daily_protein_g || null, carbs: targets?.daily_carbs_g || null, fat: targets?.daily_fat_g || null },
+        is_active: true,
+      }, { onConflict: 'profile_id,week_start' }).then(({ error }) => { if (error) console.warn('[meal-plan sync]', error.message); });
     }
-  }, [userId]);
+  }, [userId, profile?.gym_id, targets]);
 
   // Generate the plan for the viewed week AND the next (numWeeks-1) weeks in one
   // tap. Longer commitments are the retention play — a member with a month of
@@ -3431,8 +3506,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   const getDayLabel = (dateStr) => {
     const d = new Date(dateStr + 'T12:00:00');
     const jsDay = d.getDay();
-    const dayMap = [6, 0, 1, 2, 3, 4, 5];
-    return t(`nutrition.days.${DAY_KEYS[dayMap[jsDay]]}`);
+    return t(`nutrition.days.${DAY_KEYS[jsDay]}`);
   };
 
   const getDateLabel = (dateStr) => {
@@ -3843,7 +3917,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             style={{ background: 'var(--color-bg-primary)', boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
               <div style={{ fontFamily: TU.display, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.planConfig', 'Plan setup')}</div>
-              <button onClick={() => setShowPlanConfig(false)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common.close', 'Close')}>
+              <button onClick={() => setShowPlanConfig(false)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common:close', 'Close')}>
                 <X size={17} style={{ color: 'var(--color-text-muted)' }} />
               </button>
             </div>
@@ -4022,7 +4096,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
             {t('nutrition.weeklySummaryTitle', 'Weekly Summary')}
           </div>
           <button onClick={onClose} className="w-[34px] h-[34px] rounded-full flex items-center justify-center focus:outline-none"
-            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common.close', 'Close')}>
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} aria-label={t('common:close', 'Close')}>
             <X size={16} style={{ color: 'var(--color-text-primary)' }} />
           </button>
         </div>
@@ -4912,7 +4986,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button onClick={() => { if (showResults) closeResults(); else setView('home'); }} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-            style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common.back', 'Go back')}>
+            style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common:back', 'Go back')}>
             <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
           </button>
           <div>
@@ -5428,7 +5502,7 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites =
       {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-4 pb-3">
         <button onClick={() => setView('home')} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-          style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common.back', 'Go back')}>
+          style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common:back', 'Go back')}>
           <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
         </button>
         <div className="flex-1 flex items-end justify-between">
@@ -5471,7 +5545,7 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites =
                 <MacroGridCard key={m.id} image={img} title={nm}
                   kcal={Number(m.calories) || 0} p={Number(m.protein_g) || 0} c={Number(m.carbs_g) || 0} f={Number(m.fat_g) || 0}
                   onClick={() => onLogMeal?.(myMealToMeal(m))} ariaLabel={t('nutrition.logMeal', 'Log meal')}
-                  corner={<CardCornerBtn onClick={() => deleteMyMeal(m.id)} ariaLabel={t('common.delete', 'Delete')}><Trash2 size={13} style={{ color: '#DC2626' }} /></CardCornerBtn>} />
+                  corner={<CardCornerBtn onClick={() => deleteMyMeal(m.id)} ariaLabel={t('common:delete', 'Delete')}><Trash2 size={13} style={{ color: '#DC2626' }} /></CardCornerBtn>} />
               );
             })}
           </div>
@@ -5870,7 +5944,7 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
       {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-4 pb-3">
         <button onClick={() => setView('home')} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-          style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common.back', 'Go back')}>
+          style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common:back', 'Go back')}>
           <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
         </button>
         <div className="flex-1 flex items-start justify-between">
@@ -6086,7 +6160,7 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
                 <div className="text-[16px] font-bold mb-1" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{confirmState.title}</div>
                 <div className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{confirmState.body}</div>
                 <div className="flex gap-2">
-                  <button onClick={() => setConfirmState(null)} className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.05))', color: 'var(--color-text-primary)' }}>{t('common.cancel', 'Cancel')}</button>
+                  <button onClick={() => setConfirmState(null)} className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.05))', color: 'var(--color-text-primary)' }}>{t('common:cancel', 'Cancel')}</button>
                   <button onClick={() => { confirmState.onConfirm?.(); setConfirmState(null); }} className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold text-white active:scale-95" style={{ background: confirmState.danger ? 'var(--color-danger, #DC2626)' : TU.accent }}>{confirmState.confirmLabel}</button>
                 </div>
               </div>
@@ -6200,7 +6274,7 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
         style={{ background: 'var(--color-bg-primary)', boxShadow: '0 24px 64px rgba(0,0,0,0.45)' }}>
         <div className="flex items-center justify-between px-5 pt-5 pb-2 flex-shrink-0">
           <div style={{ fontFamily: TU.display, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5 }}>{t('nutrition.prefsTitle', 'Preferences')}</div>
-          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common.close', 'Close')}>
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'var(--color-bg-card)' }} aria-label={t('common:close', 'Close')}>
             <X size={17} style={{ color: 'var(--color-text-muted)' }} />
           </button>
         </div>
@@ -6292,7 +6366,11 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
     now.setDate(now.getDate() + weekOffset * 7);
     const sow = new Date(now);
     sow.setDate(sow.getDate() - sow.getDay());
-    const weekStartStr = sow.toISOString().split('T')[0];
+    // LOCAL date string, not toISOString(). `sow` carries local wall-clock time,
+    // so in a negative-offset zone (Puerto Rico is UTC-4) any evening after 20:00
+    // serialised to the NEXT day — the plan got written under a week_start the
+    // reader never looks up, and the member's plan appeared to vanish overnight.
+    const weekStartStr = toLocalDateStr(sow);
     try {
       await supabase.from('generated_meal_plans').upsert({
         profile_id: user.id, week_start: weekStartStr,
@@ -6366,7 +6444,9 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
       now.setDate(now.getDate() + weekOffset * 7);
       const sow = new Date(now);
       sow.setDate(sow.getDate() - sow.getDay());
-      const weekStartStr = sow.toISOString().split('T')[0];
+      // Must match persistPlan's key exactly — see the note there on why this is
+      // a LOCAL date string rather than toISOString().
+      const weekStartStr = toLocalDateStr(sow);
       let { data } = await supabase
         .from('generated_meal_plans')
         .select('plan_data, macro_targets, week_start')
@@ -6426,7 +6506,7 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
   const header = (
     <div className="flex items-center gap-3 px-5 pt-4 pb-3">
       <button onClick={() => setView('home')} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common.back', 'Go back')}>
+        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common:back', 'Go back')}>
         <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
       </button>
       <div className="flex-1 truncate" style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
@@ -6486,12 +6566,15 @@ const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
           <div style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{weekLabel}</div>
           <div className="text-[11px] mt-0.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>
             {(() => {
-              const mon = new Date();
-              mon.setDate(mon.getDate() + weekOffset * 7 - ((mon.getDay() + 6) % 7));
-              const sun = new Date(mon);
-              sun.setDate(mon.getDate() + 6);
+              // Sunday-anchored, matching the day strip + persistPlan directly
+              // below — the old Monday anchor made this header disagree with the
+              // strip it sits on top of by one day.
+              const wkStart = new Date();
+              wkStart.setDate(wkStart.getDate() + weekOffset * 7 - wkStart.getDay());
+              const wkEnd = new Date(wkStart);
+              wkEnd.setDate(wkStart.getDate() + 6);
               const fmt = (d) => d.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' });
-              return `${fmt(mon)} \u2013 ${fmt(sun)}, ${sun.getFullYear()}`;
+              return `${fmt(wkStart)} \u2013 ${fmt(wkEnd)}, ${wkEnd.getFullYear()}`;
             })()}
           </div>
         </div>
@@ -8370,24 +8453,31 @@ export default function Nutrition({ embedded = false }) {
 
         {/* Floating Scan FAB — portaled so it's never clipped.
             Gated on isPageActive so the portal doesn't leak onto other
-            pages while Nutrition is kept alive via display:none. */}
+            pages while Nutrition is kept alive via display:none.
+            Labeled, and using the barcode glyph rather than the generic scan
+            line, so it can't be mistaken for the Exercises tab's equipment-scan
+            FAB that lives in this same corner. */}
         {view === 'home' && isPageActive && createPortal(
           <button
             onClick={() => setSearchOpen(true)}
-            className="flex items-center justify-center active:scale-90 transition-all"
+            className="flex items-center active:scale-95 transition-all"
             style={{
               position: 'fixed', zIndex: 50,
               right: 18,
               bottom: `calc(${embedded ? '80px' : '140px'} + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)))`,
-              width: 58, height: 58, borderRadius: 999, border: 'none',
+              height: 52, padding: '0 17px', gap: 8, borderRadius: 999, border: 'none',
               background: 'var(--color-accent, #2EC4C4)',
+              color: 'var(--color-text-on-accent, #001512)',
               boxShadow: '0 8px 24px rgba(46,196,196,0.35), 0 2px 6px rgba(0,0,0,0.15)',
               cursor: 'pointer',
             }}
             aria-label={t('nutrition.scanFood', 'Scan food')}
             data-tour="tour-nutrition-scan"
           >
-            <ScanLine size={24} style={{ color: 'var(--color-text-on-accent, #001512)' }} strokeWidth={2.2} />
+            <ScanBarcode size={21} strokeWidth={2.3} />
+            <span style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+              {t('nutrition.scanFoodFab', 'Food')}
+            </span>
           </button>,
           document.body
         )}
@@ -8461,7 +8551,7 @@ export default function Nutrition({ embedded = false }) {
                   <h3 className="text-[18px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{colTitle}</h3>
                   <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-subtle)' }}>{colSubtitle}</p>
                 </div>
-                <button onClick={() => setOpenCollection(null)} className="w-8 h-8 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5" aria-label={t('common.close', 'Close')}>
+                <button onClick={() => setOpenCollection(null)} className="w-8 h-8 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5" aria-label={t('common:close', 'Close')}>
                   <X size={16} style={{ color: 'var(--color-text-muted)' }} />
                 </button>
               </div>
@@ -8572,7 +8662,7 @@ export default function Nutrition({ embedded = false }) {
                       window.dispatchEvent(new CustomEvent('tugympr:meal-plan-changed', { detail: { weekStart: ws } }));
                       showToast?.(t('nutrition.addedToWeek', "Added to this week's plan"), 'success');
                       setOpenCollection(null);
-                    } catch { showToast?.(t('common.error', 'Something went wrong'), 'error'); }
+                    } catch { showToast?.(t('common:error', 'Something went wrong'), 'error'); }
                   }}
                   className="flex-1 py-3 rounded-2xl font-bold text-[13px] flex items-center justify-center gap-1.5 transition-colors active:scale-[0.97]"
                   style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
@@ -8646,7 +8736,7 @@ export default function Nutrition({ embedded = false }) {
                 boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
                 cursor: 'pointer',
               }}
-              aria-label={t('common.close', 'Close')}>
+              aria-label={t('common:close', 'Close')}>
               <X size={17} style={{ color: 'var(--color-text-primary)' }} />
             </button>
             <div className="px-4 py-2 rounded-full text-[12px] font-bold flex items-center gap-1.5"

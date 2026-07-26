@@ -543,7 +543,7 @@ export default function QRCodeModal({ payload, memberName, displayFormat = 'qr_c
                   className="flex items-center justify-center"
                   style={{ width: 176, height: 176 }}
                   role="status"
-                  aria-label={t('common.loading', 'Loading')}
+                  aria-label={t('common:loading', 'Loading')}
                 >
                   <div
                     className="w-8 h-8 rounded-full animate-spin"

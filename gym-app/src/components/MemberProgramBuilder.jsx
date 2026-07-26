@@ -226,7 +226,7 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
   return (
     <div className="rounded-2xl p-4" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => setOpen(o => !o)} aria-label={open ? t('common.collapse', 'Collapse') : t('common.expand', 'Expand')} className="w-8 h-8 -ml-1 flex items-center justify-center shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+        <button type="button" onClick={() => setOpen(o => !o)} aria-label={open ? t('common:collapse', 'Collapse') : t('common:expand', 'Expand')} className="w-8 h-8 -ml-1 flex items-center justify-center shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
           <ChevronDown size={18} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .18s ease' }} />
         </button>
         <input

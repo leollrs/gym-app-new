@@ -214,7 +214,7 @@ export default function PrintPreviewModal({ ids, onClose, previewBase = '/admin/
             <button
               onClick={onClose}
               disabled={generating}
-              aria-label={t('common.close', { defaultValue: 'Close' })}
+              aria-label={t('common:close', { defaultValue: 'Close' })}
               className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
               style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)' }}
             >

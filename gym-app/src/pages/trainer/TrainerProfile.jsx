@@ -29,7 +29,7 @@ import {
   COVER_PRESETS, coverBackground, isPhotoCover, presetId, presetValue,
 } from '../../lib/trainerCovers';
 
-const DOW_LETTERS_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DOW_LETTERS_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DOW_INDEX_TO_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 0: 'sun' };
 
 // The 13 trainer_* profile columns this page owns (mirrors migration 0528).
@@ -40,7 +40,7 @@ const TRAINER_PROFILE_COLS = [
   'trainer_location', 'trainer_specialties',
   'trainer_credentials', 'trainer_services', 'trainer_availability',
   'trainer_verified', 'trainer_directory_visible',
-  'trainer_default_rate', 'trainer_rate_unit',
+  'trainer_default_rate', 'trainer_rate_unit', 'trainer_payment_instructions',
 ].join(', ');
 
 // ────────────────────────────────────────────────────────────────────
@@ -69,8 +69,8 @@ const fmtTime12 = (hhmm) => {
 // Collapse contiguous days that share the same hours into a "Mon–Fri · 6:00 AM – 8:00 PM" string
 function summarizeAvailability(availability, dayLabels) {
   if (!availability || typeof availability !== 'object') return '';
-  // Build week order Mon..Sun (1..6,0)
-  const order = [1, 2, 3, 4, 5, 6, 0];
+  // Build week order Sun..Sat (0..6)
+  const order = [0, 1, 2, 3, 4, 5, 6];
   const cells = order.map(d => {
     const slot = availability[String(d)];
     if (slot && slot.open && slot.close) {
@@ -84,13 +84,23 @@ function summarizeAvailability(availability, dayLabels) {
   for (const c of cells) {
     if (!c) { if (cur) { groups.push(cur); cur = null; } continue; }
     if (cur && cur.open === c.open && cur.close === c.close) {
-      cur.end = c.label;
+      cur.end = c.label; cur.endD = c.d;
     } else {
       if (cur) groups.push(cur);
-      cur = { start: c.label, end: c.label, open: c.open, close: c.close };
+      cur = { start: c.label, end: c.label, startD: c.d, endD: c.d, open: c.open, close: c.close };
     }
   }
   if (cur) groups.push(cur);
+  // The week is a ring, but the scan is linear — with Sunday at index 0 a
+  // weekend trainer (Sat+Sun) came out as two separate groups. Merge the tail
+  // back into the head when they touch across the Sat→Sun boundary.
+  if (groups.length > 1) {
+    const head = groups[0], tail = groups[groups.length - 1];
+    if (head.startD === 0 && tail.endD === 6 && head.open === tail.open && head.close === tail.close) {
+      head.start = tail.start; head.startD = tail.startD;
+      groups.pop();
+    }
+  }
   if (groups.length === 0) return '';
   return groups
     .map(g => {
@@ -264,6 +274,7 @@ const makeIdentityDraft = (profile, currentEmail) => ({
   trainer_tagline: profile?.trainer_tagline || '',
   trainer_default_rate: profile?.trainer_default_rate != null ? String(profile.trainer_default_rate) : '',
   trainer_rate_unit: profile?.trainer_rate_unit || 'month',
+  trainer_payment_instructions: profile?.trainer_payment_instructions || '',
 });
 
 // Normalize a draft into DB-shaped values — used for the UPDATE payload AND
@@ -285,6 +296,7 @@ const normalizeIdentityDraft = (d) => ({
   trainer_tagline: d.trainer_tagline.trim() || null,
   trainer_default_rate: d.trainer_default_rate.trim() ? Math.max(0, Number(d.trainer_default_rate) || 0) : null,
   trainer_rate_unit: d.trainer_default_rate.trim() ? (d.trainer_rate_unit || 'month') : null,
+  trainer_payment_instructions: d.trainer_payment_instructions.trim() || null,
 });
 
 function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, saving }) {
@@ -458,6 +470,19 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
           </div>
         </div>
         <div>
+          <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.payInstr', 'How clients pay you')}</label>
+          <textarea
+            value={draft.trainer_payment_instructions}
+            onChange={(e) => setDraft(d => ({ ...d, trainer_payment_instructions: e.target.value.slice(0, 300) }))}
+            rows={2}
+            placeholder={t('pages:trainerProfile.editIdentity.payInstrPlaceholder', 'e.g. ATH Móvil @coachluis · Zelle 787-000-0000')}
+            style={{ ...inputStyle, resize: 'none' }}
+          />
+          <div style={{ fontSize: 11, color: TT.textMute, marginTop: 5 }}>
+            {t('pages:trainerProfile.editIdentity.payInstrHint', 'Shown on every invoice you send. Payment happens off-app.')}
+          </div>
+        </div>
+        <div>
           <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.tagline', 'Tagline')}</label>
           <input
             type="text"
@@ -497,10 +522,14 @@ function ServiceEditModal({ open, onClose, service, onSave, onDelete, saving }) 
     popular: !!service?.popular,
   }));
 
+  // Price starts blank, so Save used to be tappable while `submit` silently
+  // bailed — no toast, no error, nothing happened. Gate the button on the same
+  // conditions instead (same pattern as CredentialEditModal below).
+  const priceVal = parseFloat(draft.price_dollars);
+  const canSave = !!draft.name.trim() && Number.isFinite(priceVal) && priceVal > 0;
+
   const submit = () => {
-    const priceVal = parseFloat(draft.price_dollars);
-    if (!Number.isFinite(priceVal) || priceVal <= 0) return;
-    if (!draft.name.trim()) return;
+    if (!canSave) return;
     const cents = Math.round(priceVal * 100);
     const next = {
       id: service?.id || `svc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -549,7 +578,7 @@ function ServiceEditModal({ open, onClose, service, onSave, onDelete, saving }) 
           >
             {t('common:cancel', 'Cancel')}
           </button>
-          <TPrimaryButton onClick={submit} disabled={saving}>
+          <TPrimaryButton onClick={submit} disabled={saving || !canSave}>
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} strokeWidth={2.4} />}
             {t('common:save', 'Save')}
           </TPrimaryButton>
@@ -678,7 +707,9 @@ function CredentialEditModal({ open, onClose, credential, idx, onSave, onDelete,
           >
             {t('common:cancel', 'Cancel')}
           </button>
-          <TPrimaryButton onClick={submit} disabled={saving || !draft.name.trim()}>
+          {/* `submit` requires an issuer too — gate the button on BOTH, or Save
+              looks live and silently does nothing when only the name is filled. */}
+          <TPrimaryButton onClick={submit} disabled={saving || !draft.name.trim() || !draft.issuer.trim()}>
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} strokeWidth={2.4} />}
             {t('common:save', 'Save')}
           </TPrimaryButton>
@@ -742,9 +773,15 @@ function SpecialtiesEditModal({ open, onClose, current, onSave, saving }) {
   const [items, setItems] = useState(() => (Array.isArray(current) ? [...current] : []));
   const [next, setNext] = useState('');
 
-  const add = () => {
+  // The typed-but-not-yet-added entry counts. Saving used to hand back `items`
+  // only, so a specialty the trainer typed and never tapped "+" on was dropped
+  // — with a success toast, which made it look saved.
+  const withPending = () => {
     const v = next.trim();
-    if (v && !items.includes(v)) setItems(prev => [...prev, v]);
+    return v && !items.includes(v) ? [...items, v] : items;
+  };
+  const add = () => {
+    setItems(withPending());
     setNext('');
   };
   const remove = (i) => setItems(prev => prev.filter((_, idx) => idx !== i));
@@ -767,7 +804,7 @@ function SpecialtiesEditModal({ open, onClose, current, onSave, saving }) {
           >
             {t('common:cancel', 'Cancel')}
           </button>
-          <TPrimaryButton onClick={() => onSave(items)} disabled={saving}>
+          <TPrimaryButton onClick={() => onSave(withPending())} disabled={saving}>
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} strokeWidth={2.4} />}
             {t('common:save', 'Save')}
           </TPrimaryButton>
@@ -840,7 +877,10 @@ function AvailabilityEditModal({ open, onClose, current, onSave, saving }) {
   const { t } = useTranslation(['pages', 'common']);
   const [draft, setDraft] = useState(() => {
     const start = {};
-    [1, 2, 3, 4, 5, 6, 0].forEach(d => {
+    // Sunday-first, matching DOW_LETTERS_KEYS and the schedule grid this modal
+    // edits. Display order only — every slot is still keyed by its real
+    // day-of-week index (Sunday=0), so stored data is untouched.
+    [0, 1, 2, 3, 4, 5, 6].forEach(d => {
       const k = String(d);
       const slot = current?.[k];
       start[k] = {
@@ -891,7 +931,7 @@ function AvailabilityEditModal({ open, onClose, current, onSave, saving }) {
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {[1, 2, 3, 4, 5, 6, 0].map(d => {
+        {[0, 1, 2, 3, 4, 5, 6].map(d => {
           const k = String(d);
           const v = draft[k] || { enabled: false, open: '06:00', close: '20:00' };
           return (
@@ -1160,8 +1200,13 @@ export default function TrainerProfile() {
       // gym_member_profiles_safe view (migration 0289); reading `profiles`
       // directly is RLS-limited to ACTIVE clients, so reviews from deactivated
       // clients rendered as "Anonymous".
-      let nextReviews = [];
-      if (Array.isArray(reviewsRes.data) && reviewsRes.data.length) {
+      // Seeded from the cached value like every other KPI above: a failed read
+      // must not flip the tab to "No reviews yet" while the summary RPC still
+      // reports N reviews. Only a SUCCESSFUL empty response means zero reviews.
+      let nextReviews = prev?.recentReviews || [];
+      if (reviewsRes.error) {
+        logger.error('TrainerProfile recent reviews failed', reviewsRes.error);
+      } else if (Array.isArray(reviewsRes.data) && reviewsRes.data.length) {
         const ids = [...new Set(reviewsRes.data.map(r => r.reviewer_id).filter(Boolean))];
         const { data: reviewers } = await supabase
           .from('gym_member_profiles_safe')
@@ -1170,6 +1215,8 @@ export default function TrainerProfile() {
         if (cancelled) return;
         const byId = new Map((reviewers || []).map(p => [p.id, p]));
         nextReviews = reviewsRes.data.map(r => ({ ...r, reviewer: byId.get(r.reviewer_id) || null }));
+      } else {
+        nextReviews = [];
       }
 
       setClientCount(nextClientCount);
@@ -1183,7 +1230,13 @@ export default function TrainerProfile() {
         sessionsThisMonth: nextSessions,
         adherencePct: nextAdherence,
         reviewSummary: nextSummary,
-        recentReviews: nextReviews,
+        // Never persist the RESULT of a failed reviews read. Carry the last good
+        // list forward if there is one; otherwise leave the key out entirely so
+        // the cache says "unknown" rather than freezing an empty list into
+        // sessionStorage for the rest of the session.
+        ...(reviewsRes.error
+          ? (prev?.recentReviews ? { recentReviews: prev.recentReviews } : {})
+          : { recentReviews: nextReviews }),
       });
     })();
 
@@ -2157,7 +2210,7 @@ export default function TrainerProfile() {
               gap: 4, marginBottom: 8,
             }}>
               {DOW_LETTERS_KEYS.map((key, i) => {
-                const dow = i === 6 ? 0 : i + 1; // mon..sun → 1..6,0
+                const dow = i; // sun..sat → 0..6, the keys availability{} is stored under
                 const slot = availability[String(dow)];
                 const open = !!(slot && slot.open && slot.close);
                 return (

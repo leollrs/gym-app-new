@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Activity, Flame, Plus } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Activity, Flame, Plus, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
-import { computeReadiness, computeDashboardReadiness } from '../../../lib/readinessEngine';
+import { computeReadiness, computeDashboardReadiness, aggregateRegions, bucketExerciseBreakdown } from '../../../lib/readinessEngine';
+import { BUCKET_BY_ID, STATE_HEX } from '../../../lib/readinessBuckets';
+import { exName } from '../../../lib/exerciseName';
 import MuscleFigure from '../../../components/MuscleFigure';
+import ExerciseVideoThumb from '../../../components/ExerciseVideoThumb';
+import { useScrollLock } from '../../../hooks/useScrollLock';
 import { TT, TFont } from './designTokens';
 
 // readiness region id → major muscle group
@@ -24,11 +29,14 @@ const GROUPS = ['chest', 'back', 'legs', 'shoulders', 'arms', 'core'];
 // member readiness engine so the number matches what the client sees, then
 // surfaces which muscle groups are BURNT (recovering) vs MISSING (not trained
 // this week — i.e. what to program next toward the client's goal).
-export default function TrainerClientRecovery({ clientId }) {
+export default function TrainerClientRecovery({ clientId, hideHeader = false }) {
   const { t } = useTranslation('pages');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [selectedBucket, setSelectedBucket] = useState(null);
+  // Freeze the page behind the portaled bucket-detail sheet.
+  useScrollLock(!!selectedBucket);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,9 +64,11 @@ export default function TrainerClientRecovery({ clientId }) {
   if (failed || !data) {
     return (
       <>
-        <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 8 }}>
-          {t('trainerRecovery.title', 'Recovery')}
-        </div>
+        {!hideHeader && (
+          <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 8 }}>
+            {t('trainerRecovery.title', 'Recovery')}
+          </div>
+        )}
         <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 18, boxShadow: TT.shadow, padding: 14, marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ width: 56, height: 56, borderRadius: 16, background: TT.surface2, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -107,9 +117,11 @@ export default function TrainerClientRecovery({ clientId }) {
 
   return (
     <>
-      <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 8 }}>
-        {t('trainerRecovery.title', 'Recovery')}
-      </div>
+      {!hideHeader && (
+        <div style={{ fontFamily: TFont.display, fontSize: 14, fontWeight: 800, color: TT.text, letterSpacing: -0.2, marginBottom: 8 }}>
+          {t('trainerRecovery.title', 'Recovery')}
+        </div>
+      )}
       <div style={{ background: TT.surface, border: `1px solid ${TT.border}`, borderRadius: 18, boxShadow: TT.shadow, padding: 14, marginBottom: 14 }}>
         {/* Score + status + goal */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -137,7 +149,8 @@ export default function TrainerClientRecovery({ clientId }) {
 
         {/* Muscle map — same anatomical visualization the client sees */}
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${TT.border}` }}>
-          <MuscleFigure readiness={map} accent={TT.accent} labels={{ front: t('trainerRecovery.front', 'Front'), back: t('trainerRecovery.back', 'Back') }} />
+          <MuscleFigure readiness={map} accent={TT.accent} labels={{ front: t('trainerRecovery.front', 'Front'), back: t('trainerRecovery.back', 'Back') }} onMuscleTap={setSelectedBucket} selectedBucketId={selectedBucket} />
+          <p style={{ textAlign: 'center', fontSize: 10.5, color: TT.textMute, marginTop: 6 }}>{t('trainerRecovery.tapHint', 'Tap a muscle to see this week’s work')}</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginTop: 10 }}>
             {[['fresh', '#3DAD7C', 'Fresh'], ['moderate', '#E0A042', 'Recovering'], ['fatigued', '#E26B5C', 'Sore'], ['rest', '#9CA3AB', 'Untrained']].map(([k, c, def]) => (
               <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: TT.textSub, fontWeight: 600 }}>
@@ -189,6 +202,75 @@ export default function TrainerClientRecovery({ clientId }) {
           </>
         )}
       </div>
+
+      {/* Muscle drill-down — what the client actually trained for this muscle this
+          week + the recovery effect, so the coach can plan the next session. */}
+      {selectedBucket && (() => {
+        const bucket = BUCKET_BY_ID.get(selectedBucket);
+        if (!bucket) return null;
+        const agg = aggregateRegions(map, bucket.regionIds);
+        const bd = bucketExerciseBreakdown(sessions, bucket.regionIds, { windowDays: 7 });
+        const trained = bd.totalSets > 0;
+        const stateColor = STATE_HEX[agg.state] || STATE_HEX.rest;
+        const stateLabel = !trained ? t('trainerRecovery.state.rest', 'Untrained')
+          : agg.state === 'moderate' ? t('trainerRecovery.state.moderate', 'Recovering')
+          : agg.state === 'fatigued' ? t('trainerRecovery.state.fatigued', 'Sore')
+          : t('trainerRecovery.state.fresh', 'Fresh');
+        const daysAgo = trained && Number.isFinite(agg.daysSince) ? Math.round(agg.daysSince) : null;
+        return createPortal(
+          <div className="fixed inset-0 z-[150] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: 16 }} onClick={() => setSelectedBucket(null)}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: TT.bg, borderRadius: 22, border: `1px solid ${TT.borderSolid}`, width: '100%', maxWidth: 420, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.45)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: '14px 16px', borderBottom: `1px solid ${TT.border}` }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>{t(`readinessBuckets.${bucket.id}`, bucket.label)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: stateColor }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: TT.textSub }}>
+                      {stateLabel}{trained && ` · ${agg.recovery}%`}{daysAgo != null ? ` · ${t('trainerRecovery.trainedAgo', { defaultValue: '{{d}}d ago', d: daysAgo })}` : ''}
+                    </span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setSelectedBucket(null)} aria-label={t('common:close', 'Close')} style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: TT.surface2, border: 'none', display: 'grid', placeItems: 'center', cursor: 'pointer', color: TT.textSub }}><X size={16} /></button>
+              </div>
+              <div style={{ overflowY: 'auto', padding: 16 }}>
+                {trained ? (
+                  <>
+                    <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+                      <div style={{ flex: 1, background: TT.surface2, borderRadius: 12, padding: '10px 12px' }}>
+                        <div style={{ fontFamily: TFont.display, fontSize: 20, fontWeight: 900, color: TT.text, lineHeight: 1 }}>{Math.round(bd.totalSets)}</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>{t('trainerRecovery.setsThisWeek', 'Sets this week')}</div>
+                      </div>
+                      <div style={{ flex: 1, background: TT.surface2, borderRadius: 12, padding: '10px 12px' }}>
+                        <div style={{ fontFamily: TFont.display, fontSize: 20, fontWeight: 900, color: TT.text, lineHeight: 1 }}>{bd.totalVolume.toLocaleString()}</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: TT.textMute, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>{t('trainerRecovery.volumeLbs', 'Volume (lbs)')}</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, color: TT.textSub, textTransform: 'uppercase', marginBottom: 8 }}>{t('trainerRecovery.exercisesDone', 'What they trained')}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {bd.exercises.map((e) => (
+                        <div key={e.exerciseId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '7px 9px', borderRadius: 12, background: TT.surface2, border: `1px solid ${TT.border}` }}>
+                          <ExerciseVideoThumb exercise={{ videoUrl: e.exercise?.videoUrl, muscle: e.exercise?.muscle }} size={38} radius={10} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{exName(e.exercise) || t('trainerNotes.overview.unknownExercise', 'Exercise')}</div>
+                            <div style={{ fontSize: 11, color: TT.textSub }}>{e.sets} {t('trainerRecovery.setsShort', 'sets')} · {Math.round(e.volume).toLocaleString()} {t('trainerRecovery.lbs', 'lbs')}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ fontSize: 10.5, color: TT.textMute, marginTop: 12, lineHeight: 1.4 }}>{t('trainerRecovery.effectHint', 'Recovery reflects this load plus days since — plan the next session around it.')}</p>
+                  </>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '20px 8px' }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, marginBottom: 4 }}>{t('trainerRecovery.notTrainedTitle', 'Not trained this week')}</div>
+                    <p style={{ fontSize: 12, color: TT.textSub, lineHeight: 1.5 }}>{t('trainerRecovery.notTrainedBody', 'No logged work hit this muscle in the last 7 days — a good candidate to program next.')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        );
+      })()}
     </>
   );
 }
