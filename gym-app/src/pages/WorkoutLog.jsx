@@ -295,7 +295,9 @@ const WorkoutLog = ({ embedded = false }) => {
     };
 
     load();
-  }, [user]);
+  // user?.id — see note in PersonalRecords: the object identity changes on every
+  // token refresh and this load pulls 100 sessions with all nested sets (~250 KB).
+  }, [user?.id]);
 
   // Limit visible sessions for progressive loading
   const visibleSessions = sessions.slice(0, visibleCount);

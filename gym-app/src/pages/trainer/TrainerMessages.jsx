@@ -14,7 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { useScrollLock } from '../../hooks/useScrollLock';
-import { selectInBatches } from '../../lib/churn/batchedSelect';
+import { selectInBatches, selectAllInBatches } from '../../lib/churn/batchedSelect';
 import { encryptMessage, decryptMessage } from '../../lib/messageEncryption';
 import { sanitize } from '../../lib/sanitize';
 import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
@@ -321,6 +321,79 @@ function seedForConv(ref, convId) {
   return ref.seed || null;
 }
 
+// ── Batched last-message lookup ────────────────────────────────────────────
+// Was one `.limit(1)` query PER conversation inside a Promise.all: a trainer
+// with 60 clients fired 60 HTTP requests every time the list loaded — and this
+// loader re-runs on every realtime INSERT and every visibilitychange.
+//
+// PostgREST has no DISTINCT ON, so the batched shape is: walk the trainer's
+// message history newest-first (RLS already scopes direct_messages to the
+// conversations they participate in) and keep the FIRST row seen per
+// conversation_id — which IS that conversation's last message.
+//
+// Conversations are handled in small groups rather than all at once because a
+// single query over ALL of them would have to read past the busiest thread's
+// entire backlog before reaching a quiet thread's last message. A group is a
+// contiguous slice of the last_message_at-ordered list, so its threads are
+// active in the same period and one page almost always covers every one of
+// them; we stop the moment the group is fully resolved. MAX_PAGES bounds the
+// pathological case (one thread with thousands of newer messages) to a bad
+// preview instead of a runaway scan. `id` is a stable tiebreaker so a
+// `.range()` boundary can't duplicate or skip a row.
+const LAST_MSG_GROUP = 25;   // conversations per query
+const LAST_MSG_PAGE = 300;   // rows per page
+const LAST_MSG_MAX_PAGES = 4;
+
+async function fetchLastMessages(convIds) {
+  const byConv = {};
+  if (!convIds.length) return byConv;
+
+  const groups = [];
+  for (let i = 0; i < convIds.length; i += LAST_MSG_GROUP) {
+    groups.push(convIds.slice(i, i + LAST_MSG_GROUP));
+  }
+
+  await Promise.all(groups.map(async (group) => {
+    const seen = new Set();
+    for (let page = 0; page < LAST_MSG_MAX_PAGES; page++) {
+      const from = page * LAST_MSG_PAGE;
+      const { data, error } = await supabase
+        .from('direct_messages')
+        .select('conversation_id, body, sender_id, created_at, read_at')
+        .in('conversation_id', group)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, from + LAST_MSG_PAGE - 1);
+      if (error) { logger.error('TrainerMessages: last-message batch failed', error); return; }
+      const rows = data || [];
+      for (const m of rows) {
+        if (seen.has(m.conversation_id)) continue;
+        seen.add(m.conversation_id);
+        byConv[m.conversation_id] = m;
+      }
+      if (rows.length < LAST_MSG_PAGE) break;      // history exhausted
+      if (seen.size >= group.length) break;        // every thread resolved
+    }
+  }));
+
+  return byConv;
+}
+
+// Decrypted last-message previews: convId → { c: ciphertext, p: plaintext }.
+// Module-level on purpose — decryptMessage derives its AES key with 600k PBKDF2
+// iterations and caches that key PER CONVERSATION, so every thread pays its own
+// ~quarter-second derivation; remounting this page (navigate away → back) would
+// otherwise redo the whole set. Keyed by conversation (not by ciphertext) so a
+// new message REPLACES the stale entry instead of accumulating one per message
+// for the life of the session.
+const previewCache = new Map();
+const isCiphertext = (body) => typeof body === 'string' && body.startsWith('enc:');
+// The cached plaintext for this row, or undefined when it's missing/stale.
+const cachedPreview = (store, conv) => {
+  const hit = store instanceof Map ? store.get(conv.id) : store[conv.id];
+  return hit && hit.c === conv.lastMessage?.body ? hit.p : undefined;
+};
+
 // ── Main page ─────────────────────────────────────────────────────
 export default function TrainerMessages() {
   const { profile } = useAuth();
@@ -335,6 +408,10 @@ export default function TrainerMessages() {
   const convosCK = `tmsg:convos:${profile?.id}`;
   const [conversations, setConversations] = useState(() => readTrainerCache(convosCK) ?? []);
   const [convsLoading, setConvsLoading] = useState(() => !readTrainerCache(convosCK));
+  // Render mirror of previewCache (which is module-level and therefore not
+  // reactive). Seeded from it so a remount repaints previews without waiting on
+  // — or redoing — a single key derivation.
+  const [previews, setPreviews] = useState(() => Object.fromEntries(previewCache));
   const [activeConvId, setActiveConvId] = useState(routeConvId || null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -480,39 +557,58 @@ export default function TrainerMessages() {
       const profileMap = {};
       (profiles || []).forEach(p => { profileMap[p.id] = p; });
 
-      const enriched = await Promise.all(convs.map(async (conv) => {
+      // Two batched queries for the whole list, replacing 2N per-conversation
+      // round-trips (a last-message .limit(1) and an unread head-count each).
+      const convIds = convs.map(c => c.id);
+      const [lastByConv, unreadRes] = await Promise.all([
+        fetchLastMessages(convIds),
+        // Unread counts for EVERY conversation in one pass — same shape the
+        // member Messages page already uses. Rows are conversation_id-only
+        // (bounded by total unread) and tallied client-side. Chunked for URL
+        // length AND paged, because PostgREST caps a response at 1000 rows: a
+        // trainer back from vacation with more unread than that would have had
+        // the overflow silently counted as read.
+        selectAllInBatches(
+          (ids, from, to) => supabase
+            .from('direct_messages')
+            .select('conversation_id')
+            .in('conversation_id', ids)
+            .neq('sender_id', profile.id)
+            .is('read_at', null)
+            .order('id', { ascending: true })
+            .range(from, to),
+          convIds,
+        ),
+      ]);
+      if (unreadRes.error) logger.error('TrainerMessages: unread tally failed', unreadRes.error);
+      const unreadByConv = {};
+      (unreadRes.data || []).forEach(r => {
+        unreadByConv[r.conversation_id] = (unreadByConv[r.conversation_id] || 0) + 1;
+      });
+
+      // NOTE: lastMessage.body stays as stored — i.e. still ciphertext. It is
+      // decrypted lazily by the effect below, for the rows the current
+      // tab/search actually renders. Decrypting all of them here (the old
+      // behaviour) meant the list couldn't paint AT ALL until every
+      // conversation had paid its own 600k-iteration key derivation: ~15 CPU
+      // seconds of dead screen for a 60-client trainer, re-triggered on every
+      // foreground. Names, timestamps and unread badges need none of it.
+      const enriched = convs.map((conv) => {
         const otherId = conv.participant_1 === profile.id ? conv.participant_2 : conv.participant_1;
-
-        const { data: lastMsg } = await supabase
-          .from('direct_messages')
-          .select('body, sender_id, created_at, read_at')
-          .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const { count } = await supabase
-          .from('direct_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('conversation_id', conv.id)
-          .neq('sender_id', profile.id)
-          .is('read_at', null);
-
-        const decryptedBody = lastMsg?.body
-          ? await decryptMessage(lastMsg.body, conv.id, conv.encryption_seed)
-          : null;
-
         return {
           ...conv,
           otherUser: profileMap[otherId] || null,
-          lastMessage: lastMsg ? { ...lastMsg, body: decryptedBody } : null,
-          unreadCount: count || 0,
+          lastMessage: lastByConv[conv.id] || null,
+          unreadCount: unreadByConv[conv.id] || 0,
         };
-      }));
+      });
 
       setConversations(enriched);
       // Write through only on success so a failed reload never blanks the
-      // cached list. enriched carries decrypted last-message previews.
+      // cached list. Previews are cached as CIPHERTEXT now (see above) — the
+      // module-level previewCache holds the plaintext for the session, so a
+      // remount repaints instantly without re-deriving keys, and plaintext DMs
+      // never hit sessionStorage.
       writeTrainerCache(convosCK, enriched);
     } catch (err) {
       logger.error('TrainerMessages: failed to load conversations', err);
@@ -524,22 +620,30 @@ export default function TrainerMessages() {
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // Realtime subscription on the list (debounced reload)
+  // Conversation-list freshness. NO REALTIME HERE — deliberate.
+  //
+  // The `trainer-dm-list` channel that used to sit here subscribed to ALL
+  // `direct_messages` INSERTs with NO server-side `filter:` — there is no
+  // per-user column to filter a whole inbox on. `direct_messages` was not a
+  // member of the `supabase_realtime` publication, so it never fired once; a
+  // migration is adding the table, and this subscription was deliberately NOT
+  // restored, because unfiltered means Realtime evaluates the RLS policy once
+  // per subscriber per row change — every trainer with this page open charged
+  // for every DM in the gym. Publishing broadly is a deliberate cost decision:
+  // an estimated ~17.3M realtime messages/month from one 2,000-member gym
+  // against a 5M/month plan allowance.
+  //
+  // The list stays fresh on: mount, a 90 s poll gated on `!document.hidden`,
+  // and an immediate foreground catch-up. This page is NOT keep-alive (it is
+  // rendered through <Routes>), so the poll dies with the page. The OPEN thread
+  // keeps its realtime channel — that one is safe because it carries a
+  // server-side `filter: conversation_id=eq.…`.
   useEffect(() => {
     if (!profile?.id) return undefined;
-    let timer;
-    // Unfiltered gym-wide direct_messages subscription — skip the full reload
-    // while backgrounded and catch up on foreground (see Messages.jsx).
-    const channel = supabase
-      .channel('trainer-dm-list')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => { if (!document.hidden) loadConversations(); }, 1500);
-      })
-      .subscribe();
+    const interval = setInterval(() => { if (!document.hidden) loadConversations(); }, 90_000);
     const onVisible = () => { if (!document.hidden) loadConversations(); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible); supabase.removeChannel(channel); };
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [profile?.id, loadConversations]);
 
   // ── Reset per-thread state on EVERY conversation change ───────────
@@ -707,6 +811,16 @@ export default function TrainerMessages() {
   }, [messages, activeConvId]);
 
   // ── Realtime thread subscription ─────
+  // SAFE TO KEEP: both handlers carry a server-side
+  // `filter: conversation_id=eq.…`, so Realtime only evaluates + delivers rows
+  // for the single thread on screen — one channel per open chat, not one per
+  // trainer per gym-wide message. `direct_messages` is being added to the
+  // `supabase_realtime` publication by a separate migration (before that this
+  // never fired). The UNFILTERED inbox-list channel was removed at the same
+  // time precisely because it lacked this filter: publishing tables broadly is
+  // a deliberate cost decision (~17.3M realtime msgs/month from one
+  // 2,000-member gym vs a 5M/month allowance), so anything added here must stay
+  // server-side filtered.
   useEffect(() => {
     if (!activeConvId || !profile?.id) return undefined;
     const channel = supabase
@@ -814,6 +928,51 @@ export default function TrainerMessages() {
     });
     // hiddenIds/archivedIds in deps: swipe actions must take effect instantly.
   }, [conversations, tabIndex, debouncedQuery, pinnedIds, hiddenIds, archivedIds]);
+
+  // ── Lazy last-message decryption ──────────────────────────────────────────
+  // Only the rows the current tab + search actually render get decrypted, one
+  // at a time, AFTER the list has painted. decryptMessage derives an AES key
+  // with 600k PBKDF2 iterations and caches it per conversation, so each thread
+  // costs its own ~quarter second — 60 threads was ~15 CPU-seconds. Doing that
+  // up front (inside the loader's Promise.all) blocked the entire list; doing
+  // it here costs the same total work in the worst case but the trainer can
+  // read names, timestamps and unread badges immediately, filtering to a tab
+  // or searching cuts the set, and the `await` between rows keeps the main
+  // thread responsive instead of freezing it in one block.
+  //
+  // Deps are visibleConversations only: previewCache is module-level (not
+  // reactive), so a resolved preview can't re-trigger this effect. Work already
+  // done is never repeated — the cache is checked per row and survives both
+  // list reloads and remounts.
+  useEffect(() => {
+    const pending = visibleConversations.filter(c => (
+      isCiphertext(c.lastMessage?.body) && cachedPreview(previewCache, c) === undefined
+    ));
+    if (!pending.length) return undefined;
+    let cancelled = false;
+    (async () => {
+      for (const conv of pending) {
+        if (cancelled) return;
+        const cipher = conv.lastMessage.body;
+        const plain = await decryptMessage(cipher, conv.id, conv.encryption_seed);
+        if (cancelled) return;
+        const entry = { c: cipher, p: plain };
+        previewCache.set(conv.id, entry);
+        setPreviews(prev => ({ ...prev, [conv.id]: entry }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [visibleConversations]);
+
+  // What ConversationList actually renders: the visible rows with their preview
+  // swapped in. A row whose preview hasn't landed yet shows '…' rather than the
+  // raw ciphertext — and rather than an empty body, which the list would render
+  // as the (false) "No messages". Legacy plaintext rows pass through untouched.
+  const listConversations = useMemo(() => visibleConversations.map((c) => {
+    if (!isCiphertext(c.lastMessage?.body)) return c;
+    const plain = cachedPreview(previews, c);
+    return { ...c, lastMessage: { ...c.lastMessage, body: plain ?? '…' } };
+  }), [visibleConversations, previews]);
 
   // ── Actions ─────────
   const togglePin = (id) => {
@@ -1109,7 +1268,7 @@ export default function TrainerMessages() {
             </div>
 
             <ConversationList
-              conversations={visibleConversations}
+              conversations={listConversations}
               activeId={activeConvId}
               loading={convsLoading}
               query={searchQuery}

@@ -178,7 +178,7 @@ export default function AdminSettingsBranding() {
     try {
       const ext = file.type === 'video/webm' ? 'webm' : file.type === 'video/quicktime' ? 'mov' : 'mp4';
       const path = `${gymId}/splash.${ext}`;
-      const { error: upErr } = await supabase.storage.from('splash-videos').upload(path, file, { upsert: true, contentType: file.type });
+      const { error: upErr } = await supabase.storage.from('splash-videos').upload(path, file, { cacheControl: '60', upsert: true, contentType: file.type });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from('splash-videos').getPublicUrl(path);
       // ?v= cache-busts the stable public URL on re-upload (the SW caches by URL).
@@ -214,7 +214,7 @@ export default function AdminSettingsBranding() {
     try {
       const compressed = await compressTransparentLogo(file);
       const path = `${gymId}/splash-logo.webp`;
-      const { error: upErr } = await supabase.storage.from('splash-logos').upload(path, compressed, { upsert: true, contentType: 'image/webp' });
+      const { error: upErr } = await supabase.storage.from('splash-logos').upload(path, compressed, { cacheControl: '60', upsert: true, contentType: 'image/webp' });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from('splash-logos').getPublicUrl(path);
       // ?v= cache-busts the stable public URL on re-upload (SW + LaunchSplash cache by URL).
@@ -250,7 +250,7 @@ export default function AdminSettingsBranding() {
       const compressed = await compressImage(file);
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `${gymId}/logo.${ext}`;
-      const { error: storageErr } = await supabase.storage.from('gym-logos').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+      const { error: storageErr } = await supabase.storage.from('gym-logos').upload(path, compressed, { cacheControl: '60', upsert: true, contentType: 'image/jpeg' });
       if (storageErr) { setError(`${t('admin.settings.logoUploadFailed', 'Logo upload failed')}: ${storageErr.message}`); setUploadingLogo(false); return; }
       const signedUrl = await getSignedLogoUrl(path);
       setLogoUrl(signedUrl);

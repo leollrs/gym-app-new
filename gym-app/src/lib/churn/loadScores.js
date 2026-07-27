@@ -22,6 +22,50 @@ const MS_PER_DAY = 86400000;
 const FRESH_MS = 26 * MS_PER_DAY / 24;   // a little slack past 24h (cron is daily)
 const MIN_COVERAGE = 0.5;                // < this fraction with a v3 row → recompute live
 
+/**
+ * newestPerMember — { profile_id → newest timestamp } for a gym-wide activity table.
+ *
+ * Feeds the "last visit N days ago" line rendered next to a precomputed score.
+ *
+ * What was here before: two gym-wide reads of RAW rows ordered newest-first with
+ * `.limit(5000)`, folded client-side by keeping the first row seen per member. But
+ * PostgREST caps EVERY response at 1000 rows on this project (max_rows=1000), so
+ * `.limit(5000)` was a no-op — the reads returned 1000 rows, full stop. At ~2,700
+ * check-ins/week the 1000 newest rows span roughly 2.6 DAYS. Every member who last
+ * came in three days ago or more was simply not in the response, so the page showed
+ * them a blank / "never" recency instead of "27 days" — on the NORMAL path, and
+ * specifically for the lapsing members the churn page exists to surface.
+ *
+ * A server-side `max()` aggregate would be the ideal shape here — one row per
+ * member instead of one row per visit. It is NOT used, deliberately:
+ * **aggregate functions are disabled on this project.** Verified live against
+ * prod, which answers any aggregate select with
+ *   400  PGRST123  "Use of aggregate functions is not allowed"
+ * So an aggregate-first-with-fallback arrangement would 400 on EVERY call, log a
+ * red request in every admin's network tab, and pay a wasted round trip before
+ * doing the paged read anyway. Page the raw rows directly instead.
+ *
+ * If `db-aggregates-enabled` is ever turned on for this project, switching to
+ * `.select('profile_id, newest_at:<tsCol>.max()')` here turns ~24 pages into ~2.
+ */
+async function newestPerMember(supabase, table, tsCol, gymId, sinceIso) {
+  const map = {};
+
+  // Raw rows, newest-first, fully paged — first row seen per member wins.
+  const raw = await selectAllRows((from, to) => supabase
+    .from(table)
+    .select(`profile_id, ${tsCol}`)
+    .eq('gym_id', gymId)
+    .gte(tsCol, sinceIso)
+    // `id` tiebreaker so a page boundary inside a same-instant cluster can't drop rows.
+    .order(tsCol, { ascending: false })
+    .order('id', { ascending: true })
+    .range(from, to));
+
+  (raw.data || []).forEach((r) => { if (!map[r.profile_id]) map[r.profile_id] = r[tsCol]; });
+  return map;
+}
+
 export async function loadGymChurnScores(gymId, supabase) {
   // ── 1. Members (gym-scoped, paginated) ──
   // churn_pause_until (migration 0509) may not be applied yet — selecting a
@@ -38,7 +82,10 @@ export async function loadGymChurnScores(gymId, supabase) {
       // Keep IDENTICAL to compute-churn-scores edge fn + retention.js (allowlist) so every
       // member listed here also has a precompute row — the §4 fresh path assumes it.
       .in('membership_status', ['active', 'frozen'])
+      // `id` tiebreaker: full_name is not unique, and paging on a non-total order can
+      // duplicate or drop a member whose namesake straddles a page boundary.
       .order('full_name', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, to));
 
   let { data: memberRows, error: membersError } = await runMembers(`${MEMBER_COLS_SAFE}, churn_pause_until`);
@@ -56,7 +103,13 @@ export async function loadGymChurnScores(gymId, supabase) {
       .select('profile_id, score, risk_tier, key_signals, velocity, primary_driver, explanation, state, trend, metrics, computed_at')
       .eq('gym_id', gymId)
       .gte('computed_at', scoresSince)
+      // profile_id tiebreaker: the nightly cron stamps an entire gym with one
+      // computed_at, so this order is almost entirely ties. Paging a non-total order
+      // can drop a row — and a dropped row here is not a rounding error, it sends a
+      // scored member down the `!row` branch and renders them as "New member — not
+      // enough data yet" with a 0 score.
       .order('computed_at', { ascending: false })
+      .order('profile_id', { ascending: true })
       .range(from, to));
 
   const latest = {};
@@ -77,21 +130,13 @@ export async function loadGymChurnScores(gymId, supabase) {
   if (!fresh) return fetchMembersWithChurnScores(gymId, supabase);
 
   // ── 4. Fresh v3 precompute → light activity fetch for DISPLAY recency only ──
+  // This is the NORMAL path — it runs on every Overview / Members / Churn load when
+  // the nightly precompute is fresh, which is most of the time.
   const sixtyDaysAgo = new Date(Date.now() - 60 * MS_PER_DAY).toISOString();
-  const RECENCY_CAP = 5000;
-  const [{ data: checkInRows }, { data: sessionRows }] = await Promise.all([
-    supabase.from('check_ins').select('profile_id, checked_in_at')
-      .eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo)
-      .order('checked_in_at', { ascending: false }).limit(RECENCY_CAP),
-    supabase.from('workout_sessions').select('profile_id, started_at')
-      .eq('gym_id', gymId).gte('started_at', sixtyDaysAgo)
-      .order('started_at', { ascending: false }).limit(RECENCY_CAP),
+  const [lastCheckIn, lastSession] = await Promise.all([
+    newestPerMember(supabase, 'check_ins', 'checked_in_at', gymId, sixtyDaysAgo),
+    newestPerMember(supabase, 'workout_sessions', 'started_at', gymId, sixtyDaysAgo),
   ]);
-
-  const lastCheckIn = {};
-  (checkInRows || []).forEach((r) => { if (!lastCheckIn[r.profile_id]) lastCheckIn[r.profile_id] = r.checked_in_at; });
-  const lastSession = {};
-  (sessionRows || []).forEach((r) => { if (!lastSession[r.profile_id]) lastSession[r.profile_id] = r.started_at; });
 
   const now = Date.now();
   const scored = memberRows.map((m) => {

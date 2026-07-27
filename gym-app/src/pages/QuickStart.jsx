@@ -89,6 +89,7 @@ const QuickStart = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation('pages');
+  const onRecordRoute = location.pathname === '/record';
   // Hydrate from cache synchronously so the initial paint has real data and
   // `loading` starts false whenever we have any cached state at all.
   const cachedInit = typeof user?.id === 'string' ? readCache(user.id) : null;
@@ -120,6 +121,12 @@ const QuickStart = () => {
 
   useEffect(() => {
     if (!user) return;
+    // QuickStart is in KEEP_ALIVE_MAP (App.jsx), so it stays mounted for the whole
+    // session and `location.key` changes on EVERY navigation anywhere in the app —
+    // including ones navigating AWAY from here. That re-ran this 5-query load for
+    // pages the user isn't even looking at. Bail unless /record is the route being
+    // shown; coming back here changes location.key again and the load runs then.
+    if (!onRecordRoute) return;
 
     const load = async () => {
       const todayDow = new Date().getDay();
@@ -306,7 +313,7 @@ const QuickStart = () => {
     };
 
     load();
-  }, [user, location.key, refreshKey]);
+  }, [user, location.key, onRecordRoute, refreshKey]);
 
   // Stay in sync with the Home tab when the program is (re)generated elsewhere.
   // generate / regenerate broadcast 'tugympr:programs-changed' — clear the SWR

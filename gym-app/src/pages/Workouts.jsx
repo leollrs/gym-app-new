@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2, Circle, Lock,
@@ -467,6 +467,22 @@ const ProgramCover = ({ name, seed, size = 52, radius = 14 }) => {
     </div>
   );
 };
+// Split `n` dots into BALANCED rows instead of letting flex-wrap leave a ragged
+// orphan (a 13-week program wrapped as 12 + a lone "13"). Given how many fit on
+// one row, we take the minimum number of rows needed and spread the dots as
+// evenly as possible over them, remainder to the earlier rows:
+//   6 dots, 5 fit  → 2 rows → 3 / 3
+//   7 dots, 6 fit  → 2 rows → 4 / 3
+//   13 dots, 12 fit→ 2 rows → 7 / 6   (never 12 / 1)
+// Anything that already fits stays on a single row.
+const balancedRowSizes = (n, perRow) => {
+  const cap = Math.max(1, perRow || n);
+  if (n <= cap) return [n];
+  const rows = Math.ceil(n / cap);
+  const base = Math.floor(n / rows);
+  const extra = n % rows;
+  return Array.from({ length: rows }, (_, i) => base + (i < extra ? 1 : 0));
+};
 // `filled` (bool[] per week) lights specific weeks — used for past-program
 // adherence where trained weeks may be non-contiguous. Without it, the first
 // `done` dots fill (the active hero's forward-progress timeline).
@@ -476,22 +492,64 @@ const WeekDots = ({ weeks, done, active, gradient, size = 9, gap = 5, filled, nu
   // Empty weeks use a clearly-visible grey (a tint of muted text) so they read
   // on any surface — the faint surface-hover fill was invisible on the cards.
   const emptyBg = 'color-mix(in srgb, var(--color-text-muted) 38%, transparent)';
+
+  // Per-row capacity is measured, not hardcoded: the two call sites sit in cards
+  // with different padding (and one shares its row with the "% COMPLETE" block),
+  // so the real width is the only honest input. Both parents size this box from
+  // available space, never from its content (a block parent, or a `flex-1
+  // min-w-0` one), so there is no measure → re-layout → re-measure loop.
+  const boxRef = useRef(null);
+  const [boxW, setBoxW] = useState(0);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return undefined;
+    const measure = () => setBoxW(el.clientWidth || 0);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // A numbered dot is as wide as its widest label, not as the dot: 2 digits at
+  // 8px/700 tabular figures ≈ 10px, so 12px with a little slack (weeks cap at
+  // 16, so labels never exceed 2 digits). Plain dots are exactly `size`.
+  const itemW = numbered ? Math.max(size, 12) : size;
+  // k items cost k*itemW + (k-1)*gap, so capacity = floor((W + gap)/(itemW + gap)).
+  // Before the first measurement, assume it all fits (one row) and let the
+  // layout effect correct it before paint.
+  const perRow = boxW > 0 ? Math.max(1, Math.floor((boxW + gap) / (itemW + gap))) : n;
+
+  const rowSizes = balancedRowSizes(n, perRow);
+  // Prefix sum → each row's first week index (rows ≤ 16, so O(n²) is free).
+  const rows = rowSizes.map((count, r) => ({ count, start: rowSizes.slice(0, r).reduce((a, c) => a + c, 0) }));
+
+  const renderDot = (i) => {
+    const isDone = filled ? !!filled[i] : i < done;
+    const isCur = !filled && i === done && active;
+    const dotStyle = { width: size, height: size, borderRadius: '50%', flexShrink: 0, background: isDone ? b : isCur ? '#fff' : emptyBg, boxShadow: isCur ? `inset 0 0 0 2px ${b}` : 'none' };
+    if (numbered) {
+      // Fixed-width column so 1-digit and 2-digit weeks line up across rows
+      // (and so the capacity math above is exact).
+      return (
+        <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, width: itemW, flexShrink: 0 }}>
+          <span style={dotStyle} />
+          <span style={{ fontSize: 8, fontWeight: 700, lineHeight: 1, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
+        </div>
+      );
+    }
+    return <span key={i} style={dotStyle} />;
+  };
+
   return (
-    <div style={{ display: 'flex', gap, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-      {Array.from({ length: n }).map((_, i) => {
-        const isDone = filled ? !!filled[i] : i < done;
-        const isCur = !filled && i === done && active;
-        const dotStyle = { width: size, height: size, borderRadius: '50%', flexShrink: 0, background: isDone ? b : isCur ? '#fff' : emptyBg, boxShadow: isCur ? `inset 0 0 0 2px ${b}` : 'none' };
-        if (numbered) {
-          return (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-              <span style={dotStyle} />
-              <span style={{ fontSize: 8, fontWeight: 700, lineHeight: 1, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
-            </div>
-          );
-        }
-        return <span key={i} style={dotStyle} />;
-      })}
+    <div ref={boxRef} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: gap + 2 }}>
+      {rows.map((row) => (
+        // flexWrap stays on purely as a safety net if a measurement is a pixel
+        // short — it must never overflow the card horizontally.
+        <div key={row.start} style={{ display: 'flex', gap, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          {Array.from({ length: row.count }).map((_, j) => renderDot(row.start + j))}
+        </div>
+      ))}
     </div>
   );
 };
@@ -2934,7 +2992,10 @@ const Workouts = () => {
                     {!adh.loading && adh.planned > 0 && <span>· {t('workouts.workoutsDoneOfPlanned', { done: adh.done, planned: adh.planned, defaultValue: `${adh.done} of ${adh.planned} workouts` })}</span>}
                   </p>
                   <div className="flex items-end justify-between gap-3 mt-3.5">
-                    <div className="min-w-0">
+                    {/* flex-1 + min-w-0 = the dot box's width comes from the free
+                        space left by the "% COMPLETE" block, never from its own
+                        content — which is what WeekDots measures to lay out rows. */}
+                    <div className="flex-1 min-w-0">
                       <WeekDots weeks={progTotalWeeks} filled={adh.weekDone} gradient={['var(--color-accent)', 'var(--color-accent)']} size={10} gap={6} numbered />
                     </div>
                     {!adh.loading && adh.pct != null && (

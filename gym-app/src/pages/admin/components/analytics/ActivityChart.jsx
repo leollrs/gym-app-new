@@ -9,7 +9,69 @@ import { exportCSV } from '../../../../lib/csvExport';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { TK, FK, ChartCard, LineChart } from './analyticsKit';
 
+/**
+ * True when an RPC failed *because the function isn't on this database* —
+ * PGRST202 is PostgREST "not found in the schema cache", 42883 is Postgres
+ * "function does not exist", and some gateways surface a bare 404. Anything
+ * else (including the RPC's own "Access denied: gym boundary violation") is a
+ * real failure and must propagate to the ErrorCard.
+ *
+ * The app ships to web AND to installed native builds, so a client running
+ * against a DB without migration 0649 — an old install, or a rolled-back
+ * database — has to degrade to the legacy path, not white-screen the page.
+ */
+const isRpcMissing = (err) => {
+  if (!err) return false;
+  if (err.code === 'PGRST202' || err.code === '42883') return true;
+  if (err.status === 404 || err.statusCode === 404) return true;
+  return /could not find .*function|schema cache/i.test(err.message || '');
+};
+
+/**
+ * Monthly engagement: roster size at each month's end vs. the number of those
+ * members who logged ≥1 completed workout that month.
+ *
+ * Aggregated SERVER-SIDE by `admin_activity_engagement` (migration 0649).
+ * PostgREST clamps every response to max_rows (1000 here — verified in prod)
+ * and `.limit()` cannot raise it, so the legacy client path below counted a
+ * truncated roster against a truncated session list: ~15-25% displayed for a
+ * gym actually running ~60%. The SQL mirrors the JS windows exactly, so the
+ * series handed to LineChart keeps its shape.
+ */
 async function fetchActivityData(gymId, dateFnsLocale, span) {
+  const { data: rows, error } = await supabase.rpc('admin_activity_engagement', {
+    p_gym_id: gymId,
+    p_months: span,
+  });
+
+  if (!error) {
+    // month_start comes back as a bare DATE ('2026-07-01'). `new Date()` would
+    // read that as UTC midnight and render the PREVIOUS month for anyone west
+    // of UTC (this gym is UTC-4), so pin it to local midnight — the same
+    // `+ 'T00:00:00'` convention used across the admin date code.
+    return (rows || []).map((r) => {
+      const total = Number(r.total_members) || 0;
+      const active = Number(r.active_members) || 0;
+      return {
+        month: format(new Date(`${String(r.month_start).slice(0, 10)}T00:00:00`), 'MMM yy', dateFnsLocale),
+        engagement: total > 0 ? Math.round((active / total) * 100) : 0,
+        active,
+        total,
+      };
+    });
+  }
+
+  if (!isRpcMissing(error)) throw error;
+  return fetchActivityDataClientSide(gymId, dateFnsLocale, span);
+}
+
+/**
+ * LEGACY fallback — the original in-browser aggregation, kept verbatim so a
+ * client on a pre-0649 database still renders a series (truncated at max_rows,
+ * i.e. under-reported, but never a crash). Do not delete: it is the only path
+ * an old installed native build has.
+ */
+async function fetchActivityDataClientSide(gymId, dateFnsLocale, span) {
   const now = new Date();
   const windowStart = startOfMonth(subMonths(now, span - 1));
 

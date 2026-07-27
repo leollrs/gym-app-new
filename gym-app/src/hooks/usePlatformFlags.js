@@ -49,8 +49,15 @@ export function usePlatformFlags() {
     // reconnect. This query is also excluded from the 7-day persisted cache
     // (main.jsx) so a stale "off" can't survive a re-enable or app restart.
     staleTime: 15_000,
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
+    // 30s -> 5min. These two hooks are mounted at the App root for EVERY
+    // session, so the old interval was ~1.8M RPCs/month at 1,000 DAU to poll
+    // values that change a handful of times a year (a platform kill switch and
+    // a maintenance flag). They also opted back into refetchOnWindowFocus,
+    // which main.jsx deliberately disables globally for Capacitor. Flipping a
+    // flag now takes up to 5 minutes to reach a session that is already open —
+    // and every cold start and every resume still re-reads it immediately.
+    refetchInterval: 300_000,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     refetchOnMount: 'always',
     retry: false,

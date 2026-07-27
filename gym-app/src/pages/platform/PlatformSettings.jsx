@@ -31,6 +31,8 @@ import {
   Download,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
+import logger from '../../lib/logger';
 import { logAdminAction } from '../../lib/adminAudit';
 import { useAuth } from '../../contexts/AuthContext';
 import PlatformSpinner from '../../components/platform/PlatformSpinner';
@@ -197,7 +199,13 @@ function ExerciseRow({ ex, onDelete, onUpdate }) {
       const path = `global/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('exercise-videos')
-        .upload(path, newVideoFile, { contentType: newVideoFile.type });
+        // 1-year cache: `path` above is `global/${Date.now()}_${random}.${ext}`,
+        // so a re-upload is always a NEW url and can never be masked by a stale
+        // cached copy. Exercise videos are the heaviest repeat-fetched asset in
+        // the app (200 files, ~177 KB avg) and the objects currently in this
+        // bucket were uploaded with `no-cache`, costing a revalidation round trip
+        // on every single view.
+        .upload(path, newVideoFile, { cacheControl: '31536000', contentType: newVideoFile.type });
       if (uploadError) {
         // Don't save the exercise silently without the video the admin just
         // picked — abort so they can retry or remove the file.
@@ -531,13 +539,24 @@ export default function PlatformSettings() {
 
   /* ────────────────── fetchers ────────────────── */
 
+  // The GLOBAL exercise catalog editor — this list is the whole surface for
+  // finding/editing/deleting a catalog exercise, and the search + muscle filter
+  // below run client-side over exactly these rows. PostgREST clamps a response
+  // to 1000 rows, so unpaged this silently stopped showing (and stopped FINDING,
+  // since search never reaches the server) everything past #1000 alphabetically
+  // — the catalog is already ~305 and growing. Paged with `.range()`; `id` as a
+  // second sort key so duplicate names can't straddle a page boundary and
+  // duplicate/drop a row. Same shape TrainerPlans already uses for this table.
   const fetchExercises = async () => {
     setLoadingExercises(true);
-    const { data } = await supabase
+    const { data, error } = await selectAllRows((from, to) => supabase
       .from('exercises')
       .select('*')
       .is('gym_id', null)
-      .order('name');
+      .order('name')
+      .order('id', { ascending: true })
+      .range(from, to));
+    if (error) logger.error('PlatformSettings: failed to load exercises:', error);
     setExercises(data || []);
     setLoadingExercises(false);
   };
@@ -1445,7 +1464,7 @@ function ExerciseModal({ onClose, onSaved }) {
       const path = `global/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('exercise-videos')
-        .upload(path, videoFile, { contentType: videoFile.type });
+        .upload(path, videoFile, { cacheControl: '31536000', contentType: videoFile.type });
       if (uploadError) {
         // Don't insert the exercise silently without the video the admin
         // attached — abort so they can retry or drop the file.

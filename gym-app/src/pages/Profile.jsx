@@ -717,7 +717,7 @@ const Profile = () => {
 
         const { error: storageErr } = await supabase.storage
           .from('avatars')
-          .upload(path, cleanFile, { upsert: true, contentType: 'image/jpeg' });
+          .upload(path, cleanFile, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
         if (storageErr) throw storageErr;
 
         const { data: urlData } = supabase.storage

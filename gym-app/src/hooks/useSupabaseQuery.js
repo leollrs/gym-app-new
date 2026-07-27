@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/churn/batchedSelect';
 
 // Flatten the nested session_exercises → session_sets shape returned by
 // Supabase into the flat workout_sets shape readinessEngine.js expects.
@@ -121,24 +122,38 @@ export function useRoutines(userId) {
 // Exercise library, food items, program templates, gym info: these only change
 // when an admin edits them. Bump staleTime to Infinity + refetchOnMount:false
 // so we never hit the network after the initial fetch.
+// Paged for the same reason as useFoodItems below. At 307 rows today this is
+// under the 1000 cap, but there is no headroom and no error when it crosses —
+// the library just starts ending at "M". The content library has already grown
+// 173 -> 305 once.
 export function useExerciseLibrary() {
   return useSupabaseQuery(
     ['exercise-library'],
-    () => supabase
+    () => selectAllRows((from, to) => supabase
       .from('exercises')
       .select('id, name, name_es, muscle_group, equipment, video_url, is_active')
       .eq('is_active', true)
-      .order('name'),
+      .order('name')
+      .order('id')          // stable tiebreak — duplicate names would otherwise
+      .range(from, to)),    // let a row repeat or vanish across page boundaries
     { staleTime: Infinity, refetchOnMount: false },
   );
 }
 
+// PAGED, and it has to be. PostgREST caps every response at max_rows=1000
+// (supabase/config.toml:18 — verified live against prod, which returned
+// `content-range: 0-999/1275`). food_items is ALREADY at 1275 rows, so the
+// unpaged version of this query was silently dropping 275 foods — they were
+// unsearchable and unloggable in the app with no error anywhere. This is the
+// one place in the codebase where the cap was not a future risk but a live bug.
 export function useFoodItems() {
   return useSupabaseQuery(
     ['food-items'],
-    () => supabase
+    () => selectAllRows((from, to) => supabase
       .from('food_items')
-      .select('id, name, name_es, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, nutri_score'),
+      .select('id, name, name_es, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, nutri_score')
+      .order('id')
+      .range(from, to)),
     { staleTime: Infinity, refetchOnMount: false },
   );
 }

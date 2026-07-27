@@ -208,51 +208,33 @@ const GymPulse = () => {
 
     fetchPulse();
 
-    // Realtime — listen for workout sessions + check-ins so the feed
-    // refreshes when someone starts/finishes a workout or checks in.
-    // Filtered by gym_id so we only receive events for the current gym.
-    const gymId = profile.gym_id;
-    let debounceTimer;
-    // Skip refetches while the app is backgrounded — GymPulse lives on the
-    // keep-alive Dashboard, so without this a busy gym's workout/check-in
-    // firehose kept refetching pulse data with nobody looking. We catch up via
-    // the visibilitychange listener below the moment the app returns.
-    const debouncedFetch = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => { if (!document.hidden) fetchPulse(); }, 5000);
-    };
-    const channel = supabase
-      .channel('gym-pulse-realtime')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'workout_sessions',
-        filter: `gym_id=eq.${gymId}`,
-      }, debouncedFetch)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'workout_sessions',
-        filter: `gym_id=eq.${gymId}`,
-      }, debouncedFetch)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'check_ins',
-        filter: `gym_id=eq.${gymId}`,
-      }, debouncedFetch)
-      .subscribe();
-
-    // Fallback polling every 2 minutes in case realtime misses an event — also
-    // gated on visibility so it doesn't poll while backgrounded.
+    // NO REALTIME HERE — deliberate. `workout_sessions` and `check_ins` are
+    // NOT members of the `supabase_realtime` publication. Verified against
+    // production:
+    //   SELECT tablename FROM pg_publication_tables
+    //    WHERE pubname = 'supabase_realtime';
+    //   -> challenge_prizes, earned_rewards, notifications,
+    //      reward_redemptions, session_cues, session_drafts
+    // The postgres_changes subscription that used to sit here (workout_sessions
+    // INSERT/UPDATE + check_ins INSERT, behind a 5s debounce) therefore never
+    // fired a single time. It held an idle realtime channel open for every
+    // logged-in member and, worse, made this file read as though the pulse
+    // live-updated.
+    //
+    // Publishing those tables is NOT the fix: one 2,000-member gym would emit
+    // an estimated ~17.3M realtime messages/month against a 5M/month plan
+    // allowance. Staying unpublished is the correct, cheap configuration — so
+    // please do not "restore" the subscription.
+    //
+    // The two paths below are what actually kept this card fresh all along.
+    // Poll every 2 minutes, gated on visibility so a backgrounded app (this
+    // card lives on the keep-alive Dashboard) does no work.
     const interval = setInterval(() => { if (!document.hidden) fetchPulse(); }, 120_000);
     // Catch up immediately when the app returns to the foreground.
     const onVisible = () => { if (!document.hidden) fetchPulse(); };
     document.addEventListener('visibilitychange', onVisible);
 
     return () => {
-      clearTimeout(debounceTimer);
-      supabase.removeChannel(channel);
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
     };

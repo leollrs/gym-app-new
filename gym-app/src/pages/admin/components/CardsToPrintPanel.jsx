@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getCardPaperType } from '../../../components/printCards/cardPaperType.js';
 import { supabase } from '../../../lib/supabase';
+import { selectAllRows, selectAllInBatches } from '../../../lib/churn/batchedSelect';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
@@ -176,12 +177,18 @@ export default function CardsToPrintPanel({ gymId }) {
     queryFn: async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-      const { data, error } = await supabase
+      // `.limit(2000)` was a no-op — PostgREST caps responses at 1000 rows — so on
+      // a busy day the "Here today" flag went missing for everyone who checked in
+      // after the cut, and staff stopped seeing which members were in the building.
+      // Paged, ordered (checked_in_at, id) so OFFSET paging is stable.
+      const { data, error } = await selectAllRows((lo, hi) => supabase
         .from('check_ins')
         .select('profile_id')
         .eq('gym_id', gymId)
         .gte('checked_in_at', start.toISOString())
-        .limit(2000);
+        .order('checked_in_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(lo, hi));
       if (error) throw error;
       return (data || []).map((c) => c.profile_id);
     },
@@ -216,11 +223,22 @@ export default function CardsToPrintPanel({ gymId }) {
       const since = new Date();
       since.setDate(since.getDate() - 120);
       const sinceIso = since.toISOString();
+      // 120 days of visits for every pending card, feeding computeExpectedDue's
+      // median-gap cadence. `.limit(5000)` resolved to 1000 and neither query had
+      // an .order(), so the rows kept were an arbitrary slice: the median gap and
+      // the "last activity" date were computed off random visits and the predicted
+      // hand-over date was wrong (often "no recent visits" for an active member).
+      // selectAllInBatches chunks the `.in()` list for URL length AND pages each
+      // chunk past the 1000-row cap.
       const [ci, ws] = await Promise.all([
-        supabase.from('check_ins').select('profile_id, checked_in_at')
-          .eq('gym_id', gymId).in('profile_id', pendingProfileIds).gte('checked_in_at', sinceIso).limit(5000),
-        supabase.from('workout_sessions').select('profile_id, completed_at')
-          .eq('status', 'completed').in('profile_id', pendingProfileIds).gte('completed_at', sinceIso).limit(5000),
+        selectAllInBatches((ids, lo, hi) => supabase.from('check_ins').select('profile_id, checked_in_at')
+          .eq('gym_id', gymId).in('profile_id', ids).gte('checked_in_at', sinceIso)
+          .order('checked_in_at', { ascending: true }).order('id', { ascending: true }).range(lo, hi),
+        pendingProfileIds, { maxRows: 20000 }),
+        selectAllInBatches((ids, lo, hi) => supabase.from('workout_sessions').select('profile_id, completed_at')
+          .eq('status', 'completed').in('profile_id', ids).gte('completed_at', sinceIso)
+          .order('completed_at', { ascending: true }).order('id', { ascending: true }).range(lo, hi),
+        pendingProfileIds, { maxRows: 20000 }),
       ]);
       const map = {};
       if (ci.error) console.warn('[CardsToPrintPanel] check-in history failed:', ci.error.message);

@@ -6,6 +6,7 @@ import {
   Trash2, Search, Check, UserCheck, X, ChevronRight, ChevronLeft,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { cacheGet, cacheSet, trainerKey } from '../../hooks/useTrainerCache';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
@@ -889,11 +890,21 @@ function AnalyticsTab({ classes, t, dateLocale }) {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const since = thirtyDaysAgo.toISOString();
 
-      const { data: allBookings, error: bookingsError } = await supabase
+      // Paged. Every number below (attendance rate, average rating, star
+      // distribution) is reduced client-side from this row set, so an
+      // incomplete read doesn't degrade gracefully — it produces confident,
+      // wrong numbers. A class with 3 daily slots × 30 spots is ~2,700 bookings
+      // over the 30-day window, and PostgREST clamps ANY response to 1000 rows,
+      // so the trainer was reading stats computed on an arbitrary ~37% sample.
+      // `.range()` paging returns the whole window; `id` is the stable sort key
+      // so no booking can straddle a page boundary and be counted twice.
+      const { data: allBookings, error: bookingsError } = await selectAllRows((from, to) => supabase
         .from('gym_class_bookings')
         .select('id, attended, rating, status')
         .eq('class_id', selectedClassId)
-        .gte('booked_at', since);
+        .gte('booked_at', since)
+        .order('id', { ascending: true })
+        .range(from, to));
       if (bookingsError) {
         logger.error('TrainerClasses: analytics fetch error', bookingsError);
         throw bookingsError; // real retry state instead of fake "No data yet"

@@ -8,7 +8,7 @@
 // region (e.g. Upper Chest) to its whole parent group (Chest) — covers
 // the common "I just want any chest exercise" case in two taps.
 
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -197,6 +197,51 @@ export default function MuscleExercisesSheet({
     return filled;
   }, [matched, usingCustom, customRegions, expandToGroup, group]);
 
+  // How many tiles are actually mounted, across BOTH render paths. "Ver todo
+  // Pecho" (expandToGroup) or a Push/Pull/Legs chip can match well over a
+  // hundred exercises, and this used to mount a <video> for every one of them
+  // in a single commit. LazyVideoTile is metadata-only so the byte cost is
+  // already handled — what remains is DOM + decoder count. Incremental reveal
+  // matches the Nutrition Discover grid (Nutrition.jsx:5137: 30, +30).
+  const PAGE = 30;
+  // The grown count is STAMPED with the content it was grown for, so anything
+  // that changes what the sheet is showing — reopening, tapping a different
+  // muscle, toggling "Ver todo <group>", switching chip filter — reads back as
+  // a fresh first page. Done during render rather than in a reset effect: no
+  // cascading render, and no state to keep in sync.
+  //
+  // Primitives only, on purpose. `customLabel` stands in for `customRegions`
+  // (both come off the same `chipSheet` object — ExerciseLibrary.jsx:3539), and
+  // stamping with the memoized `activeRegions`/`matched` ARRAYS instead would
+  // re-key on any parent re-render and snap the user back to 30 mid-browse.
+  const contentKey = JSON.stringify([open, bucketId, expandToGroup, customLabel]);
+  const [page, setPage] = useState({ key: contentKey, count: PAGE });
+  const visibleCount = page.key === contentKey ? page.count : PAGE;
+
+  // Sectioned view shares ONE budget with the flat view, so "load more" means
+  // the same thing in both. Sections are filled in order until the budget runs
+  // out; a section that gets 0 slots is dropped rather than rendered as an
+  // empty header. `matched.length` in the header stays the true total.
+  //
+  // `total` is carried separately because the per-section header prints a count
+  // — it must keep reporting how many exercises that sub-region HAS, not how
+  // many happen to be mounted right now, or the numbers would appear to shrink.
+  const visibleSections = useMemo(() => {
+    if (!sections) return null;
+    let left = visibleCount;
+    const out = [];
+    for (const s of sections) {
+      if (left <= 0) break;
+      out.push(
+        left >= s.items.length
+          ? { ...s, total: s.items.length }
+          : { ...s, total: s.items.length, items: s.items.slice(0, left) },
+      );
+      left -= s.items.length;
+    }
+    return out;
+  }, [sections, visibleCount]);
+
   // Lock scroll while the sheet is mounted (single-owner pattern — no
   // parent should also lock, otherwise the save-restore order races and
   // leaves overflow:hidden stuck).
@@ -325,10 +370,10 @@ export default function MuscleExercisesSheet({
                     {t('exerciseLibrary.noExercisesForMuscle', { defaultValue: 'No exercises here yet' })}
                   </p>
                 </div>
-              ) : sections ? (
+              ) : visibleSections ? (
                 // Subsectioned view (Ver todo Pecho → upper / mid / lower / serrato).
                 <div className="flex flex-col gap-5">
-                  {sections.map((section) => {
+                  {visibleSections.map((section) => {
                     const sectionLabel = section.regionId === '__secondary'
                       ? t('exerciseLibrary.secondary', { defaultValue: 'Secundario' })
                       : t(REGION_LABEL_KEY(section.regionId), { defaultValue: section.regionId });
@@ -338,7 +383,7 @@ export default function MuscleExercisesSheet({
                           className="text-[10px] font-extrabold uppercase tracking-[0.12em] mb-2.5"
                           style={{ color: 'var(--color-text-muted)' }}
                         >
-                          {sectionLabel} · {section.items.length}
+                          {sectionLabel} · {section.total}
                         </p>
                         <div className="grid grid-cols-2 gap-3">
                           {section.items.map((ex) => (
@@ -351,10 +396,24 @@ export default function MuscleExercisesSheet({
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {matched.map((ex) => (
+                  {matched.slice(0, visibleCount).map((ex) => (
                     <ExerciseBox key={ex.id} ex={ex} t={t} onTap={onExerciseTap} />
                   ))}
                 </div>
+              )}
+              {/* Reveals the rest — every matched exercise stays reachable, it
+                  just isn't all mounted at once. Sum of section items always
+                  equals matched.length (every match lands in a section or the
+                  __secondary bucket), so one condition covers both paths. */}
+              {matched.length > visibleCount && (
+                <button
+                  type="button"
+                  onClick={() => setPage({ key: contentKey, count: visibleCount + PAGE })}
+                  className="w-full mt-4 py-3 rounded-2xl font-bold text-[13px] active:scale-[0.98] transition-all"
+                  style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  {t('exerciseLibrary.showExercises', { count: matched.length - visibleCount })}
+                </button>
               )}
             </div>
           </motion.div>

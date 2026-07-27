@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
-import { selectInBatches } from '../lib/churn/batchedSelect';
+import { selectInBatches, selectAllRows } from '../lib/churn/batchedSelect';
 import UserAvatar from '../components/UserAvatar';
 import FriendsPanel from '../components/FriendsPanel';
 import EmptyState from '../components/EmptyState';
@@ -29,6 +29,15 @@ if (Capacitor.isNativePlatform()) {
 
 // One-time DM encryption disclosure key (localStorage)
 const DM_DISCLOSURE_KEY = 'dm_encryption_disclosure_seen_v1';
+
+// How many messages a DM thread loads at a time. The thread used to select the
+// FULL history ascending with no limit: PostgREST silently caps at 1000 rows,
+// so past 1000 messages a member saw the OLDEST 1000 and could never reach
+// recent history — a correctness bug wearing a scaling bug's clothes. It also
+// meant an AES decrypt per message before the first bubble could paint.
+const DM_PAGE_SIZE = 50;
+// Scroll distance from the top of the thread that triggers the next page.
+const DM_LOAD_OLDER_THRESHOLD_PX = 80;
 
 // ── Helpers ──────────────────────────────────────────────────────
 // Pass `lang` (i18next language) so dates render in the user-selected app
@@ -485,6 +494,20 @@ const ChatView = ({ conversationId, onBack }) => {
   const inputRef = useRef(null);
   const encryptionSeedRef = useRef(null);
   const pendingRawRef = useRef([]); // messages that arrived before seed was loaded
+  // ── Upward paging ─────────────────────────────────────────────────────────
+  // We hold the NEWEST page and walk backwards as the user scrolls up, so the
+  // thread opens on the most recent messages (which is what a chat is for) and
+  // decrypts 50 bodies instead of up to 1000 before first paint.
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const oldestLoadedAtRef = useRef(null);  // created_at of the oldest row we hold
+  const skipAutoScrollRef = useRef(false); // set while PREPENDING so we don't jump to the bottom
+  // Reset per conversation so switching threads re-snaps instantly instead of
+  // animating the new thread down from its top.
+  const didInitialScrollRef = useRef(false);
+  // Ref twin of `loadingOlder`: scroll fires far faster than React re-renders,
+  // so the state flag alone lets two fetches through on a fast flick.
+  const loadingOlderRef = useRef(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const headerMenuRef = useRef(null);
@@ -553,6 +576,13 @@ const ChatView = ({ conversationId, onBack }) => {
     const load = async () => {
       setLoading(true);
       pendingRawRef.current = [];
+      // Reset paging for the new thread — a stale cursor from the previous
+      // conversation would fetch that thread's history into this one.
+      oldestLoadedAtRef.current = null;
+      setHasMoreOlder(false);
+      // New thread = new first paint, so it snaps to the bottom instantly rather
+      // than animating down from its oldest message.
+      didInitialScrollRef.current = false;
 
       try {
         const { data: conv } = await supabase
@@ -577,15 +607,24 @@ const ChatView = ({ conversationId, onBack }) => {
 
         if (!cancelled) setOtherUser(profile);
 
+        // Newest page first (descending + limit), reversed below for display.
+        // Ascending-with-no-limit handed us the OLDEST 1000 and stranded the
+        // rest; descending guarantees the thread always opens on what just
+        // arrived, however long the history is.
         const { data: msgs } = await supabase
           .from('direct_messages')
           .select('*')
           .eq('conversation_id', conversationId)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: false })
+          .limit(DM_PAGE_SIZE);
 
         if (!cancelled) {
+          const page = (msgs || []).slice().reverse(); // → oldest-first, the order the bubble list renders in
+          // A full page back means there is probably more above it.
+          setHasMoreOlder((msgs?.length || 0) === DM_PAGE_SIZE);
+          oldestLoadedAtRef.current = page[0]?.created_at ?? null;
           const decrypted = await Promise.all(
-            (msgs || []).map(async (m) => ({ ...m, body: await decryptMessage(m.body, conversationId, seed) }))
+            page.map(async (m) => ({ ...m, body: await decryptMessage(m.body, conversationId, seed) }))
           );
           // Drain any messages that arrived via realtime while the seed was loading.
           // They were buffered in pendingRawRef because encryptionSeedRef was null.
@@ -616,12 +655,101 @@ const ChatView = ({ conversationId, onBack }) => {
     return () => { cancelled = true; };
   }, [conversationId, user.id]);
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages — but NOT when the change was an older
+  // page being prepended, which would yank the reader back down to the bottom.
+  //
+  // The FIRST paint of a thread must be INSTANT, not smooth. The old rule keyed
+  // on message count (`length <= 20 ? auto : smooth`), which was fine when the
+  // thread loaded in full, but the windowed load always arrives with 50 — so
+  // every open animated a long list down from the top and the member simply saw
+  // the oldest messages and had to scroll. A chat has to open at the bottom.
+  //
+  // The second snap on the next frame is not paranoia: bodies are decrypted
+  // asynchronously and bubble heights change as they resolve, so a scroll issued
+  // before that lands stops short of the true bottom.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: messages.length <= 20 ? 'auto' : 'smooth' });
+    if (skipAutoScrollRef.current) { skipAutoScrollRef.current = false; return; }
+    if (!messages.length) return;
+    const isFirstPaint = !didInitialScrollRef.current;
+    bottomRef.current?.scrollIntoView({ behavior: isFirstPaint ? 'auto' : 'smooth' });
+    if (isFirstPaint) {
+      didInitialScrollRef.current = true;
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }));
+    }
   }, [messages]);
 
-  // Realtime subscription
+  // Pull the page above the one we're holding. Keyed on the oldest loaded
+  // `created_at` rather than an offset so messages arriving in realtime can't
+  // shift the window and duplicate/skip rows.
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMoreOlder || !oldestLoadedAtRef.current || !conversationId) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const { data: older } = await supabase
+        .from('direct_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .lt('created_at', oldestLoadedAtRef.current)
+        .order('created_at', { ascending: false })
+        .limit(DM_PAGE_SIZE);
+
+      setHasMoreOlder((older?.length || 0) === DM_PAGE_SIZE);
+      const page = (older || []).slice().reverse();
+      if (!page.length) return;
+
+      const seed = encryptionSeedRef.current;
+      const decrypted = await Promise.all(
+        page.map(async (m) => ({ ...m, body: await decryptMessage(m.body, conversationId, seed) }))
+      );
+      oldestLoadedAtRef.current = page[0].created_at;
+
+      // Anchor the viewport on whatever the user was reading: record the
+      // scroll geometry before the prepend, then re-apply the height delta on
+      // the next frame so the list appears to extend upward silently.
+      const el = scrollContainerRef.current;
+      const prevHeight = el?.scrollHeight ?? 0;
+      const prevTop = el?.scrollTop ?? 0;
+      skipAutoScrollRef.current = true;
+      setMessages(prev => {
+        const seen = new Set(prev.map(m => m.id));
+        return [...decrypted.filter(m => !seen.has(m.id)), ...prev];
+      });
+      requestAnimationFrame(() => {
+        const node = scrollContainerRef.current;
+        if (node) node.scrollTop = prevTop + (node.scrollHeight - prevHeight);
+      });
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [conversationId, hasMoreOlder]);
+
+  const lastScrollTopRef = useRef(0);
+  const handleMessagesScroll = useCallback((e) => {
+    const top = e.currentTarget.scrollTop;
+    const movedUp = top < lastScrollTopRef.current;
+    lastScrollTopRef.current = top;
+    // Direction matters: opening a thread animates the list DOWN from the top
+    // (scrollIntoView, behavior:'smooth'), which fires a burst of scroll
+    // events at scrollTop≈0 and would otherwise page in the whole history the
+    // instant the thread opened. Only a genuine upward scroll pages.
+    if (movedUp && top <= DM_LOAD_OLDER_THRESHOLD_PX) loadOlderMessages();
+  }, [loadOlderMessages]);
+
+  // Realtime subscription for the OPEN thread.
+  //
+  // SAFE TO KEEP because both handlers carry a server-side
+  // `filter: conversation_id=eq.…`: Realtime only evaluates + delivers rows for
+  // the single conversation on screen, so the cost is one channel per open chat
+  // rather than one per member per gym-wide message. `direct_messages` is being
+  // added to the `supabase_realtime` publication by a separate migration (before
+  // that it was absent, so this never fired); the unfiltered `dm-list` channel
+  // that used to live further down this file was removed at the same time
+  // precisely because it had no filter. Publishing tables broadly is a deliberate
+  // cost decision — an unfiltered subscription on this table costs an estimated
+  // ~17.3M realtime messages/month from one 2,000-member gym against a 5M/month
+  // allowance — so keep any subscription added here server-side filtered.
   useEffect(() => {
     if (!conversationId) return;
 
@@ -944,7 +1072,14 @@ const ChatView = ({ conversationId, onBack }) => {
       )}
 
       {/* Messages area */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 py-2">
+      <div ref={scrollContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-3 py-2">
+        {/* Older-page indicator — only ever visible while walking back through
+            history, which previously wasn't reachable past 1000 messages. */}
+        {loadingOlder && (
+          <div className="flex items-center justify-center py-3">
+            <div className="w-4 h-4 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
@@ -1276,15 +1411,27 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
   // Which list we're viewing: 'active' | 'archived' | 'deleted'.
   const [tab, setTab] = useState('active');
 
+  // True once a list has been painted. Mirrors the trainer inbox's warm-cache
+  // check: only a true cold load may blank the screen with the spinner.
+  const listPaintedRef = useRef(false);
+
   const loadConversations = useCallback(async () => {
-    setLoading(true);
+    // The refresh paths below (route arrival, 90 s poll, foreground catch-up)
+    // re-run this in the background — they must not blank a list the member is
+    // already reading.
+    if (!listPaintedRef.current) setLoading(true);
 
     try {
+    // Bounded: ordered newest-activity-first, so the cap can only ever drop
+    // conversations that have been silent longer than 200 others. Unbounded,
+    // PostgREST would still have truncated at 1000 — just silently, and with
+    // no guarantee about which 1000.
     const { data: convs } = await supabase
       .from('conversations')
       .select('id, participant_1, participant_2, last_message_at, encryption_seed')
       .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
-      .order('last_message_at', { ascending: false });
+      .order('last_message_at', { ascending: false })
+      .limit(200);
 
     if (!convs || convs.length === 0) {
       setConversations([]);
@@ -1319,31 +1466,80 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
 
     // Unread counts for ALL conversations in ONE query — was a per-conversation
     // head-count (N round-trips) on every list load, realtime INSERT, and
-    // foreground. Rows are conversation_id-only (bounded by total unread), tallied
-    // client-side. (The last-message fetch below is still per-conv; the full
-    // single-round-trip fix is the get_conversation_list RPC — see notes.)
+    // foreground. Rows are conversation_id-only, tallied client-side.
+    //
+    // PAGED, because the tally is per-conversation and the cap is not: PostgREST
+    // clamps every response to 1000 rows on this project, so once a member's
+    // TOTAL unread crosses 1000 this query returned an arbitrary 1000-row slice
+    // and every conversation outside that slice tallied to 0 — i.e. threads with
+    // genuinely unread messages rendered with NO badge and in the un-bold "read"
+    // style. Not an off-by-a-few: which conversations lose their badge is
+    // whatever order the planner happened to emit. A `.limit()` cannot fix this
+    // (it only lowers the same ceiling), and a `count: 'exact'` head-count can't
+    // either — one scalar can't produce a per-conversation breakdown, and doing
+    // it per conversation is the N round-trips this query exists to avoid.
+    //
+    // `.order('id')` is required, not decoration: `.range()` paging over an
+    // unordered result set has no defined page boundary, so rows can repeat
+    // across pages (inflating a badge) or be skipped (losing one). id is the
+    // PK — unique, so no tie can straddle an edge.
+    //
+    // maxRows caps the walk at 5 round trips. The badge renders `9+` past 9 and
+    // the conversation list is itself capped at 200 above, so 200x10 = 2,000
+    // rows is all it takes to render every badge exactly as designed; 5,000 is
+    // >2x that headroom, and beyond it the displayed badges are identical
+    // anyway. Normal accounts (<1000 unread) still cost exactly ONE request —
+    // selectAllRows stops as soon as a page comes back short.
     const convIds = convs.map(c => c.id);
     const unreadByConv = {};
     if (convIds.length) {
-      const { data: unreadRows } = await supabase
-        .from('direct_messages')
-        .select('conversation_id')
-        .in('conversation_id', convIds)
-        .neq('sender_id', user.id)
-        .is('read_at', null);
+      const { data: unreadRows } = await selectAllRows(
+        (from, to) => supabase
+          .from('direct_messages')
+          .select('conversation_id')
+          .in('conversation_id', convIds)
+          .neq('sender_id', user.id)
+          .is('read_at', null)
+          .order('id', { ascending: true })
+          .range(from, to),
+        { maxRows: 5000 },
+      );
       (unreadRows || []).forEach(r => { unreadByConv[r.conversation_id] = (unreadByConv[r.conversation_id] || 0) + 1; });
+    }
+
+    // Last message per conversation — same de-N+1 treatment as the unread
+    // counts above. It used to be one round trip PER CONVERSATION inside the
+    // enrichment Promise.all, re-run on every list load, every realtime INSERT
+    // (debounced 2s) and every foreground.
+    //
+    // PostgREST has no DISTINCT ON, so instead: pull a window of the newest
+    // rows across the outstanding conversation ids and keep the FIRST row seen
+    // per conversation (the query is newest-first). A quiet thread can fall
+    // outside the window when a busy one floods it, so we repeat over ONLY the
+    // misses — each round spends its whole window on progressively quieter
+    // threads, which converges in 2-3 round trips regardless of how many
+    // conversations there are. Bailing when a round makes no progress stops
+    // conversations that genuinely have zero messages from looping.
+    const lastByConv = {};
+    let outstanding = convIds;
+    for (let round = 0; round < 3 && outstanding.length; round++) {
+      const { data: rows } = await supabase
+        .from('direct_messages')
+        .select('conversation_id, body, sender_id, created_at, read_at')
+        .in('conversation_id', outstanding)
+        .order('created_at', { ascending: false })
+        .limit(Math.min(500, Math.max(50, outstanding.length * 5)));
+      if (!rows?.length) break;
+      rows.forEach(r => { if (!lastByConv[r.conversation_id]) lastByConv[r.conversation_id] = r; });
+      const next = outstanding.filter(cid => !lastByConv[cid]);
+      if (next.length === outstanding.length) break; // no progress — the rest have no messages
+      outstanding = next;
     }
 
     const enriched = await Promise.all(convs.map(async (conv) => {
       const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
 
-      const { data: lastMsg } = await supabase
-        .from('direct_messages')
-        .select('body, sender_id, created_at, read_at')
-        .eq('conversation_id', conv.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const lastMsg = lastByConv[conv.id] || null;
 
       const unreadCount = unreadByConv[conv.id] || 0;
 
@@ -1361,6 +1557,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
     } finally {
       // The per-conversation enrichment Promise.all (decrypt + count) can throw;
       // without this the full-page spinner never clears on a first visit.
+      listPaintedRef.current = true;
       setLoading(false);
     }
   }, [user.id]);
@@ -1369,28 +1566,46 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // Realtime: reload when new messages arrive (debounced to prevent excessive refetches)
+  // Conversation-list freshness. NO REALTIME HERE — deliberate.
+  //
+  // The `dm-list` channel that used to sit here subscribed to ALL
+  // `direct_messages` INSERTs with NO server-side `filter:` (there is no
+  // per-user column to filter on at the list level). While `direct_messages`
+  // was absent from the `supabase_realtime` publication it never fired at all;
+  // now that a migration is adding the table, an unfiltered subscription would
+  // make Realtime evaluate RLS once per subscriber per message — every member
+  // with Messages mounted charged for every DM in the gym. Estimated ~17.3M
+  // realtime messages/month from one 2,000-member gym against a 5M/month plan
+  // allowance, so publishing broadly is a deliberate cost decision and this
+  // subscription is intentionally NOT restored.
+  //
+  // The list stays fresh via: mount, arrival back on the list route, a 90 s
+  // visibility-gated poll, and an immediate foreground catch-up. Only the OPEN
+  // thread keeps a realtime channel, and that one is server-side filtered to a
+  // single conversation_id (see the thread subscription earlier in this file).
+  //
+  // Route gate matters: `/messages` is a KEEP-ALIVE route (App.jsx
+  // KEEP_ALIVE_MAP), so this component stays mounted — and keeps rendering
+  // hidden behind `display:none` — after the member navigates away or opens a
+  // thread. Without the gate the poll would run for the rest of the session
+  // from any other page.
+  const listPath = useLocation().pathname;
+  const onListRoute = listPath === '/messages' || listPath === '/trainer/messages';
+  const listVisitedRef = useRef(false);
   useEffect(() => {
-    let debounceTimer;
-    // This listens to ALL gym direct_messages (no per-user filter possible here)
-    // and Messages is keep-alive, so skip the full conversation-list reload while
-    // backgrounded/hidden and catch up on the next foreground.
-    const channel = supabase
-      .channel('dm-list')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
-        () => {
-          clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => { if (!document.hidden) loadConversations(); }, 2000);
-        }
-      )
-      .subscribe();
+    if (!onListRoute) return undefined;
+    // Keep-alive means navigating back here does NOT remount, so the mount
+    // effect above does not re-run — refresh explicitly on arrival instead.
+    // Skipped on the very first pass, which the mount effect already covered.
+    if (listVisitedRef.current && !document.hidden) loadConversations();
+    listVisitedRef.current = true;
+    // Always gated on !document.hidden so a backgrounded phone stops polling.
+    const interval = setInterval(() => { if (!document.hidden) loadConversations(); }, 90_000);
     const onVisible = () => { if (!document.hidden) loadConversations(); };
     document.addEventListener('visibilitychange', onVisible);
 
-    return () => { clearTimeout(debounceTimer); document.removeEventListener('visibilitychange', onVisible); supabase.removeChannel(channel); };
-  }, [loadConversations]);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+  }, [onListRoute, loadConversations]);
 
   // Close swipe row when tapping outside
   const handleListClick = useCallback(() => {

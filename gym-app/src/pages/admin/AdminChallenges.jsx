@@ -101,21 +101,34 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
         return;
       }
 
-      // Fallback: live recompute (only over enrolled members)
-      const { data: enrolled } = await supabase
+      // Fallback: live recompute (only over enrolled members).
+      //
+      // Every read in this block was unbounded AND unordered, and PostgREST caps
+      // each response at 1000 rows — so the fallback leaderboard ranked members by
+      // an ARBITRARY slice of the challenge window. A 300-member gym running a
+      // 30-day consistency challenge logs ~3,600 sessions; the board was built from
+      // whichever ~1000 the planner happened to return first, i.e. roughly 28% of
+      // the data, reshuffled on every recompute. Prizes hang off these standings.
+      // All three now page with a stable (sort, id) order.
+      const { data: enrolled } = await selectAllRows((lo, hi) => supabase
         .from('challenge_participants')
         .select('profile_id')
-        .eq('challenge_id', challenge.id);
+        .eq('challenge_id', challenge.id)
+        .order('id', { ascending: true })
+        .range(lo, hi));
       const enrolledIds = new Set((enrolled || []).map(e => e.profile_id));
 
       if (challenge.type === 'consistency' || challenge.type === 'volume') {
-        const { data } = await supabase
+        const { data } = await selectAllRows((lo, hi) => supabase
           .from('workout_sessions')
           .select('profile_id, total_volume_lbs, profiles(full_name)')
           .eq('gym_id', gymId)
           .eq('status', 'completed')
           .gte('started_at', challenge.start_date)
-          .lte('started_at', challenge.end_date);
+          .lte('started_at', challenge.end_date)
+          .order('started_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(lo, hi));
 
         const agg = {};
         (data || []).forEach(s => {
@@ -135,12 +148,15 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
 
         setEntries(list);
       } else if (challenge.type === 'pr_count') {
-        const { data } = await supabase
+        const { data } = await selectAllRows((lo, hi) => supabase
           .from('pr_history')
           .select('profile_id, profiles(full_name)')
           .eq('gym_id', gymId)
           .gte('achieved_at', challenge.start_date)
-          .lte('achieved_at', challenge.end_date);
+          .lte('achieved_at', challenge.end_date)
+          .order('achieved_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(lo, hi));
 
         const agg = {};
         (data || []).forEach(r => {
@@ -153,32 +169,30 @@ const ChallengeLeaderboard = ({ challenge, gymId }) => {
       setLoading(false);
     };
 
-    // Subscribe to realtime changes — Supabase realtime can't filter by challenge_id
-    // here (workout_sessions has no challenge_id column), so we debounce the
-    // recompute to avoid running it on every single workout insert in the gym.
-    let debounceHandle = null;
-    const channel = supabase.channel(`challenge-${challenge.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` },
-        () => {
-          if (debounceHandle) clearTimeout(debounceHandle);
-          debounceHandle = setTimeout(() => fetchScores(), 1500);
-        }
-      )
-      // Also listen for direct score updates on challenge_participants — those are
-      // authoritative once the score engine runs. Filtered to this challenge only.
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'challenge_participants', filter: `challenge_id=eq.${challenge.id}` },
-        () => fetchScores()
-      )
-      .subscribe();
-
+    // NO REALTIME HERE — deliberate. Neither `workout_sessions` nor
+    // `challenge_participants` is a member of the `supabase_realtime`
+    // publication. Verified against production:
+    //   SELECT tablename FROM pg_publication_tables
+    //    WHERE pubname = 'supabase_realtime';
+    //   -> challenge_prizes, earned_rewards, notifications,
+    //      reward_redemptions, session_cues, session_drafts
+    // The `challenge-${challenge.id}` channel that used to sit here (a debounced
+    // workout_sessions INSERT listener + a challenge_participants UPDATE
+    // listener) therefore never fired once, on any admin's screen, ever. It held
+    // an idle realtime channel open for every expanded challenge card.
+    //
+    // Publishing those tables is NOT the fix: one 2,000-member gym would emit an
+    // estimated ~17.3M realtime messages/month against a 5M/month plan
+    // allowance. Staying unpublished is the deliberate, correct configuration —
+    // please do not "restore" the subscription.
+    //
+    // This panel is rendered only while a challenge card is expanded, so the
+    // mount fetch below is the refresh path: collapsing and re-expanding (or
+    // reloading the page) recomputes the board.
     fetchScores();
-    return () => {
-      if (debounceHandle) clearTimeout(debounceHandle);
-      supabase.removeChannel(channel);
-    };
     // Depend on challenge.id, not the whole object — a parent refetch that
-    // produces a new challenge reference (same id) would otherwise tear down +
-    // re-subscribe the channel. id/type/dates are immutable for a challenge.
+    // produces a new challenge reference (same id) would otherwise re-run the
+    // whole recompute. id/type/dates are immutable for a challenge.
   }, [challenge.id, gymId]);
 
   const scoreLabel = challenge.type === 'volume' ? t('admin.challenges.scoreLbs', 'lbs') : challenge.type === 'consistency' ? t('admin.challenges.scoreWorkouts', 'workouts') : t('admin.challenges.scorePRs', 'PRs');

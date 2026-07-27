@@ -1479,6 +1479,24 @@ body.keyboard-open {
   --safe-bottom: 0px;
 }
 
+/* Breathing room when anything scrolls a text field into view.
+   `scroll-margin` is the standard property for this and it is respected by BOTH
+   our own scrollIntoView (lib/keyboardScrollIntoView.js) AND WebKit's automatic
+   scroll when the WebView resizes around a focused field — so one declaration
+   fixes both paths.
+   Why it is needed: scroll-into-view aligns the ELEMENT's border box, i.e. the
+   bare <input>. Almost every field in this app sits inside a padded, bordered
+   row (the Grocery List "add item" row, search bars, sheet inputs), and without
+   a margin that wrapper's padding and border end up cut off under the keyboard
+   even though the input itself is technically visible.
+   28px covers the deepest wrapper padding in the app plus a little air. */
+input,
+textarea,
+[contenteditable="true"] {
+  scroll-margin-bottom: 28px;
+  scroll-margin-top: 12px;
+}
+
 /* Hide the onboarding CTA bar while the iOS keyboard is open. Under
    Capacitor's native keyboard-resize mode the WebView shrinks to sit
    above the keyboard, which would otherwise pin the CTA right on top

@@ -187,7 +187,14 @@ export function installFetchInterceptor() {
       // period (started before the page was last shown, or still hidden now).
       const spannedSuspension = startTime < lastShownAt || document.visibilityState === 'hidden';
       if (elapsed > SLOW_THRESHOLD_MS && !spannedSuspension) {
-        trackError('slow_api', `${init?.method || 'GET'} ${endpoint} took ${elapsed}ms`, {
+        // The elapsed time is deliberately NOT in the message. isDuplicate()
+        // keys on `${type}:${message}`, so embedding a per-call millisecond
+        // value meant slow_api never matched its own dedup window — every slow
+        // request on a bad connection wrote its own error_logs row, forever.
+        // That is write amplification aimed at the backend precisely when the
+        // backend is already struggling. Duration lives in `extra` instead,
+        // where it is still queryable but not part of the dedup key.
+        trackError('slow_api', `${init?.method || 'GET'} ${endpoint} slow`, {
           endpoint,
           method: init?.method || 'GET',
           duration_ms: elapsed,

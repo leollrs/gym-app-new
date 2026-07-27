@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Star, UserX, XCircle, Dumbbell, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { selectAllRows } from '../../../lib/churn/batchedSelect';
 import { format12h } from '../../../lib/admin/classScheduleHelpers';
 
 const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
@@ -58,15 +59,25 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'class-analytics', classId, range.from, range.to],
     queryFn: async () => {
-      // Bookings in window
-      let q = supabase
-        .from('gym_class_bookings')
-        .select('schedule_id, status, attended, rating, booking_date')
-        .eq('class_id', classId)
-        .limit(8000);
-      if (range.from) q = q.gte('booking_date', range.from);
-      if (range.to) q = q.lte('booking_date', range.to);
-      const { data: bookings } = await q;
+      // Bookings in window. `.limit(8000)` was a false safeguard — PostgREST caps
+      // responses at 1000 rows — and there was no .order(), so on the "All time"
+      // (and often "Last 90 days") view every number below the fold was computed
+      // from an arbitrary 1000 bookings: attendance rate, no-show count, average
+      // rating, the per-slot and per-day breakdowns. Paged with a stable
+      // (booking_date, id) order so OFFSET paging can't skip or duplicate a row.
+      // The active range filter is what keeps this cheap on the default week view.
+      const { data: bookings } = await selectAllRows((lo, hi) => {
+        let q = supabase
+          .from('gym_class_bookings')
+          .select('schedule_id, status, attended, rating, booking_date')
+          .eq('class_id', classId);
+        if (range.from) q = q.gte('booking_date', range.from);
+        if (range.to) q = q.lte('booking_date', range.to);
+        return q
+          .order('booking_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(lo, hi);
+      });
 
       // Schedules WITH trainer_id — resilient to 0512 not being applied yet.
       let scheds = [];

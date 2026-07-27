@@ -1060,12 +1060,18 @@ export default function TrainerClientNotes() {
 
   // Open the "use one of my plans" picker and load the trainer's meal plans
   // (across all clients) so they can copy one onto this client.
+  //
+  // `meals` is deliberately NOT selected here. It's the full week-by-week meal
+  // JSONB — tens of KB per plan — and this list renders nothing but the name,
+  // calories, duration and client. Pulling it for 50 plans was megabytes over
+  // the wire every time the picker opened, to display four short strings.
+  // copyPlanToClient fetches the blob for the ONE plan actually chosen.
   async function openPlanPicker() {
     setPlanPicker(true);
     if (myMealPlans !== null) return;
     const { data, error } = await supabase
       .from('trainer_meal_plans')
-      .select('id, name, target_calories, target_protein_g, target_carbs_g, target_fat_g, duration_weeks, meals, client_id, client:profiles!trainer_meal_plans_client_id_fkey(full_name)')
+      .select('id, name, target_calories, target_protein_g, target_carbs_g, target_fat_g, duration_weeks, client_id, client:profiles!trainer_meal_plans_client_id_fkey(full_name)')
       .eq('trainer_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -1078,6 +1084,16 @@ export default function TrainerClientNotes() {
     if (copyingPlanId) return;
     setCopyingPlanId(src.id);
     try {
+      // The picker list omits `meals` (see openPlanPicker) — fetch the blob for
+      // just this plan now that we know which one is being copied. Without it
+      // the copy would silently land as a macro-targets-only plan.
+      const { data: srcMeals, error: mealsErr } = await supabase
+        .from('trainer_meal_plans')
+        .select('meals')
+        .eq('id', src.id)
+        .maybeSingle();
+      if (mealsErr) throw mealsErr;
+
       const { error: deErr } = await supabase.from('trainer_meal_plans')
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('client_id', clientId).eq('is_active', true);
@@ -1089,7 +1105,7 @@ export default function TrainerClientNotes() {
         gym_id: profile.gym_id, trainer_id: profile.id, client_id: clientId,
         name: src.name, target_calories: src.target_calories, target_protein_g: src.target_protein_g,
         target_carbs_g: src.target_carbs_g, target_fat_g: src.target_fat_g,
-        duration_weeks: durWeeks, meals: src.meals || [], is_active: true,
+        duration_weeks: durWeeks, meals: srcMeals?.meals || [], is_active: true,
         start_date: start.toISOString().split('T')[0], end_date: end.toISOString().split('T')[0],
       }).select().single();
       if (error) throw error;

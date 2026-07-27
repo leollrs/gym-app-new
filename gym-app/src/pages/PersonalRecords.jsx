@@ -152,20 +152,31 @@ export default function PersonalRecords({ embedded = false }) {
         supabase.from('personal_records')
           .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at, exercises(name, name_es, muscle_group, equipment)')
           .eq('profile_id', user.id).order('estimated_1rm', { ascending: false }).limit(1000),
+        // DESC, not ASC. With ascending order a `.limit(500)` returns the OLDEST
+        // 500 PR events, so once a member passes ~500 (about two years at two
+        // PRs a session) every 1RM chart on this page silently froze on a trend
+        // that ended months ago — the fetch was bounded, the product was broken.
+        // Newest-first keeps the charts live; the tail that falls off the end is
+        // ancient history nobody scrolls to. Re-sorted ascending below because
+        // the charts plot left-to-right in time.
         supabase.from('pr_history')
           .select('exercise_id, weight_lbs, reps, estimated_1rm, achieved_at')
-          .eq('profile_id', user.id).order('achieved_at', { ascending: true }).limit(500),
+          .eq('profile_id', user.id).order('achieved_at', { ascending: false }).limit(500),
       ]);
       if (cancelled) return;
       setPrs(prData ?? []);
       const grouped = {};
-      (histData ?? []).forEach(h => { if (!grouped[h.exercise_id]) grouped[h.exercise_id] = []; grouped[h.exercise_id].push(h); });
+      (histData ?? []).slice().reverse()
+        .forEach(h => { if (!grouped[h.exercise_id]) grouped[h.exercise_id] = []; grouped[h.exercise_id].push(h); });
       setPrHistory(grouped);
       setLoading(false);
     };
     load();
     return () => { cancelled = true; };
-  }, [user, prsCacheKey, setPrs, setPrHistory]);
+  // user?.id, not user: AuthContext mints a new user object on TOKEN_REFRESHED
+  // (~hourly while foregrounded), which re-ran this 1000-PR + 500-history fetch
+  // for an identity that had not changed.
+  }, [user?.id, prsCacheKey, setPrs, setPrHistory]);
 
   const filtered = prs.filter(pr => {
     const localName = pr.exercises ? (exName(pr.exercises) ?? '').toLowerCase() : '';

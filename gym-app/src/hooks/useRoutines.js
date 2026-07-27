@@ -124,7 +124,9 @@ export const useRoutines = () => {
     }
 
     setLoading(false);
-  }, [user, profile]);
+  // Primitive ids only. Keying on the objects re-ran the routines fetch + the
+  // get_routine_last_performed RPC on every auth token refresh.
+  }, [user?.id, profile?.gym_id]);
 
   useEffect(() => { fetchRoutines(); }, [fetchRoutines]);
 

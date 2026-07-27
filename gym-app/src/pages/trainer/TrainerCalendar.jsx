@@ -7,6 +7,7 @@ import {
   Trash2, Bell, BellOff, Repeat, Dumbbell, AlertTriangle, Check, CalendarClock, StickyNote,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { selectAllInBatches } from '../../lib/churn/batchedSelect';
 import { cacheGet, cacheSet, cacheHas, trainerKey } from '../../hooks/useTrainerCache';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { useAuth } from '../../contexts/AuthContext';
@@ -1084,13 +1085,30 @@ export default function TrainerSchedule() {
       if (clientIds.length) {
         const rangeStart = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0);
         const rangeEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
-        const { data: workouts } = await supabase
-          .from('workout_sessions')
-          .select('profile_id, started_at')
-          .in('profile_id', clientIds)
-          .eq('status', 'completed')
-          .gte('started_at', rangeStart.toISOString())
-          .lte('started_at', rangeEnd.toISOString());
+        // Batched AND paged. This spans the whole visible grid (up to 42 days)
+        // across every client with a session in it, so the row count is
+        // clients × workouts/week × 6 — 60 clients training 4x/week is ~1,440
+        // rows, past PostgREST's hard 1000-row response cap. Truncated, the
+        // missing rows read as "never trained", so past sessions silently stop
+        // auto-marking completed (and the pack trigger never bills them). The
+        // raw `.in()` was also unchunked, which breaks on URL length past ~390
+        // ids. selectAllInBatches fixes both; `id` gives `.range()` a stable
+        // sort so no page boundary can duplicate or drop a workout.
+        const { data: workouts, error: wErr } = await selectAllInBatches(
+          (ids, from, to) => supabase
+            .from('workout_sessions')
+            .select('profile_id, started_at')
+            .in('profile_id', ids)
+            .eq('status', 'completed')
+            .gte('started_at', rangeStart.toISOString())
+            .lte('started_at', rangeEnd.toISOString())
+            .order('id', { ascending: true })
+            .range(from, to),
+          clientIds,
+        );
+        // A partial read would auto-complete the WRONG set of sessions, so on
+        // error skip the whole heuristic rather than act on half the data.
+        if (wErr) throw wErr;
         const byClient = {};
         (workouts || []).forEach(w => { (byClient[w.profile_id] ||= []).push(new Date(w.started_at).getTime()); });
         const BUFFER = 45 * 60000; // ±45 min around the session window (tightened to cut false positives)

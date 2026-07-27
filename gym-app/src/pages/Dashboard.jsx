@@ -470,16 +470,28 @@ const Dashboard = () => {
     }
   }, [pickerOpen]);
 
-  // Re-check active session & refresh data on every render/navigation
+  // Re-check active session & refresh data on navigation.
+  //
+  // Dashboard is in KEEP_ALIVE_MAP (App.jsx), so it stays mounted for the whole
+  // session and `location.key` changes on EVERY navigation anywhere in the app —
+  // including ones that navigate AWAY from here. Bumping refreshKey on all of
+  // them made the full 3-query dashboard load (get_dashboard_data + bookings +
+  // cardio) re-run for pages the user isn't even looking at, and `staleTime: 0`
+  // below means React Query never deduped it.
+  //
+  // The localStorage reads stay on every navigation — they're free, synchronous,
+  // and the active-session banner must be correct the instant you land back here.
+  // Only the network refresh is gated on actually being the visible route.
   const location = useLocation();
   const locationKey = location.key;
+  const isDashboardRoute = location.pathname === '/';
 
   useEffect(() => {
     setActiveSession(readActiveSession());
     setAllActiveDrafts(readAllActiveSessions());
     setLiveCardioSession(readLiveCardio());
-    setRefreshKey(k => k + 1);
-  }, [locationKey]);
+    if (isDashboardRoute) setRefreshKey(k => k + 1);
+  }, [locationKey, isDashboardRoute]);
 
   // Also refresh on visibility change (e.g. app foregrounded)
   useEffect(() => {
@@ -2268,11 +2280,21 @@ const Dashboard = () => {
                     <p className="text-[12px] text-[var(--color-text-muted)] mt-1.5 mb-4">
                       {t('dashboard.recoverMessage')}
                     </p>
+                    {/* Reads as a real (secondary) button — same outlined pill
+                        language as the Edit/Swap actions on this page — because
+                        as bare muted text nobody realised it was tappable. */}
                     <button
                       type="button"
                       onClick={() => handleAssignDay(selectedDate.getDay())}
-                      className="text-[11px] font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors duration-200"
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-[12px] font-bold tracking-[0.04em] active:scale-[0.95] transition-all"
+                      style={{
+                        background: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
+                        color: 'var(--color-text-primary)',
+                        border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.08))',
+                        minHeight: 44,
+                      }}
                     >
+                      <CalendarPlus size={14} strokeWidth={2.4} style={{ color: 'var(--color-accent)' }} />
                       {t('dashboard.assignWorkoutInstead')}
                     </button>
                   </div>

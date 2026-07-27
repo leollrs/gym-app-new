@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { getMeals, mealImageById } from '../lib/mealStore';
 import SwipeableTabView from '../components/SwipeableTabView';
 const MEALS = getMeals();
@@ -13,6 +13,7 @@ import {
   SlidersHorizontal, Sparkles, RefreshCw, BarChart2, ChevronDown, ChevronUp,
   Calendar, ScanLine, ScanBarcode, Loader, ArrowUp, ArrowDown,
   BookOpen, Utensils, ArrowRight, ThumbsUp, ThumbsDown, Bell, Minus,
+  GripVertical,
 } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { List as VirtualList } from 'react-window';
@@ -39,7 +40,7 @@ import { validateImageFile } from '../lib/validateImage';
 // scanOverlay removed — camera no longer causes page reloads after Uri fix
 import Skeleton from '../components/Skeleton';
 import FadeIn from '../components/FadeIn';
-import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { useCachedState, hasCachedState, clearCachedState } from '../hooks/useCachedState';
 import { useMeals } from '../hooks/useContentStores';
 import { suggestMeals, generateDayPlan, generateWeekPlan, suggestPostWorkoutMeal } from '../lib/mealPlanner';
 import { loadAffinities, rateMeal, rebuildAffinities } from '../lib/mealPreferences';
@@ -1186,10 +1187,16 @@ const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, o
       className="w-full flex items-center gap-3 p-3 rounded-[14px] text-left active:scale-[0.975] transition-all cursor-pointer"
       style={{ background: 'var(--color-bg-card)' }}>
       <FoodThumb src={rowImg} name={foodName(food)} size={44} seed={food.id?.charCodeAt?.(0) || 0} className="w-11 h-11 rounded-[12px] object-cover flex-shrink-0" />
+      {/* Serving size sits on the TITLE line, not with the macros. With all five
+          chips sharing one wrapping row the fourth macro (fat) dropped to a
+          second line on narrow phones, which read as a rendering bug. Four
+          macros fit on one line, so the row below is nowrap by construction. */}
       <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{foodName(food)}</p>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] font-bold tabular-nums">
-          <span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>{food.serving_size}{food.serving_unit}</span>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <p className="text-[14px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{foodName(food)}</p>
+          <span className="text-[11px] font-semibold tabular-nums flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>{food.serving_size}{food.serving_unit}</span>
+        </div>
+        <div className="flex items-center gap-x-2 mt-0.5 text-[11px] font-bold tabular-nums whitespace-nowrap">
           <span style={{ color: 'var(--color-text-primary)' }}>{Math.round(food.calories)} kcal</span>
           <span style={{ color: TU.macroP }}>{Math.round(food.protein_g)}g P</span>
           <span style={{ color: TU.macroC }}>{Math.round(food.carbs_g || 0)}g C</span>
@@ -1200,7 +1207,12 @@ const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, o
       <button onClick={e => { e.stopPropagation(); onToggleFavorite(food.id); }}
         className="min-w-[44px] min-h-[44px] w-7 h-7 flex items-center justify-center flex-shrink-0 focus:outline-none"
         aria-label={favIds.has(food.id) ? t('nutrition.removeFromFavorites', 'Remove from favorites') : t('nutrition.addToFavorites', 'Add to favorites')}>
-        <Heart size={14} style={{ color: favIds.has(food.id) ? '#FFC24A' : 'var(--color-border-subtle)' }} fill={favIds.has(food.id) ? '#FFC24A' : 'none'} />
+        {/* Was size 14 in --color-border-subtle, i.e. the same grey as the hairlines
+            around it — effectively invisible. Muted text tone reads as an actual
+            control while still staying quieter than the filled/favorited state. */}
+        <Heart size={18} strokeWidth={2.25}
+          style={{ color: favIds.has(food.id) ? '#FFC24A' : 'var(--color-text-muted)' }}
+          fill={favIds.has(food.id) ? '#FFC24A' : 'none'} />
       </button>
     </div>
     );
@@ -1286,7 +1298,7 @@ const FoodSearchModal = ({ open, onClose, onSelect, onLogMeal, onPhotoCapture, o
                   <button key={m.id} onClick={() => onLogMeal?.(m)}
                     className="w-full flex items-center gap-3 p-3 rounded-[14px] text-left active:scale-[0.975] transition-all"
                     style={{ background: 'var(--color-bg-card)' }}>
-                    <FoodThumb src={foodImageUrl(m.image || mealImageById(m.id))} name={recipeTitle(m)} size={44} seed={m.id?.charCodeAt?.(1) || 0} className="w-11 h-11 rounded-[12px] object-cover flex-shrink-0" />
+                    <FoodThumb src={foodImageUrl(m.image || mealImageById(m.id), { width: 192, quality: 65 })} name={recipeTitle(m)} size={44} seed={m.id?.charCodeAt?.(1) || 0} className="w-11 h-11 rounded-[12px] object-cover flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-[14px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{recipeTitle(m)}</p>
                       <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{Math.round(m.calories || 0)} cal {'\u00B7'} {Math.round(m.protein || 0)}g P{m.prepTime ? `${' \u00B7 '}${m.prepTime}` : ''}</p>
@@ -1426,7 +1438,7 @@ const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' 
     try {
       const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       const path = `${userId}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('meal-photos').upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+      const { error: upErr } = await supabase.storage.from('meal-photos').upload(path, file, { cacheControl: '31536000', contentType: file.type || 'image/jpeg', upsert: false });
       if (upErr) throw upErr;
       const { data } = supabase.storage.from('meal-photos').getPublicUrl(path);
       setPhotoUrl(data?.publicUrl || '');
@@ -1502,7 +1514,7 @@ const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' 
                   const added = rows.some(r => r.food.id === food.id);
                   return (
                     <button key={food.id} onClick={() => addFood(food)} className="w-full flex items-center gap-2.5 p-2.5 rounded-[12px] text-left" style={{ background: 'var(--color-bg-card)' }}>
-                      <FoodThumb src={foodImageUrl(food.image_url) || getFoodImage(food.name, food.brand)} name={foodName(food)} size={34} seed={food.id?.charCodeAt?.(0) || 0} className="w-[34px] h-[34px] rounded-[9px] object-cover flex-shrink-0" />
+                      <FoodThumb src={foodImageUrl(food.image_url, { width: 192, quality: 65 }) || getFoodImage(food.name, food.brand)} name={foodName(food)} size={34} seed={food.id?.charCodeAt?.(0) || 0} className="w-[34px] h-[34px] rounded-[9px] object-cover flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{foodName(food)}</p>
                         <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{food.serving_size}{food.serving_unit} {'·'} {food.calories} cal</p>
@@ -1522,7 +1534,7 @@ const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' 
             <div className="space-y-1.5">
               {rows.map(({ food, servings }) => (
                 <div key={food.id} className="flex items-center gap-2.5 p-2.5 rounded-[14px]" style={{ background: 'var(--color-bg-card)' }}>
-                  <FoodThumb src={foodImageUrl(food.image_url) || getFoodImage(food.name, food.brand)} name={foodName(food)} size={38} seed={food.id?.charCodeAt?.(0) || 0} className="w-[38px] h-[38px] rounded-[10px] object-cover flex-shrink-0" />
+                  <FoodThumb src={foodImageUrl(food.image_url, { width: 192, quality: 65 }) || getFoodImage(food.name, food.brand)} name={foodName(food)} size={38} seed={food.id?.charCodeAt?.(0) || 0} className="w-[38px] h-[38px] rounded-[10px] object-cover flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-bold truncate" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{foodName(food)}</p>
                     <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{Math.round((food.calories || 0) * servings)} cal {'·'} {r1((food.protein_g || 0) * servings)}g P</p>
@@ -1554,11 +1566,23 @@ const CustomMealBuilder = ({ open, onClose, onSaved, userId, gymId, lang = 'en' 
 };
 
 // ── LOG FOOD MODAL ──────────────────────────────────────────
-const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
+// "Add food" sheet — the same screen for both destinations:
+//   • Today  → writes a food_logs row (what it always did)
+//   • Plan   → drops the food into a day + meal slot of the weekly plan
+// One sheet, one servings stepper, one macro readout; only the destination and
+// the CTA change. `planSlots` is the member's own ordered slot list.
+const LogFoodModal = ({ food, onClose, onLog, onAddToPlan, planSlots = [], mealCount = 3, lang = 'en' }) => {
   const { t } = useTranslation('pages');
   const [servings, setServings] = useState(1);
   const [mealType, setMealType] = useState('snack');
   const [saving, setSaving] = useState(false);
+  const [dest, setDest] = useState('today');        // 'today' (log) | 'plan'
+  const [planDate, setPlanDate] = useState(() => todayStr());
+  const [planSlotRaw, setPlanSlot] = useState(null);
+  // This week, Sunday-indexed — the same 7 days the planner shows.
+  const planWeek = useMemo(() => getWeekDates(), []);
+  const today = todayStr();
+  const planSlot = planSlots.includes(planSlotRaw) ? planSlotRaw : (planSlots[0] || 'breakfast');
 
   if (!food) return null;
   const displayName = (lang === 'es' && food.name_es) ? food.name_es : food.name;
@@ -1575,6 +1599,13 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
     setSaving(false);
   };
 
+  const handleAddToPlan = async () => {
+    if (!onAddToPlan) return;
+    setSaving(true);
+    await onAddToPlan({ food, servings: s, date: planDate, slot: planSlot, cal, pro, carb, fat });
+    setSaving(false);
+  };
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-4" onClick={onClose} role="presentation">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
@@ -1583,7 +1614,7 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
 
         {/* Header: food tile + name */}
         <div className="flex items-center gap-3.5 px-5 pt-3 pb-4" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <FoodThumb src={foodImageUrl(food.image_url) || getFoodImage(food.name, food.brand)} name={displayName} size={64} seed={food.id?.charCodeAt?.(0) || 0} className="w-[64px] h-[64px] rounded-[18px] object-cover flex-shrink-0" />
+          <FoodThumb src={foodImageUrl(food.image_url, { width: 192, quality: 65 }) || getFoodImage(food.name, food.brand)} name={displayName} size={64} seed={food.id?.charCodeAt?.(0) || 0} className="w-[64px] h-[64px] rounded-[18px] object-cover flex-shrink-0" />
 
           <div className="flex-1 min-w-0">
             <div className="truncate" style={{ fontFamily: '"Archivo", system-ui, sans-serif', fontSize: 26, fontWeight: 900, color: 'var(--color-text-primary)', letterSpacing: -0.6, lineHeight: 1.05 }}>
@@ -1639,34 +1670,102 @@ const LogFoodModal = ({ food, onClose, onLog, lang = 'en' }) => {
             </div>
           </div>
 
-          {/* Meal slot picker */}
+          {/* Destination — eat it today (log), or plan it for a day */}
+          {onAddToPlan && (
+            <div className="mb-4">
+              <div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
+                {t('nutrition.addFood', 'Add Food')}
+              </div>
+              <div className="flex gap-1 p-1 rounded-[12px]" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
+                {[['today', t('nutrition.destToday', 'Log today')], ['plan', t('nutrition.addToPlan', 'Add to plan')]].map(([k, label]) => {
+                  const on = dest === k;
+                  return (
+                    <button key={k} type="button" onClick={() => setDest(k)}
+                      className="flex-1 py-2 rounded-[10px] text-[12.5px] font-bold transition-all active:scale-95"
+                      style={{ background: on ? 'var(--color-text-primary)' : 'transparent', color: on ? 'var(--color-bg-primary)' : 'var(--color-text-muted)' }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Day picker — plan destination only. This week, Sunday-first; past
+              days are disabled (there's nothing to plan for a day that's gone). */}
+          {dest === 'plan' && (
+            <div className="mb-4">
+              <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
+                {t('nutrition.planDay', 'Day')}
+              </div>
+              <div className="flex gap-1.5">
+                {planWeek.map((date) => {
+                  const past = date < today;
+                  const on = date === planDate;
+                  return (
+                    <button key={date} type="button" disabled={past} onClick={() => setPlanDate(date)}
+                      className="flex-1 flex flex-col items-center gap-0.5 py-2 rounded-[10px] transition-all active:scale-95 disabled:opacity-30"
+                      style={{
+                        background: on ? 'var(--color-text-primary)' : 'var(--color-bg-card)',
+                        border: on ? 'none' : '1px solid var(--color-border-subtle)',
+                      }}>
+                      <span className="text-[9px] font-bold uppercase" style={{ color: on ? 'var(--color-bg-primary)' : 'var(--color-text-muted)', letterSpacing: 0.6 }}>
+                        {new Date(date + 'T12:00:00').toLocaleDateString(lang === 'es' ? 'es' : 'en', { weekday: 'short' })}
+                      </span>
+                      <span style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 800, lineHeight: 1, color: on ? 'var(--color-bg-primary)' : 'var(--color-text-primary)' }}>
+                        {new Date(date + 'T12:00:00').getDate()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Meal slot picker. Logging uses the food_logs meal types; planning
+              uses the member's OWN configured slots so it lands where the
+              planner expects it. */}
           <div className="mb-2">
             <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
-              {t('nutrition.logTo', 'Log to')}
+              {dest === 'plan' ? t('nutrition.planSlot', 'Meal') : t('nutrition.logTo', 'Log to')}
             </div>
             <div className="grid grid-cols-4 gap-1.5">
-              {MEAL_TYPES.map(m => (
-                <button key={m.key} onClick={() => setMealType(m.key)}
-                  className="py-2.5 rounded-[10px] text-[11px] font-bold transition-all active:scale-95"
-                  style={{
-                    background: mealType === m.key ? `${TU.accent}15` : 'var(--color-bg-card)',
-                    border: `1.5px solid ${mealType === m.key ? TU.accent : 'var(--color-border-subtle)'}`,
-                    color: mealType === m.key ? TU.accent : 'var(--color-text-primary)',
-                  }}>
-                  {t(m.labelKey)}
-                </button>
-              ))}
+              {dest === 'plan'
+                ? planSlots.map(k => (
+                  <button key={k} type="button" onClick={() => setPlanSlot(k)}
+                    className="py-2.5 px-1 rounded-[10px] text-[11px] font-bold transition-all active:scale-95 truncate"
+                    style={{
+                      background: planSlot === k ? `${TU.accent}15` : 'var(--color-bg-card)',
+                      border: `1.5px solid ${planSlot === k ? TU.accent : 'var(--color-border-subtle)'}`,
+                      color: planSlot === k ? TU.accent : 'var(--color-text-primary)',
+                    }}>
+                    {slotLabelFor(k, mealCount, t)}
+                  </button>
+                ))
+                : MEAL_TYPES.map(m => (
+                  <button key={m.key} onClick={() => setMealType(m.key)}
+                    className="py-2.5 rounded-[10px] text-[11px] font-bold transition-all active:scale-95"
+                    style={{
+                      background: mealType === m.key ? `${TU.accent}15` : 'var(--color-bg-card)',
+                      border: `1.5px solid ${mealType === m.key ? TU.accent : 'var(--color-border-subtle)'}`,
+                      color: mealType === m.key ? TU.accent : 'var(--color-text-primary)',
+                    }}>
+                    {t(m.labelKey)}
+                  </button>
+                ))}
             </div>
           </div>
         </div>
 
-        {/* Footer CTA */}
+        {/* Footer CTA — follows the destination */}
         <div className="px-4 pt-3 pb-4" style={{ borderTop: '1px solid var(--color-border-subtle)', paddingBottom: 'max(16px, var(--safe-area-bottom, env(safe-area-inset-bottom)))' }}>
-          <button onClick={handleLog} disabled={saving || s <= 0}
+          <button onClick={dest === 'plan' ? handleAddToPlan : handleLog} disabled={saving || s <= 0}
             className="w-full py-[14px] rounded-[14px] font-bold text-[15px] flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-40"
             style={{ background: TU.accent, color: 'var(--color-text-on-accent, #001512)', fontFamily: TU.display, letterSpacing: -0.2 }}>
-            <Check size={16} strokeWidth={2.6} />
-            {saving ? t('nutrition.logging', 'Logging...') : t('nutrition.logFood')}
+            {dest === 'plan' ? <Calendar size={16} strokeWidth={2.6} /> : <Check size={16} strokeWidth={2.6} />}
+            {dest === 'plan'
+              ? (saving ? t('nutrition.addingToPlan', 'Adding…') : t('nutrition.addToPlan', 'Add to plan'))
+              : (saving ? t('nutrition.logging', 'Logging...') : t('nutrition.logFood'))}
           </button>
         </div>
       </div>
@@ -2014,7 +2113,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
   // recipe logged from our library (which also has no food_item_id). Legacy rows
   // (source null) are treated as non-AI.
   const isAiLogged = log.source === 'ai';
-  const photoSrc = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url) || recipeImageByName(log.custom_name || log.food_item?.name);
+  const photoSrc = log.photo_url || getFoodImage(log.food_item?.name, log.food_item?.brand) || foodImageUrl(log.food_item?.image_url, { width: 1024, quality: 75 }) || recipeImageByName(log.custom_name || log.food_item?.name);
   const loggedAt = new Date(log.created_at);
   const timeStr = loggedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -2552,7 +2651,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
                     className="w-full flex items-center gap-3 p-2.5 rounded-[14px] text-left transition-all active:scale-[0.975]"
                     style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
                     {rMeal.image ? (
-                      <img src={foodImageUrl(rMeal.image)} onError={handleMealImgError} alt={mealTitle(rMeal)} className="w-[44px] h-[44px] rounded-[12px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+                      <img src={foodImageUrl(rMeal.image, { width: 192, quality: 65 })} onError={handleMealImgError} alt={mealTitle(rMeal)} className="w-[44px] h-[44px] rounded-[12px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                     ) : (
                       <FoodTile name={mealTitle(rMeal)} size={44} seed={rMeal.id?.charCodeAt?.(1) || 0} />
                     )}
@@ -2590,7 +2689,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
             <button onClick={() => onOpenRecipe(meal)}
               className="w-full flex items-center gap-3.5 p-4 text-left">
               {suggImg ? (
-                <img src={(foodImageUrl(suggImg) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={mealTitle(meal)} className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0"
+                <img src={(foodImageUrl(suggImg, { width: 192, quality: 65 }) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt={mealTitle(meal)} className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0"
                   style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
               ) : (
                 <FoodTile name={mealTitle(meal)} size={52} seed={idx} />
@@ -3148,6 +3247,205 @@ function planDataToPlan(planData, weekDates, slotKeys) {
   return {};
 }
 
+// ── Slot ORDER (member-reorderable meal slots) ──────────────────────────────
+// plannerSlotKeys() owns WHICH slots exist for a meals/day count; the member
+// owns the ORDER — "Snack 2 then Dinner" is a real eating pattern and forcing
+// the canonical sequence was wrong. Stored per user under its own key so the
+// notification model in lib/mealNotifications keeps its own shape.
+const slotOrderStorageKey = (userId) => `meal_slot_order_${userId || 'anon'}`;
+
+function loadSlotOrder(userId) {
+  try {
+    const raw = localStorage.getItem(slotOrderStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed.filter(k => typeof k === 'string') : [];
+  } catch { return []; }
+}
+
+function saveSlotOrder(userId, order) {
+  try { localStorage.setItem(slotOrderStorageKey(userId), JSON.stringify(order || [])); }
+  catch { /* quota */ }
+}
+
+// Canonical keys for `count`, re-sequenced by the member's saved order. Keys the
+// saved order doesn't mention (meals/day was raised) keep their canonical spot at
+// the end; stale keys (meals/day was lowered) are dropped. The SET of slots always
+// comes from plannerSlotKeys — stored data can only permute it, never extend it.
+function applySlotOrder(keys, order) {
+  const known = new Set(keys);
+  const out = [];
+  (order || []).forEach(k => { if (known.has(k) && !out.includes(k)) out.push(k); });
+  keys.forEach(k => { if (!out.includes(k)) out.push(k); });
+  return out;
+}
+
+function orderedSlotKeys(userId, count) {
+  return applySlotOrder(plannerSlotKeys(count), loadSlotOrder(userId));
+}
+
+// ── Drag-to-reorder ─────────────────────────────────────────────────────────
+// Same model as the trainer plan editors (data-dragroot / data-dragitem + a
+// GripVertical handle) — no drag library, pointer events only.
+const DRAG_GAP = 8;
+function useDragSort(ids, onReorder) {
+  const [drag, setDrag] = useState(null);
+  const latest = useRef({ ids, onReorder });
+  latest.current.ids = ids; latest.current.onReorder = onReorder;
+  const st = useRef({});
+  const h = useRef(null);
+  if (!h.current) {
+    const move = (e) => {
+      const s = st.current; if (!s.id) return;
+      setDrag((d) => (d ? { ...d, y: e.clientY } : d));
+      let idx = 0;
+      for (let i = 0; i < s.rects.length; i++) {
+        const mid = s.rects[i].rect.top + s.rects[i].rect.height / 2;
+        if (e.clientY > mid) idx = i + 1;
+      }
+      const cur = s.order.indexOf(s.id);
+      idx = Math.max(0, Math.min(s.order.length - 1, idx > cur ? idx - 1 : idx));
+      if (idx !== s.lastIndex) {
+        const next = s.order.filter((x) => x !== s.id);
+        next.splice(idx, 0, s.id);
+        s.order = next; s.lastIndex = idx;
+        latest.current.onReorder(next.slice());
+      }
+    };
+    const end = () => {
+      st.current = {}; setDrag(null);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+    const start = (id, e, rowEl) => {
+      e.preventDefault(); e.stopPropagation();
+      const root = rowEl?.closest('[data-dragroot]'); if (!root) return;
+      const rows = Array.from(root.querySelectorAll('[data-dragitem]'));
+      const rects = rows.map((r) => ({ id: r.getAttribute('data-dragitem'), rect: r.getBoundingClientRect() }));
+      const from = latest.current.ids.indexOf(id);
+      st.current = { id, order: latest.current.ids.slice(), rects, lastIndex: from };
+      setDrag({ id, startY: e.clientY, y: e.clientY, from, h: rects[from]?.rect.height || 0 });
+      try { rowEl.setPointerCapture(e.pointerId); } catch { /* optional */ }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+    };
+    h.current = { start, end };
+  }
+  useEffect(() => () => h.current?.end?.(), []);
+  const draggedTranslate = () => {
+    if (!drag) return 0;
+    const curIndex = latest.current.ids.indexOf(drag.id);
+    return (drag.y - drag.startY) - (curIndex - drag.from) * (drag.h + DRAG_GAP);
+  };
+  return { dragId: drag?.id ?? null, draggedTranslate, start: h.current.start };
+}
+
+// ── Shared weekly-plan WRITE ────────────────────────────────────────────────
+// Every surface that mutates the weekly plan goes through here: the planner's
+// savePlan, its multi-week writer, and "Add to plan" from the food sheet. One
+// lane = the localStorage week key + the generated_meal_plans mirror in the
+// planner_v1 shape, so both readers always agree.
+// `weekStart` MUST be a LOCAL Sunday date string (toLocalDateStr, never
+// toISOString) — in UTC-4 an evening write serialised to the NEXT day and the
+// plan appeared to vanish overnight.
+const planWeekStorageKey = (userId, weekStart) => `meal_plan_${userId || 'anon'}_${weekStart}`;
+
+// Drop meal-plan week keys older than the retention window.
+//
+// These accumulate ONE KEY PER WEEK, forever, each holding whole recipe objects
+// (~990 bytes per meal, so ~27 KB/week, ~1.4 MB/year for 4 meals a day). Nothing
+// pruned them — AuthContext clears the `meal_plan_` prefix only on sign-out,
+// which most members never do.
+//
+// That matters far beyond Nutrition. WebKit caps localStorage at ~5 MB per
+// origin, shared with the React Query persister, the ~533 KB library caches, the
+// offline queue and ~55 `ucs:` keys. When the quota trips, useCachedState.js
+// swallows the QuotaExceededError silently — so EVERY cached page in the app
+// (Profile, Rewards, SocialFeed, MyGym, Workouts…) permanently stops persisting,
+// skeleton loaders come back everywhere, and nothing reports it. The failure
+// looks like "the app got slow", with no error to chase.
+//
+// Past weeks are still on the server (generated_meal_plans) and re-hydrate on
+// demand, so this only drops a local copy.
+const PLAN_WEEK_RETENTION = 6; // weeks of history kept locally
+
+function prunePlanWeeks(userId, currentWeekStart) {
+  try {
+    const prefix = `meal_plan_${userId || 'anon'}_`;
+    const cutoff = new Date(`${currentWeekStart}T00:00:00`);
+    cutoff.setDate(cutoff.getDate() - PLAN_WEEK_RETENTION * 7);
+    const stale = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(prefix)) continue;
+      const wk = k.slice(prefix.length);
+      // Only touch keys whose suffix is a real YYYY-MM-DD week start; anything
+      // else isn't ours to delete.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(wk)) continue;
+      if (new Date(`${wk}T00:00:00`) < cutoff) stale.push(k);
+    }
+    stale.forEach(k => localStorage.removeItem(k));
+  } catch { /* localStorage unavailable — nothing to prune */ }
+}
+
+function readPlanWeek(userId, weekStart) {
+  try {
+    const raw = localStorage.getItem(planWeekStorageKey(userId, weekStart));
+    return raw ? (JSON.parse(raw).days || {}) : {};
+  } catch { return {}; }
+}
+
+function writePlanWeek({ userId, gymId, weekStart, days, targets, alsoLegacyKey = false }) {
+  const savedAt = Date.now();
+  const planJson = JSON.stringify({ weekStart, days: days || {}, savedAt });
+  if (planJson.length > 500000) { // 500KB limit
+    console.warn('Meal plan too large to save');
+    return null;
+  }
+  try {
+    prunePlanWeeks(userId, weekStart);
+    localStorage.setItem(planWeekStorageKey(userId, weekStart), planJson);
+    // Legacy un-suffixed key for the current week (backward compat).
+    if (alsoLegacyKey) localStorage.setItem(`meal_plan_${userId || 'anon'}`, planJson);
+  } catch {
+    // localStorage save failed — the server mirror below still persists it.
+  }
+  // Server mirror → generated_meal_plans (correct columns + trainer-readable
+  // RLS) so the plan survives reinstall / new device and the coach can see it.
+  if (userId && gymId) {
+    supabase.from('generated_meal_plans').upsert({
+      profile_id: userId, gym_id: gymId, week_start: weekStart,
+      plan_data: planToPlanData(days || {}, savedAt),
+      macro_targets: { calories: targets?.daily_calories || null, protein: targets?.daily_protein_g || null, carbs: targets?.daily_carbs_g || null, fat: targets?.daily_fat_g || null },
+      is_active: true,
+    }, { onConflict: 'profile_id,week_start' }).then(({ error }) => { if (error) console.warn('[meal-plan sync]', error.message); });
+  }
+  return savedAt;
+}
+
+// Sunday-anchored week key for an arbitrary YYYY-MM-DD day (matches getWeekStartDate).
+const weekStartOfDate = (dateStr) => {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() - d.getDay());
+  return toLocalDateStr(d);
+};
+
+// Place one meal-shaped entry into a specific day + slot of the weekly plan.
+// Reads the week the planner reads, merges, writes back through writePlanWeek,
+// then pings any mounted planner to re-read (it listens for this event).
+function placeMealInPlan({ userId, gymId, date, slot, meal, targets }) {
+  const weekStart = weekStartOfDate(date);
+  const days = readPlanWeek(userId, weekStart);
+  const next = { ...days, [date]: { ...(days[date] || {}), [slot]: meal } };
+  const savedAt = writePlanWeek({
+    userId, gymId, weekStart, days: next, targets,
+    alsoLegacyKey: weekStart === getWeekStartDate(),
+  });
+  try { window.dispatchEvent(new CustomEvent('tugympr:meal-plan-changed', { detail: { weekStart } })); } catch { /* no-op */ }
+  return savedAt;
+}
+
 const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userId, embedded = false, onAddRecipeToGrocery, onRemoveRecipeFromGrocery, onMarkMealEaten, groceryList = [] }) => {
   // Full-screen planner only mounts when showPlanner is true, so lock unconditionally.
   useScrollLock(true);
@@ -3162,12 +3460,23 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   const { profile } = useAuth();
   const [showPrefs, setShowPrefs] = useState(false);
   const [showPlanConfig, setShowPlanConfig] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
+  // Destructive confirms use a real modal (centered + backdrop + Cancel/destructive),
+  // not a two-tap inline swap: { title, body, confirmLabel, onConfirm }.
+  const [confirmClear, setConfirmClear] = useState(null);
   // Meal-schedule config: how many meals/day (3–5) + optional per-slot times.
   // Drives the planner's slots AND meal-time reminders. Persisted per user.
   const [mealSchedule, setMealSchedule] = useState(() => loadMealSchedule(userId));
-  const slotKeys = useMemo(() => plannerSlotKeys(mealSchedule.count), [mealSchedule.count]);
+  // Canonical set of slots for the count (breakfast → lunch → snacks → dinner).
+  // Generation matches the generator positionally against THIS order, so it must
+  // stay canonical no matter how the member re-sequences their day.
+  const canonicalSlotKeys = useMemo(() => plannerSlotKeys(mealSchedule.count), [mealSchedule.count]);
+  // The member's own order — what the planner and the plan setup DISPLAY.
+  const [slotOrder, setSlotOrder] = useState(() => loadSlotOrder(userId));
+  const slotKeys = useMemo(() => applySlotOrder(canonicalSlotKeys, slotOrder), [canonicalSlotKeys, slotOrder]);
+  useEffect(() => { saveSlotOrder(userId, slotKeys); }, [userId, slotKeys]);
   useEffect(() => { saveMealSchedule(userId, mealSchedule); }, [userId, mealSchedule]);
+  // Drag-to-reorder for the slot list in Plan setup.
+  const { dragId: slotDragId, draggedTranslate: slotDragTranslate, start: startSlotDrag } = useDragSort(slotKeys, setSlotOrder);
   const setSlotTime = useCallback((slotKey, time) => {
     setMealSchedule(prev => {
       const times = { ...prev.times };
@@ -3287,38 +3596,16 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     return () => { cancelled = true; };
   }, [userId, weekStart, storageKey, weekDates, slotKeys]);
 
-  // Persist plan
+  // Persist plan — goes through the shared writePlanWeek lane (localStorage week
+  // key + generated_meal_plans mirror) so "Add to plan" from the food sheet and
+  // the planner can never diverge on format or on the week_start key.
   const savePlan = useCallback((newPlan) => {
     setPlan(newPlan);
-    const savedAt = Date.now();
-    const planToSave = { weekStart, days: newPlan, savedAt };
-    const planJson = JSON.stringify(planToSave);
-    if (planJson.length > 500000) { // 500KB limit
-      console.warn('Meal plan too large to save');
-      return;
-    }
-    try {
-      localStorage.setItem(storageKey, planJson);
-      // Also update legacy key for current week (backward compat)
-      if (weekOffset === 0) {
-        localStorage.setItem(legacyStorageKey, planJson);
-      }
-    } catch (err) {
-      // localStorage save failed — the server mirror below still persists it
-    }
-    // Server mirror → generated_meal_plans (correct columns + trainer-readable
-    // RLS) so the plan survives reinstall / new device and the coach can see it.
-    // The old code wrote to meal_plans using columns that don't exist there, so
-    // it silently failed and the plan lived only in this device's localStorage.
-    if (userId && profile?.gym_id) {
-      supabase.from('generated_meal_plans').upsert({
-        profile_id: userId, gym_id: profile.gym_id, week_start: weekStart,
-        plan_data: planToPlanData(newPlan, savedAt),
-        macro_targets: { calories: targets?.daily_calories || null, protein: targets?.daily_protein_g || null, carbs: targets?.daily_carbs_g || null, fat: targets?.daily_fat_g || null },
-        is_active: true,
-      }, { onConflict: 'profile_id,week_start' }).then(({ error }) => { if (error) console.warn('[meal-plan sync]', error.message); });
-    }
-  }, [storageKey, legacyStorageKey, weekStart, userId, weekOffset, profile?.gym_id, targets]);
+    writePlanWeek({
+      userId, gymId: profile?.gym_id, weekStart, days: newPlan, targets,
+      alsoLegacyKey: weekOffset === 0,
+    });
+  }, [weekStart, userId, weekOffset, profile?.gym_id, targets]);
 
   // Build one week's day→slot meal map from a fresh generation, merged onto a
   // base (so we never overwrite meals the user already placed).
@@ -3332,20 +3619,23 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     // Generate with as many slots as the member's schedule (snacks between
     // lunch and dinner). Snack keys (snack1/snack2) map to the 'snack' type and
     // resolve positionally below since the generator labels them all 'snack'.
-    const weekPlan = generateWeekPlan({ targets: macroTargets, slots: slotKeys.length, favorites: [], lang, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
+    const weekPlan = generateWeekPlan({ targets: macroTargets, slots: canonicalSlotKeys.length, favorites: [], lang, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
     const ts = todayStr();
     const out = { ...base };
     dates.forEach((date, i) => {
       if (isCurrentActual && date < ts) return; // never plan into the past
       if (!out[date]) out[date] = {};
       const dayMeals = weekPlan[i]?.meals || [];
-      slotKeys.forEach((slot, si) => {
+      // CANONICAL order here: the generator emits breakfast → lunch → snacks →
+      // dinner and snacks resolve positionally, so matching against the member's
+      // custom display order would hand dinner a snack.
+      canonicalSlotKeys.forEach((slot, si) => {
         const match = dayMeals.find(m => m?.slot === slot) || dayMeals[si];
         if (!out[date][slot] && match) out[date][slot] = match;
       });
     });
     return out;
-  }, [targets, prefs, lang, slotKeys]);
+  }, [targets, prefs, lang, canonicalSlotKeys]);
 
   // Compute the 7 date strings for an arbitrary week-start (YYYY-MM-DD).
   const weekDatesFrom = useCallback((ws) => {
@@ -3360,28 +3650,10 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   // Read/write a plan for a week OTHER than the one in React state (used when
   // "Generate" fills several weeks ahead — future weeks are persisted directly
   // so they're waiting when the user navigates to them).
-  const readWeekDays = useCallback((ws) => {
-    try {
-      const raw = localStorage.getItem(`meal_plan_${userId || 'anon'}_${ws}`);
-      if (!raw) return {};
-      return JSON.parse(raw).days || {};
-    } catch { return {}; }
-  }, [userId]);
+  const readWeekDays = useCallback((ws) => readPlanWeek(userId, ws), [userId]);
 
   const writeWeekDays = useCallback((ws, days) => {
-    const savedAt = Date.now();
-    const planJson = JSON.stringify({ weekStart: ws, days, savedAt });
-    if (planJson.length <= 500000) {
-      try { localStorage.setItem(`meal_plan_${userId || 'anon'}_${ws}`, planJson); } catch { /* quota */ }
-    }
-    if (userId && profile?.gym_id) {
-      supabase.from('generated_meal_plans').upsert({
-        profile_id: userId, gym_id: profile.gym_id, week_start: ws,
-        plan_data: planToPlanData(days, savedAt),
-        macro_targets: { calories: targets?.daily_calories || null, protein: targets?.daily_protein_g || null, carbs: targets?.daily_carbs_g || null, fat: targets?.daily_fat_g || null },
-        is_active: true,
-      }, { onConflict: 'profile_id,week_start' }).then(({ error }) => { if (error) console.warn('[meal-plan sync]', error.message); });
-    }
+    writePlanWeek({ userId, gymId: profile?.gym_id, weekStart: ws, days, targets });
   }, [userId, profile?.gym_id, targets]);
 
   // Generate the plan for the viewed week AND the next (numWeeks-1) weeks in one
@@ -3478,20 +3750,19 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     const newPlan = { ...plan };
     weekDates.forEach(d => { delete newPlan[d]; });
     savePlan(newPlan);
-    setConfirmClear(false);
+    setConfirmClear(null);
     setToast(t('nutrition.weekCleared', 'Week cleared'));
     setTimeout(() => setToast(''), 2000);
   }, [plan, weekDates, savePlan, t]);
 
   // Clear just the active day (and pull its meals off the grocery list).
-  const [clearDayArmed, setClearDayArmed] = useState(false);
   const handleClearDay = useCallback((date) => {
     if (isPastWeek) return;
     const newPlan = { ...plan };
     Object.values(newPlan[date] || {}).forEach(m => { if (m?.id) onRemoveRecipeFromGrocery?.(m.id, date); });
     delete newPlan[date];
     savePlan(newPlan);
-    setClearDayArmed(false);
+    setConfirmClear(null);
     setToast(t('nutrition.dayCleared', 'Day cleared'));
     setTimeout(() => setToast(''), 2000);
   }, [plan, savePlan, isPastWeek, onRemoveRecipeFromGrocery, t]);
@@ -3531,8 +3802,9 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
 
   const activeDateStr = weekDates[activeDay] || weekDates[0];
   const activeDayData = plan[activeDateStr] || {};
-  // Disarm the day-clear confirm whenever the viewed day/week changes.
-  useEffect(() => { setClearDayArmed(false); }, [activeDay, weekOffset]);
+  // Drop any open destructive confirm whenever the viewed day/week changes —
+  // it was armed for a day the member is no longer looking at.
+  useEffect(() => { setConfirmClear(null); }, [activeDay, weekOffset]);
 
   // Resolve a planned meal to its full RECIPES record (which carries the
   // ingredient list the grocery handler needs). Match by id first, then by
@@ -3552,7 +3824,9 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   // `day` defaults to the day currently shown in the planner — both callers add
   // the active day's meals — so the ingredients land in that day's grocery
   // section instead of "Anytime".
-  const addMealsToGrocery = useCallback((meals, day = activeDateStr) => {
+  // `entries` are { meal, slot } so the grocery list can label each ingredient
+  // with the meal slot it's for ("Breakfast", "Snack 1", …).
+  const addMealsToGrocery = useCallback((entries, day = activeDateStr) => {
     if (!onAddRecipeToGrocery) {
       setToast(t('nutrition.fillFromMealsError', 'Could not add to list'));
       setTimeout(() => setToast(''), 2000);
@@ -3560,11 +3834,11 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
     }
     let added = 0;
     const seen = new Set();
-    meals.forEach(meal => {
+    entries.forEach(({ meal, slot }) => {
       const recipe = resolvePlannerRecipe(meal);
       if (!recipe || seen.has(recipe.id)) return;
       seen.add(recipe.id);
-      onAddRecipeToGrocery(recipe, { day });
+      onAddRecipeToGrocery(recipe, { day, slot });
       added++;
     });
     setToast(added > 0
@@ -3648,41 +3922,34 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           </button>
         </div>
 
-        {/* Regenerate / fill this week — the week-level actions live with the week */}
+        {/* Regenerate / fill this week — the week-level actions live with the week.
+            The delete button is RED (it destroys a week of planning) and asks in a
+            modal, not a two-tap inline swap. */}
         {!isPastWeek && (
           <div className="px-4 mb-4">
-            {confirmClear ? (
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setConfirmClear(false)}
-                  className="flex-1 py-3 rounded-[14px] text-[12.5px] font-bold active:scale-95"
-                  style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                  {t('nutrition.keepPlan', 'Keep')}
+            <div className="flex gap-2">
+              <button onClick={() => handleAutoplan(planWeeks)}
+                className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+                style={{ background: TU.coach, color: '#fff', letterSpacing: -0.2 }}>
+                <Sparkles size={15} style={{ flexShrink: 0 }} />
+                <span className="truncate">{planWeeks > 1
+                  ? t('nutrition.generateNWeeks', { count: planWeeks, defaultValue: 'Generate {{count}} weeks' })
+                  : (weekHasMeals ? t('nutrition.regenerateWeek', 'Regenerate week') : t('nutrition.generateWeek', 'Generate week'))}</span>
+              </button>
+              {weekHasMeals && (
+                <button type="button" aria-label={t('nutrition.clearWeek', 'Clear week')}
+                  onClick={() => setConfirmClear({
+                    title: t('nutrition.clearWeekQ', 'Clear this week?'),
+                    body: t('nutrition.clearWeekBody', 'Every meal planned for this week is removed. Your logged food stays.'),
+                    confirmLabel: t('nutrition.clearWeek', 'Clear week'),
+                    onConfirm: handleClearWeek,
+                  })}
+                  className="flex-shrink-0 w-12 py-3 rounded-[14px] flex items-center justify-center active:scale-95"
+                  style={{ background: 'rgba(220,38,38,0.10)', border: '1px solid rgba(220,38,38,0.30)', color: 'var(--color-danger, #DC2626)' }}>
+                  <Trash2 size={16} />
                 </button>
-                <button type="button" onClick={handleClearWeek}
-                  className="flex-1 py-3 rounded-[14px] text-[12.5px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                  style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
-                  <Trash2 size={13} />{t('nutrition.clearWeek', 'Clear week')}
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button onClick={() => handleAutoplan(planWeeks)}
-                  className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
-                  style={{ background: TU.coach, color: '#fff', letterSpacing: -0.2 }}>
-                  <Sparkles size={15} style={{ flexShrink: 0 }} />
-                  <span className="truncate">{planWeeks > 1
-                    ? t('nutrition.generateNWeeks', { count: planWeeks, defaultValue: 'Generate {{count}} weeks' })
-                    : (weekHasMeals ? t('nutrition.regenerateWeek', 'Regenerate week') : t('nutrition.generateWeek', 'Generate week'))}</span>
-                </button>
-                {weekHasMeals && (
-                  <button type="button" onClick={() => setConfirmClear(true)} aria-label={t('nutrition.clearWeek', 'Clear week')}
-                    className="flex-shrink-0 w-12 py-3 rounded-[14px] flex items-center justify-center active:scale-95"
-                    style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
@@ -3766,7 +4033,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           </div>
           <button
             type="button"
-            onClick={() => { if (!dayAllListed) addMealsToGrocery(activeDayPlannedKeys.map(k => activeDayData[k])); }}
+            onClick={() => { if (!dayAllListed) addMealsToGrocery(activeDayPlannedKeys.map(k => ({ meal: activeDayData[k], slot: k }))); }}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold focus:outline-none active:scale-95"
             style={dayAllListed
               ? { background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: 'var(--color-success)' }
@@ -3778,36 +4045,27 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
         {/* Day-level actions — regenerate / clear THIS day, beside its meals */}
         {!isPastWeek && (
           <div className="px-4 mb-3">
-            {clearDayArmed ? (
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setClearDayArmed(false)}
-                  className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold active:scale-95"
-                  style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                  {t('nutrition.keepPlan', 'Keep')}
+            <div className="flex gap-2">
+              <button onClick={() => handleCompleteDay(activeDateStr)}
+                className="flex-1 min-w-0 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
+                style={{ background: `${TU.coach}12`, border: `1px solid ${TU.coach}33`, color: TU.coach }}>
+                <Sparkles size={13} style={{ flexShrink: 0 }} />
+                <span className="truncate">{filledSlots > 0 ? t('nutrition.regenerateDay', 'Regenerate this day') : t('nutrition.generateDay', 'Generate this day')}</span>
+              </button>
+              {filledSlots > 0 && (
+                <button type="button" aria-label={t('nutrition.clearDay', 'Clear day')}
+                  onClick={() => setConfirmClear({
+                    title: t('nutrition.clearDayQ', 'Clear this day?'),
+                    body: t('nutrition.clearDayBody', 'Every meal planned for this day is removed. Your logged food stays.'),
+                    confirmLabel: t('nutrition.clearDay', 'Clear day'),
+                    onConfirm: () => handleClearDay(activeDateStr),
+                  })}
+                  className="flex-shrink-0 w-11 py-2.5 rounded-[12px] flex items-center justify-center active:scale-95"
+                  style={{ background: 'rgba(220,38,38,0.10)', border: '1px solid rgba(220,38,38,0.30)', color: 'var(--color-danger, #DC2626)' }}>
+                  <Trash2 size={15} />
                 </button>
-                <button type="button" onClick={() => handleClearDay(activeDateStr)}
-                  className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                  style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
-                  <Trash2 size={12} />{t('nutrition.clearDay', 'Clear day')}
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button onClick={() => handleCompleteDay(activeDateStr)}
-                  className="flex-1 min-w-0 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                  style={{ background: `${TU.coach}12`, border: `1px solid ${TU.coach}33`, color: TU.coach }}>
-                  <Sparkles size={13} style={{ flexShrink: 0 }} />
-                  <span className="truncate">{filledSlots > 0 ? t('nutrition.regenerateDay', 'Regenerate this day') : t('nutrition.generateDay', 'Generate this day')}</span>
-                </button>
-                {filledSlots > 0 && (
-                  <button type="button" onClick={() => setClearDayArmed(true)} aria-label={t('nutrition.clearDay', 'Clear day')}
-                    className="flex-shrink-0 w-11 py-2.5 rounded-[12px] flex items-center justify-center active:scale-95"
-                    style={{ background: 'transparent', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
@@ -3846,7 +4104,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
               <div key={slot} className="rounded-[18px] p-3" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
                 <button type="button" onClick={() => onOpenRecipe(meal)} className="w-full flex gap-3 items-center mb-2.5 text-left active:scale-[0.985] transition-transform">
                   {mealImg ? (
-                    <img src={(foodImageUrl(mealImg) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt="" className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+                    <img src={(foodImageUrl(mealImg, { width: 192, quality: 65 }) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt="" className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                   ) : (
                     <FoodTile name={mealTitle(meal)} size={52} seed={si} />
                   )}
@@ -3871,7 +4129,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                     style={{ color: 'var(--color-danger)', background: 'transparent', border: 'none' }}>
                     <Trash2 size={12} />{t('nutrition.removeMeal', 'Remove')}
                   </button>
-                  <button type="button" onClick={() => { if (!listed) addMealsToGrocery([meal]); }}
+                  <button type="button" onClick={() => { if (!listed) addMealsToGrocery([{ meal, slot }]); }}
                     className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
                     style={listed
                       ? { color: 'var(--color-success)', background: 'rgba(16,185,129,0.12)', border: 'none' }
@@ -3937,15 +4195,29 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                   label={t('nutrition.mealsUnit', 'meals')} />
                 <p className="mt-1.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.mealsPerDayHint', 'Extra meals are added as snacks between lunch and dinner.')}</p>
               </div>
-              {/* Meal times */}
+              {/* Meal order + times — drag the grip to re-sequence the day
+                  (e.g. Snack 2 AFTER dinner). Order is the member's; the SET of
+                  slots still comes from "Meals per day" above. */}
               <div>
-                <div className="text-[11px] font-bold uppercase mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.mealTimes', 'Meal times')}</div>
-                <p className="mb-2.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.mealTimesHint', 'Optional — set a time to see it on your meals and get a reminder.')}</p>
-                <div className="space-y-2">
-                  {slotKeys.map((k) => (
-                    <div key={k} className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-[14px]" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-                      <span className="text-[13.5px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{slotLabelFor(k, mealSchedule.count, t)}</span>
-                      <div className="flex items-center gap-2">
+                <div className="text-[11px] font-bold uppercase mb-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{t('nutrition.mealOrderTimes', 'Meal order & times')}</div>
+                <p className="mb-2.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.mealOrderHint', 'Drag to reorder your day. Set a time to see it on your meals and get a reminder.')}</p>
+                <div data-dragroot style={{ display: 'flex', flexDirection: 'column', gap: DRAG_GAP }}>
+                  {slotKeys.map((k) => {
+                    const isDrag = slotDragId === k;
+                    return (
+                    <div key={k} data-dragitem={k} className="flex items-center gap-2 px-3 py-2.5 rounded-[14px]"
+                      style={{
+                        background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)',
+                        ...(isDrag ? { transform: `translateY(${slotDragTranslate()}px)`, position: 'relative', zIndex: 30, boxShadow: '0 14px 30px rgba(0,0,0,0.3)' } : {}),
+                      }}>
+                      <button type="button" onPointerDown={(ev) => startSlotDrag(k, ev, ev.currentTarget.closest('[data-dragitem]'))}
+                        aria-label={t('nutrition.dragReorder', 'Drag to reorder')}
+                        className="flex-shrink-0 flex items-center justify-center"
+                        style={{ width: 22, height: 30, background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'grab', touchAction: 'none' }}>
+                        <GripVertical size={16} />
+                      </button>
+                      <span className="flex-1 min-w-0 truncate text-[13.5px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{slotLabelFor(k, mealSchedule.count, t)}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
                         <input type="time" value={mealSchedule.times[k] || ''} onChange={(e) => setSlotTime(k, e.target.value)}
                           className="text-[13.5px] font-semibold px-2 py-1 rounded-[9px] focus:outline-none"
                           style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)', colorScheme: 'light dark' }} />
@@ -3956,7 +4228,8 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="mt-2.5 flex items-start gap-1.5">
                   <Bell size={12} style={{ color: TU.coach, marginTop: 2, flexShrink: 0 }} />
@@ -3972,6 +4245,26 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           </div>
         </div>
       )}
+
+      {/* Destructive confirm (clear week / clear day) — same centered modal the
+          grocery list uses. Portaled so the planner's own scroll container can't
+          clip it. */}
+      {confirmClear && createPortal((
+        <div className="fixed inset-0 z-[120] flex items-center justify-center px-8" onClick={() => setConfirmClear(null)} role="presentation">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.45)' }} />
+          <div className="relative w-full max-w-[300px] rounded-[20px] p-5 text-center" style={{ background: 'var(--color-bg-card)', boxShadow: '0 24px 80px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: 'rgba(220,38,38,0.12)' }}>
+              <Trash2 size={22} style={{ color: 'var(--color-danger, #DC2626)' }} />
+            </div>
+            <div className="text-[16px] font-bold mb-1" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{confirmClear.title}</div>
+            <div className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>{confirmClear.body}</div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setConfirmClear(null)} className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold active:scale-95" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.05))', color: 'var(--color-text-primary)' }}>{t('common:cancel', 'Cancel')}</button>
+              <button type="button" onClick={() => { const fn = confirmClear.onConfirm; setConfirmClear(null); fn?.(); }} className="flex-1 py-2.5 rounded-[12px] text-[13px] font-bold text-white active:scale-95" style={{ background: 'var(--color-danger, #DC2626)' }}>{confirmClear.confirmLabel}</button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 
@@ -4644,7 +4937,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
               // Prefer the actual stored image (AI photo / barcode product image)
               // BEFORE the name-based fallback — getFoodImage can match a generic
               // image of a similarly named food and show the wrong picture.
-              const recentImg = foodImageUrl(r.image_url) || r.image_url || getFoodImage(r.name, r.brand) || recipeImageByName(r.name);
+              const recentImg = foodImageUrl(r.image_url, { width: 480, quality: 70 }) || r.image_url || getFoodImage(r.name, r.brand) || recipeImageByName(r.name);
               return (
               <button
                 key={`${r.name}_${i}`}
@@ -5388,7 +5681,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                 className="w-full flex items-center gap-3 p-3 rounded-[18px] text-left active:scale-[0.975] transition-all"
                 style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
                 {r.image ? (
-                  <img src={(foodImageUrl(r.image) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt="" className="w-[48px] h-[48px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
+                  <img src={(foodImageUrl(r.image, { width: 192, quality: 65 }) || MEAL_IMG_FALLBACK)} onError={handleMealImgError} alt="" className="w-[48px] h-[48px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                 ) : (
                   <FoodTile name={mealTitle(r)} size={48} seed={ri} />
                 )}
@@ -5717,9 +6010,22 @@ function sumAmounts(list) {
   return parts.join(' + ') || null;
 }
 
-const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRemoveItem, onFillFromMeals, onClearList, onAddGroceryItems }) => {
+const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRemoveItem, onFillFromMeals, onClearList, onAddGroceryItems, userId }) => {
   const { t, i18n } = useTranslation('pages');
   const lang = i18n.language || 'en';
+  // The member's meal schedule — used to label each line by its slot
+  // ("Breakfast" / "Snack 1") and to order the per-day meal cards the same way
+  // the planner shows them. Read on mount; the planner writes it.
+  // NOTE: named slotCount, NOT mealCount — a different `mealCount` already
+  // exists further down this same scope (the number of distinct recipes feeding
+  // the grocery list). This one is how many meal SLOTS a day has.
+  const slotCount = useMemo(() => loadMealSchedule(userId).count, [userId]);
+  const planSlotKeys = useMemo(() => orderedSlotKeys(userId, slotCount), [userId, slotCount]);
+  const slotLabel = useCallback((slot) => (slot ? slotLabelFor(slot, slotCount, t) : null), [slotCount, t]);
+  const slotRank = useCallback((slot) => {
+    const i = planSlotKeys.indexOf(slot);
+    return i === -1 ? 99 : i;
+  }, [planSlotKeys]);
 
   const [expanded, setExpanded] = useState(() => new Set());
   const toggleExpand = (key) => setExpanded(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -5759,9 +6065,12 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
       e.ids.push(item.id); e.n++;
       if (item.amount) e.amounts.push(item.amount);
       if (item.fromRecipe) {
-        const cur = e.mealAmts.get(item.fromRecipe) || [];
-        if (item.amount) cur.push(item.amount);
-        e.mealAmts.set(item.fromRecipe, cur);
+        // Key the breakdown by meal AND slot: the same dish planned as lunch on
+        // Monday and as dinner on Thursday is two different reasons to buy it.
+        const srcKey = `${item.slot || ''}|${item.fromRecipe}`;
+        const cur = e.mealAmts.get(srcKey) || { meal: item.fromRecipe, slot: item.slot || null, amounts: [] };
+        if (item.amount) cur.amounts.push(item.amount);
+        e.mealAmts.set(srcKey, cur);
       }
       if (!item.checked) e.allChecked = false;
       if (!item.eaten) e.allEaten = false;
@@ -5772,14 +6081,16 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
       ids: e.ids, checked: e.n > 0 && e.allChecked, eaten: e.n > 0 && e.allEaten,
       total: sumAmounts(e.amounts),
       mealCount: e.mealAmts.size,
-      sources: Array.from(e.mealAmts.entries()).map(([meal, amts]) => ({ meal, amount: sumAmounts(amts) })),
+      sources: Array.from(e.mealAmts.values())
+        .sort((a, b) => slotRank(a.slot) - slotRank(b.slot))
+        .map(s => ({ meal: s.meal, slot: s.slot, amount: sumAmounts(s.amounts) })),
     }));
     const byCat = new Map();
     rows.forEach(r => { const c = r.categoryKey || 'extras'; if (!byCat.has(c)) byCat.set(c, []); byCat.get(c).push(r); });
     return Array.from(byCat.entries())
       .map(([catKey, items]) => ({ catKey, label: groceryCatLabel(t, catKey), color: GROCERY_AISLE_COLOR[catKey] || GROCERY_AISLE_COLOR.other, items: items.sort((a, b) => a.label.localeCompare(b.label)) }))
       .sort((a, b) => (GROCERY_CAT_ORDER[a.catKey] ?? 50) - (GROCERY_CAT_ORDER[b.catKey] ?? 50));
-  }, [periodList, t]);
+  }, [periodList, t, slotRank]);
 
   // "In your kitchen" — staples you already own, hidden from Shop/List (persisted).
   const [have, setHave] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('grocery_have') || '[]')); } catch { return new Set(); } });
@@ -5809,31 +6120,53 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
   const toggleMealExpand = (key) => setExpandedMeals(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   // Meals view: DAY → meal (premium card w/ photo + collapsible ingredient list).
   const mealDayGroups = useMemo(() => {
-    const dayMap = new Map(); // day → Map(meal → Map(label → row))
+    const dayMap = new Map(); // day → Map(slot|meal → { meal, slot, rows })
     periodList.forEach(item => {
       const day = item.day || item.addedDate || '__any__';
       const meal = item.fromRecipe || t('nutrition.customItem', 'Custom item');
+      const slot = item.slot || null;
+      // Group by SLOT + meal so a day reads as the plan does (Breakfast → Lunch
+      // → Snack → Dinner), not as one merged pile per dish name.
+      const gkey = `${slot || ''}|${meal}`;
       if (!dayMap.has(day)) dayMap.set(day, new Map());
       const mealMap = dayMap.get(day);
-      if (!mealMap.has(meal)) mealMap.set(meal, new Map());
-      const rowMap = mealMap.get(meal);
+      if (!mealMap.has(gkey)) mealMap.set(gkey, { meal, slot, rowMap: new Map() });
+      const rowMap = mealMap.get(gkey).rowMap;
       const key = (item.label || '').trim().toLowerCase();
       if (!rowMap.has(key)) rowMap.set(key, { key, label: item.label, ing: item.ing, categoryKey: item.categoryKey || classifyIngredientKey(item.ing || key), ids: [item.id], amounts: [item.amount], allChecked: !!item.checked, allEaten: !!item.eaten });
       else { const e = rowMap.get(key); e.ids.push(item.id); e.amounts.push(item.amount); if (!item.checked) e.allChecked = false; if (!item.eaten) e.allEaten = false; }
     });
     const days = Array.from(dayMap.entries()).map(([day, mealMap]) => ({
       day,
-      meals: Array.from(mealMap.entries()).map(([meal, rowMap]) => {
-        const rows = Array.from(rowMap.values()).map(r => ({ ...r, checked: r.allChecked, eaten: r.allEaten, mealCount: 1, sources: [], imgSlug: ingredientImageSlug(r.ing || r.label.toLowerCase().replace(/\s+/g, '_')), total: sumAmounts(r.amounts), color: GROCERY_AISLE_COLOR[r.categoryKey] || GROCERY_AISLE_COLOR.other }));
-        return { meal, ckey: `${day}|${meal}`, image: recipeImageByName(meal), rows, done: rows.filter(r => r.checked).length };
-      }),
+      meals: Array.from(mealMap.entries())
+        .sort(([, a], [, b]) => slotRank(a.slot) - slotRank(b.slot))
+        .map(([gkey, g]) => {
+          const rows = Array.from(g.rowMap.values()).map(r => ({ ...r, checked: r.allChecked, eaten: r.allEaten, mealCount: 1, sources: [], imgSlug: ingredientImageSlug(r.ing || r.label.toLowerCase().replace(/\s+/g, '_')), total: sumAmounts(r.amounts), color: GROCERY_AISLE_COLOR[r.categoryKey] || GROCERY_AISLE_COLOR.other }));
+          return { meal: g.meal, slot: g.slot, ckey: `${day}|${gkey}`, image: recipeImageByName(g.meal), rows, done: rows.filter(r => r.checked).length };
+        }),
     }));
     days.sort((a, b) => { if (a.day === '__any__') return 1; if (b.day === '__any__') return -1; return a.day.localeCompare(b.day); });
     return days;
-  }, [periodList, t]);
+  }, [periodList, t, slotRank]);
   const askRemove = (x) => setConfirmState({ title: t('nutrition.removeItemQ', 'Remove item?'), body: t('nutrition.removeItemBody', { name: x.label, defaultValue: `Remove ${x.label} from your list?` }), confirmLabel: t('nutrition.remove', 'Remove'), danger: true, onConfirm: () => x.ids.forEach(id => onRemoveItem(id)) });
   // "Clear checks" resets progress WITHOUT deleting the list — just unchecks.
   const askClearChecks = () => setConfirmState({ title: t('nutrition.uncheckAllQ', 'Clear all checks?'), body: t('nutrition.uncheckAllBody', 'Keeps your whole list — just clears the checkmarks so you can shop it again.'), confirmLabel: t('nutrition.clearChecks', 'Clear checks'), danger: false, onConfirm: () => groceryList.filter(i => i.checked).forEach(i => onToggleItem(i.id)) });
+  // "New list" — destructive, so it asks in the app's OWN modal (the native
+  // window.confirm it used to raise is an iOS system alert, off-brand and
+  // unreliable inside the Capacitor WebView).
+  const askClearList = () => {
+    if (groceryList.length === 0) { onClearList?.(); return; } // nothing to confirm — handler just toasts
+    setConfirmState({
+      title: t('nutrition.clearListQ', 'Start a new list?'),
+      body: t('nutrition.clearListBody', 'This empties your grocery list. Anything you have not bought yet is removed.'),
+      confirmLabel: t('nutrition.clearListConfirm', 'Empty list'),
+      danger: true,
+      onConfirm: () => onClearList?.(),
+    });
+  };
+  // Filling from the plan makes the list MEAL-shaped, so show the Meals
+  // grouping right after — a flat wall of ingredients hides what they're for.
+  const runFillFromPlan = (weeks) => { onFillFromMeals?.(weeks); setGroceryView('meals'); };
 
   const SEG = [['shop', t('nutrition.segShop', 'Shop')], ['meals', t('nutrition.segMeals', 'Meals')]];
 
@@ -5859,7 +6192,7 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
               <RefreshCw size={12} />{t('nutrition.clearChecks', 'Clear checks')}
             </button>
           )}
-          <button onClick={() => onFillFromMeals(fillWeeks)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold active:scale-95 transition-transform" style={{ border: `1px solid ${TU.accent}`, background: `${TU.accent}14`, color: TU.accent }}>
+          <button onClick={() => runFillFromPlan(fillWeeks)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold active:scale-95 transition-transform" style={{ border: `1px solid ${TU.accent}`, background: `${TU.accent}14`, color: TU.accent }}>
             <Sparkles size={13} />{t('nutrition.fillFromPlan', 'Fill from plan')}
           </button>
         </div>
@@ -5905,6 +6238,10 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold truncate" style={{ color: 'var(--color-text-muted)', maxWidth: '100%' }}>
                     <span style={{ width: 5, height: 5, borderRadius: 3, background: color, opacity: .7, flexShrink: 0 }} />
+                    {/* Which MEAL this line is for, and which slot of the day. */}
+                    {x.sources?.[0]?.slot && (
+                      <span className="flex-shrink-0 text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded" style={{ color: TU.accent, background: `${TU.accent}14`, letterSpacing: 0.4 }}>{slotLabel(x.sources[0].slot)}</span>
+                    )}
                     <span className="truncate">{x.sources && x.sources[0] ? x.sources[0].meal : t('nutrition.customItem', 'Custom item')}</span>
                   </span>
                 )}
@@ -5929,6 +6266,9 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
           <div style={{ marginLeft: 58, marginBottom: 8, borderLeft: `2px solid ${TU.accent}33`, paddingLeft: 12 }}>
             {x.sources.map((s, si) => (
               <div key={si} className="flex items-center gap-2 py-1">
+                {s.slot && (
+                  <span className="flex-shrink-0 text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded" style={{ color: TU.accent, background: `${TU.accent}14`, letterSpacing: 0.4 }}>{slotLabel(s.slot)}</span>
+                )}
                 <span className="flex-1 text-[12.5px] font-semibold truncate" style={{ color: 'var(--color-text-secondary, var(--color-text-muted))' }}>{s.meal}</span>
                 {s.amount && <span className="text-[12.5px] font-bold flex-shrink-0" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)' }}>{s.amount}</span>}
               </div>
@@ -5958,10 +6298,10 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
               </div>
             )}
           </div>
-          {/* "Lista nueva" / "New list" — clears the list with confirm. */}
+          {/* "Lista nueva" / "New list" — clears the list, confirmed in-app. */}
           <button
             type="button"
-            onClick={onClearList}
+            onClick={askClearList}
             className="flex items-center gap-1 text-[12px] font-bold px-3 py-1.5 rounded-full focus:outline-none active:scale-95 transition-transform"
             style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
             <Plus size={13} strokeWidth={2.6} />
@@ -5982,7 +6322,7 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
               {t('nutrition.browseRecipes', 'Browse Recipes')}
             </button>
             {onFillFromMeals && (
-              <button onClick={() => onFillFromMeals(1)}
+              <button onClick={() => runFillFromPlan(1)}
                 className="px-5 py-2.5 rounded-full text-[13px] font-semibold flex items-center gap-1.5"
                 style={{ background: 'var(--color-text-primary)', color: 'var(--color-bg-primary)' }}>
                 <Sparkles size={13} />
@@ -6071,6 +6411,10 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
                               ? <img src={m.image} onError={handleMealImgError} alt="" className="w-[52px] h-[52px] rounded-[14px] object-cover flex-shrink-0" style={{ background: 'var(--color-border-subtle)' }} loading="lazy" />
                               : <FoodTile name={m.meal} size={52} seed={(m.meal || '?').charCodeAt(0) || 0} />}
                             <div className="flex-1 min-w-0">
+                              {/* Slot first — "what is this for" beats "what is it called". */}
+                              {m.slot && (
+                                <div className="text-[9.5px] font-extrabold uppercase mb-0.5" style={{ color: TU.accent, letterSpacing: 0.6 }}>{slotLabel(m.slot)}</div>
+                              )}
                               <div className="text-[15.5px] truncate" style={{ fontFamily: TU.display, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{m.meal}</div>
                               <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{m.rows.length} {t('nutrition.itemsLabel', 'items')} · {m.done} {t('nutrition.inCartTitle', 'in cart')}</div>
                             </div>
@@ -6323,695 +6667,14 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
   );
 };
 
-// ── MY PLAN VIEW ───────────────────────────────────────────
-const MyPlanView = ({ setView, onAddRecipeToGrocery, onOpenRecipe }) => {
-  const { user, profile } = useAuth();
-  const { t, i18n } = useTranslation('pages');
-  const { showToast } = useToast();
-  const lang = i18n.language || 'en';
-  const planCacheKey = `nutrition-myplan-${user?.id || 'anon'}`;
-  const [plan, setPlan] = useCachedState(`${planCacheKey}-plan`, null);
-  const [macros, setMacros] = useCachedState(`${planCacheKey}-macros`, null);
-  // Only show the skeleton on the first-ever visit — subsequent mounts paint cached data.
-  const [loading, setLoading] = useState(!hasCachedState(`${planCacheKey}-plan`));
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [activeDay, setActiveDay] = useState(() => {
-    const d = new Date().getDay();
-    return d; // Sun=0 ... Sat=6
-  });
-  // Logged foods for the displayed week, keyed by day-of-week (Sun=0..Sat=6).
-  const [loggedByDay, setLoggedByDay] = useState({});
-  // Regenerating-day spinner state — null when idle, day index when running.
-  const [regenerating, setRegenerating] = useState(null);
-  // Two-tap confirm for the destructive "Clear week" action (iOS-safe; window.confirm is dropped in the Capacitor WebView).
-  const [confirmClear, setConfirmClear] = useState(false);
-
-  // Recompute a day's macro totals from its meals (after a remove/clear).
-  const sumTotals = (meals) => (meals || []).reduce((tot, m) => ({
-    calories: (tot.calories || 0) + (m.calories || 0),
-    protein: (tot.protein || 0) + (m.protein || 0),
-    carbs: (tot.carbs || 0) + (m.carbs || 0),
-    fat: (tot.fat || 0) + (m.fat || 0),
-  }), {});
-
-  // Persist a 7-day plan array to the active generated_meal_plans row (current
-  // week) and update local state. Shared by generate / remove / clear so the
-  // week_start + upsert shape stays in one place.
-  const persistPlan = useCallback(async (nextPlan, targets) => {
-    setPlan(nextPlan);
-    if (!user?.id) return;
-    // Target the DISPLAYED week (matches the reader). Only the current week is
-    // the "active" one so the latest-active lookups (grocery fill) stay correct.
-    const now = new Date();
-    now.setDate(now.getDate() + weekOffset * 7);
-    const sow = new Date(now);
-    sow.setDate(sow.getDate() - sow.getDay());
-    // LOCAL date string, not toISOString(). `sow` carries local wall-clock time,
-    // so in a negative-offset zone (Puerto Rico is UTC-4) any evening after 20:00
-    // serialised to the NEXT day — the plan got written under a week_start the
-    // reader never looks up, and the member's plan appeared to vanish overnight.
-    const weekStartStr = toLocalDateStr(sow);
-    try {
-      await supabase.from('generated_meal_plans').upsert({
-        profile_id: user.id, week_start: weekStartStr,
-        plan_data: nextPlan, macro_targets: targets || macros || {}, is_active: weekOffset === 0,
-      }, { onConflict: 'profile_id,week_start' });
-    } catch (e) { console.error('[persistPlan]', e); }
-  }, [user?.id, setPlan, macros, weekOffset]);
-
-  // Food prefs (allergies / dietary restrictions / foods-to-avoid + learned
-  // affinities) — loaded once and fed into every plan generation so the planner
-  // hard-excludes unsafe/avoided meals and leans toward learned likes.
-  const [prefs, setPrefs] = useState({ allergies: [], restrictions: [], avoid: [], affinities: {} });
-  const [showPrefs, setShowPrefs] = useState(false);
-  const loadPrefs = useCallback(async () => {
-    if (!user?.id) return;
-    const [ob, dis, aff] = await Promise.all([
-      supabase.from('member_onboarding').select('food_allergies, dietary_restrictions').eq('profile_id', user.id).maybeSingle(),
-      supabase.from('disliked_foods').select('food_name').eq('profile_id', user.id),
-      loadAffinities(user.id),
-    ]);
-    if (ob.error || dis.error) console.warn('[loadPrefs]', ob.error || dis.error);
-    setPrefs({
-      allergies: ob.data?.food_allergies || [],
-      restrictions: ob.data?.dietary_restrictions || [],
-      avoid: (dis.data || []).map(d => d.food_name).filter(Boolean),
-      affinities: aff || {},
-    });
-  }, [user?.id]);
-  useEffect(() => { loadPrefs(); }, [loadPrefs]);
-
-  const dayShorts = useMemo(() => lang === 'es'
-    ? ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-  [lang]);
-
-  const dayLabels = useMemo(() => lang === 'es'
-    ? ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
-    : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-  [lang]);
-
-  // Compute week dates for the day strip
-  const weekDates = useMemo(() => {
-    const now = new Date();
-    now.setDate(now.getDate() + weekOffset * 7);
-    const monday = new Date(now);
-    monday.setDate(monday.getDate() - monday.getDay()); // Sunday start
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      return d.getDate();
-    });
-  }, [weekOffset]);
-
-  const weekLabel = useMemo(() => {
-    if (weekOffset === 0) return t('nutrition.thisWeek', 'This week');
-    if (weekOffset === -1) return t('nutrition.lastWeek', 'Last week');
-    if (weekOffset === 1) return t('nutrition.nextWeek', 'Next week');
-    return `${weekOffset > 0 ? '+' : ''}${weekOffset} ${t('nutrition.weeks', 'weeks')}`;
-  }, [weekOffset, t]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    (async () => {
-      // Only flip loading on when there's no cached data — avoids flashing the
-      // skeleton on revisit; the stale plan stays visible while we refetch.
-      if (!hasCachedState(`${planCacheKey}-plan`)) setLoading(true);
-      // Load the plan for the DISPLAYED week (onboarding seeds ~4 weeks ahead, so
-      // navigating forward shows real plans, not a repeat of week 1). Same UTC
-      // Sunday calc as persistPlan so the week_start keys line up.
-      const now = new Date();
-      now.setDate(now.getDate() + weekOffset * 7);
-      const sow = new Date(now);
-      sow.setDate(sow.getDate() - sow.getDay());
-      // Must match persistPlan's key exactly — see the note there on why this is
-      // a LOCAL date string rather than toISOString().
-      const weekStartStr = toLocalDateStr(sow);
-      let { data } = await supabase
-        .from('generated_meal_plans')
-        .select('plan_data, macro_targets, week_start')
-        .eq('profile_id', user.id)
-        .eq('week_start', weekStartStr)
-        .maybeSingle();
-      // Legacy fallback (current week only): older accounts have a single active
-      // row whose week_start may not match today's Sunday exactly — keep showing it.
-      if (!data && weekOffset === 0) {
-        const res = await supabase
-          .from('generated_meal_plans')
-          .select('plan_data, macro_targets, week_start')
-          .eq('profile_id', user.id)
-          .eq('is_active', true)
-          .order('week_start', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        data = res.data;
-      }
-      if (data) { setPlan(data.plan_data); setMacros(data.macro_targets); }
-      else { setPlan(Array.from({ length: 7 }, () => ({ meals: [], totals: {} }))); }
-      setLoading(false);
-    })();
-  }, [user?.id, weekOffset, planCacheKey, setPlan, setMacros]);
-
-  // Pull the user's actually-logged foods for the displayed week so we can
-  // show "Logged" rows alongside the planned meals. The week starts Sunday.
-  useEffect(() => {
-    if (!user?.id) return;
-    (async () => {
-      const now = new Date();
-      now.setDate(now.getDate() + weekOffset * 7);
-      const sunday = new Date(now);
-      sunday.setDate(sunday.getDate() - sunday.getDay());
-      sunday.setHours(0, 0, 0, 0);
-      const saturday = new Date(sunday);
-      saturday.setDate(sunday.getDate() + 6);
-      const fmt = (d) => d.toISOString().slice(0, 10);
-      const { data } = await supabase
-        .from('food_logs')
-        .select('id, calories, protein_g, carbs_g, fat_g, meal_type, log_date, custom_name, food_item:food_items(name, name_es)')
-        .eq('profile_id', user.id)
-        .gte('log_date', fmt(sunday))
-        .lte('log_date', fmt(saturday));
-      const grouped = {};
-      (data || []).forEach(row => {
-        const d = new Date(row.log_date + 'T00:00:00');
-        const dow = d.getDay();
-        if (!grouped[dow]) grouped[dow] = [];
-        grouped[dow].push(row);
-      });
-      setLoggedByDay(grouped);
-    })();
-  }, [user?.id, weekOffset]);
-
-  // Header shared across states
-  const header = (
-    <div className="flex items-center gap-3 px-5 pt-4 pb-3">
-      <button onClick={() => setView('home')} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('common:back', 'Go back')}>
-        <ChevronLeft size={18} style={{ color: 'var(--color-text-muted)' }} />
-      </button>
-      <div className="flex-1 truncate" style={{ fontFamily: TU.display, fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>
-        {t('nutrition.myPlan', 'My Plan')}
-      </div>
-      <button onClick={() => setShowPrefs(true)} className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 focus:outline-none"
-        style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }} aria-label={t('nutrition.prefsTitle', 'Preferences')}>
-        <SlidersHorizontal size={17} style={{ color: 'var(--color-text-muted)' }} />
-      </button>
-    </div>
-  );
-
-  if (loading) {
-    return <div className="pb-28">{header}<div className="px-4 space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-[22px] animate-pulse" style={{ background: 'var(--color-bg-card)' }} />)}</div></div>;
-  }
-
-  if (!plan || !Array.isArray(plan) || plan.length === 0) {
-    return (
-      <div className="pb-28">
-        {header}
-        <div className="text-center py-12 px-5">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: `${TU.accent}12` }}>
-            <UtensilsCrossed size={24} style={{ color: TU.accent }} />
-          </div>
-          <p className="text-[15px] font-semibold mb-1" style={{ color: 'var(--color-text-primary)' }}>{t('nutrition.noPlanYet', 'No meal plan yet')}</p>
-          <p className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>{t('nutrition.noPlanDesc', 'Generate a plan from your profile settings')}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const dayPlan = plan[activeDay] || plan[0] || { meals: [], totals: {} };
-  const totals = dayPlan.totals || {};
-  const dayMeals = dayPlan.meals || [];
-  // Empty plan ⇒ the week button reads "Generate"; any meals present ⇒ "Regenerate".
-  const planHasMeals = Array.isArray(plan) && plan.some(d => (d?.meals?.length || 0) > 0);
-  const goalKcal = macros?.calories || 2400;
-  const dayCal = totals.calories || dayMeals.reduce((s, m) => s + (m.calories || 0), 0);
-  const dayP = totals.protein || dayMeals.reduce((s, m) => s + (m.protein || 0), 0);
-  const dayC = totals.carbs || dayMeals.reduce((s, m) => s + (m.carbs || 0), 0);
-  const dayF = totals.fat || dayMeals.reduce((s, m) => s + (m.fat || 0), 0);
-  const pct = goalKcal > 0 ? dayCal / goalKcal : 0;
-
-  const SLOT_LABELS = [t('nutrition.meals.breakfast'), t('nutrition.meals.lunch'), t('nutrition.meals.snack'), t('nutrition.meals.dinner')];
-
-  return (
-    <div className="pb-28">
-      {header}
-
-      {/* Week jumper card */}
-      <div className="mx-4 mb-3 py-2.5 px-3.5 rounded-[14px] flex items-center justify-between"
-        style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-        <button onClick={() => setWeekOffset(w => w - 1)} className="w-[30px] h-[30px] rounded-full flex items-center justify-center" style={{ background: 'transparent', border: 'none' }}>
-          <ChevronLeft size={18} style={{ color: 'var(--color-text-primary)' }} />
-        </button>
-        <div className="text-center">
-          <div style={{ fontFamily: TU.display, fontSize: 15, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{weekLabel}</div>
-          <div className="text-[11px] mt-0.5 font-medium" style={{ color: 'var(--color-text-muted)' }}>
-            {(() => {
-              // Sunday-anchored, matching the day strip + persistPlan directly
-              // below — the old Monday anchor made this header disagree with the
-              // strip it sits on top of by one day.
-              const wkStart = new Date();
-              wkStart.setDate(wkStart.getDate() + weekOffset * 7 - wkStart.getDay());
-              const wkEnd = new Date(wkStart);
-              wkEnd.setDate(wkStart.getDate() + 6);
-              const fmt = (d) => d.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' });
-              return `${fmt(wkStart)} \u2013 ${fmt(wkEnd)}, ${wkEnd.getFullYear()}`;
-            })()}
-          </div>
-        </div>
-        <button onClick={() => setWeekOffset(w => w + 1)} className="w-[30px] h-[30px] rounded-full flex items-center justify-center" style={{ background: 'transparent', border: 'none' }}>
-          <ChevronRight size={18} style={{ color: 'var(--color-text-primary)' }} />
-        </button>
-      </div>
-
-      {/* Day strip — shows a small dot under days where the user actually
-          logged at least one food, so the planned-vs-logged distinction is
-          legible at a glance. */}
-      <div className="flex gap-1.5 px-3 pb-4">
-        {dayShorts.map((d, i) => {
-          const active = i === activeDay;
-          const hasLogs = (loggedByDay[i]?.length || 0) > 0;
-          return (
-            <button key={i} onClick={() => setActiveDay(i)}
-              className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-[14px] active:scale-95 transition-all"
-              style={{
-                background: active ? 'var(--color-text-primary)' : 'var(--color-bg-card)',
-                border: active ? 'none' : '1px solid var(--color-border-subtle)',
-              }}>
-              <span className="text-[10px] font-bold uppercase" style={{ color: active ? 'var(--color-bg-primary)' : 'var(--color-text-muted)', letterSpacing: 0.8 }}>{d}</span>
-              <span style={{ fontFamily: TU.display, fontSize: 19, fontWeight: 800, color: active ? 'var(--color-bg-primary)' : 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1 }}>{weekDates[i]}</span>
-              <span style={{
-                width: 4, height: 4, borderRadius: 999,
-                background: hasLogs ? (active ? 'var(--color-bg-primary)' : TU.accent) : 'transparent',
-                marginTop: 2,
-              }} />
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Day summary card */}
-      <div className="px-4 mb-4">
-        <div className="rounded-[18px] p-4" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-          <div className="flex items-baseline justify-between mb-3">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>{t('nutrition.planned', 'Planned')}</div>
-              <div className="flex items-baseline gap-1.5 mt-0.5">
-                <span style={{ fontFamily: TU.display, fontSize: 32, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -1.2, lineHeight: 1 }}>{dayCal.toLocaleString()}</span>
-                <span className="text-[13px]" style={{ color: 'var(--color-text-muted)' }}>/ {goalKcal}</span>
-              </div>
-            </div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold"
-              style={{ background: `${TU.accent}12`, color: TU.accent }}>
-              <Check size={11} strokeWidth={2.8} />
-              {dayMeals.filter(m => m.eaten).length}/{dayMeals.length} {t('nutrition.eaten', 'eaten')}
-            </span>
-          </div>
-          <div className="rounded-full overflow-hidden mb-3.5" style={{ height: 6, background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}>
-            <div style={{ width: `${Math.min(100, pct * 100)}%`, height: '100%', background: `linear-gradient(to right, ${TU.macroP}, ${TU.accent})`, borderRadius: 999, transition: 'width 500ms' }} />
-          </div>
-          <div className="flex gap-2.5">
-            {[
-              { l: 'P', v: dayP, c: TU.macroP },
-              { l: 'C', v: dayC, c: TU.macroC },
-              { l: 'F', v: dayF, c: TU.macroF },
-            ].map(m => (
-              <div key={m.l} className="flex-1 flex items-baseline justify-between px-3 py-2 rounded-[10px]" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-sm" style={{ background: m.c }} />
-                  <span className="text-[11px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{m.l}</span>
-                </div>
-                <span style={{ fontFamily: TU.display, fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>{m.v}<span className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>g</span></span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Meals heading */}
-      <div className="px-5 mb-3 flex items-baseline justify-between">
-        <div style={{ fontFamily: TU.display, fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.4 }}>
-          {dayLabels[activeDay]} {weekDates[activeDay]} {'\u2014'} {t('nutrition.mealsLabel', 'meals')}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            // Pull every recipe referenced by this day's planned meals, hand
-            // each to the parent's grocery handler so the existing dedupe +
-            // category mapping kicks in.
-            if (!onAddRecipeToGrocery) {
-              showToast?.(t('nutrition.fillFromMealsError', 'Could not add to list'));
-              return;
-            }
-            let added = 0;
-            const seen = new Set();
-            dayMeals.forEach(m => {
-              const recipe = RECIPES.find(r => r.id === m.id);
-              if (!recipe || seen.has(recipe.id)) return;
-              seen.add(recipe.id);
-              onAddRecipeToGrocery(recipe);
-              added++;
-            });
-            showToast?.(added > 0
-              ? t('nutrition.addedToGroceryList', 'Added to Grocery List')
-              : t('nutrition.fillFromMealsEmpty', 'No active meal plan to pull from'));
-          }}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold focus:outline-none active:scale-95"
-          style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-          <ShoppingCart size={12} />{t('nutrition.addToList', 'Add to list')}
-        </button>
-      </div>
-
-      {/* Meal rows */}
-      <div className="px-4 flex flex-col gap-2.5">
-        {dayMeals.map((meal, mi) => {
-          const mealData = MEALS.find(m => m.id === meal.id) || meal;
-          const mealName = (lang === 'es' && (mealData.name_es || mealData.title_es)) || mealData.name || mealData.title || `Meal ${mi + 1}`;
-          const mealCal = meal.calories || mealData.calories || 0;
-          const mealP = meal.protein || mealData.protein || 0;
-          const mealC = meal.carbs || mealData.carbs || 0;
-          const mealF = meal.fat || mealData.fat || 0;
-          // Label from the meal's own slot tag (set by the generator). Legacy
-          // plans without tags fall back by position — 3-meal days are
-          // breakfast/lunch/DINNER (the old 4-label array called a 3-meal
-          // day's dinner a "snack").
-          const slotKey = meal.slot
-            || (dayMeals.length <= 3
-              ? ['breakfast', 'lunch', 'dinner'][mi]
-              : ['breakfast', 'lunch', 'snack', 'dinner'][mi]);
-          const slot = slotKey ? t(`nutrition.meals.${slotKey}`) : SLOT_LABELS[3];
-          const isEaten = !!meal.eaten;
-
-          // Resolve to the full recipe (ingredients/steps/image) so tapping the
-          // card always opens a populated detail modal. Match by id, then by
-          // name for older plans whose ids drifted from the current MEALS data.
-          const recipeForMeal = RECIPES.find(r => r.id === meal.id)
-            || RECIPES.find(r => (r.title || r.name) === (meal.name || meal.title) && (meal.name || meal.title))
-            || mealData;
-          return (
-            <div key={mi} className="rounded-[18px] p-3" style={{
-              background: 'var(--color-bg-card)',
-              border: '1px solid var(--color-border-subtle)',
-              opacity: isEaten ? 0.72 : 1,
-            }}>
-              <button
-                type="button"
-                onClick={() => { if (onOpenRecipe && recipeForMeal) onOpenRecipe(recipeForMeal); }}
-                className="w-full flex gap-3 items-center mb-2.5 text-left active:scale-[0.985] transition-transform">
-                <FoodTile name={mealName} size={52} seed={mi} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>{slot}</span>
-                    {isEaten && (
-                      <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full"
-                        style={{ background: `${TU.accent}15`, color: TU.accent, letterSpacing: 0.5 }}>
-                        <Check size={9} strokeWidth={3} />{t('nutrition.eaten', 'Eaten')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="truncate mb-1" style={{
-                    fontFamily: TU.display, fontSize: 15, fontWeight: 800,
-                    color: 'var(--color-text-primary)', letterSpacing: -0.2,
-                    textDecoration: isEaten ? 'line-through' : 'none',
-                  }}>{mealName}</div>
-                  <div className="flex gap-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                    <span><strong style={{ color: 'var(--color-text-primary)' }}>{mealCal}</strong> kcal</span>
-                    <span><strong style={{ color: TU.macroP }}>{mealP}P</strong></span>
-                    <span><strong style={{ color: TU.macroC }}>{mealC}C</strong></span>
-                    <span><strong style={{ color: TU.macroF }}>{mealF}F</strong></span>
-                  </div>
-                </div>
-              </button>
-              {/* Action row */}
-              <div className="flex gap-1.5 pt-2.5" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = Array.isArray(plan) ? plan.map(d => ({ ...d })) : [];
-                    const kept = (next[activeDay]?.meals || []).filter((_, idx) => idx !== mi);
-                    next[activeDay] = { ...(next[activeDay] || {}), meals: kept, totals: sumTotals(kept) };
-                    persistPlan(next, macros);
-                    showToast?.(t('nutrition.mealRemoved', 'Removed from plan'));
-                  }}
-                  className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                  style={{ color: 'var(--color-danger)', background: 'transparent', border: 'none' }}>
-                  <Trash2 size={12} />{t('nutrition.removeMeal', 'Remove')}
-                </button>
-                {/* Per-meal "Add to grocery list" — pulls this recipe's
-                    ingredients via the parent's handler, which dedupes and
-                    categorises. Shows a toast if the meal isn't a known recipe. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const recipe = RECIPES.find(r => r.id === meal.id);
-                    if (!recipe || !onAddRecipeToGrocery) {
-                      showToast?.(t('nutrition.fillFromMealsError', 'Could not add to list'));
-                      return;
-                    }
-                    onAddRecipeToGrocery(recipe);
-                    showToast?.(t('nutrition.addedToGroceryList', 'Added to Grocery List'));
-                  }}
-                  className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                  style={{ color: 'var(--color-text-muted)', background: 'transparent', border: 'none' }}>
-                  <ShoppingCart size={12} />{t('nutrition.list', 'List')}
-                </button>
-                <button className="flex-1 py-2 rounded-[10px] text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                  style={{ color: isEaten ? 'var(--color-text-muted)' : TU.accent, background: isEaten ? 'transparent' : `${TU.accent}12`, border: 'none' }}>
-                  <Check size={12} strokeWidth={2.8} />{isEaten ? t('nutrition.unlog', 'Unlog') : t('nutrition.eaten', 'Eaten')}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Logged foods — actually-eaten items the user logged today, shown
-          alongside planned meals so the My Plan view reflects reality, not
-          just the prescription. Each row carries a "Logged" badge so the
-          distinction is unmistakable. */}
-      {(loggedByDay[activeDay]?.length || 0) > 0 && (
-        <div className="px-4 pt-4">
-          <div style={{ fontFamily: TU.display, fontSize: 13, fontWeight: 800, color: 'var(--color-text-muted)', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 }}>
-            {t('nutrition.loggedToday', 'Logged')}
-          </div>
-          <div className="flex flex-col gap-2">
-            {(loggedByDay[activeDay] || []).map((row) => {
-              const fi = row.food_item || {};
-              const dispName = (lang === 'es' && fi.name_es) ? fi.name_es : (fi.name || row.custom_name || t('nutrition.foodDetail', 'Food detail'));
-              return (
-                <div key={row.id} className="rounded-[14px] p-3 flex items-center gap-3"
-                  style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full"
-                        style={{ background: `${TU.accent}15`, color: TU.accent, letterSpacing: 0.5 }}>
-                        <Check size={9} strokeWidth={3} />{t('nutrition.loggedBadge', 'Logged')}
-                      </span>
-                      <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
-                        {t(`nutrition.mealTypes.${row.meal_type || 'snack'}`, row.meal_type || '')}
-                      </span>
-                    </div>
-                    <div className="truncate" style={{ fontFamily: TU.display, fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
-                      {dispName}
-                    </div>
-                    <div className="flex gap-2 text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                      <span><strong style={{ color: 'var(--color-text-primary)' }}>{Math.round(row.calories || 0)}</strong> kcal</span>
-                      <span><strong style={{ color: TU.macroP }}>{Math.round(row.protein_g || 0)}P</strong></span>
-                      <span><strong style={{ color: TU.macroC }}>{Math.round(row.carbs_g || 0)}C</strong></span>
-                      <span><strong style={{ color: TU.macroF }}>{Math.round(row.fat_g || 0)}F</strong></span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Regenerate day button — scopes regeneration to ONLY the active day's
-          meals. Previously this had no onClick, so taps fell through to the
-          page itself; field testers reported it "regenerated the whole week"
-          which was actually the regenerate-week button getting hit through
-          taps near the bottom. */}
-      <div className="px-4 pt-4 pb-2">
-        <button
-          type="button"
-          disabled={regenerating !== null}
-          onClick={async () => {
-            if (!user?.id) return;
-            try {
-              setRegenerating(activeDay);
-              const macroTargets = macros || { calories: 2400, protein: 150, carbs: 250, fat: 80 };
-              // Exclude current day's meals so regeneration produces variation,
-              // and treat all other days' meals as "recent" so the planner pushes
-              // them down for cross-day variety.
-              const currentDayIds = (plan?.[activeDay]?.meals || []).map(m => m.id).filter(Boolean);
-              const otherDayIds = Array.isArray(plan)
-                ? plan.flatMap((d, i) => i === activeDay ? [] : (d?.meals || []).map(m => m.id).filter(Boolean))
-                : [];
-              const fresh = generateDayPlan({
-                targets: {
-                  calories: macroTargets.calories || 2400,
-                  protein: macroTargets.protein || macroTargets.daily_protein_g || 150,
-                  carbs: macroTargets.carbs || macroTargets.daily_carbs_g || 250,
-                  fat: macroTargets.fat || macroTargets.daily_fat_g || 80,
-                },
-                slots: 4,
-                excludeIds: currentDayIds,
-                recentMealIds: otherDayIds,
-                allergies: prefs.allergies,
-                restrictions: prefs.restrictions,
-                avoidIngredients: prefs.avoid,
-                affinities: prefs.affinities,
-              });
-              const nextPlan = Array.isArray(plan) ? [...plan] : [];
-              while (nextPlan.length < 7) nextPlan.push({ meals: [], totals: {} });
-              const newMeals = (fresh.meals || []).map(m => ({
-                id: m.id, name: m.title, name_es: m.title_es,
-                calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat,
-                eaten: false,
-              }));
-              nextPlan[activeDay] = {
-                ...nextPlan[activeDay],
-                meals: newMeals,
-                totals: fresh.totals || {},
-              };
-              await persistPlan(nextPlan, macroTargets);
-              showToast?.(t('nutrition.regenerateDayDone', 'Day regenerated'));
-            } catch (err) {
-              console.error('[regenerateDay]', err);
-              showToast?.(t('nutrition.regenerateDayFailed', 'Could not regenerate day'));
-            } finally {
-              setRegenerating(null);
-            }
-          }}
-          className="w-full py-3.5 rounded-[14px] text-[13px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
-          style={{ background: 'transparent', border: '1.5px dashed var(--color-border-subtle)', color: 'var(--color-text-muted)', opacity: regenerating === activeDay ? 0.6 : 1 }}>
-          <Sparkles size={14} style={{ color: TU.coach }} />
-          {regenerating === activeDay
-            ? t('nutrition.regeneratingDay', 'Regenerating…')
-            : (dayMeals.length > 0
-              ? t('nutrition.regenerateDay', 'Regenerate this day')
-              : t('nutrition.generateDay', 'Generate this day'))}
-        </button>
-      </div>
-
-      {/* Regenerate week CTA */}
-      <div className="px-4 pb-6">
-        <button
-          type="button"
-          disabled={regenerating === 'week'}
-          onClick={async () => {
-            if (!user?.id) return;
-            if (weekOffset < 0) { showToast?.(t('nutrition.cantGeneratePast', "Can't change a past week")); return; }
-            try {
-              setRegenerating('week');
-              const macroTargets = macros || { calories: 2400, protein: 150, carbs: 250, fat: 80 };
-              const targetsArg = {
-                calories: macroTargets.calories || macroTargets.daily_calories || 2400,
-                protein: macroTargets.protein || macroTargets.daily_protein_g || 150,
-                carbs: macroTargets.carbs || macroTargets.daily_carbs_g || 250,
-                fat: macroTargets.fat || macroTargets.daily_fat_g || 80,
-              };
-              // Fill only the days REMAINING in the displayed week: current week ⇒
-              // today→Saturday (earlier days keep whatever was already planned);
-              // a future week fills all 7. Past weeks are blocked above.
-              const fillFrom = weekOffset === 0 ? new Date().getDay() : 0;
-              const existing = Array.isArray(plan) ? plan : [];
-              const wasFresh = !existing.slice(fillFrom).some(d => (d?.meals?.length || 0) > 0);
-              const week = generateWeekPlan({ targets: targetsArg, favorites: [], lang, allergies: prefs.allergies, restrictions: prefs.restrictions, avoidIngredients: prefs.avoid, affinities: prefs.affinities });
-              const nextPlan = Array.from({ length: 7 }, (_, i) => {
-                if (i < fillFrom) return existing[i] || { meals: [], totals: {} };
-                const day = week[i] || { meals: [], totals: {} };
-                const newMeals = (day.meals || []).map(m => ({
-                  id: m.id, name: m.title, name_es: m.title_es,
-                  calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat,
-                  eaten: false,
-                }));
-                return { meals: newMeals, totals: day.totals || {} };
-              });
-              await persistPlan(nextPlan, targetsArg);
-              showToast?.(wasFresh
-                ? t('nutrition.generateWeekDone', 'Week generated')
-                : t('nutrition.regenerateWeekDone', 'Week regenerated'));
-            } catch (err) {
-              console.error('[regenerateWeek]', err);
-              showToast?.(t('nutrition.regenerateWeekFailed', 'Could not regenerate week'));
-            } finally {
-              setRegenerating(null);
-            }
-          }}
-          className="w-full py-3.5 rounded-[14px] text-[14px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
-          style={{ background: TU.coach, color: '#fff', letterSpacing: -0.2 }}>
-          <Sparkles size={15} className="text-white" />
-          {regenerating === 'week'
-            ? t('nutrition.regeneratingWeek', 'Regenerating week…')
-            : (planHasMeals
-              ? t('nutrition.regenerateWeek', 'Regenerate week')
-              : t('nutrition.generateWeek', 'Generate week'))}
-        </button>
-      </div>
-
-      {/* Clear week — destructive, so a two-tap confirm (iOS-safe; window.confirm
-          is dropped in the Capacitor WebView). Only shown when there's a plan. */}
-      {planHasMeals && (
-        <div className="px-4 pb-8 -mt-3">
-          {confirmClear ? (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmClear(false)}
-                className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold active:scale-95"
-                style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}>
-                {t('nutrition.keepPlan', 'Keep')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const empty = Array.from({ length: 7 }, () => ({ meals: [], totals: {} }));
-                  persistPlan(empty, macros);
-                  setConfirmClear(false);
-                  showToast?.(t('nutrition.weekCleared', 'Week cleared'));
-                }}
-                className="flex-1 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
-                <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmClear(true)}
-              className="w-full py-2.5 text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-              style={{ background: 'transparent', border: 'none', color: 'var(--color-text-muted)' }}>
-              <Trash2 size={12} />{t('nutrition.clearWeek', 'Clear week')}
-            </button>
-          )}
-        </div>
-      )}
-
-      <MealPrefsSheet
-        open={showPrefs}
-        onClose={() => setShowPrefs(false)}
-        userId={user?.id}
-        gymId={profile?.gym_id}
-        initialAllergies={prefs.allergies}
-        initialRestrictions={prefs.restrictions}
-        initialAvoid={prefs.avoid}
-        onSaved={({ allergies, restrictions, avoid }) => {
-          setPrefs(p => ({ ...p, allergies, restrictions, avoid }));
-          setShowPrefs(false);
-          showToast?.(t('nutrition.prefsSaved', 'Preferences saved'));
-          loadPrefs();
-        }}
-      />
-    </div>
-  );
-};
-
 // NOTE: The in-page bottom nav (NutritionNav) was removed. Nutrition is not a
 // separate "app" — its sub-pages (Recipes / Saved / Grocery) are reached from
 // the Home view and keep the app's real header + bottom nav. My Plan is the
 // Home "My Plan" button (→ WeeklyMealPlanner); there is no second plan surface.
+// The legacy `MyPlanView` component that used to sit here was the second plan
+// surface — never rendered after that change — and was deleted 2026-07-26. It
+// still read the old positional `plan_data` shape, so reviving it would fight
+// the localStorage+mirror path that WeeklyMealPlanner writes.
 
 // ── MAIN ─────────────────────────────────────────────────────
 export default function Nutrition({ embedded = false }) {
@@ -7025,26 +6688,55 @@ export default function Nutrition({ embedded = false }) {
   // barcode + search stay. A layer ABOVE the per-user aiConsent gate.
   const aiEnabled = useFeatureEnabled('ai');
   const lang = i18n.language || 'en';
-  // Whether this page is the actual route + tab the user is on right now.
-  // Used to gate document.body portals (the floating scan FAB, fullscreen
-  // sub-view overlays) so they don't bleed onto other pages while
-  // Nutrition is kept alive in the background via display:none in
-  // MemberRoutes — and, when embedded inside Progress, while Progress
-  // keeps the nutrition tab mounted via loadedTabs even when the user
-  // swipes to another tab.
+  // Whether this page is ACTUALLY ON SCREEN right now. Used to gate
+  // document.body portals (the floating scan FAB) so they don't bleed onto
+  // other pages while Nutrition stays mounted in the background — either via
+  // MemberRoutes' display:none keep-alive, or via Progress keeping the
+  // nutrition tab mounted while SwipeableTabView hides it with
+  // visibility:hidden. Neither of those hides a PORTALED element, hence the
+  // explicit gate.
   //
-  // Two entry routes:
-  //   /nutrition           — standalone, always active when this is the path
-  //   /progress?tab=nutrition — embedded inside Progress, ONLY active when
-  //                          the URL's tab query is 'nutrition' (Progress
-  //                          uses SwipeableTabView with visibility:hidden,
-  //                          which doesn't hide portaled elements)
+  // This used to read the URL (`/progress?tab=nutrition`), which drifts: tapping
+  // "Progress" in the bottom nav drops the ?tab param while the tab view is
+  // still showing Nutrition, so the FAB vanished off a visible page. Ask the DOM
+  // instead — it's the same thing the tab view's active index controls, and it
+  // covers both hosts with one rule.
   const nutritionLocation = useLocation();
-  const [nutritionSearchParams] = useSearchParams();
-  const isPageActive = embedded
-    ? (nutritionLocation.pathname === '/progress'
-       && (nutritionSearchParams.get('tab') || '').toLowerCase() === 'nutrition')
-    : nutritionLocation.pathname === '/nutrition';
+  const [nutritionRootEl, setNutritionRootEl] = useState(null);
+  // Starts false so a portal can never paint on top of another page for a frame
+  // before the first measurement lands.
+  const [isPageActive, setIsPageActive] = useState(false);
+  useEffect(() => {
+    const el = nutritionRootEl;
+    if (!el) return undefined;
+    // Visible = no ancestor is display:none (keep-alive), visibility:hidden
+    // (inactive swipe panel) or aria-hidden (inactive tab panel / route).
+    const compute = () => {
+      let node = el;
+      while (node && node.nodeType === 1) {
+        if (node.getAttribute('aria-hidden') === 'true') return false;
+        const cs = window.getComputedStyle(node);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        if (node === document.body) break;
+        node = node.parentElement;
+      }
+      return true;
+    };
+    const update = () => setIsPageActive(compute());
+    update();
+    // Observe the ancestor chain — the host toggles style/aria on exactly these
+    // nodes when the route or the active tab changes.
+    const observers = [];
+    let node = el;
+    while (node && node.nodeType === 1) {
+      const mo = new MutationObserver(update);
+      mo.observe(node, { attributes: true, attributeFilter: ['style', 'class', 'aria-hidden', 'hidden'] });
+      observers.push(mo);
+      if (node === document.body) break;
+      node = node.parentElement;
+    }
+    return () => observers.forEach(o => o.disconnect());
+  }, [nutritionRootEl, nutritionLocation.pathname]);
 
   const [view, setViewRaw] = useState('home');
   const setView = useCallback((v) => {
@@ -7056,12 +6748,25 @@ export default function Nutrition({ embedded = false }) {
     // Also scroll the nearest scrollable parent
     document.querySelector('.min-h-screen')?.scrollTo(0, 0);
   }, []);
-  const [targets, setTargets] = useState(null);
-  const [todayLogs, setTodayLogs] = useState([]);
-  const [onboarding, setOnboarding] = useState(null);
-  const [bodyweight, setBodyweight] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [favorites, setFavorites] = useState([]);
+  // ── Cached server state ────────────────────────────────────────────────
+  // Nutrition was the last member page still painting a full-page skeleton on
+  // EVERY visit — targets/logs/favorites were plain useState, so bouncing to
+  // Progress and back re-showed the loader even though nothing had changed.
+  //
+  // Today's food log is keyed by DATE as well as user: without that, opening the
+  // app the morning after would paint yesterday's meals from cache and then have
+  // them vanish a moment later, which reads as a bug. A new day is simply a cache
+  // miss. The other four are day-independent and cache on the user alone.
+  const nCacheKey = `nutrition-${user?.id || 'anon'}`;
+  const logsCacheKey = `${nCacheKey}-logs-${todayStr()}`;
+  const [targets, setTargets] = useCachedState(`${nCacheKey}-targets`, null);
+  const [todayLogs, setTodayLogs] = useCachedState(logsCacheKey, []);
+  const [onboarding, setOnboarding] = useCachedState(`${nCacheKey}-onboarding`, null);
+  const [bodyweight, setBodyweight] = useCachedState(`${nCacheKey}-bodyweight`, null);
+  // Targets drive the macro rings — the thing the skeleton is standing in for.
+  // If we have them cached, paint immediately and revalidate silently.
+  const [loading, setLoading] = useState(!hasCachedState(`${nCacheKey}-targets`));
+  const [favorites, setFavorites] = useCachedState(`${nCacheKey}-favorites`, []);
   const [recentFoods, setRecentFoods] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [logFood, setLogFood] = useState(null);
@@ -7289,10 +6994,13 @@ export default function Nutrition({ embedded = false }) {
   };
 
   // `opts.day` (YYYY-MM-DD) tags the ingredient with the plan day it's needed —
-  // so the grocery list can section by day → then food. Omitted for one-off
-  // "Add to grocery" from a recipe (those collect under "Anytime").
+  // so the grocery list can section by day → then food. `opts.slot` is the
+  // planner slot key (breakfast / snack1 / dinner …) so each line can say WHICH
+  // meal it's for. Both are omitted for a one-off "Add to grocery" from a recipe
+  // (those collect under "Anytime").
   const handleAddToGrocery = (recipe, opts = {}) => {
     const day = opts.day || null;
+    const slot = opts.slot || null;
     const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
     const recipeTitle = (lang === 'es' && recipe.title_es) ? recipe.title_es : recipe.title;
     setGroceryList(prev => {
@@ -7317,6 +7025,8 @@ export default function Nutrition({ embedded = false }) {
             fromRecipe: recipeTitle,
             recipeId: recipe.id,                                     // for "already added" checks in the planner
             day,
+            slot,                                                    // planner slot key → "Breakfast" / "Snack 1" label
+
             addedDate: toLocalDateStr(new Date()),                   // when it hit the list (fallback grouping for undated items)
             checked: false,
           };
@@ -7371,22 +7081,19 @@ export default function Nutrition({ embedded = false }) {
         : i));
   }, []);
 
-  // "Lista nueva" / "New list" — clears the grocery list (with confirm).
+  // "Lista nueva" / "New list" — clears the grocery list. The CONFIRM lives in
+  // GroceryView's own modal (same style as its remove / clear-checks dialogs);
+  // window.confirm was a native iOS alert that broke the app's look and is
+  // unreliable in the Capacitor WebView.
   const handleClearGroceryList = useCallback(() => {
     if (groceryList.length === 0) {
       // Already empty — nothing to do, but acknowledge so the click isn't silent.
       showToast?.(t('nutrition.groceryListEmpty', 'Your grocery list is empty'));
       return;
     }
-    const ok = window.confirm(
-      lang === 'es'
-        ? '¿Vaciar tu lista de compras y empezar una nueva?'
-        : 'Clear your grocery list and start a new one?'
-    );
-    if (!ok) return;
     setGroceryList([]);
     setGroceryAdded(new Set());
-  }, [groceryList.length, lang, showToast, t]);
+  }, [groceryList.length, showToast, t]);
 
   // "Rellenar desde comidas" / "Fill from meals" — pulls ingredients from the
   // SAME weekly plan the "My Plan" tab shows: localStorage `meal_plan_<uid>_<ws>`
@@ -7434,7 +7141,8 @@ export default function Nutrition({ embedded = false }) {
           const dedup = `${recipe.id}_${date}`;
           if (!recipe.ingredients?.length || seen.has(dedup)) return;
           seen.add(dedup);
-          handleAddToGrocery(recipe, { day: date });
+          // Carry the slot through so the list can group + label by meal.
+          handleAddToGrocery(recipe, { day: date, slot });
           added++;
         });
       });
@@ -7452,7 +7160,12 @@ export default function Nutrition({ embedded = false }) {
   // Load data
   const load = useCallback(async () => {
     if (!user) { setLoading(false); return; }
-    setLoading(true);
+    // Only fall back to the skeleton when there is genuinely nothing to show.
+    // With cache present this is a silent background revalidate — critically,
+    // load() re-runs on every auth-token refresh (and after the camera returns
+    // on Android), and flipping loading=true there would blank a fully-painted
+    // page mid-use.
+    if (!hasCachedState(`${nCacheKey}-targets`)) setLoading(true);
 
     try {
     const [{ data: tgt }, { data: ob }, { data: bw }, { data: foodLogs }, { data: favs }] = await Promise.all([
@@ -7491,14 +7204,49 @@ export default function Nutrition({ embedded = false }) {
     }
     setTargets(activeTargets ?? null);
     } catch {
-      // A rejected query must not strand the full-page skeleton (no cache paint
-      // on this page); the offline banner covers the hard-offline case.
+      // A rejected query must not strand the full-page skeleton; the offline
+      // banner covers the hard-offline case. On a revisit the cached values are
+      // already on screen, so a failed revalidate is invisible — which is the
+      // point: offline now shows your last-known macros instead of a skeleton.
     } finally {
       setLoading(false);
     }
-  }, [user, profile]);
+  }, [user, profile, nCacheKey, setTargets, setTodayLogs, setOnboarding, setBodyweight, setFavorites]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Date-keyed cache entries would otherwise accumulate one per day, forever —
+  // ~100 food logs each, and useCachedState has no eviction of its own. Left
+  // alone that eventually trips the localStorage quota, at which point the hook
+  // silently stops persisting for EVERY page that uses it, not just this one.
+  // Drop any nutrition log bucket that isn't today's.
+  useEffect(() => {
+    const keep = `${nCacheKey}-logs-${todayStr()}`;
+    try {
+      const stale = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k?.startsWith(`ucs:${nCacheKey}-logs-`)) continue;
+        const bare = k.slice(4); // strip the hook's "ucs:" prefix
+        if (bare !== keep) stale.push(bare);
+      }
+      stale.forEach(clearCachedState);
+    } catch { /* localStorage unavailable — nothing to prune */ }
+  }, [nCacheKey]);
+
+  // Midnight rollover. `logsCacheKey` carries the date, but useCachedState's
+  // initializer only runs on mount — so an app left open past midnight would keep
+  // yesterday's meals in state AND (on the next write) persist them under today's
+  // key, poisoning tomorrow's first paint. Reset and refetch when the day flips.
+  // The old plain-useState version never self-healed here at all; it showed
+  // yesterday's log until the page was remounted.
+  const logsKeyRef = useRef(logsCacheKey);
+  useEffect(() => {
+    if (logsKeyRef.current === logsCacheKey) return;
+    logsKeyRef.current = logsCacheKey;
+    setTodayLogs([]);
+    load();
+  }, [logsCacheKey, load, setTodayLogs]);
 
   useEffect(() => {
     if (!user) return;
@@ -8083,6 +7831,57 @@ export default function Nutrition({ embedded = false }) {
     }
   };
 
+  // Ordered slot list for the "Add to plan" picker — the member's own schedule
+  // (Breakfast · Snack 1 · Lunch …), not a hardcoded four.
+  const planSlotCount = useMemo(() => loadMealSchedule(user?.id).count, [user?.id]);
+  const planSlotList = useMemo(() => orderedSlotKeys(user?.id, planSlotCount), [user?.id, planSlotCount]);
+
+  // ADD TO PLAN — the sibling of handleLogFood. Logging records what you ATE;
+  // this places the food into a future day/slot of the weekly plan instead.
+  // Writes generated_meal_plans directly (this component has no persistPlan —
+  // that lives in WeeklyMealPlanner), using the SAME Sunday-anchored LOCAL date
+  // key: toISOString() rolls to the next day in UTC-4 after 20:00, which is how
+  // evening-saved plans used to vanish.
+  // ADD TO PLAN — the sibling of handleLogFood. Logging records what you ATE;
+  // this places the food into a chosen day/slot of the weekly plan instead.
+  //
+  // Goes through placeMealInPlan → writePlanWeek, which is the SAME path the
+  // planner itself uses: localStorage first (what My Plan actually reads, so
+  // the meal shows up immediately) plus a mirror to generated_meal_plans (so it
+  // survives reinstall and the coach can see it). Writing generated_meal_plans
+  // directly would use the OTHER, positional plan_data shape and the member's
+  // plan would not pick it up.
+  const handleAddFoodToPlan = async ({ food, servings, date, slot, cal, pro, carb, fat }) => {
+    if (!user?.id) return;
+    try {
+      placeMealInPlan({
+        userId: user.id,
+        gymId: profile?.gym_id,
+        date,
+        slot,
+        targets,
+        meal: {
+          id: food.id ?? null,
+          title: food.name || '',
+          title_es: food.name_es || null,
+          calories: Math.round(cal) || 0,
+          protein: Math.round(pro) || 0,
+          carbs: Math.round(carb) || 0,
+          fat: Math.round(fat) || 0,
+          servings: servings || 1,
+          image: food.image_url || food.image || null,
+          slot,
+          eaten: false,
+        },
+      });
+      showToast(t('nutrition.addedToPlan', 'Added to your plan'), 'success');
+      setLogFood(null);
+    } catch (e) {
+      console.warn('[nutrition] add to plan failed', e?.message || e);
+      showToast(t('nutrition.addToPlanFailed', 'Could not add to your plan'), 'error');
+    }
+  };
+
   const handleLogFood = async ({ food, servings, mealType, cal, pro, carb, fat }) => {
     // Fullscreen "Logging…" overlay while the insert is in flight — without
     // it the tap felt dead on slow networks and read as the app freezing.
@@ -8383,9 +8182,11 @@ export default function Nutrition({ embedded = false }) {
     onOpenFavorite: openScannedFavorite,
   };
 
+  // NOTE: the root <div> carries the ref that powers the on-screen check gating
+  // the portaled scan FAB (see isPageActive above).
   return (
     <FadeIn>
-    <div className={embedded ? '' : 'min-h-screen bg-[#05070B]'}>
+    <div ref={setNutritionRootEl} className={embedded ? '' : 'min-h-screen bg-[#05070B]'}>
       <div className={embedded ? '' : 'mx-auto w-full max-w-[480px] md:max-w-4xl lg:max-w-6xl'}>
         {/* Home view always renders inline */}
         {view === 'home' && (
@@ -8495,6 +8296,7 @@ export default function Nutrition({ embedded = false }) {
             {view === 'grocery'  && (
               <GroceryView
                 setView={setView}
+                userId={user?.id}
                 groceryList={groceryList}
                 onToggleItem={handleToggleGroceryItem}
                 onClearChecked={handleClearChecked}
@@ -8692,6 +8494,9 @@ export default function Nutrition({ embedded = false }) {
         food={logFood}
         onClose={() => setLogFood(null)}
         onLog={handleLogFood}
+        onAddToPlan={handleAddFoodToPlan}
+        planSlots={planSlotList}
+        mealCount={planSlotCount}
         lang={lang}
       />
 
@@ -9306,6 +9111,9 @@ export default function Nutrition({ embedded = false }) {
         food={logFood}
         onClose={() => setLogFood(null)}
         onLog={handleLogFood}
+        onAddToPlan={handleAddFoodToPlan}
+        planSlots={planSlotList}
+        mealCount={planSlotCount}
         lang={lang}
       />
       {scanResult && (

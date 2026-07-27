@@ -10,13 +10,77 @@ import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { TK, FK, ChartCard, LineChart } from './analyticsKit';
 
 /**
+ * True when an RPC failed *because the function isn't on this database* —
+ * PGRST202 is PostgREST "not found in the schema cache", 42883 is Postgres
+ * "function does not exist", and some gateways surface a bare 404. Any other
+ * error (including the RPC's own "Access denied: gym boundary violation") is a
+ * real failure and must propagate to the ErrorCard.
+ *
+ * Why we need this at all: the app ships to web AND to installed native
+ * builds, so a client running against a DB without migration 0649 — an old
+ * install, or a rolled-back database — must degrade to the legacy path rather
+ * than white-screening the whole analytics page.
+ */
+const isRpcMissing = (err) => {
+  if (!err) return false;
+  if (err.code === 'PGRST202' || err.code === '42883') return true;
+  if (err.status === 404 || err.statusCode === 404) return true;
+  return /could not find .*function|schema cache/i.test(err.message || '');
+};
+
+/**
  * Pooled retention SURVIVAL CURVE. x = tenure month (0 = first 30 days),
  * y = % of members who logged ≥1 completed workout in that window, pooled
  * across every member whose window has fully elapsed. Signup-relative,
  * activity-based — `membership_status` is never read. `monthsBack` controls
  * how many tenure months to plot ('All' → 12).
+ *
+ * Aggregated SERVER-SIDE by `admin_retention_curve` (migration 0649). It has
+ * to be: PostgREST clamps every response to max_rows (1000 here — verified in
+ * prod), and `.limit()` cannot raise that, so the legacy client path below
+ * pooled a truncated slice of members *and* of sessions and rendered a
+ * confident, specific, WRONG number — measured at ~2-6% for a 1,500-member
+ * gym whose real curve sits around 60-70%. The SQL mirrors the JS below
+ * one-for-one (same 30-day windows, same "fully elapsed" eligibility rule,
+ * same membership_status blindness), so the chart shape never changes.
  */
 async function fetchRetentionCurve(gymId, monthsBack, t) {
+  const horizon = monthsBack || 12;
+
+  const { data: rows, error } = await supabase.rpc('admin_retention_curve', {
+    p_gym_id: gymId,
+    p_months: horizon,
+  });
+
+  if (!error) {
+    // The SQL only emits fully-elapsed windows and eligibility is monotonically
+    // decreasing in tenure, so its rows are exactly the contiguous prefix the
+    // legacy `if (eligible === 0) break` produced — no re-truncation needed.
+    return (rows || []).map((r) => {
+      const offset = Number(r.offset_month);
+      const eligible = Number(r.eligible) || 0;
+      const retained = Number(r.retained) || 0;
+      return {
+        label: t('admin.analytics.tenureMonth', { n: offset, defaultValue: `Mo ${offset}` }),
+        offset,
+        retention: eligible > 0 ? Math.round((retained / eligible) * 100) : 0,
+        retained,
+        eligible,
+      };
+    });
+  }
+
+  if (!isRpcMissing(error)) throw error;
+  return fetchRetentionCurveClientSide(gymId, monthsBack, t);
+}
+
+/**
+ * LEGACY fallback — the original in-browser aggregation, kept verbatim so a
+ * client on a pre-0649 database still renders a curve (truncated at max_rows,
+ * i.e. under-reported, but never a crash). Do not delete: it is the only path
+ * an old installed native build has.
+ */
+async function fetchRetentionCurveClientSide(gymId, monthsBack, t) {
   const now = new Date();
   const horizon = monthsBack || 12;
   const fromIso = subDays(now, horizon * 30).toISOString();

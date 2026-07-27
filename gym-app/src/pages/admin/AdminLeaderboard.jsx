@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { subDays } from 'date-fns';
@@ -86,7 +86,6 @@ function FilterGroup({ label, items, activeKey, onPick, disabledKeys = [], disab
 export default function AdminLeaderboard() {
   const { t } = useTranslation('pages');
   const { profile } = useAuth();
-  const queryClient = useQueryClient();
   const gymId = profile?.gym_id;
   const [metric, setMetric] = useState('volume');
   const [period, setPeriod] = useState('30');
@@ -152,19 +151,26 @@ export default function AdminLeaderboard() {
     staleTime: 60_000,
   });
 
-  // Realtime subscription
-  useEffect(() => {
-    if (!gymId) return;
-    const channel = supabase.channel('leaderboard-realtime')
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'workout_sessions',
-        filter: `gym_id=eq.${gymId}`,
-      }, () => queryClient.invalidateQueries({ queryKey: adminKeys.leaderboard(gymId) }))
-      .subscribe((status, err) => {
-        if (err) console.error('Realtime subscription error:', err);
-      });
-    return () => supabase.removeChannel(channel);
-  }, [gymId, queryClient]);
+  // NO REALTIME HERE — deliberate. `workout_sessions` is NOT a member of the
+  // `supabase_realtime` publication. Verified against production:
+  //   SELECT tablename FROM pg_publication_tables
+  //    WHERE pubname = 'supabase_realtime';
+  //   -> challenge_prizes, earned_rewards, notifications,
+  //      reward_redemptions, session_cues, session_drafts
+  // The `leaderboard-realtime` channel that used to sit here (workout_sessions
+  // INSERT filtered to this gym → invalidateQueries) therefore never fired once.
+  // It held an idle realtime channel open on every admin leaderboard view and
+  // made this file read as though the board live-updated.
+  //
+  // Publishing `workout_sessions` is NOT the fix: one 2,000-member gym would
+  // emit an estimated ~17.3M realtime messages/month against a 5M/month plan
+  // allowance. Staying unpublished is the deliberate, correct configuration —
+  // please do not "restore" the subscription.
+  //
+  // The board refreshes through React Query instead: `staleTime: 30_000` +
+  // `refetchOnMount: true` (main.jsx defaults) means every visit past the
+  // freshness window refetches in the background, and changing metric / period
+  // / tier changes the query key, which fetches immediately.
 
   const scoreLabel = t(`admin.leaderboard.scoreLabel.${metric}`, 'pts');
   const metricLabel = t(`admin.leaderboard.metrics.${metric}`, metric);

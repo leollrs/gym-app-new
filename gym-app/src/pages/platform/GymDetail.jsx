@@ -640,9 +640,22 @@ export default function GymDetail() {
   };
   const fetchActivity = async () => { const { data: sess, error: sessErr } = await supabase.from('workout_sessions').select('id, profile_id, status, started_at, total_volume_lbs, profiles(full_name)').eq('gym_id', gymId).order('started_at', { ascending: false }).limit(20); if (!sessErr) setSessions(sess ?? []); const { data: ci, error: ciErr } = await supabase.from('check_ins').select('id, profile_id, checked_in_at, profiles(full_name)').eq('gym_id', gymId).order('checked_in_at', { ascending: false }).limit(20); if (!ciErr) setCheckIns(ci ?? []); markLoad('activity', sessErr || ciErr); };
   const fetchInvites = async () => { const { data, error } = await supabase.from('gym_invites').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setInvites(data ?? []); markLoad('invites', error); };
-  const fetchChallenges = async () => { const { data, error } = await supabase.from('challenges').select('*, challenge_participants(id)').eq('gym_id', gymId).order('start_date', { ascending: false }); if (!error) setChallenges(data ?? []); markLoad('challenges', error); };
+  // Embedded COUNT, not embedded rows. `challenge_participants(id)` shipped one
+  // row per participant of every challenge this gym ever ran — thousands of
+  // uuids over the wire — purely so the content tab could read `.length`. Worse,
+  // PostgREST clamps the whole response at 1000 rows, so a gym with a few
+  // popular challenges got a TRUNCATED embed and displayed a participant count
+  // that was simply wrong. `challenge_participants(count)` returns [{count:N}]
+  // (one row per challenge, computed server-side) — exact and ~free.
+  // GymContentTab reads `c.challenge_participants?.length`, so re-shape the
+  // aggregate into something whose `.length` IS the count; `new Array(n)` is
+  // sparse, so it allocates a length and no elements.
+  const fetchChallenges = async () => { const { data, error } = await supabase.from('challenges').select('*, challenge_participants(count)').eq('gym_id', gymId).order('start_date', { ascending: false }); if (!error) setChallenges((data ?? []).map(c => ({ ...c, challenge_participants: new Array(Number(c.challenge_participants?.[0]?.count) || 0) }))); markLoad('challenges', error); };
   const fetchPrograms = async () => { const { data, error } = await supabase.from('gym_programs').select('*').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setPrograms(data ?? []); markLoad('programs', error); };
-  const fetchAchievements = async () => { const { data, error } = await supabase.from('achievement_definitions').select('*, user_achievements(id)').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setAchievements(data ?? []); markLoad('achievements', error); };
+  // Same swap as fetchChallenges: `user_achievements(id)` pulled every unlock
+  // row for every badge (a 500-member gym with 30 badges = tens of thousands of
+  // rows, capped at 1000 → wrong "earned" numbers) to call `.length` on it.
+  const fetchAchievements = async () => { const { data, error } = await supabase.from('achievement_definitions').select('*, user_achievements(count)').eq('gym_id', gymId).order('created_at', { ascending: false }); if (!error) setAchievements((data ?? []).map(a => ({ ...a, user_achievements: new Array(Number(a.user_achievements?.[0]?.count) || 0) }))); markLoad('achievements', error); };
   // P2-8: read the REAL rewards catalog (gym_rewards, 0187) — the old code read
   // reward_points (per-member balances, select_own-only RLS) → permanently empty.
   const fetchRewards = async () => { try { const { data, error } = await supabase.from('gym_rewards').select('id, name, name_es, description, description_es, cost_points, reward_type, emoji_icon, is_active, sort_order').eq('gym_id', gymId).order('sort_order', { ascending: true }).order('cost_points', { ascending: true }); if (error) { setRewardsAvailable(false); } else { setRewardsAvailable(data ?? []); } } catch { setRewardsAvailable(false); } };

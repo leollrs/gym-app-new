@@ -1572,7 +1572,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
         // Object key must NOT include the bucket name — the INSERT RLS policy
         // requires foldername[1] === auth.uid().
         const storagePath = `${user.id}/${Date.now()}.jpg`;
-        const { error: uploadErr } = await supabase.storage.from('social-posts').upload(storagePath, cleanPhoto, { contentType: 'image/jpeg' });
+        const { error: uploadErr } = await supabase.storage.from('social-posts').upload(storagePath, cleanPhoto, { cacheControl: '31536000', contentType: 'image/jpeg' });
         if (uploadErr) { rollback(genericError); return; }
         const { data: signedData } = await supabase.storage.from('social-posts').createSignedUrl(storagePath, 3600);
         signedPhotoUrl = signedData?.signedUrl ?? null;

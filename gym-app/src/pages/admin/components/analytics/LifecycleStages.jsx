@@ -6,7 +6,86 @@ import logger from '../../../../lib/logger';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { TK, FK, Card, LifecycleBar } from './analyticsKit';
 
+/**
+ * True when an RPC failed *because the function isn't on this database* —
+ * PGRST202 is PostgREST "not found in the schema cache", 42883 is Postgres
+ * "function does not exist", and some gateways surface a bare 404. Anything
+ * else (including the RPC's own "Access denied: gym boundary violation") is a
+ * real failure and must propagate to the ErrorCard.
+ *
+ * The app ships to web AND to installed native builds, so a client running
+ * against a DB without migration 0649 — an old install, or a rolled-back
+ * database — has to degrade to the legacy path, not white-screen the page.
+ */
+const isRpcMissing = (err) => {
+  if (!err) return false;
+  if (err.code === 'PGRST202' || err.code === '42883') return true;
+  if (err.status === 404 || err.statusCode === 404) return true;
+  return /could not find .*function|schema cache/i.test(err.message || '');
+};
+
+// Display metadata for the six buckets. Shared by both fetch paths so the
+// order, colours and i18n keys can never drift between them.
+const STAGE_META = [
+  { key: 'new',        labelKey: 'lifecycleNew',        color: 'var(--color-info)' },
+  { key: 'onboarding', labelKey: 'lifecycleOnboarding', color: 'var(--color-coach)' },
+  { key: 'active',     labelKey: 'lifecycleActive',     color: 'var(--color-success)' },
+  { key: 'atRisk',     labelKey: 'lifecycleAtRisk',     color: 'var(--color-warning)' },
+  { key: 'churned',    labelKey: 'lifecycleChurned',    color: 'var(--color-danger)' },
+  { key: 'wonBack',    labelKey: 'lifecycleWonBack',    color: 'var(--color-accent)' },
+];
+
+const toStages = (counts, total) =>
+  STAGE_META.map(s => ({
+    ...s,
+    count: counts[s.key] || 0,
+    pct: total > 0 ? Math.round(((counts[s.key] || 0) / total) * 100) : 0,
+  }));
+
+/**
+ * Member lifecycle histogram.
+ *
+ * Aggregated SERVER-SIDE by `admin_lifecycle_stages` (migration 0649).
+ * PostgREST clamps every response to max_rows (1000 here — verified in prod)
+ * and `.limit(20000)` cannot raise it, so the legacy client path below
+ * classified a truncated roster against truncated 30/90-day session counts:
+ * "At Risk" understated and "Active" overstated, on the one panel whose whole
+ * job is warning about churn. The SQL replicates the branch priority
+ * (churned > wonBack > atRisk > active > onboarding > new > active) exactly so
+ * no member silently moves bucket; its one deliberate correction is taking the
+ * LATEST churn_risk_scores row per member instead of an arbitrary historical
+ * one, which is what this chart always meant.
+ */
 async function fetchLifecycleData(gymId) {
+  const { data: rows, error } = await supabase.rpc('admin_lifecycle_stages', { p_gym_id: gymId });
+
+  if (!error) {
+    // TABLE-returning function → one-row array.
+    const r = (rows || [])[0] || {};
+    const counts = {
+      new:        Number(r.stage_new)        || 0,
+      onboarding: Number(r.stage_onboarding) || 0,
+      active:     Number(r.stage_active)     || 0,
+      atRisk:     Number(r.stage_at_risk)    || 0,
+      churned:    Number(r.stage_churned)    || 0,
+      wonBack:    Number(r.stage_won_back)   || 0,
+    };
+    // The buckets partition the roster, so total_members === sum(counts) — the
+    // same denominator the legacy path used (`members.length`).
+    return toStages(counts, Number(r.total_members) || 0);
+  }
+
+  if (!isRpcMissing(error)) throw error;
+  return fetchLifecycleDataClientSide(gymId);
+}
+
+/**
+ * LEGACY fallback — the original in-browser classification, kept verbatim so a
+ * client on a pre-0649 database still renders the bar (truncated at max_rows,
+ * i.e. At Risk under-counted, but never a crash). Do not delete: it is the
+ * only path an old installed native build has.
+ */
+async function fetchLifecycleDataClientSide(gymId) {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
@@ -87,14 +166,7 @@ async function fetchLifecycleData(gymId) {
   });
 
   const total = (members || []).length;
-  return [
-    { key: 'new', labelKey: 'lifecycleNew', color: 'var(--color-info)', count: counts.new },
-    { key: 'onboarding', labelKey: 'lifecycleOnboarding', color: 'var(--color-coach)', count: counts.onboarding },
-    { key: 'active', labelKey: 'lifecycleActive', color: 'var(--color-success)', count: counts.active },
-    { key: 'atRisk', labelKey: 'lifecycleAtRisk', color: 'var(--color-warning)', count: counts.atRisk },
-    { key: 'churned', labelKey: 'lifecycleChurned', color: 'var(--color-danger)', count: counts.churned },
-    { key: 'wonBack', labelKey: 'lifecycleWonBack', color: 'var(--color-accent)', count: counts.wonBack },
-  ].map(s => ({ ...s, pct: total > 0 ? Math.round((s.count / total) * 100) : 0 }));
+  return toStages(counts, total);
 }
 
 export default function LifecycleStages({ gymId }) {

@@ -15,6 +15,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { loadGymChurnScores, estimateChurnScoreFallback, fetchChurnFallback, autoDetectReturns } from '../../lib/churnScore';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { exportCSV } from '../../lib/csvExport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
@@ -70,7 +71,11 @@ async function fetchChurnData(gymId) {
   try {
     const [challengeRes, winBackRes] = await Promise.all([
       supabase.from('challenges').select('id, name').eq('gym_id', gymId).gte('end_date', new Date().toISOString()).order('name'),
-      supabase.from('win_back_attempts').select('id, user_id, message, offer, outcome, created_at').eq('gym_id', gymId).order('created_at', { ascending: false }),
+      // Paged. Was an unbounded gym-scoped read → PostgREST's 1000-row cap, so the
+      // Win-Back tab count, `returnedCount`, and the per-campaign A/B stats below
+      // were all computed on the newest 1000 attempts only. Stable (created_at
+      // desc, id asc) order so OFFSET paging can't skip or duplicate an attempt.
+      selectAllRows((lo, hi) => supabase.from('win_back_attempts').select('id, user_id, message, offer, outcome, created_at').eq('gym_id', gymId).order('created_at', { ascending: false }).order('id', { ascending: true }).range(lo, hi)),
     ]);
     challenges = challengeRes.data || [];
     winBackRows = winBackRes.data || [];
@@ -80,12 +85,21 @@ async function fetchChurnData(gymId) {
 
   // Optional queries — tables/columns may not exist before migrations
   try {
-    const r = await supabase.from('admin_contact_log').select('id, admin_id, member_id, method, note, created_at').eq('gym_id', gymId).order('created_at', { ascending: false });
+    // Paged: `contactedIds` drives the "Needs Action" vs "Contacted" split and the
+    // needs-action filter. Truncated here, already-contacted members reappeared in
+    // the action queue and admins re-messaged people they'd just called.
+    const r = await selectAllRows((lo, hi) => supabase.from('admin_contact_log').select('id, admin_id, member_id, method, note, created_at').eq('gym_id', gymId).order('created_at', { ascending: false }).order('id', { ascending: true }).range(lo, hi));
     if (!r.error) contactLogRows = r.data || [];
   } catch (_) {}
 
   try {
-    const r = await supabase.from('win_back_attempts').select('id, variant, message_template, responded_at').eq('gym_id', gymId);
+    // Second pass over the SAME table for the v2 columns (kept separate because they
+    // may not exist pre-migration). This one had NO .order() at all, so its arbitrary
+    // 1000 rows overlapped the first query's 1000 only by chance — the merge landed
+    // on that intersection and every other attempt lost its variant/responded_at,
+    // silently deflating the campaign response + return rates. Same order + paging
+    // as above, so extMap now covers every row in winBackRows.
+    const r = await selectAllRows((lo, hi) => supabase.from('win_back_attempts').select('id, variant, message_template, responded_at').eq('gym_id', gymId).order('created_at', { ascending: false }).order('id', { ascending: true }).range(lo, hi));
     if (!r.error && r.data) {
       const extMap = {};
       for (const row of r.data) extMap[row.id] = row;
@@ -417,21 +431,38 @@ export default function AdminChurn() {
     needsActionMembers.reduce((top, m) => (m.churnScore > (top?.churnScore ?? -1) ? m : top), null)
   ), [needsActionMembers]);
 
+  // Contact logs bucketed by member, timestamps parsed ONCE. Both queries above
+  // are now fully paged, so these lists are no longer capped at 1000 rows each —
+  // the old `contactLogs.filter(...)` inside the per-attempt loop below was
+  // O(attempts x logs) with a `new Date()` per comparison, i.e. tens of millions
+  // of Date parses on a real gym's history. Paging without this would have traded
+  // a fast-wrong render for a frozen-right one.
+  const contactLogsByMember = useMemo(() => {
+    const map = new Map();
+    for (const l of contactLogs) {
+      const bucket = map.get(l.member_id);
+      const entry = { method: l.method, at: new Date(l.created_at).getTime() };
+      if (bucket) bucket.push(entry); else map.set(l.member_id, [entry]);
+    }
+    return map;
+  }, [contactLogs]);
+
   // Attribution breakdown for win-back tab
   const attributionStats = useMemo(() => {
     const stats = {};
     for (const attempt of winBackAttempts) {
-      const relatedLogs = contactLogs.filter(
-        l => l.member_id === attempt.user_id
-          && Math.abs(new Date(l.created_at) - new Date(attempt.created_at)) < 3600000
-      );
-      const method = relatedLogs.length > 0 ? relatedLogs[0].method : 'in_app_message';
+      const attemptAt = new Date(attempt.created_at).getTime();
+      // Same rule as before: first log for this member within an hour of the
+      // attempt wins; no match → the attempt was an in-app message.
+      const related = (contactLogsByMember.get(attempt.user_id) || [])
+        .find(l => Math.abs(l.at - attemptAt) < 3600000);
+      const method = related ? related.method : 'in_app_message';
       if (!stats[method]) stats[method] = { sent: 0, returned: 0 };
       stats[method].sent++;
       if (attempt.outcome === 'returned') stats[method].returned++;
     }
     return stats;
-  }, [winBackAttempts, contactLogs]);
+  }, [winBackAttempts, contactLogsByMember]);
 
   // Pause / resume churn alerts (vacation hold) — prevents the recency-decay
   // false positive for a loyal member who's just traveling.

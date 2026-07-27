@@ -24,6 +24,7 @@ import { applyCachedBranding } from './lib/branding';
 import { supabase } from './lib/supabase';
 import { safeNavigate, getCurrentPath, canGoBackInApp } from './lib/navigationRef';
 import { installAppResume, notifyBackground, notifyForeground } from './lib/appResume';
+import { installKeyboardScrollIntoView } from './lib/keyboardScrollIntoView';
 import { hydrateFromDurable, flushToDurable, whenHydrated } from './lib/durableStorage';
 import i18n, { i18nPrimaryReady } from './i18n/i18n';
 import './index.css';
@@ -133,6 +134,11 @@ document.addEventListener('visibilitychange', () => {
 // data. Fixes the "left it open, came back, nothing reloaded until I killed
 // and reopened the app" bug across member / admin / front-desk surfaces.
 installAppResume(queryClient);
+
+// Keep a focused text field visible when the native keyboard opens. App-wide,
+// because most inputs here live inside nested scroll containers where WebKit's
+// own scroll-into-view does not fire — the field ends up under the keyboard.
+installKeyboardScrollIntoView();
 
 // ── Cold-start warm-up ────────────────────────────────────────────────────
 // If we have a Supabase session cached in localStorage already, kick off the

@@ -64,7 +64,10 @@ export default function TrainerLayout({ children }) {
     refreshUnread();
     refreshMessages();
 
-    // Live update the trainer bell badge.
+    // Live update the trainer bell badge. `notifications` IS a member of the
+    // `supabase_realtime` publication (verified in production), and this
+    // subscription carries a server-side `filter: profile_id=eq.…`, so it is
+    // both live and cheap. Leave it alone.
     const ch = supabase
       .channel(`trainer-notifs-${profile.id}`)
       .on('postgres_changes', {
@@ -75,34 +78,41 @@ export default function TrainerLayout({ children }) {
       }, refreshUnread)
       .subscribe();
 
-    // Live update the messages badge — any INSERT the trainer can see (RLS
-    // scopes events to their conversations) triggers a debounced recount,
-    // mirroring the bell pattern above.
-    let msgDebounce = null;
-    const msgCh = supabase
-      .channel(`trainer-msgs-${profile.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'direct_messages',
-      }, () => {
-        if (msgDebounce) clearTimeout(msgDebounce);
-        msgDebounce = setTimeout(refreshMessages, 1500);
-      })
-      .subscribe();
+    // NO REALTIME for the messages badge — deliberate. The
+    // `trainer-msgs-${profile.id}` channel that used to sit here subscribed to
+    // ALL `direct_messages` INSERTs with NO server-side `filter:` (there is no
+    // receiver column to filter on). `direct_messages` was not in the
+    // `supabase_realtime` publication, so it never fired once; a migration is
+    // adding the table and this subscription was deliberately NOT restored.
+    // Unfiltered means Realtime evaluates the RLS policy once per subscriber
+    // per row change, and this layout is mounted for a trainer's ENTIRE
+    // session — publishing broadly is a deliberate cost decision (an estimated
+    // ~17.3M realtime messages/month from one 2,000-member gym against a
+    // 5M/month plan allowance), so please do not "restore" it.
+    //
+    // The badge instead recounts on: mount, the `dm:read` event dispatched the
+    // moment a thread is read, a 2-minute poll gated on `!document.hidden`, and
+    // a foreground catch-up. The poll is affordable here because trainers are a
+    // handful of accounts per gym, unlike the member Navigation badge (which
+    // gets no poll at all for exactly that reason).
+    const onRead = () => refreshMessages();
+    window.addEventListener('dm:read', onRead);
+    const msgPoll = setInterval(() => {
+      if (!document.hidden) refreshMessages();
+    }, 120_000);
 
     // Recount both badges when the tab/app returns to the foreground (covers
-    // reads done elsewhere + missed realtime while backgrounded).
+    // reads done elsewhere + anything missed while backgrounded).
     const onVis = () => {
       if (document.visibilityState === 'visible') { refreshUnread(); refreshMessages(); }
     };
     document.addEventListener('visibilitychange', onVis);
 
     return () => {
-      if (msgDebounce) clearTimeout(msgDebounce);
+      clearInterval(msgPoll);
+      window.removeEventListener('dm:read', onRead);
       document.removeEventListener('visibilitychange', onVis);
       supabase.removeChannel(ch);
-      supabase.removeChannel(msgCh);
     };
   }, [profile?.id]);
 

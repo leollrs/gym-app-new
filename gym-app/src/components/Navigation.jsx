@@ -78,6 +78,64 @@ const SIDEBAR_SECTIONS = [
   },
 ];
 
+
+// Total unread DMs for the badge.
+//
+// Prefers the `get_unread_dm_count()` RPC (migration 0651). The client fallback
+// below fetches `direct_messages.id` rows and takes `.length` — but PostgREST
+// caps EVERY response at 1000 rows and `selectInBatches` chunks the id list
+// WITHOUT paging each chunk, so a member past 1000 unread got a silently
+// undercounted badge. A `.limit()` cannot fix a count.
+//
+// The RPC applies the same conversation_member_state exclusion the fallback does
+// (deleted/purged chats must not keep the badge lit), so the two agree exactly.
+//
+// Fallback is kept because the migration may not be applied yet on every
+// environment; it only triggers on a genuine missing-function error, so a real
+// failure (permissions, network) still surfaces rather than being masked.
+const isRpcMissing = (err) => {
+  const code = err?.code || '';
+  const msg = (err?.message || '').toLowerCase();
+  return code === 'PGRST202' || code === '42883'
+    || msg.includes('could not find the function')
+    || msg.includes('schema cache');
+};
+
+// Latches once the RPC is confirmed absent. Without this the badge re-attempts
+// on EVERY route change, so a project that hasn't applied migration 0651 gets a
+// 404 per navigation — a wall of red in the console and a wasted round trip each
+// time, for a call we already know will fail. One probe per app session is
+// enough; a deploy or reload re-probes.
+let rpcMissing = false;
+
+async function fetchUnreadDmTotal(supabase, userId) {
+  if (!rpcMissing) {
+    const { data, error } = await supabase.rpc('get_unread_dm_count');
+    if (!error) return Number(data) || 0;
+    if (!isRpcMissing(error)) throw error;
+    rpcMissing = true;
+  }
+
+  // ── Fallback: pre-0651 behaviour, undercounts past 1000 unread ──
+  const { data: convs } = await supabase
+    .from('conversations')
+    .select('id')
+    .or(`participant_1.eq.${userId},participant_2.eq.${userId}`);
+  if (!convs?.length) return 0;
+  const { data: hiddenRows } = await supabase
+    .from('conversation_member_state')
+    .select('conversation_id, deleted_at, purged_at');
+  const hidden = new Set((hiddenRows || [])
+    .filter(s => s.deleted_at || s.purged_at).map(s => s.conversation_id));
+  const convIds = convs.map(c => c.id).filter(id => !hidden.has(id));
+  if (!convIds.length) return 0;
+  const { data: unreadRows } = await selectInBatches(
+    (ids) => supabase.from('direct_messages').select('id')
+      .neq('sender_id', userId).is('read_at', null).in('conversation_id', ids),
+    convIds);
+  return unreadRows ? unreadRows.length : 0;
+}
+
 const Navigation = () => {
   const keyboardOpen = useKeyboardOpen();
   const { gymName, gymLogoUrl, user, profile, unreadNotifications, gymConfig } = useAuth();
@@ -145,89 +203,63 @@ const Navigation = () => {
   useEffect(() => {
     if (!user?.id) return;
     const fetchUnread = async () => {
-      // Get conversation IDs the user is part of
-      const { data: convs } = await supabase
-        .from('conversations')
-        .select('id')
-        .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`);
-      if (!convs || convs.length === 0) { setUnreadMessages(0); return; }
-      let convIds = convs.map(c => c.id);
-      // Exclude conversations the user has deleted/purged so their old unread
-      // messages don't keep the badge lit (a new message resurfaces the chat).
-      const { data: hiddenRows } = await supabase
-        .from('conversation_member_state')
-        .select('conversation_id, deleted_at, purged_at');
-      const hidden = new Set((hiddenRows || []).filter(s => s.deleted_at || s.purged_at).map(s => s.conversation_id));
-      convIds = convIds.filter(id => !hidden.has(id));
-      if (convIds.length === 0) { setUnreadMessages(0); return; }
-      const { data: unreadRows } = await selectInBatches(
-        (ids) => supabase
-          .from('direct_messages')
-          .select('id')
-          .neq('sender_id', user.id)
-          .is('read_at', null)
-          .in('conversation_id', ids),
-        convIds
-      );
-      setUnreadMessages(unreadRows ? unreadRows.length : 0);
+      // Single RPC (0651) instead of conversations -> member-state -> batched
+      // direct_messages rows. The old shape undercounted past 1000 unread
+      // because each selectInBatches chunk was capped and then `.length`-ed.
+      try {
+        setUnreadMessages(await fetchUnreadDmTotal(supabase, user.id));
+      } catch { /* transient — the next route change or foreground retries */ }
     };
     fetchUnread();
   }, [user?.id, location.pathname]);
 
-  // Realtime subscription for new DMs — subscribed once per user, not per route change.
-  // Note: direct_messages has no receiver_id column, so we can't filter by
-  // receiver at the channel level. RLS already restricts events to the user's
-  // conversations. We narrow to INSERT events only (new messages) since the
-  // unread count is also re-fetched on every route change via location.pathname.
+  // Unread-DM badge refresh. NO REALTIME HERE — deliberate.
+  //
+  // `direct_messages` was NOT a member of the `supabase_realtime` publication
+  // when this was written, so the INSERT/UPDATE subscription that used to sit
+  // here never fired once. A migration is adding the table to the publication;
+  // this subscription was NOT restored, on purpose:
+  //
+  // It had no server-side `filter:` (direct_messages has no receiver_id column,
+  // so there is nothing to filter on from here). An unfiltered subscription makes
+  // Realtime evaluate the RLS policy once per subscriber per row change — and
+  // Navigation is mounted for EVERY member for their ENTIRE session, so a gym's
+  // whole membership would be charged for every DM anyone sends: roughly a
+  // 1,300:1 waste ratio, and an estimated ~17.3M realtime messages/month from a
+  // single 2,000-member gym against a 5M/month plan allowance. Keeping the badge
+  // on cheap refresh paths is the deliberate cost decision — please do not
+  // "restore" the subscription. (Per-conversation channels in Messages.jsx are
+  // fine: those carry `filter: conversation_id=eq.…`, so the server only
+  // delivers rows for the one thread that is actually open.)
+  //
+  // The badge stays correct via three paths, none of which cost an idle socket:
+  //   1. the route-change recount above (effect keyed on location.pathname),
+  //   2. the `dm:read` window event dispatched the instant a chat is read,
+  //   3. a foreground catch-up on visibilitychange (below).
+  // No poll is added here on purpose — this component is mounted for every
+  // member all session, so even a slow interval multiplies by the whole gym.
   useEffect(() => {
     if (!user?.id) return;
     let debounceTimer;
     const fetchUnread = async () => {
-      const { data: convs } = await supabase
-        .from('conversations')
-        .select('id')
-        .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`);
-      if (!convs || convs.length === 0) { setUnreadMessages(0); return; }
-      let convIds = convs.map(c => c.id);
-      // Exclude conversations the user has deleted/purged so their old unread
-      // messages don't keep the badge lit (a new message resurfaces the chat).
-      const { data: hiddenRows } = await supabase
-        .from('conversation_member_state')
-        .select('conversation_id, deleted_at, purged_at');
-      const hidden = new Set((hiddenRows || []).filter(s => s.deleted_at || s.purged_at).map(s => s.conversation_id));
-      convIds = convIds.filter(id => !hidden.has(id));
-      if (convIds.length === 0) { setUnreadMessages(0); return; }
-      const { data: unreadRows } = await selectInBatches(
-        (ids) => supabase
-          .from('direct_messages')
-          .select('id')
-          .neq('sender_id', user.id)
-          .is('read_at', null)
-          .in('conversation_id', ids),
-        convIds
-      );
-      setUnreadMessages(unreadRows ? unreadRows.length : 0);
+      // Single RPC (0651) instead of conversations -> member-state -> batched
+      // direct_messages rows. The old shape undercounted past 1000 unread
+      // because each selectInBatches chunk was capped and then `.length`-ed.
+      try {
+        setUnreadMessages(await fetchUnreadDmTotal(supabase, user.id));
+      } catch { /* transient — the next route change or foreground retries */ }
     };
-    // Skip the unread recount while the app is backgrounded — this subscribes
-    // to ALL gym direct_messages, so a busy gym otherwise drove a 3-query
-    // recount on every message with the app in someone's pocket. We catch up on
-    // the next foreground via the visibilitychange listener below.
+    // Debounced + visibility-gated recount, so a backgrounded app in someone's
+    // pocket never runs the 3-query recount.
     const bump = (delay = 800) => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => { if (!document.hidden) fetchUnread(); }, delay); };
-    // Per-user channel name so a transient double-mount can't collide on a
-    // shared static name and silently drop realtime.
-    const channel = supabase
-      .channel(`nav-dm-unread-${user?.id}`)
-      // New messages bump the count; read_at UPDATEs (incl. mark-as-read) clear it.
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => bump(2000))
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'direct_messages' }, () => bump(800))
-      .subscribe();
     // Local signal dispatched the instant a chat is opened + marked read, so the
-    // badge clears promptly without waiting on the realtime round-trip.
+    // badge clears promptly.
     const onRead = () => bump(300);
+    // Foreground catch-up: the badge is right again as soon as the app is reopened.
     const onVisible = () => { if (!document.hidden) fetchUnread(); };
     window.addEventListener('dm:read', onRead);
     document.addEventListener('visibilitychange', onVisible);
-    return () => { clearTimeout(debounceTimer); window.removeEventListener('dm:read', onRead); document.removeEventListener('visibilitychange', onVisible); supabase.removeChannel(channel); };
+    return () => { clearTimeout(debounceTimer); window.removeEventListener('dm:read', onRead); document.removeEventListener('visibilitychange', onVisible); };
   }, [user?.id]);
 
   const streakCalCacheKey = `streak-calendar-${user?.id || 'anon'}`;

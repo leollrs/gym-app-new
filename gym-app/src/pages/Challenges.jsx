@@ -478,7 +478,7 @@ const ChallengePodium = ({ entries, unit }) => {
 };
 
 // ── Leaderboard ────────────────────────────────────────────
-const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
+const Leaderboard = ({ challenge, myId, t, refreshKey }) => {
   const rewards = parseRewards(challenge);
   const hasCustomRewards = challenge.reward_description != null;
   // Cached per challenge so the leaderboard paints instantly on re-open (the
@@ -516,21 +516,30 @@ const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
     setLoading(false);
   }, [challenge.id]);
 
-  // Debounce realtime updates to avoid re-fetching on every single workout INSERT
-  const debounceRef = useRef(null);
+  // NO REALTIME — deliberate, and the same for all three leaderboards in this
+  // file. `workout_sessions` is NOT a member of the `supabase_realtime`
+  // publication. Verified against production:
+  //   SELECT tablename FROM pg_publication_tables
+  //    WHERE pubname = 'supabase_realtime';
+  //   -> challenge_prizes, earned_rewards, notifications,
+  //      reward_redemptions, session_cues, session_drafts
+  // The postgres_changes subscription that used to live here (workout_sessions
+  // INSERT, gym-filtered, behind a 2s debounce ref) therefore never fired once.
+  // It held an idle realtime channel open per open leaderboard and made this
+  // code read as though standings ticked live.
+  //
+  // Publishing `workout_sessions` is NOT the fix: one 2,000-member gym would
+  // emit an estimated ~17.3M realtime messages/month against a 5M/month plan
+  // allowance. Staying unpublished is the correct, cheap configuration — so
+  // please do not "restore" the subscription.
+  //
+  // Refresh path that remains: these leaderboards render ONLY inside the
+  // challenge detail modal, which is conditionally mounted, so every open is a
+  // cold mount and therefore a fresh fetch. `refreshKey` (the viewer's join
+  // state) re-runs it in place when they join or leave.
   useEffect(() => {
     fetch();
-    const ch = supabase.channel(`member-challenge-${challenge.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` }, () => {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(fetch, 2000);
-      })
-      .subscribe();
-    return () => {
-      clearTimeout(debounceRef.current);
-      supabase.removeChannel(ch);
-    };
-  }, [fetch, challenge.id, gymId, refreshKey]);
+  }, [fetch, challenge.id, refreshKey]);
 
   const unit = t(`challenges.typeUnits.${TYPE_META[challenge.type]?.unitKey ?? challenge.type}`, TYPE_META[challenge.type]?.unitKey ?? '');
   const myRank = entries.findIndex(e => e.id === myId);
@@ -664,7 +673,7 @@ const Leaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
 };
 
 // ── Team Leaderboard ──────────────────────────────────────
-const TeamLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
+const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedTeam, setExpandedTeam] = useState(null);
@@ -676,17 +685,17 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
     setLoading(false);
   }, [challenge.id]);
 
-  const debounceRef = useRef(null);
+  // NO REALTIME — `workout_sessions` is not in the `supabase_realtime`
+  // publication (full note on the member Leaderboard above), so the
+  // postgres_changes subscription + 2s debounce that used to sit here never
+  // fired once. Publishing the table is a deliberate NO: ~17.3M realtime
+  // messages/month from a single 2,000-member gym against a 5M/month plan
+  // allowance. Refresh path: this only renders inside the challenge detail
+  // modal, so each open is a cold mount + fresh fetch, and `refreshKey`
+  // re-runs it when the viewer joins or leaves.
   useEffect(() => {
     fetchTeams();
-    const ch = supabase.channel(`team-lb-${challenge.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` }, () => {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(fetchTeams, 2000);
-      })
-      .subscribe();
-    return () => { clearTimeout(debounceRef.current); supabase.removeChannel(ch); };
-  }, [fetchTeams, challenge.id, gymId, refreshKey]);
+  }, [fetchTeams, challenge.id, refreshKey]);
 
   const myTeam = teams.find(team => team.members?.some(m => m.profile_id === myId));
   const metricLabel = t(`challenges.typeUnits.${challenge.scoring_metric || 'consistency'}`, '');
@@ -778,7 +787,7 @@ const TeamLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
 };
 
 // ── Club / Milestone Leaderboard ──────────────────────────
-const ClubLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
+const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
   const rewards = parseRewards(challenge);
   const hasCustomRewards = challenge.reward_description != null;
   const [entries, setEntries] = useState([]);
@@ -809,17 +818,17 @@ const ClubLeaderboard = ({ challenge, gymId, myId, t, refreshKey }) => {
     setLoading(false);
   }, [challenge.id]);
 
-  const debounceRef = useRef(null);
+  // NO REALTIME — `workout_sessions` is not in the `supabase_realtime`
+  // publication (full note on the member Leaderboard above), so the
+  // postgres_changes subscription + 2s debounce that used to sit here never
+  // fired once. Publishing the table is a deliberate NO: ~17.3M realtime
+  // messages/month from a single 2,000-member gym against a 5M/month plan
+  // allowance. Refresh path: this only renders inside the challenge detail
+  // modal, so each open is a cold mount + fresh fetch, and `refreshKey`
+  // re-runs it when the viewer joins or leaves.
   useEffect(() => {
     fetch();
-    const ch = supabase.channel(`club-lb-${challenge.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: `gym_id=eq.${gymId}` }, () => {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(fetch, 2000);
-      })
-      .subscribe();
-    return () => { clearTimeout(debounceRef.current); supabase.removeChannel(ch); };
-  }, [fetch, challenge.id, gymId, refreshKey]);
+  }, [fetch, challenge.id, refreshKey]);
 
   const myEntry = entries.find(e => e.id === myId);
   const myRank = entries.findIndex(e => e.id === myId);
@@ -1508,10 +1517,10 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, fr
           {status === 'upcoming'
             ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
             : challenge.type === 'team'
-              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+              ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
               : challenge.type === 'milestone'
-                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
-                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
+                : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
           }
         </ChallengeDetailModal>
       )}
@@ -1709,10 +1718,10 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
           {status === 'upcoming'
             ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
             : challenge.type === 'team'
-              ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+              ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
               : challenge.type === 'milestone'
-                ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
-                : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
+                : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
           }
         </ChallengeDetailModal>
       )}
@@ -1879,10 +1888,10 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
                   {format(new Date(challenge.start_date), 'MMM d', { locale: dfLocale })} – {format(new Date(challenge.end_date), 'MMM d, yyyy', { locale: dfLocale })}
                 </p>
                 {challenge.type === 'team'
-                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                  ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                   : challenge.type === 'milestone'
-                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
-                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                    ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
+                    : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                 }
                 {/* Everyone who joined but didn't post / DNF teams */}
                 <PastChallengeParticipants challenge={challenge} t={t} />
@@ -1910,10 +1919,10 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
               {status === 'upcoming'
                 ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
                 : challenge.type === 'team'
-                  ? <TeamLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                  ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                   : challenge.type === 'milestone'
-                    ? <ClubLeaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
-                    : <Leaderboard challenge={challenge} gymId={gymId} myId={myId} t={t} refreshKey={joined} />
+                    ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
+                    : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
               }
             </div>
           </div>
@@ -2273,8 +2282,11 @@ export default function Challenges({ embedded = false }) {
 
   // Keep-alive refresh: /challenges stays mounted, so a newly-published
   // challenge or join/leave counts changed by others would stay stale until
-  // remount. Per-challenge leaderboards self-heal via realtime; this refreshes
-  // the LIST on foreground.
+  // remount. This refreshes the LIST on foreground. Per-challenge leaderboards
+  // refresh by mounting — they live inside the detail modal, so every open is
+  // a fresh fetch. (They used to claim they "self-heal via realtime"; they
+  // never did — `workout_sessions` is not in the `supabase_realtime`
+  // publication. See the note on the Leaderboard component above.)
   useEffect(() => {
     if (!profile?.gym_id) return undefined;
     const onVis = () => { if (document.visibilityState === 'visible') setChalRefreshKey(k => k + 1); };

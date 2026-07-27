@@ -685,6 +685,17 @@ const formatDuration = (seconds) => {
 // ── Design tokens (shared by timeline components) ────────────────────────
 const TL_DISPLAY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
 const TL_ACCENT = 'var(--color-accent, #2EC4C4)';
+// How far back the monthly timeline loads. A DATE window, not a row count —
+// see the long note at the query for why that distinction matters (a row cap
+// cuts mid-month and makes the boundary month display a fabricated count).
+// Month-aligned so only WHOLE months can ever fall outside it.
+const TIMELINE_MONTHS_BACK = 24;
+const timelineWindowStart = () => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - TIMELINE_MONTHS_BACK, 1);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+};
 
 // ── Compact Session Row ──────────────────────────────────────────────────
 function SessionRow({ session, onDelete }) {
@@ -997,6 +1008,10 @@ function MonthlyTimeline({ userId }) {
     const load = async () => {
       // Only show skeleton if there's no cached timeline — otherwise revalidate silently
       if (!hasCachedState(timelineCacheKey)) setLoading(true);
+      // Computed once per load so both legs share the SAME boundary — with two
+      // independently-derived windows a cardio-heavy member could see the two
+      // halves of one timeline end on different dates.
+      const timelineSince = timelineWindowStart();
       const [workoutRes, cardioRes] = await Promise.all([
         supabase
           .from('workout_sessions')
@@ -1009,11 +1024,35 @@ function MonthlyTimeline({ userId }) {
           `)
           .eq('profile_id', userId)
           .eq('status', 'completed')
+          // Bounded by DATE, not by row count — the distinction matters.
+          //
+          // Why bounded at all: this nests session_exercises -> session_sets, and
+          // embedded child arrays are NOT subject to the PostgREST row cap, so the
+          // unbounded version pulled a two-year member's entire lifting history set
+          // by set (~416 sessions / ~2,500 exercises / ~10,000 sets, about 1 MB of
+          // JSON) on the DEFAULT Progress tab, then held it in heap all session
+          // because Progress is keep-alive-mounted.
+          //
+          // Why NOT `.limit(200)` (what this was, briefly): the timeline groups by
+          // MONTH, so a row cap cuts mid-month. The boundary month then renders a
+          // real-looking but WRONG session count ("3 sessions" for a month with 12),
+          // and every month past the cut renders the explicit EMPTY state — a dash,
+          // reading as "you didn't train", not "not loaded". Fabricating a stat is
+          // exactly the bug class this whole pass exists to remove.
+          //
+          // A month-aligned date window can only ever drop WHOLE months, so every
+          // month shown is complete and correct. 24 months is far past anything the
+          // timeline scrolls to, and the app itself is younger than that.
+          .gte('completed_at', timelineSince)
           .order('completed_at', { ascending: false }),
         supabase
           .from('cardio_sessions')
           .select('id, cardio_type, started_at, duration_seconds, distance_km, calories_burned, intensity')
           .eq('profile_id', userId)
+          // Same window as the workout leg. With two independent ROW caps the two
+          // legs ended at different dates, so a cardio-heavy member saw workouts
+          // and cardio truncated at different points in the same timeline.
+          .gte('started_at', timelineSince)
           .order('started_at', { ascending: false }),
       ]);
 

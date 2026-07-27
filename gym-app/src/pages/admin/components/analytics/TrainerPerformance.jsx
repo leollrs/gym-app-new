@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../../lib/supabase';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import logger from '../../../../lib/logger';
+import { selectAllRows } from '../../../../lib/churn/batchedSelect';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { TK, FK, Card } from './analyticsKit';
 
@@ -10,6 +11,10 @@ async function fetchTrainerData(gymId) {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+  // Not paged on purpose: a gym has tens of trainers, never the 1000 it would
+  // take to hit PostgREST's max_rows, and adding an .order() here would change
+  // the tie-break order of the rendered list (the sort below is stable, so the
+  // arrival order decides ties between trainers with equal client counts).
   const { data: trainerRows, error: trainerError } = await supabase
     .from('profiles')
     .select('id, full_name')
@@ -18,31 +23,74 @@ async function fetchTrainerData(gymId) {
   if (trainerError) throw trainerError;
   if (!trainerRows || trainerRows.length === 0) return [];
 
-  const { data: tcRows, error: tcError } = await supabase
+  // Paged: PostgREST is configured with `max_rows = 1000` (verified live:
+  // `content-range: 0-999/1275`) and this read had no cap of its own, so a gym
+  // whose assignment history crosses 1000 rows lost trainers off the end of the
+  // list entirely and under-counted the ones that survived. `id` is the PK, so
+  // ordering by it alone is a total order — OFFSET paging can't skip or dupe.
+  const { data: tcRows, error: tcError } = await selectAllRows((lo, hi) => supabase
     .from('trainer_clients')
     .select('trainer_id, client_id, is_active')
-    .eq('gym_id', gymId);
+    .eq('gym_id', gymId)
+    .order('id', { ascending: true })
+    .range(lo, hi));
   if (tcError) logger.error('TrainerPerformance: failed to load trainer-client rows:', tcError);
 
-  const { data: recentSessions, error: recSessError } = await supabase
+  // 30 days of completed sessions is ~1,800 rows at 300 members, so the un-paged
+  // read returned the first 1000 (~55%) — and with no .order() those 1000 were
+  // an arbitrary slice. Both numbers this card shows were computed from roughly
+  // half the gym's workouts: clients who DID train but whose sessions fell past
+  // the cut counted as inactive, dragging every trainer's "retention" down and
+  // the "wk/client" figure with it. Order (started_at, id) for stable paging.
+  const { data: recentSessions, error: recSessError } = await selectAllRows((lo, hi) => supabase
     .from('workout_sessions')
     .select('profile_id')
     .eq('gym_id', gymId)
     .eq('status', 'completed')
-    .gte('started_at', thirtyDaysAgo);
+    .gte('started_at', thirtyDaysAgo)
+    .order('started_at', { ascending: true })
+    .order('id', { ascending: true })
+    .range(lo, hi));
   if (recSessError) logger.error('TrainerPerformance: failed to load recent sessions:', recSessError);
 
-  const activeMembers = new Set((recentSessions || []).map(s => s.profile_id));
-  const sessionCountMap = {};
-  (recentSessions || []).forEach(s => { sessionCountMap[s.profile_id] = (sessionCountMap[s.profile_id] || 0) + 1; });
+  // ONE pass for sessions-per-member. The separate `activeMembers` Set was a
+  // second full walk of the same array to answer a question this map already
+  // answers — "has a positive count" IS "trained in the last 30 days".
+  const sessionCountMap = new Map();
+  for (const s of (recentSessions || [])) {
+    sessionCountMap.set(s.profile_id, (sessionCountMap.get(s.profile_id) || 0) + 1);
+  }
+
+  // THE coupling trap, de-looped. `trainerRows.map(tr => tcRows.filter(tc =>
+  // tc.trainer_id === tr.id))` re-scanned EVERY assignment row for EVERY
+  // trainer — O(trainers x assignments) — and then filtered/re-walked that slice
+  // three more times per trainer. Paging removes the 1000-row ceiling that was
+  // accidentally holding `tcRows` down, so that product would have grown with
+  // the gym. Bucketing by trainer_id first makes it O(trainers + assignments)
+  // with O(1) lookups. Only `is_active` rows are ever used downstream, so the
+  // inactive ones are dropped here once instead of per trainer.
+  const activeClientsByTrainer = new Map();
+  for (const tc of (tcRows || [])) {
+    if (!tc.is_active) continue;
+    const bucket = activeClientsByTrainer.get(tc.trainer_id);
+    if (bucket) bucket.push(tc.client_id);
+    else activeClientsByTrainer.set(tc.trainer_id, [tc.client_id]);
+  }
 
   const trainerStats = trainerRows.map(tr => {
-    const clients = (tcRows || []).filter(tc => tc.trainer_id === tr.id);
-    const activeClients = clients.filter(tc => tc.is_active);
-    const clientCount = activeClients.length;
-    const clientsWithWorkout = activeClients.filter(tc => activeMembers.has(tc.client_id)).length;
+    const clientIds = activeClientsByTrainer.get(tr.id) || [];
+    const clientCount = clientIds.length;
+    // One walk of this trainer's clients yields both aggregates; the old code
+    // took three (a .filter for the count, a .filter for retention, a .reduce
+    // for sessions).
+    let clientsWithWorkout = 0;
+    let totalClientSessions = 0;
+    for (const clientId of clientIds) {
+      const n = sessionCountMap.get(clientId) || 0;
+      if (n > 0) clientsWithWorkout++;
+      totalClientSessions += n;
+    }
     const retention = clientCount > 0 ? Math.round((clientsWithWorkout / clientCount) * 100) : 0;
-    const totalClientSessions = activeClients.reduce((sum, tc) => sum + (sessionCountMap[tc.client_id] || 0), 0);
     const avgWorkouts = clientCount > 0 ? (totalClientSessions / clientCount / 4.33).toFixed(1) : '0.0';
     return { id: tr.id, name: tr.full_name || '', clientCount, retention, avgWorkouts };
   });

@@ -515,63 +515,53 @@ const Leaderboard = ({ embedded = false }) => {
   const queryClient = useQueryClient();
   useEffect(() => { document.title = `${t('leaderboard.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
-  // Realtime — when anyone in the gym finishes a workout, hits a PR, or
-  // checks in, invalidate every leaderboard cache so the page repaints with
-  // the new standings without the user having to leave & re-enter.
-  // Same channel covers workout_sessions, personal_records, check_ins inserts
-  // so we keep a single Realtime connection open per page mount.
+  // Foreground refresh — invalidate every leaderboard cache so the page
+  // repaints with the new standings without the user having to leave & re-enter.
+  //
+  // This USED to be a postgres_changes subscription (workout_sessions,
+  // personal_records and check_ins INSERTs + streak_cache UPDATEs, all
+  // gym-filtered, behind a 4s trailing debounce). NONE of those four tables is
+  // a member of the `supabase_realtime` publication. Verified against
+  // production:
+  //   SELECT tablename FROM pg_publication_tables
+  //    WHERE pubname = 'supabase_realtime';
+  //   -> challenge_prizes, earned_rewards, notifications,
+  //      reward_redemptions, session_cues, session_drafts
+  // so that subscription never fired once. It held an open realtime channel
+  // per logged-in member for nothing, and made this file read as though
+  // standings live-updated when they never did.
+  //
+  // Publishing those tables is NOT the fix: one 2,000-member gym would emit an
+  // estimated ~17.3M realtime messages/month against a 5M/month plan
+  // allowance. Staying unpublished is the correct, cheap configuration — so
+  // please do not "restore" the subscription.
+  //
+  // Foreground is the replacement trigger, and it matters here specifically
+  // because this board is embedded in /community, a KEEP-ALIVE route: the
+  // component stays mounted across navigation, so mount-time refetch alone
+  // would let a member stare at session-old standings indefinitely. The other
+  // two refresh paths that remain are selecting the Leaderboard tab (Community
+  // mounts it only for that tab, and the queries refetch on mount past their
+  // staleTime) and changing the time-range filter (new query key).
   useEffect(() => {
-    if (!gymId) return;
-    // Coalesce bursts (a busy gym fires workout/PR/check-in inserts constantly)
-    // into a single trailing invalidation, and skip entirely while the app is
-    // backgrounded — Leaderboard is keep-alive, so without this every gym event
-    // refetched up to ~13 leaderboard RPCs with nobody looking.
-    let invalidateTimer;
-    const invalidateAll = () => {
-      clearTimeout(invalidateTimer);
-      invalidateTimer = setTimeout(() => {
-        if (document.hidden) return;
-        const keys = [
-          'leaderboard',
-          'leaderboard-improved',
-          'leaderboard-consistency',
-          'leaderboard-prs',
-          'leaderboard-checkins',
-          'leaderboard-newcomers',
-        ];
-        for (const key of keys) {
-          queryClient.invalidateQueries({ queryKey: [key], exact: false });
-        }
-      }, 4000);
+    if (!gymId) return undefined;
+    const refreshAll = () => {
+      // Only on the way IN to the foreground; never burn ~13 RPCs on the way out.
+      if (document.hidden) return;
+      const keys = [
+        'leaderboard',
+        'leaderboard-improved',
+        'leaderboard-consistency',
+        'leaderboard-prs',
+        'leaderboard-checkins',
+        'leaderboard-newcomers',
+      ];
+      for (const key of keys) {
+        queryClient.invalidateQueries({ queryKey: [key], exact: false });
+      }
     };
-    const channel = supabase
-      .channel(`leaderboard-${gymId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'workout_sessions',
-        filter: `gym_id=eq.${gymId}`,
-      }, invalidateAll)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'personal_records',
-        filter: `gym_id=eq.${gymId}`,
-      }, invalidateAll)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'check_ins',
-        filter: `gym_id=eq.${gymId}`,
-      }, invalidateAll)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'streak_cache',
-        filter: `gym_id=eq.${gymId}`,
-      }, invalidateAll)
-      .subscribe();
-    return () => { clearTimeout(invalidateTimer); supabase.removeChannel(channel); };
+    document.addEventListener('visibilitychange', refreshAll);
+    return () => document.removeEventListener('visibilitychange', refreshAll);
   }, [gymId, queryClient]);
 
   const [expanded, setExpanded] = useState(null); // which board is expanded

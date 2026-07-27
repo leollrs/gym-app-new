@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame, Unlink, GripVertical, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import { selectInBatches } from '../lib/churn/batchedSelect';
 import logger from '../lib/logger';
 import { trackError } from '../lib/errorTracker';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,6 +44,35 @@ import { selectWarmUps } from '../lib/warmUpSelector';
 import { selectCoolDownStretches } from '../lib/cooldownSelector';
 
 const IS_EMPTY_SESSION = (id) => id === 'empty';
+
+// ── session_drafts payload slimming ─────────────────────────────────────────
+// The debounced draft upsert is driven by `loggedSets`, which changes on EVERY
+// CHARACTER typed into a weight/reps field — roughly 75 upserts per workout.
+// The `exercises` array it carried held `instructions` + `instructions_es`
+// (~400 chars each) plus `history` (the previous-sets array) and `suggestion`
+// (the overload-engine output), so each upsert pushed ~8 KB to persist ~2 KB of
+// genuinely new state — and rewrote a TOAST-backed JSONB tuple on the same hot
+// row per user every time.
+//
+// Every field stripped here is RE-DERIVED on restore and nothing else reads it
+// off the draft:
+//   • history / suggestion — the restore mapper in load() already OVERWRITES
+//     both from this session's own PR + previous-session queries, so the
+//     persisted copies were dead weight before this change too.
+//   • instructions / instructions_es — re-hydrated from the routine join, then
+//     the bundled exercise library, then the localStorage draft (see the
+//     `draft.exercises` mapper).
+// A denylist (not an allowlist) on purpose: anything added to an exercise
+// object later keeps persisting by default, so a future field can't silently
+// vanish from resumed sessions.
+const slimExercisesForDraft = (list) => (list || []).map((ex) => {
+  const slim = { ...ex };
+  delete slim.instructions;
+  delete slim.instructions_es;
+  delete slim.history;
+  delete slim.suggestion;
+  return slim;
+});
 
 // Pointer drag-to-reorder — same hook the routine builders use (WorkoutBuilder /
 // MemberProgramBuilder), so the in-session exercise list reorders the same way:
@@ -1269,20 +1299,126 @@ const ActiveSession = () => {
   // next time without a page reload. Re-fetched when the Add Exercise modal
   // opens too, so a brand-new custom created mid-session is visible.
   const [dbExerciseMap, setDbExerciseMap] = useState({});
+  // `showAddExercise` is a dep so a custom created mid-session appears in the
+  // picker without a reload — but the effect fired on the CLOSE edge
+  // (true→false) as well, so every single modal open paid for TWO full
+  // exercise fetches. Latch the previous value and skip the close.
+  const addExerciseWasOpenRef = useRef(false);
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !profile) return;
+    const wasOpen = addExerciseWasOpenRef.current;
+    addExerciseWasOpenRef.current = showAddExercise;
+    if (wasOpen && !showAddExercise) return; // modal just closed — nothing new to fetch
+
+    // SECURITY: both ids come from the auth/profile context, never user input;
+    // UUID-validated before interpolating into `.or()` (defense in depth, same
+    // guard ExerciseLibrary uses).
+    const UUID_RE = /^[0-9a-f-]{36}$/i;
+    const uid = UUID_RE.test(user.id) ? user.id : null;
+    const gymId = UUID_RE.test(profile.gym_id || '') ? profile.gym_id : null;
+    const ownScope = [
+      gymId ? `gym_id.eq.${gymId}` : null,
+      uid ? `created_by.eq.${uid}` : null,
+    ].filter(Boolean).join(',');
+
+    const CUSTOM_COLS = 'id, name, name_es, muscle_group, equipment, default_sets, default_reps, rest_seconds, instructions, instructions_es, video_url, primary_regions, secondary_regions';
+    // One builder factory so the `.limit()` is structurally impossible to drop
+    // on any branch below — the whole point of scoping this query was to stop it
+    // being unbounded, and widening the OR must not quietly reintroduce that.
+    const selectCustoms = (orFilter) => supabase.from('exercises')
+      .select(CUSTOM_COLS)
+      .or(orFilter)
+      .limit(500);
+
+    // CUSTOM rows — full record, because these exist nowhere but the DB.
+    //
+    // The SELECT policy is `can_read_exercise()` (migration 0636): a SECURITY
+    // DEFINER OR-chain that short-circuits on `gym_id IS NULL` but runs up to
+    // five EXISTS subqueries — including a join over the caller's entire session
+    // history — for every GYM-SCOPED row it touches. With no WHERE clause this
+    // was a seq scan, so that ran once per custom exercise ON THE PLATFORM: a
+    // cost that grows with every gym we sign rather than with this tenant.
+    // Scoping keeps the scan tenant-sized; RLS still decides what is visible.
+    //
+    // But gym+self scoping alone under-selects: `can_read_exercise()` ALSO
+    // grants a friend's customs, and friendship is not gym-bounded, so a
+    // friend who trains at a DIFFERENT gym has a row that matches NEITHER
+    // `gym_id.eq.<my gym>` NOR `created_by.eq.<me>` and got filtered out before
+    // RLS ever saw it. That silently dropped a shipped feature (friends'
+    // exercises) from this picker only. Resolving the accepted-friend ids first
+    // and OR-ing them back in restores the row while keeping the predicate a
+    // bounded id list rather than "every custom on the platform".
+    const loadCustoms = async () => {
+      if (!ownScope) return { data: [] };
+
+      // Accepted friendships in either direction — the same shape ExerciseLibrary
+      // (its Friends tab), SocialFeed and Leaderboard all use. Capped: this list
+      // is only ever used as a filter, and 1000 accepted friends is already far
+      // past any real account, so the cap can only bite where the URL would
+      // anyway.
+      const fRes = uid
+        ? await supabase.from('friendships')
+            .select('requester_id, addressee_id')
+            .or(`requester_id.eq.${uid},addressee_id.eq.${uid}`)
+            .eq('status', 'accepted')
+            .limit(1000)
+        : { data: [] };
+
+      const friendIds = [...new Set((fRes.data || [])
+        .map((f) => (f.requester_id === uid ? f.addressee_id : f.requester_id))
+        // SECURITY: these come from the DB rather than user input, but they are
+        // still string-interpolated into a filter (PostgREST `.or()` has no bind
+        // parameters), so they get the same UUID gate as the ids above.
+        .filter((fid) => fid && UUID_RE.test(fid)))];
+
+      // No friends → plain own-scope query, byte-for-byte what ran before.
+      // This branch is REQUIRED, not tidiness: an empty `created_by.in.()` is a
+      // PostgREST syntax error (400) — it does not degrade to "matches nothing",
+      // it fails the whole request and would blank the picker's customs.
+      if (!friendIds.length) return selectCustoms(ownScope);
+
+      // Chunked: `.in()` is serialized into the querystring at ~39 bytes per
+      // uuid, and the proxy rejects URLs past ~15 KB (measured break point ~390
+      // ids) — see lib/churn/batchedSelect. Every chunk repeats `ownScope`, so
+      // the same own/gym row comes back once per chunk; dedupe on id. Under the
+      // 200-id chunk size (i.e. every real account) this is still ONE request.
+      return selectInBatches(
+        (chunk) => selectCustoms(`${ownScope},created_by.in.(${chunk.join(',')})`),
+        friendIds,
+        { dedupeKey: (row) => row.id },
+      );
+    };
+
     Promise.all([
       supabase.from('exercise_favorites').select('exercise_id').eq('user_id', user.id),
-      supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, default_sets, default_reps, rest_seconds, instructions, instructions_es, video_url, primary_regions, secondary_regions'),
-    ]).then(([favRes, exRes]) => {
+      // GLOBAL library rows (~305). `enrichedLocalExercises` below reads
+      // exactly ONE field off a global whose id is in the bundled static
+      // library — `name_es` — because every other field comes from the bundle
+      // (migration 0622 seeded the DB *from* that same list). Shipping
+      // instructions + instructions_es + region arrays for all of them was
+      // ~290 KB on every workout start to consume ~12 KB of it. The remaining
+      // columns are kept only so a global added later via Platform Settings
+      // (i.e. NOT in the bundle) still renders a usable card in the picker.
+      supabase.from('exercises')
+        .select('id, name, name_es, muscle_group, equipment, default_sets, default_reps, rest_seconds, video_url')
+        .is('gym_id', null)
+        .limit(1000),
+      // CUSTOM rows (own gym + own + friends') — see loadCustoms above. Started
+      // here so its friendship round trip overlaps the two queries above rather
+      // than serializing behind them.
+      loadCustoms(),
+    ]).then(([favRes, globalRes, customRes]) => {
       if (favRes.data) setFavoriteExerciseIds(new Set(favRes.data.map(r => r.exercise_id)));
-      if (exRes.data) {
+      if (globalRes.data || customRes.data) {
         const map = {};
-        exRes.data.forEach(e => { map[e.id] = e; });
+        (globalRes.data || []).forEach(e => { map[e.id] = e; });
+        // Customs last: a row matched by both filters keeps the FULL record.
+        (customRes.data || []).forEach(e => { map[e.id] = e; });
         setDbExerciseMap(map);
       }
     });
-  }, [user?.id, showAddExercise]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, profile?.gym_id, showAddExercise]);
 
   // Library-shaped list = static local data (with DB Spanish names merged in)
   // + any DB-only customs that don't exist locally. Custom rows lack the
@@ -1311,7 +1447,14 @@ const ActiveSession = () => {
       }));
     const enrichedLocal = localExercises.map((ex) => {
       const db = dbExerciseMap[ex.id];
-      return db ? { ...ex, name_es: db.name_es } : ex;
+      // `?? ex.name_es`, NOT a bare overwrite. The whole point of this join is to
+      // pick up a Spanish name the bundle lacks — but an unconditional assignment
+      // also DELETES a bundled Spanish name whenever the DB row's name_es is null,
+      // which is exactly what happens for anything inserted via Platform Settings
+      // (that insert never sets name_es). Spanish is the primary language for
+      // these users, so silently reverting a translated exercise to its English
+      // name is a real regression, not cosmetic.
+      return db ? { ...ex, name_es: db.name_es ?? ex.name_es ?? null } : ex;
     });
     return [...enrichedLocal, ...dbCustoms];
   }, [dbExerciseMap]);
@@ -1674,19 +1817,20 @@ const ActiveSession = () => {
         // the personal_records table, so if a PR was set on a different day
         // than the most recent session it can drift behind. Logging the inputs
         // vs. output here so we can diagnose stale suggestions in the field.
-        // Safe to leave on — only fires once per session per exercise.
-        try {
-          // eslint-disable-next-line no-console
-          console.log('[ActiveSession] suggestion inputs', {
-            exerciseId: ex.id,
-            exerciseName: ex.name,
-            prevSetsCount: prevForEx.length,
-            prevSetsSample: prevForEx.slice(0, 3),
-            knownPR: prMap[ex.id] || null,
-            targetReps: ex.targetReps,
-            suggestion: baseSuggestion,
-          });
-        } catch { /* logging is non-critical */ }
+        // DEV ONLY. This was an unconditional console.log and vite.config.js has no
+        // `drop_console`, so it shipped to production and dumped a member's lift
+        // history — weights, reps, PRs — into the device console on every workout
+        // start. `logger` is a no-op in prod builds, which is the right channel for
+        // field diagnostics; the data is still there when debugging locally.
+        logger.debug('[ActiveSession] suggestion inputs', {
+          exerciseId: ex.id,
+          exerciseName: ex.name,
+          prevSetsCount: prevForEx.length,
+          prevSetsSample: prevForEx.slice(0, 3),
+          knownPR: prMap[ex.id] || null,
+          targetReps: ex.targetReps,
+          suggestion: baseSuggestion,
+        });
         // Per-muscle readiness modulation (#1): soften THIS exercise's target
         // when its prime-mover muscle is still fatigued — recovery-aware, still
         // one tap to accept.
@@ -1773,9 +1917,18 @@ const ActiveSession = () => {
       // exercises are stored (fresh start, or pre-0368 draft with no column).
       let finalExercises;
       if (draft?.exercises && draft.exercises.length > 0) {
+        // The DB draft no longer carries the instruction text (see
+        // slimExercisesForDraft) — re-hydrate it per exercise id. Order of
+        // preference: this routine's own join → the bundled static library →
+        // whatever the localStorage draft still holds (covers a custom added
+        // mid-session on this same device) → null, exactly like a brand-new
+        // exercise with no instructions. Legacy drafts written before the slim
+        // still carry the fields, so `draftEx` wins when present.
+        const localDraftExercises = Array.isArray(savedSession?.exercises) ? savedSession.exercises : null;
         finalExercises = draft.exercises.map(draftEx => {
           const enrichedMatch = enriched.find(e => e.id === draftEx.id);
           const libEx = localExercises.find(e => e.id === draftEx.id);
+          const localMatch = localDraftExercises?.find(e => e.id === draftEx.id);
           const prevForEx = prevSetsMap[draftEx.id] || [];
           const baseSuggestion = enrichedMatch?.suggestion
             ?? applyReadinessToSuggestion(
@@ -1786,6 +1939,10 @@ const ActiveSession = () => {
                );
           return {
             ...draftEx,
+            instructions: draftEx.instructions
+              ?? enrichedMatch?.instructions ?? libEx?.instructions ?? localMatch?.instructions ?? null,
+            instructions_es: draftEx.instructions_es
+              ?? enrichedMatch?.instructions_es ?? libEx?.instructions_es ?? localMatch?.instructions_es ?? null,
             movementPattern: libEx?.movementPattern || draftEx.movementPattern || null,
             history: prevForEx,
             suggestion: baseSuggestion,
@@ -2089,8 +2246,10 @@ const ActiveSession = () => {
       // Persist the live exercises array so swaps / adds / removals survive
       // app kill, WebView eviction, or device reboot — not just localStorage
       // (which iOS may purge under memory pressure). Schema column added in
-      // migration 0368.
-      exercises,
+      // migration 0368. Slimmed: the instruction text, previous-set history
+      // and overload suggestion are all re-derived on restore, and shipping
+      // them on every keystroke was ~4 KB of the ~8 KB payload.
+      exercises: slimExercisesForDraft(exercises),
       removed_exercise_ids: removedExerciseIds,
       skipped_exercise_ids: skippedExerciseIds,
       updated_at: new Date().toISOString(),
@@ -2120,16 +2279,21 @@ const ActiveSession = () => {
   // ── Reactive DB-draft persistence (debounced) ──────────────────────────────
   // Catches every state change (typing, swap, skip, remove, navigate) so the
   // session survives an iOS WebView eviction or a phone reboot — not just an
-  // explicit "Complete Set" tap. Debounced 700ms so we don't spam Supabase
-  // on every keystroke. handleToggleComplete still fires its own immediate
-  // saveDraftToDb for the on-completion case.
+  // explicit "Complete Set" tap. Debounced so we don't spam Supabase on every
+  // keystroke: 700ms still fired on any pause mid-entry (typing "1", "13",
+  // "135" with a thought in between = 3 upserts of the same row). 2s covers a
+  // whole weight/reps entry as one write, and nothing is at risk in the gap —
+  // handleToggleComplete fires its own IMMEDIATE saveDraftToDb on set
+  // completion, the visibilitychange/beforeunload force-save covers
+  // backgrounding, and localStorage is written synchronously on every change.
+  const DB_DRAFT_DEBOUNCE_MS = 2000;
   const dbSaveDebounceRef = useRef(null);
   useEffect(() => {
     if (dataLoading || !draftSaveRef.current) return;
     if (dbSaveDebounceRef.current) clearTimeout(dbSaveDebounceRef.current);
     dbSaveDebounceRef.current = setTimeout(() => {
       try { saveDraftToDb(); } catch { /* non-critical */ }
-    }, 700);
+    }, DB_DRAFT_DEBOUNCE_MS);
     return () => {
       if (dbSaveDebounceRef.current) clearTimeout(dbSaveDebounceRef.current);
     };

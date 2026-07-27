@@ -32,6 +32,21 @@
 //   - fresh:    >= 80
 // -----------------------------------------------------------------------------
 
+// BUNDLE NOTE (measured 2026-07-26 — read before "optimising" this import).
+// This static import is the first link that drags the WHOLE static exercise
+// catalogue into the eager entry chunk:
+//   main.jsx -> App.jsx -> pages/Dashboard.jsx:42 -> THIS FILE
+//     -> lib/exerciseStore.js:13 -> data/exercises.js  (191 KB raw / ~33 KB gz)
+// Dashboard already goes out of its way to avoid that (it reads the trimmed
+// data/exerciseMeta.js and lazy-loads GymWOD precisely so the full library
+// stays out of first paint) — this import quietly undoes it, and App.jsx:1459
+// replaces the seed with the DB copy moments later anyway.
+//
+// Cutting THIS edge alone does not help: `lib/untrainedSuggestions.js:16`
+// (via components/ReadinessModal.jsx) and `lib/volumeLandmarks.js:24` (via
+// components/WeeklyVolumeSection.jsx) are also eager and also import
+// exerciseStore. The real fix is in exerciseStore itself — see the blocker
+// written up in the header of src/lib/exerciseStore.js.
 import { getExercises } from './exerciseStore';
 const ALL_EXERCISES = getExercises();
 import { BODY_REGION_DEFINITIONS } from '../data/muscleRegions';
@@ -54,8 +69,17 @@ const RECOVERY_RATE = {
   glute_med: 1.1, hip_flexors: 1.2,
 };
 
-// Build exercise lookup: id → { primaryRegions, secondaryRegions, muscleScores }
-const EXERCISE_LOOKUP = new Map(ALL_EXERCISES.map(ex => [ex.id, ex]));
+// Exercise lookup: id → { primaryRegions, secondaryRegions, muscleScores }.
+// Built on FIRST USE, not at module init. This module is eager (Dashboard
+// imports it statically), so a module-scope `new Map(...)` over ~305 entries
+// was ~305 allocations executed during first paint for every single user,
+// including the ones who never scroll to the readiness card. Same data — the
+// source array is still the module-init snapshot — just not on the boot path.
+let _lookup = null;
+function exerciseLookup() {
+  if (!_lookup) _lookup = new Map(ALL_EXERCISES.map(ex => [ex.id, ex]));
+  return _lookup;
+}
 
 // All known region IDs
 const ALL_REGIONS = BODY_REGION_DEFINITIONS.map(r => r.id);
@@ -99,7 +123,7 @@ export function computeReadiness(sessions, options = {}) {
     const sets = Array.isArray(session.workout_sets) ? session.workout_sets : [];
     for (const set of sets) {
       if (!set || set.completed === false) continue; // skip incomplete sets
-      const ex = EXERCISE_LOOKUP.get(set.exercise_id);
+      const ex = exerciseLookup().get(set.exercise_id);
       if (!ex) continue;
 
       const scores = ex.muscleScores || {};
@@ -270,7 +294,7 @@ export function bucketExerciseBreakdown(sessions, regionIds, options = {}) {
     const sets = Array.isArray(session.workout_sets) ? session.workout_sets : [];
     for (const set of sets) {
       if (!set || set.completed === false) continue;
-      const ex = EXERCISE_LOOKUP.get(set.exercise_id);
+      const ex = exerciseLookup().get(set.exercise_id);
       if (!ex) continue;
       const scores = ex.muscleScores || {};
       const primary = ex.primaryRegions || [];
@@ -332,7 +356,7 @@ export function bucketCounts(readinessMap, buckets) {
  */
 export function exerciseReadiness(readinessMap, exerciseId) {
   if (!readinessMap || !exerciseId) return null;
-  const ex = EXERCISE_LOOKUP.get(exerciseId);
+  const ex = exerciseLookup().get(exerciseId);
   if (!ex) return null;
 
   const scores = ex.muscleScores || {};

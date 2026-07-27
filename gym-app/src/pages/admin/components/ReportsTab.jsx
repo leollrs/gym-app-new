@@ -43,16 +43,25 @@ export default function ReportsTab({ gymId }) {
     enabled: !!gymId,
   });
 
-  // Realtime: refetch whenever a content_report lands or is reviewed.
-  useEffect(() => {
-    if (!gymId) return;
-    const channel = supabase.channel(`mod-reports-${gymId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'content_reports', filter: `gym_id=eq.${gymId}` },
-        () => refetch()
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [gymId, refetch]);
+  // NO REALTIME HERE — deliberate. `content_reports` is NOT a member of the
+  // `supabase_realtime` publication. Verified against production:
+  //   SELECT tablename FROM pg_publication_tables
+  //    WHERE pubname = 'supabase_realtime';
+  //   -> challenge_prizes, earned_rewards, notifications,
+  //      reward_redemptions, session_cues, session_drafts
+  // The `mod-reports-${gymId}` channel that used to sit here (a gym-filtered
+  // `event: '*'` listener → refetch) therefore never fired once, and held an
+  // idle realtime channel open the whole time the Moderation page was open.
+  //
+  // Publishing tables broadly is NOT the fix and is a deliberate cost decision:
+  // one 2,000-member gym would emit an estimated ~17.3M realtime messages/month
+  // against a 5M/month plan allowance. Please do not "restore" the subscription.
+  //
+  // Refresh paths that actually work: React Query's `staleTime: 30_000` +
+  // `refetchOnMount: true` (main.jsx defaults) refetch on every visit past the
+  // freshness window; the admin's own approve/dismiss writes through
+  // `queryClient.setQueryData` below; and `refetch` stays wired to the
+  // ErrorCard retry.
 
   const handleUpdateStatus = async (report, newStatus) => {
     setActing(report.id);

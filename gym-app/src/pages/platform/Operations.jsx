@@ -723,12 +723,38 @@ export default function Operations() {
     init();
   }, [checkHealth, fetchIncidents, fetchFeatureFlags, fetchGoingQuiet]);
 
-  // Auto-refresh every 60s
+  // ── Auto-refresh ────────────────────────────────────────────────────────
+  // Was every 60s, unconditionally. handleRefresh calls fetchGoingQuiet, whose
+  // platform_gym_activity_pulse RPC (0433) contains two CTEs — last_ci /
+  // last_ws — that MAX() over check_ins and workout_sessions across EVERY
+  // tenant with no time predicate. That is two full-table aggregates over the
+  // whole fleet's history, once a minute, per open operator tab, forever
+  // growing. checkHealth/fetchIncidents pile on top of that.
+  //
+  // Client-side we can only cut how OFTEN it runs, so: 5 minutes instead of 60
+  // seconds (12x fewer full scans), and skip entirely while the tab is
+  // backgrounded — an operator console left open on a second monitor was
+  // hammering the DB all day with nobody looking at it. The manual Refresh
+  // button + the "last updated" stamp already cover "I want it now".
+  // NOTE FOR THE SERVER SIDE: the real fix is a time predicate (or a per-gym
+  // last-activity rollup) on those two CTEs in 0433 — see the report.
   useEffect(() => {
     const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       handleRefresh();
-    }, 60000);
-    return () => clearInterval(interval);
+    }, 5 * 60 * 1000);
+    // Catch-up on foreground. Without this the visibility gate above is a
+    // one-way door: an operator who tabs away for ten minutes comes back to
+    // data up to 5 minutes stale and has to press Refresh by hand. At the old
+    // 60s interval that gap was invisible; at 5 minutes it is not. This page
+    // uses plain useState + a manual fetch, so appResume's query invalidation
+    // does not reach it.
+    const onVisible = () => { if (document.visibilityState === 'visible') handleRefresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [handleRefresh]);
 
   // supabase-js v2 never throws from .from() — the old try/catch was dead

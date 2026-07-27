@@ -1150,7 +1150,8 @@ export default function ProgressBody() {
       prevMeasurements: newPrev,
       measurementHistory: allMeas,
     });
-  }, [user, period, i18n.language, setCachedBodyData, bodyCacheKey]);
+  // user?.id — object identity churn on token refresh re-ran the 3-query body load.
+  }, [user?.id, period, i18n.language, setCachedBodyData, bodyCacheKey]);
 
   useEffect(() => {
     let alive = true;
@@ -1349,7 +1350,7 @@ export default function ProgressBody() {
                 // and load time; preserves enough detail for body comparisons.
                 const compressed = await compressImage(file, 1080, 0.8);
                 const path = `${user.id}/${Date.now()}-front.jpg`;
-                const { data: uploadData, error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, compressed, { contentType: 'image/jpeg', upsert: false });
+                const { data: uploadData, error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, compressed, { cacheControl: '31536000', contentType: 'image/jpeg', upsert: false });
                 if (uploadErr) throw uploadErr;
                 await supabase.from('progress_photos').insert({ profile_id: user.id, gym_id: profile.gym_id, storage_path: uploadData.path, view_angle: 'front', taken_at: today(), is_private: true });
                 posthog?.capture('progress_photo_taken');

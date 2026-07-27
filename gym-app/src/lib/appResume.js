@@ -57,6 +57,17 @@ const HARD_RELOAD_AFTER_MS = 3 * 60_000;
 const REMOUNT_AFTER_MS = 15 * 60_000;
 let hiddenAt = null;
 
+// Query keys whose data is admin-edited content, not user state. These are the
+// hooks declared `staleTime: Infinity` in useSupabaseQuery.js, which the resume
+// invalidation below must skip — see the note at its call site. Keep in sync
+// with the "Shape data" block in useSupabaseQuery.js.
+const IMMUTABLE_QUERY_KEYS = new Set([
+  'exercise-library',
+  'food-items',
+  'gym-info',
+  'gym-hours',
+]);
+
 let rtProbeTimer = null;
 
 /** Non-destructive realtime nudge + fast zombie detection.
@@ -195,8 +206,17 @@ export async function notifyForeground(queryClient) {
   //    (mounted) queries refetch in the background; inactive ones refetch on
   //    their next mount. placeholderData:prev (main.jsx) keeps the current UI
   //    painted during the refetch, so there's no spinner flash.
+  //    EXCEPT the immutable-content queries. An unkeyed invalidateQueries()
+  //    ignores staleTime entirely, so it also blew away the four caches
+  //    explicitly marked `staleTime: Infinity` in useSupabaseQuery.js — the
+  //    exercise library, the food table, gym info and gym hours. Those change
+  //    only when an admin edits them, which is why they were marked immutable
+  //    in the first place; refetching them on every app resume was pure waste
+  //    (they are also the largest payloads in the app).
   try {
-    queryClient.invalidateQueries();
+    queryClient.invalidateQueries({
+      predicate: (q) => !IMMUTABLE_QUERY_KEYS.has(q.queryKey?.[0]),
+    });
   } catch { /* queryClient unavailable — nothing to refresh */ }
 }
 

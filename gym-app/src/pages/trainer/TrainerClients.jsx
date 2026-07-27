@@ -1036,16 +1036,34 @@ export default function TrainerClients() {
       const planDaysMap = {};
       (onboardingRows || []).forEach(r => { planDaysMap[r.profile_id] = r.training_days_per_week; });
 
-      // Fetch churn risk scores
+      // Fetch churn risk scores.
+      //
+      // `churn_risk_scores` is append-one-row-per-client-per-day, so this query
+      // returns a client's whole history, not their current score. Without an
+      // ORDER BY, last-write-wins in the loop below kept an ARBITRARY historical
+      // row — odds of it being today's are roughly 1/(days of history). And
+      // deriveClientStatus() discards any score older than 48h, so from about day
+      // three onward the score silently stopped contributing at all and the
+      // roster quietly fell back to last_active_at heuristics.
+      //
+      // Worse, it disagreed with TrainerHome, which does this correctly — the
+      // same client could read "On track" on one page and "Churn" on the other,
+      // which is exactly what lib/clientStatus.js says must never happen.
+      //
+      // Fix mirrors TrainerHome: newest-first + first-wins, plus a 7-day window
+      // so we fetch ~1 row per client instead of their entire history.
+      const churnSince = new Date(Date.now() - 7 * 86400_000).toISOString();
       const { data: churnRows, error: churnError } = await selectInBatches(
         (ids) => supabase.from('churn_risk_scores').select('profile_id, score, key_signals, computed_at')
-          .in('profile_id', ids),
+          .in('profile_id', ids)
+          .gte('computed_at', churnSince)
+          .order('computed_at', { ascending: false }),
         clientIds,
       );
       if (churnError) logger.error('TrainerClients: failed to load churn scores:', churnError);
 
       const churnMap = {};
-      (churnRows || []).forEach(row => { churnMap[row.profile_id] = row; });
+      (churnRows || []).forEach(row => { if (!churnMap[row.profile_id]) churnMap[row.profile_id] = row; });
       setChurnScores(churnMap);
 
       setClients(assignedClients.map(m => ({

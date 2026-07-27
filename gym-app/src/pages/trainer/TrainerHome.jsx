@@ -147,17 +147,41 @@ export default function TrainerHome() {
       setLiveClientIds(new Set((data || []).map(r => r.profile_id)));
     };
 
+    // Rate limit, not just a debounce. The subscription is UNFILTERED (`event:
+    // '*'` on the whole session_drafts table — postgres_changes can't filter by
+    // an id LIST), and an in-progress workout rewrites its draft row every few
+    // seconds. So with 15-20 clients training at once, events arrive faster
+    // than the old 2s debounce could ever settle: it re-armed continuously and
+    // still fired ~12-20 full roster-wide queries per MINUTE, when the comment
+    // above ("a 60s poll covers the window") says the intended ceiling is one.
+    //
+    // MIN_REFRESH_MS is that ceiling, enforced for BOTH the realtime path and
+    // the poll. Leading edge: the first event after a quiet period refreshes
+    // immediately, so a client going live still shows up instantly. After that
+    // one trailing refresh is scheduled at the ceiling and further events are
+    // absorbed — note we deliberately DON'T push a pending timer back, or a
+    // steady stream of draft writes would starve it forever.
+    const MIN_REFRESH_MS = 60_000;
     let debounceTimer = null;
+    let lastRefreshAt = 0;
+    const runRefresh = () => { lastRefreshAt = Date.now(); refreshLiveDrafts(); };
+    const scheduleRefresh = () => {
+      const sinceLast = Date.now() - lastRefreshAt;
+      if (sinceLast >= MIN_REFRESH_MS) {
+        if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+        runRefresh();
+        return;
+      }
+      if (debounceTimer) return; // already queued for the end of this window
+      debounceTimer = setTimeout(() => { debounceTimer = null; runRefresh(); }, MIN_REFRESH_MS - sinceLast);
+    };
     const channel = supabase
       .channel(`trainer-home-live-${profile.id}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'session_drafts' },
-        () => {
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(refreshLiveDrafts, 2000);
-        })
+        scheduleRefresh)
       .subscribe();
-    const poll = setInterval(refreshLiveDrafts, 60_000);
+    const poll = setInterval(scheduleRefresh, MIN_REFRESH_MS);
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       clearInterval(poll);
@@ -242,9 +266,22 @@ export default function TrainerHome() {
       }
 
       const [churnRes, weekRes, prsRes, liveRes, progRes, onbRes] = await Promise.all([
+        // churn_risk_scores is HISTORY — one row per client per nightly compute
+        // run — but we only want each client's CURRENT score. Unwindowed this
+        // pulled the newest 1000 rows per id-chunk to keep ~40 of them, and it
+        // was only correct by accident: the dedupe below keeps the first row per
+        // profile, which is the latest one ONLY because the 1000-row cut happens
+        // to be applied after the DESC sort. One ordering change away from
+        // showing month-old risk scores.
+        // A 7-day window fixes both: 25x less data, and correctness no longer
+        // depends on where the cap lands. Safe by construction — clientStatus
+        // (deriveClientStatus) already discards any score older than 48h as
+        // stale, so nothing outside this window could have affected the UI.
         selectInBatches(
           (ids) => supabase.from('churn_risk_scores').select('profile_id, score, computed_at')
-            .in('profile_id', ids).order('computed_at', { ascending: false }),
+            .in('profile_id', ids)
+            .gte('computed_at', sevenDaysAgo)
+            .order('computed_at', { ascending: false }),
           clientIds,
         ),
         // Page each id-chunk to completion — a plain selectInBatches truncates a

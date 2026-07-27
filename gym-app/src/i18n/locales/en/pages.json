@@ -80,7 +80,7 @@
     "createRoutineOrProgram": "Create a routine or start a program",
     "goToWorkouts": "Go to Workouts",
     "recoverMessage": "Recover, stretch, and come back stronger",
-    "assignWorkoutInstead": "+ Assign a workout instead",
+    "assignWorkoutInstead": "Assign a workout instead",
     "lvl": "Lvl",
     "xp": "XP",
     "challengeOfTheDay": "Challenge of the Day",
@@ -1438,7 +1438,22 @@
     "photoUploadFailed": "Could not upload photo",
     "addPhoto": "Add photo",
     "nMeals_one": "{{count}} meal",
-    "inKitchenHidden_one": "{{count}} already in your kitchen — hidden"
+    "inKitchenHidden_one": "{{count}} already in your kitchen — hidden",
+    "addToPlan": "Add to plan",
+    "addedToPlan": "Added to your plan",
+    "addToPlanFailed": "Could not add to your plan",
+    "addingToPlan": "Adding…",
+    "destToday": "Log today",
+    "dragReorder": "Drag to reorder",
+    "planDay": "Day",
+    "clearDayQ": "Clear this day?",
+    "clearDayBody": "Every meal planned for this day is removed. Your logged food stays.",
+    "clearWeekQ": "Clear this week?",
+    "clearWeekBody": "Every meal planned for this week is removed. Your logged food stays.",
+    "clearListQ": "Start a new list?",
+    "clearListBody": "This empties your grocery list. Anything you have not bought yet is removed.",
+    "clearListConfirm": "Empty list",
+    "planSlot": "Meal"
   },
   "sessionSummary": {
     "workoutComplete": "Workout Complete",
@@ -2270,6 +2285,7 @@
     "front": "Front",
     "back": "Back",
     "tapMuscle": "Tap a muscle",
+    "tapMuscleHint": "Tap a muscle to see exercises",
     "primaryTargets": "Primary",
     "secondaryTargets": "Secondary",
     "forYourGoal": "For your goal",
@@ -8048,7 +8064,8 @@
         "high": "At risk",
         "medium": "Medium risk",
         "low": "Low risk"
-      }
+      },
+      "showingFirstOf": "Showing {{shown}} of {{total}} — search to narrow the list, or use “Select all shown” to take all {{total}}."
     },
     "notifications": {
       "preferencesTitle": "Notification preferences",

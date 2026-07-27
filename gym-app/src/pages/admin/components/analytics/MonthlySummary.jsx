@@ -8,6 +8,7 @@ import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import logger from '../../../../lib/logger';
+import { selectAllRows } from '../../../../lib/churn/batchedSelect';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
 import { TK, FK, Card } from './analyticsKit';
@@ -22,65 +23,104 @@ async function fetchSummaryData(gymId, summaryMonth, dateFnsLocale) {
   // SELECT on that matview from `authenticated`, so the client can't read it
   // (the old matview path silently returned empty). Every query joins profiles
   // with `is_staff = false` so staff who train/check-in never inflate the
-  // member-facing monthly numbers. Limits are generous per single gym-month.
-  const [sessionsRes, checkInsRes, prsRes, challengePartsRes, allMembersRes] = await Promise.all([
-    supabase.from('workout_sessions')
+  // member-facing monthly numbers.
+  //
+  // TRUNCATION FIX — this card feeds the PDF the gym owner downloads and keeps,
+  // so a wrong number here outlives the session. Every query used to carry
+  // `.limit(10000)` / `.limit(5000)` / `.limit(2000)`, which read as safeguards
+  // but were no-ops: PostgREST is configured with `max_rows = 1000` and applies
+  // LEAST(limit, max_rows), so each returned the first 1000 rows (verified live:
+  // `content-range: 0-999/1275`). They also fight `.range()` for the same
+  // querystring parameter, so they had to go before paging could work at all.
+  // At 300 members a month holds ~3,600 sessions and a comparable number of
+  // check-ins, so the report printed ~1,000 workouts and ~1,000 check-ins no
+  // matter how busy the gym was — roughly 28% of reality — with total volume,
+  // total training time and the active-member count truncated in step, and the
+  // headline "active rate" wrong in the same proportion.
+  //
+  // Sessions still need the ROWS (volume + duration sums, distinct actives), so
+  // they page. The other four were only ever read as `.length`, so they are now
+  // `count: 'exact', head: true` HEAD requests: exact, uncapped, one round trip
+  // each, and zero rows over the wire.
+  //
+  // The roster read used to be an all-time fetch reduced client-side; it is now
+  // two exact counts with the SAME predicates. Note this chart never had the
+  // all-time-vs-windowed bug ActivityChart did — it always compared the roster
+  // as-of the selected month's end (`created_at <= mEnd`) against that month's
+  // activity, and the split below preserves that exactly.
+  const [sessionsRes, checkInsRes, prsRes, challengePartsRes, newMembersRes, totalMembersRes] = await Promise.all([
+    selectAllRows((lo, hi) => supabase.from('workout_sessions')
       .select('profile_id, duration_seconds, total_volume_lbs, profiles!inner(is_staff)')
       .eq('gym_id', gymId).eq('status', 'completed').eq('profiles.is_staff', false)
-      .gte('started_at', mStart).lte('started_at', mEnd).limit(10000),
+      .gte('started_at', mStart).lte('started_at', mEnd)
+      // (started_at, id) is a total order — `id` is the PK — so OFFSET paging
+      // can't skip or duplicate two sessions started in the same second.
+      .order('started_at', { ascending: true }).order('id', { ascending: true })
+      .range(lo, hi)),
     supabase.from('check_ins')
-      .select('id, profiles!inner(is_staff)')
+      .select('id, profiles!inner(is_staff)', { count: 'exact', head: true })
       .eq('gym_id', gymId).eq('profiles.is_staff', false)
-      .gte('checked_in_at', mStart).lte('checked_in_at', mEnd).limit(10000),
+      .gte('checked_in_at', mStart).lte('checked_in_at', mEnd),
     supabase.from('pr_history')
-      .select('id, profiles!inner(is_staff)')
+      .select('id, profiles!inner(is_staff)', { count: 'exact', head: true })
       .eq('gym_id', gymId).eq('profiles.is_staff', false)
-      .gte('achieved_at', mStart).lte('achieved_at', mEnd).limit(10000),
+      .gte('achieved_at', mStart).lte('achieved_at', mEnd),
     supabase.from('challenge_participants')
-      .select('id, profiles!inner(is_staff)')
+      .select('id, profiles!inner(is_staff)', { count: 'exact', head: true })
       .eq('gym_id', gymId).eq('profiles.is_staff', false)
-      .gte('joined_at', mStart).lte('joined_at', mEnd).limit(2000),
+      .gte('joined_at', mStart).lte('joined_at', mEnd),
     supabase.from('profiles')
-      .select('id, created_at')
-      .eq('gym_id', gymId).eq('role', 'member').eq('is_staff', false).eq('imported_archived', false).limit(5000),
+      .select('id', { count: 'exact', head: true })
+      .eq('gym_id', gymId).eq('role', 'member').eq('is_staff', false).eq('imported_archived', false)
+      .gte('created_at', mStart).lte('created_at', mEnd),
+    supabase.from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('gym_id', gymId).eq('role', 'member').eq('is_staff', false).eq('imported_archived', false)
+      .lte('created_at', mEnd),
   ]);
   if (sessionsRes.error) logger.error('MonthlySummary: sessions error:', sessionsRes.error);
   if (checkInsRes.error) logger.error('MonthlySummary: check-ins error:', checkInsRes.error);
   if (prsRes.error) logger.error('MonthlySummary: prs error:', prsRes.error);
   if (challengePartsRes.error) logger.error('MonthlySummary: challenge participants error:', challengePartsRes.error);
-  if (allMembersRes.error) logger.error('MonthlySummary: all members error:', allMembersRes.error);
+  if (newMembersRes.error) logger.error('MonthlySummary: new members error:', newMembersRes.error);
+  if (totalMembersRes.error) logger.error('MonthlySummary: total members error:', totalMembersRes.error);
 
   const sessions = sessionsRes.data || [];
-  const allMembers = allMembersRes.data || [];
-  const startMs = new Date(mStart).getTime();
-  const endMs = new Date(mEnd).getTime();
+
+  // ONE pass over the (now complete, ~3,600-row) session list. The old code
+  // walked it four separate times — `.length`, a volume reduce, a duration
+  // reduce, and a map()+Set for distinct actives. Paging grew the array ~3.6x,
+  // so fold the four walks into one: every row is touched exactly once.
+  // Duration still rounds PER SESSION before summing, as it did before.
+  let totalVolume = 0;
+  let totalDuration = 0;
+  const activeIds = new Set();
+  for (const s of sessions) {
+    totalVolume += parseFloat(s.total_volume_lbs) || 0;
+    totalDuration += Math.round((parseFloat(s.duration_seconds) || 0) / 60);
+    activeIds.add(s.profile_id);
+  }
 
   const totalWorkouts = sessions.length;
-  const totalVolume = sessions.reduce((sum, s) => sum + (parseFloat(s.total_volume_lbs) || 0), 0);
-  const totalCheckIns = (checkInsRes.data || []).length;
-  const totalPrs = (prsRes.data || []).length;
-  const uniqueActive = new Set(sessions.map(s => s.profile_id)).size;
-  const totalDuration = sessions.reduce((sum, s) => sum + (Math.round((parseFloat(s.duration_seconds) || 0) / 60)), 0);
+  const uniqueActive = activeIds.size;
   const avgWorkoutsPerActive = uniqueActive > 0 ? (totalWorkouts / uniqueActive).toFixed(1) : '0';
 
-  const newMemberCount = allMembers.filter(m => {
-    const c = new Date(m.created_at).getTime();
-    return c >= startMs && c <= endMs;
-  }).length;
-  const totalMembersAtEnd = allMembers.filter(m => new Date(m.created_at).getTime() <= endMs).length;
+  // `?? 0` keeps the old failure shape: a failed count used to surface as an
+  // empty array → 0, not as a crash or a blank card.
+  const totalMembersAtEnd = totalMembersRes.count ?? 0;
   const activeRate = totalMembersAtEnd > 0 ? Math.round((uniqueActive / totalMembersAtEnd) * 100) : 0;
 
   return {
     label: format(target, 'MMMM yyyy', dateFnsLocale),
-    newMembers: newMemberCount,
+    newMembers: newMembersRes.count ?? 0,
     totalWorkouts,
     uniqueActive,
     totalVolume: Math.round(totalVolume),
     totalDuration: Math.round(totalDuration),
     avgWorkoutsPerActive,
-    checkIns: totalCheckIns,
-    prs: totalPrs,
-    challengeJoins: (challengePartsRes.data || []).length,
+    checkIns: checkInsRes.count ?? 0,
+    prs: prsRes.count ?? 0,
+    challengeJoins: challengePartsRes.count ?? 0,
     totalMembers: totalMembersAtEnd,
     activeRate,
   };

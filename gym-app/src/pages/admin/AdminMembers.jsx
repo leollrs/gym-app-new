@@ -30,7 +30,7 @@ import MemberDetail from './components/MemberDetail';
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 
 import { translateSignal as translateChurnSignal } from '../../lib/churn/signalI18n';
-import { fetchMembers, fetchAllInvites, getInviteStatus, MEMBERS_PAGE_SIZE } from '../../lib/admin/memberQueries';
+import { fetchMembers, fetchMemberCount, fetchAllInvites, getInviteStatus, MEMBERS_PAGE_SIZE } from '../../lib/admin/memberQueries';
 import { useScrollLock } from '../../hooks/useScrollLock';
 export { translateChurnSignal };
 
@@ -140,6 +140,17 @@ export default function AdminMembers() {
   });
 
   const members = allMembers.length > 0 ? allMembers : initialMembers;
+
+  // Real roster size, independent of how many pages have been loaded. Falls back
+  // to the loaded count only if the count query itself failed, so the header
+  // never renders blank.
+  const { data: memberCount } = useQuery({
+    queryKey: [...adminKeys.members.all(gymId), 'count'],
+    queryFn: () => fetchMemberCount(gymId),
+    enabled: !!gymId,
+    staleTime: 60_000,
+  });
+  const totalMembers = memberCount ?? members.length;
 
   const handleLoadMore = async () => {
     if (loadingMore || !hasMoreMembers) return;
@@ -568,8 +579,8 @@ export default function AdminMembers() {
     <AdminPageShell>
       <div data-admin-tour="members">
       <PageHeader
-        title={`${t('admin.members.title', 'Members')} (${members.length})`}
-        subtitle={t('admin.members.subtitleDirectory', { total: members.length, defaultValue: '{{total}} total members' })}
+        title={`${t('admin.members.title', 'Members')} (${totalMembers})`}
+        subtitle={t('admin.members.subtitleDirectory', { total: totalMembers, defaultValue: '{{total}} total members' })}
         actions={
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap pb-1 md:pb-0">
             {(tab === 'members' || tab === 'invites') && (
@@ -596,7 +607,7 @@ export default function AdminMembers() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mt-6 mb-6">
         <StatCard
           label={t('admin.members.statTotal', 'Total Members')}
-          value={members.length}
+          value={totalMembers}
           borderColor="var(--color-info)"
           icon={Users}
           delay={0}

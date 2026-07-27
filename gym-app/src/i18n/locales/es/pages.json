@@ -80,7 +80,7 @@
     "createRoutineOrProgram": "Crea una rutina o empieza un programa",
     "goToWorkouts": "Ir a Entrenamientos",
     "recoverMessage": "Recupera, estira y vuelve más fuerte",
-    "assignWorkoutInstead": "+ Asignar un entrenamiento",
+    "assignWorkoutInstead": "Asignar un entrenamiento",
     "lvl": "Niv",
     "xp": "XP",
     "challengeOfTheDay": "Reto del Día",
@@ -1438,7 +1438,22 @@
     "photoUploadFailed": "No se pudo subir la foto",
     "addPhoto": "Añadir foto",
     "nMeals_one": "{{count}} comida",
-    "inKitchenHidden_one": "{{count}} ya en tu cocina — oculto"
+    "inKitchenHidden_one": "{{count}} ya en tu cocina — oculto",
+    "addToPlan": "Añadir al plan",
+    "addedToPlan": "Añadido a tu plan",
+    "addToPlanFailed": "No se pudo añadir a tu plan",
+    "addingToPlan": "Añadiendo…",
+    "destToday": "Registrar hoy",
+    "dragReorder": "Arrastra para reordenar",
+    "planDay": "Día",
+    "clearDayQ": "¿Vaciar este día?",
+    "clearDayBody": "Se elimina toda comida planificada para este día. Lo que registraste se mantiene.",
+    "clearWeekQ": "¿Vaciar esta semana?",
+    "clearWeekBody": "Se elimina toda comida planificada para esta semana. Lo que registraste se mantiene.",
+    "clearListQ": "¿Empezar una lista nueva?",
+    "clearListBody": "Esto vacía tu lista de compras. Se elimina lo que aún no has comprado.",
+    "clearListConfirm": "Vaciar lista",
+    "planSlot": "Comida"
   },
   "sessionSummary": {
     "workoutComplete": "Entrenamiento Completo",
@@ -2278,6 +2293,7 @@
       "equipment": "Equipamiento"
     },
     "tapMuscle": "Toca un músculo",
+    "tapMuscleHint": "Toca un músculo para ver ejercicios",
     "primaryTargets": "Primario",
     "secondaryTargets": "Secundario",
     "forYourGoal": "Para tu meta",
@@ -8217,7 +8233,8 @@
         "high": "En riesgo",
         "medium": "Riesgo medio",
         "low": "Riesgo bajo"
-      }
+      },
+      "showingFirstOf": "Mostrando {{shown}} de {{total}} — busca para filtrar, o usa «Seleccionar todos» para incluir los {{total}}."
     },
     "notifications": {
       "preferencesTitle": "Preferencias de notificación",

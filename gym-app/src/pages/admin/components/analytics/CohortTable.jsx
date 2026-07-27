@@ -5,63 +5,133 @@ import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth, addDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
 import { exportCSV } from '../../../../lib/csvExport';
+import { selectAllRows } from '../../../../lib/churn/batchedSelect';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
 import { TK, FK, Ico, Card, AICON, cohortColor } from './analyticsKit';
 
+// Retention is measured in four rolling 30-day windows from each member's join
+// date (month 0..3), so every member needs FIVE window edges: join+0/30/60/90/120d.
+const WINDOWS = 4;
+
 async function fetchCohortData(gymId, span, dateFnsLocale) {
   const now = new Date();
+  const nowMs = now.getTime();
   const from = subMonths(startOfMonth(now), span - 1).toISOString();
 
-  const { data: members, error: cohMemError } = await supabase
+  // Both reads were unbounded: PostgREST is configured with `max_rows = 1000`
+  // and applies LEAST(limit, max_rows), so it silently returned the first 1000
+  // rows (verified live: `content-range: 0-999/1275`). The roster is paged for
+  // the same reason a 1000+ member gym would lose whole cohorts off the end.
+  // Order by (created_at, id): `id` is the PK, so the sort is total and OFFSET
+  // paging can't skip or duplicate a member who joined in the same second as
+  // another.
+  const { data: members, error: cohMemError } = await selectAllRows((lo, hi) => supabase
     .from('profiles')
     .select('id, created_at')
     .eq('gym_id', gymId)
     .eq('role', 'member')
     .eq('imported_archived', false)
-    .gte('created_at', from);
+    .gte('created_at', from)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .range(lo, hi));
   if (cohMemError) throw cohMemError;
 
-  const { data: sessions, error: cohSessError } = await supabase
+  // This is the one that made the table lie. Six months of sessions is ~72 per
+  // member, so a 300-member gym holds ~21,600 rows and the un-paged read saw
+  // 1000 of them — under 5%. Every member whose sessions fell past that cut
+  // read as "never trained again", so the grid rendered single-digit month-1/2/3
+  // retention for a gym actually running 60-70%, in the exact green/amber/red
+  // colour code an owner reads as a verdict. Paged: ~22 sequential requests.
+  // Order ASCENDING by (started_at, id) — stable for OFFSET paging, and the
+  // ascending part is load-bearing for the single-pass window walk below, which
+  // assumes each member's timestamps arrive already sorted.
+  const { data: sessions, error: cohSessError } = await selectAllRows((lo, hi) => supabase
     .from('workout_sessions')
     .select('profile_id, started_at')
     .eq('gym_id', gymId)
     .eq('status', 'completed')
-    .gte('started_at', from);
+    .gte('started_at', from)
+    .order('started_at', { ascending: true })
+    .order('id', { ascending: true })
+    .range(lo, hi));
   if (cohSessError) throw cohSessError;
 
-  const sessionsByProfile = {};
-  (sessions || []).forEach(s => {
-    if (!sessionsByProfile[s.profile_id]) sessionsByProfile[s.profile_id] = [];
-    sessionsByProfile[s.profile_id].push(new Date(s.started_at));
-  });
+  // ONE grouping pass over the (now ~21x larger) session array: `started_at` is
+  // parsed exactly once per row and kept as a NUMBER, not a Date, so the
+  // retention walk compares primitives instead of re-entering valueOf() on every
+  // comparison. Anything that re-walked this array per member per offset would
+  // have grown 21x along with it.
+  const sessionMsByProfile = new Map();
+  for (const s of (sessions || [])) {
+    const ms = new Date(s.started_at).getTime();
+    const arr = sessionMsByProfile.get(s.profile_id);
+    if (arr) arr.push(ms);
+    else sessionMsByProfile.set(s.profile_id, [ms]);
+  }
 
-  const cohortMap = {};
-  (members || []).forEach(m => {
-    const joinMonth = format(new Date(m.created_at), 'MMM yy', dateFnsLocale);
-    if (!cohortMap[joinMonth]) cohortMap[joinMonth] = [];
-    cohortMap[joinMonth].push(m);
-  });
+  // Bucket members by join month AND precompute their window edges here — once
+  // per member. The old code rebuilt `new Date(m.created_at)` plus two addDays()
+  // calls INSIDE the offset loop, then re-filtered the whole cohort a second
+  // time just to count eligibility: 8 date parses and 12 addDays per member.
+  // Still addDays() rather than `join + k*30*86400000` so DST-shifted edges stay
+  // bit-identical to what the old code produced.
+  const cohortMap = new Map();
+  for (const m of (members || [])) {
+    const joinDate = new Date(m.created_at);
+    const label = format(joinDate, 'MMM yy', dateFnsLocale);
+    const edges = [];
+    for (let k = 0; k <= WINDOWS; k++) edges.push(addDays(joinDate, k * 30).getTime());
+    const entry = { id: m.id, edges };
+    const bucket = cohortMap.get(label);
+    if (bucket) bucket.push(entry);
+    else cohortMap.set(label, [entry]);
+  }
 
   const rows = [];
   for (let i = span - 1; i >= 0; i--) {
     const cohortMonthDate = subMonths(now, i);
     const label = format(cohortMonthDate, 'MMM yy', dateFnsLocale);
-    const cohortMembers = cohortMap[label] || [];
+    const cohortMembers = cohortMap.get(label) || [];
     const cohortSize = cohortMembers.length;
 
+    // active[k] and eligible[k] for all four offsets accumulate in ONE pass over
+    // the cohort, replacing 8 passes (an activeCount filter + an eligibleCount
+    // filter, each repeated per offset) that each re-scanned the member's whole
+    // session list.
+    const active = [0, 0, 0, 0];
+    const eligible = [0, 0, 0, 0];
+    for (const m of cohortMembers) {
+      const times = sessionMsByProfile.get(m.id);
+      const hit = [false, false, false, false];
+      if (times) {
+        // `times` is ascending, so one pointer sweeps the windows forward and
+        // every timestamp is examined exactly once — O(S) per member instead of
+        // O(4*S) from the old `.some()` re-scan per offset.
+        let k = 0;
+        for (let j = 0; j < times.length; j++) {
+          const ms = times[j];
+          while (k < WINDOWS && ms > m.edges[k + 1]) k++;
+          if (k >= WINDOWS) break; // past month 3 — nothing later can match either
+          if (ms >= m.edges[k]) {
+            hit[k] = true;
+            // Adjacent windows SHARE an edge and the old test was inclusive on
+            // both ends (`>= start && <= end`), so a session landing exactly on
+            // a boundary counted for the window it closes AND the one it opens.
+            if (ms === m.edges[k + 1] && k + 1 < WINDOWS) hit[k + 1] = true;
+          }
+        }
+      }
+      for (let k = 0; k < WINDOWS; k++) {
+        if (m.edges[k] > nowMs) continue; // window hasn't opened yet → not eligible
+        eligible[k]++;
+        if (hit[k]) active[k]++;
+      }
+    }
+
     const monthRetention = [0, 1, 2, 3].map(offset => {
-      if (cohortSize === 0) return null;
-      const activeCount = cohortMembers.filter(m => {
-        const joinDate = new Date(m.created_at);
-        const windowStart = addDays(joinDate, offset * 30);
-        const windowEnd = addDays(joinDate, (offset + 1) * 30);
-        if (windowStart > now) return false;
-        const memberSessions = sessionsByProfile[m.id] || [];
-        return memberSessions.some(d => d >= windowStart && d <= windowEnd);
-      }).length;
-      const eligibleCount = cohortMembers.filter(m => addDays(new Date(m.created_at), offset * 30) <= now).length;
-      if (eligibleCount === 0) return null;
-      return Math.round((activeCount / eligibleCount) * 100);
+      if (cohortSize === 0 || eligible[offset] === 0) return null;
+      return Math.round((active[offset] / eligible[offset]) * 100);
     });
 
     rows.push({ label, cohortSize, m0: monthRetention[0], m1: monthRetention[1], m2: monthRetention[2], m3: monthRetention[3] });

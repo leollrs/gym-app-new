@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dumbbell, Play } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { hasDecoded, markDecoded } from '../lib/decodedMedia';
 
 const MUSCLE_TINTS = {
   Chest: '#E8927C', Back: '#7CA8E8', Shoulders: '#C9A84C', Biceps: '#C9A84C',
@@ -20,6 +21,23 @@ const MUSCLE_TINTS = {
   Calves: '#6BC4A6', Forearms: '#C9A84C', Traps: '#7CA8E8', 'Full Body': '#8B95A5',
 };
 const tintFor = (muscle) => MUSCLE_TINTS[muscle] || '#C9A84C';
+
+// Srcs that have already decoded a frame this session.
+//
+// Without this, flipping the Exercises grid/list toggle unmounts every thumb and
+// each one restarts from scratch: inView=false → wait for the IntersectionObserver
+// to fire → mount a fresh <video> → re-decode → shimmer. Several frames of state
+// churn per tile, times ~40 visible tiles. That is the "takes a second" on toggle.
+//
+// A src in here is in the browser's HTTP cache, so we can skip both waits and let
+// it paint on the first frame instead.
+//
+// Capped: the set doubles as "safe to mount immediately", and the list is not
+// virtualised (all ~305 exercises render), so an uncapped set would mean a full
+// scroll then a toggle mounts 305 <video> decoders at once. Past the cap we still
+// render correctly — just via the lazy path, exactly as before.
+// Registry lives in lib/decodedMedia.js and is SHARED with LazyVideoTile, so a
+// clip decoded in one grid is instant in the other.
 
 /** Resolve a stored video path to a full public URL. */
 function resolveVideoUrl(path) {
@@ -33,11 +51,15 @@ export default function ExerciseVideoThumb({ exercise, size = 46, radius = 13, f
   const src = exercise?.videoUrl ? resolveVideoUrl(exercise.videoUrl) : null;
   const tint = tintFor(exercise?.muscle);
   const ref = useRef(null);
-  const [inView, setInView] = useState(false);
+  // Already decoded once → mount the video immediately and treat it as painted.
+  // Re-mounts (view toggle, filter change, back-navigation) are then instant
+  // instead of replaying the observer + decode + shimmer sequence.
+  const seen = hasDecoded(src);
+  const [inView, setInView] = useState(seen);
   // Until the first frame decodes the box would be a flat empty rectangle —
   // indistinguishable from a broken tile on a weak connection. Shimmer until
   // then, then let the frame paint over it.
-  const [hasFrame, setHasFrame] = useState(false);
+  const [hasFrame, setHasFrame] = useState(seen);
 
   useEffect(() => {
     if (!src || inView) return;
@@ -74,8 +96,10 @@ export default function ExerciseVideoThumb({ exercise, size = 46, radius = 13, f
           playsInline
           preload="metadata"
           tabIndex={-1}
-          onLoadedData={() => setHasFrame(true)}
+          onLoadedData={() => { markDecoded(src); setHasFrame(true); }}
           // Clear on error too, so a broken video doesn't shimmer indefinitely.
+          // NOT marked decoded — a failed src must keep taking the lazy path so
+          // it can't be force-mounted on every future remount.
           onError={() => setHasFrame(true)}
           className="w-full h-full object-cover"
           style={{ pointerEvents: 'none' }}

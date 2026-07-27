@@ -195,7 +195,12 @@ export default function WebQrScanModal({ open, onClose, onDecode, spanish = fals
         <div className="flex items-center gap-1.5 px-3.5 py-2 rounded-full"
           style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.14)', backdropFilter: 'blur(8px)' }}>
           <Dumbbell size={13} strokeWidth={2.6} style={{ color: ACCENT }} />
-          <span className="text-[12.5px] font-extrabold text-white" style={{ letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>{heading}</span>
+          {/* NOT `text-white`: index.css:737 force-overrides that class to dark
+              text in LIGHT mode for anything inside .app-wrapper (with
+              !important). This overlay is always dark — a live camera feed — so
+              the class turned the labels dark-on-dark. Inline colour sidesteps
+              the rule entirely because the selector no longer matches. */}
+          <span className="text-[12.5px] font-extrabold" style={{ color: '#fff', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>{heading}</span>
         </div>
         {torchable ? (
           <button
@@ -236,7 +241,7 @@ export default function WebQrScanModal({ open, onClose, onDecode, spanish = fals
           top: `calc(50% + ${Math.round(size / 2)}px + 34px)`,
           padding: '0 32px', textAlign: 'center', pointerEvents: 'none',
         }}>
-          <p className="text-[16px] font-extrabold text-white" style={{ letterSpacing: '-0.02em' }}>
+          <p className="text-[16px] font-extrabold" style={{ color: '#fff', letterSpacing: '-0.02em' }}>
             {starting
               ? (spanish ? 'Iniciando cámara…' : 'Starting camera…')
               : (spanish ? 'Apunta al código de la máquina' : 'Point at the machine’s code')}

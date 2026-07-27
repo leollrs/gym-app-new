@@ -66,7 +66,7 @@ export async function uploadCheckinPhoto({ subjectId, file, previousPath = null 
   const path = `${subjectId}/${Date.now()}.jpg`;
   const { error: upErr } = await supabase.storage
     .from(CHECKIN_BUCKET)
-    .upload(path, clean, { contentType: 'image/jpeg', upsert: true });
+    .upload(path, clean, { cacheControl: '31536000', contentType: 'image/jpeg', upsert: true });
   if (upErr) throw upErr;
 
   if (previousPath && previousPath !== path) {

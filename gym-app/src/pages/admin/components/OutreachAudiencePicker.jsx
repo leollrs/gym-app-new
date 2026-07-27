@@ -2,6 +2,21 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Users, AlertTriangle, Filter as FilterIcon, UserPlus, Cake, UserCheck, Search, Check } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { selectAllRows } from '../../../lib/churn/batchedSelect';
+
+// churn_risk_scores holds one row per member per DAY (unique index on
+// (profile_id, computed_at::date), migration 0030). Same 7-day window +
+// newest-row-per-member rule loadGymChurnScores uses, so the tier counts shown
+// here match the recipients resolveOutreachAudience actually sends to.
+const SCORE_WINDOW_DAYS = 7;
+
+// Hand-pick list: we fetch the whole roster (so member #1001 is selectable) but
+// only render this many at a time — a 3,000-row uncontrolled list of buttons
+// inside a Capacitor WebView janks the whole composer. Search narrows it; the
+// "select all shown" action still applies to every match, not just the rendered
+// slice, so nobody is unreachable.
+const MEMBER_RENDER_CAP = 300;
+const MEMBER_ROSTER_MAX = 10000;
 
 // Icon-chip tones for the audience cards — semantic category hues (the gym's
 // accent for "all"/specific, danger/warning for churn tiers, a fixed coach
@@ -28,14 +43,28 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
   const { data: counts = {} } = useQuery({
     queryKey: ['admin', 'outreach', gymId, 'audience-counts'],
     queryFn: async () => {
+      const scoresSince = new Date(Date.now() - SCORE_WINDOW_DAYS * 86400000).toISOString();
       const [allRes, scoredRes, unonboardedRes, segmentsRes] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('role', 'member'),
-        supabase.from('churn_risk_scores').select('risk_tier').eq('gym_id', gymId),
+        // Was `select('risk_tier')` over ALL history, unbounded and unordered. Two
+        // compounding bugs: it counted ROWS, not members — a member scored `high`
+        // for 40 days added 40 to the "At risk" tally — and PostgREST capped the
+        // read at 1000 rows, so past ~3 days of history the tally was an arbitrary
+        // slice of an already-inflated number. Now: 7-day window, newest-first,
+        // one row per member (profile_id needed for the dedupe), fully paged.
+        selectAllRows((lo, hi) => supabase.from('churn_risk_scores').select('profile_id, risk_tier').eq('gym_id', gymId).gte('computed_at', scoresSince).order('computed_at', { ascending: false }).order('profile_id', { ascending: true }).range(lo, hi)),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false),
         supabase.from('member_segments').select('id, name').eq('gym_id', gymId),
       ]);
       const tiers = { critical: 0, high: 0, medium: 0, low: 0 };
-      (scoredRes.data || []).forEach(r => { if (tiers[r.risk_tier] !== undefined) tiers[r.risk_tier]++; });
+      // Newest-first, so the first row for a member is their current tier; later
+      // rows are that member's older scores and must not be counted again.
+      const seenMembers = new Set();
+      (scoredRes.data || []).forEach(r => {
+        if (seenMembers.has(r.profile_id)) return;
+        seenMembers.add(r.profile_id);
+        if (tiers[r.risk_tier] !== undefined) tiers[r.risk_tier]++;
+      });
       return {
         all: allRes.count ?? 0,
         tiers,
@@ -53,13 +82,18 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ['admin', 'outreach', gymId, 'member-roster'],
     queryFn: async () => {
-      const { data } = await supabase
+      // `.limit(2000)` resolved to 1000 (PostgREST max_rows), which meant an admin
+      // literally could not hand-pick member #1001 — they were absent from the list
+      // and from search. Paged, with (full_name, id) as a stable total order so
+      // OFFSET paging can't drop or duplicate members who share a name.
+      const { data } = await selectAllRows((lo, hi) => supabase
         .from('profiles')
         .select('id, full_name, username')
         .eq('gym_id', gymId)
         .eq('role', 'member')
         .order('full_name', { ascending: true })
-        .limit(2000);
+        .order('id', { ascending: true })
+        .range(lo, hi), { maxRows: MEMBER_ROSTER_MAX });
       return data || [];
     },
     enabled: !!gymId && isMembers,
@@ -73,6 +107,12 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
     return members.filter(m =>
       (m.full_name || '').toLowerCase().includes(q) || (m.username || '').toLowerCase().includes(q));
   }, [members, memberSearch]);
+
+  // Render slice only — `filteredMembers` (the full match set) still drives
+  // selection, so "Select all shown" and search can reach every member.
+  const visibleMembers = useMemo(
+    () => (filteredMembers.length > MEMBER_RENDER_CAP ? filteredMembers.slice(0, MEMBER_RENDER_CAP) : filteredMembers),
+    [filteredMembers]);
 
   const toggleMember = (id) => {
     const next = new Set(selectedIds);
@@ -207,7 +247,7 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
             ) : filteredMembers.length === 0 ? (
               <p className="text-[12px] text-center py-5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.outreach.noMembersFound', 'No members found')}</p>
             ) : (
-              filteredMembers.map(m => {
+              visibleMembers.map(m => {
                 const on = selectedIds.has(m.id);
                 return (
                   <button
@@ -235,6 +275,15 @@ export default function OutreachAudiencePicker({ gymId, value, onChange, t }) {
                   </button>
                 );
               })
+            )}
+            {filteredMembers.length > visibleMembers.length && (
+              <p className="text-[11px] text-center py-2.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.outreach.showingFirstOf', {
+                  shown: visibleMembers.length,
+                  total: filteredMembers.length,
+                  defaultValue: 'Showing {{shown}} of {{total}} — search to narrow, or use “Select all shown” to take all {{total}}.',
+                })}
+              </p>
             )}
           </div>
         </div>

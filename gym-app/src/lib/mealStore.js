@@ -98,6 +98,17 @@ export function mapDbMeal(row) {
  * Cached in localStorage and gated behind a cheap row-count probe (see
  * libraryCache.js), so the full ~1 MB recipe pull only happens when the library
  * actually changes — not on every app open.
+ *
+ * NOTE: there is deliberately NO Supabase realtime subscription on `meals`, and
+ * `subscribeMeals` above is a purely in-memory pub/sub, not a DB channel. The
+ * table is not a member of the `supabase_realtime` publication (verified in
+ * production: challenge_prizes, earned_rewards, notifications,
+ * reward_redemptions, session_cues, session_drafts), so a `postgres_changes`
+ * binding here would never fire — and publishing tables broadly is a deliberate
+ * cost decision (an estimated ~17.3M realtime messages/month from one
+ * 2,000-member gym against a 5M/month plan allowance). This library changes on
+ * the order of once per release, so boot hydration (App.jsx calls
+ * hydrateMealsFromDb once, post-auth) is the correct and only refresh path.
  */
 export async function hydrateMealsFromDb(supabase) {
   return cachedHydrate({

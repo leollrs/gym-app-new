@@ -12,7 +12,7 @@
 import { DEFAULT_WEIGHTS, calculateChurnScore } from './riskScoring.js';
 import { calculateVelocity } from './metrics.js';
 import { signalTenureRiskV2 } from './churnSignalsV2.js';
-import { selectInBatches, isMissingColumnError } from './batchedSelect.js';
+import { selectAllRows, selectAllInBatches, isMissingColumnError } from './batchedSelect.js';
 
 /** @deprecated v2 tenure signal — kept only for legacy index.js re-export. */
 export function signalTenureRisk(tenureMonths, totalSessionsFirst90Days) {
@@ -63,7 +63,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     // Table may not have the v3 columns yet — defaults are fine.
   }
 
-  // ── 1. Member profiles ──
+  // ── 1. Member profiles (gym-scoped, PAGED) ──
   // churn_pause_until (migration 0509) is a newer column. If the DB hasn't applied
   // it, selecting it 400s and the ENTIRE churn page silently drops to the legacy
   // estimator (everyone "95 / never logged a workout"). So fetch resiliently: try
@@ -71,15 +71,26 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   // Training frequency comes from preferred_training_days.length — there is NO
   // scalar profiles.training_frequency column (selecting it always 400s).
   // membership_status filter must match the edge fn EXACTLY (explicit allowlist).
+  //
+  // MUST be paged (selectAllRows), like loadScores.js does. PostgREST caps EVERY
+  // response at 1000 rows on this project (max_rows=1000) — an unpaged read of a
+  // 1,500-member gym returned only the first 1000 members BY NAME, so everyone from
+  // roughly "R" onward was not scored "low risk", they were ABSENT from the churn
+  // page entirely. A gym owner would never see the at-risk members in the back half
+  // of the alphabet. The `id` tiebreaker keeps paging deterministic: full_name is
+  // not unique, and two members sharing a name across a page boundary can otherwise
+  // be duplicated or dropped.
   const MEMBER_COLS_SAFE = 'id, full_name, username, phone_number, created_at, membership_started_at, last_active_at, gym_id, preferred_training_days, membership_status';
-  const runMembers = (cols) => supabase
+  const runMembers = (cols) => selectAllRows((from, to) => supabase
     .from('profiles')
     .select(cols)
     .eq('gym_id', gymId)
     .eq('role', 'member')
     .eq('imported_archived', false)
     .in('membership_status', ['active', 'frozen'])
-    .order('full_name', { ascending: true });
+    .order('full_name', { ascending: true })
+    .order('id', { ascending: true })
+    .range(from, to));
 
   let { data: memberRows, error: membersError } = await runMembers(`${MEMBER_COLS_SAFE}, churn_pause_until`);
   if (membersError && isMissingColumnError(membersError)) {
@@ -90,6 +101,25 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const memberIds = memberRows.map((m) => m.id);
 
   // ── 2. Parallel data fetches (v3 set — attendance + trajectory windows) ──
+  // ALL of these use selectAllInBatches, never selectInBatches. selectInBatches only
+  // chunks the `.in()` id list for URL length (~200 ids/request); it does NOT page a
+  // chunk, so each chunk still slammed into PostgREST's 1000-row response cap. The
+  // per-200-member numbers at a mid-size gym: 60d check-ins ~3,084 rows, 90d sessions
+  // ~4,630, all-time sessions ~24,000 — every one of them truncated to 1000.
+  //
+  // Ordered newest-first, that meant only the most recent ~19 days of a chunk's
+  // history survived, and THE TRUNCATION INVERTED THE MODEL: a member who last
+  // attended 25 days ago returned ZERO rows, so lastCheckIn/lastSession were
+  // undefined, daysSinceLastActivity came out null, and the v3 scorer filed a
+  // long-tenured LAPSING member as never-activated / insufficient-data. The exact
+  // population this product exists to catch was the population the cap erased.
+  //
+  // Every `.limit(N)` below is gone: N > 1000 is a no-op under max_rows, so those
+  // numbers were false safeguards, and `.limit()` also fights `.range()` for the
+  // same querystring parameter. Each query carries a stable `.order()` plus a unique
+  // `id` tiebreaker — paging without a total order can duplicate or drop rows across
+  // a page boundary (body_weight_logs.logged_at is a DATE, so same-day ties are the
+  // norm, not the exception).
   const [
     checkInsRes,        // 60d check-ins (attendance: recency, frequency, trend)
     sessions90Res,      // 90d completed sessions (logging trajectory + recency)
@@ -101,43 +131,81 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     bodyRes,            // 90d body logs (goal/progress trajectory)
     historyRes,         // prior churn scores (score-history velocity for display)
   ] = await Promise.all([
-    selectInBatches((ids) => supabase.from('check_ins')
+    selectAllInBatches((ids, from, to) => supabase.from('check_ins')
       .select('profile_id, checked_in_at')
       .eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', ids)
-      .order('checked_in_at', { ascending: false }), memberIds),
+      .order('checked_in_at', { ascending: false }).order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('workout_sessions')
+    selectAllInBatches((ids, from, to) => supabase.from('workout_sessions')
       .select('profile_id, started_at')
       .eq('gym_id', gymId).eq('status', 'completed').gte('started_at', ninetyDaysAgo).in('profile_id', ids)
-      .order('started_at', { ascending: false }), memberIds),
+      .order('started_at', { ascending: false }).order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('workout_sessions')
+    // All-time completed sessions — the heaviest read in the pipeline. It had NO
+    // `.order()` at all, which made its 1000-row truncation arbitrary on top of being
+    // wrong: totalSessions (and therefore `firstWorkoutLogged`) was capped for every
+    // member in a chunk once the chunk crossed 1000 rows. Ordering is irrelevant to
+    // the counts we derive, but `.range()` paging needs a total order to be stable.
+    selectAllInBatches((ids, from, to) => supabase.from('workout_sessions')
       .select('profile_id, started_at')
-      .eq('gym_id', gymId).eq('status', 'completed').in('profile_id', ids), memberIds),
+      .eq('gym_id', gymId).eq('status', 'completed').in('profile_id', ids)
+      .order('started_at', { ascending: false }).order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('activity_feed_items')
+    selectAllInBatches((ids, from, to) => supabase.from('activity_feed_items')
       .select('actor_id, created_at, type')
       .eq('gym_id', gymId).gte('created_at', ninetyDaysAgo).in('actor_id', ids)
-      .order('created_at', { ascending: false }).limit(8000), memberIds),
+      .order('created_at', { ascending: false }).order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('notifications')
+    selectAllInBatches((ids, from, to) => supabase.from('notifications')
       .select('profile_id, read_at, created_at')
-      .gte('created_at', ninetyDaysAgo).in('profile_id', ids).limit(12000), memberIds),
+      .gte('created_at', ninetyDaysAgo).in('profile_id', ids)
+      .order('created_at', { ascending: false }).order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('challenge_participants')
-      .select('profile_id, joined_at').in('profile_id', ids).limit(8000), memberIds),
+    selectAllInBatches((ids, from, to) => supabase.from('challenge_participants')
+      .select('profile_id, joined_at').in('profile_id', ids)
+      .order('joined_at', { ascending: false }).order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('referrals')
-      .select('referrer_id').in('referrer_id', ids).limit(5000), memberIds),
+    selectAllInBatches((ids, from, to) => supabase.from('referrals')
+      .select('referrer_id').in('referrer_id', ids)
+      .order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('body_weight_logs')
+    selectAllInBatches((ids, from, to) => supabase.from('body_weight_logs')
       .select('profile_id, logged_at')
-      .eq('gym_id', gymId).gte('logged_at', ninetyDaysAgo).in('profile_id', ids).limit(8000), memberIds),
+      .eq('gym_id', gymId).gte('logged_at', ninetyDaysAgo).in('profile_id', ids)
+      .order('logged_at', { ascending: false }).order('id', { ascending: true })
+      .range(from, to), memberIds),
 
-    selectInBatches((ids) => supabase.from('churn_risk_scores')
+    // WINDOWED — and the window is load-bearing, not a performance tweak.
+    //
+    // This feeds calculateVelocity (lib/churn/metrics.js), a linear regression
+    // over whatever history it receives, which drives the rising/falling arrow on
+    // the churn page. Unpaging this query without a window silently changed what
+    // that arrow MEANS: it used to see roughly the newest ~1000 rows (~5 days,
+    // an accident of the PostgREST cap) and would have started measuring a
+    // 12-month average slope instead. A member who went 20 -> 85 in ten days
+    // would render `stable`, velocity ~0 — the exact opposite of the signal, on
+    // the number an owner reads to decide who to phone.
+    //
+    // 30 days is a deliberate choice, not a restoration of the old accident: long
+    // enough for a regression to have signal, short enough that a genuine recent
+    // deterioration dominates. It also caps this at ~30 rows/member instead of
+    // ~365, which is what kept the fallback path inside its timeout budget.
+    selectAllInBatches((ids, from, to) => supabase.from('churn_risk_scores')
       .select('profile_id, score, computed_at')
       .eq('gym_id', gymId).in('profile_id', ids)
-      .order('computed_at', { ascending: false }), memberIds),
+      .gte('computed_at', new Date(Date.now() - 30 * 86400_000).toISOString())
+      // profile_id (not id) as the tiebreaker — the nightly cron writes a whole gym
+      // with one computed_at, so ties here are the rule; the table's own history has
+      // gone through two shapes and `id` is not guaranteed on legacy deployments.
+      .order('computed_at', { ascending: false }).order('profile_id', { ascending: true })
+      .range(from, to), memberIds),
   ]);
 
   const checkInRows = checkInsRes.data || [];
@@ -176,15 +244,42 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     if (t >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
   });
 
-  // All-time completed: totals + first-90-day count
+  // All-time completed: totals + first-90-day count.
+  //
+  // ONE grouping pass, then O(1) lookups. The previous shape ran
+  // `allSessionRows.filter(r => r.profile_id === m.id && new Date(r.started_at) <= cutoff)`
+  // INSIDE a forEach over memberRows — a full rescan of every session row for every
+  // member, allocating a Date object per element. On truncated data that was already
+  // ~12M iterations (~2.4s of blocked main thread). Paging the fetch above grows
+  // allSessionRows ~22x, which would have turned it into ~270M iterations — a ~54
+  // SECOND FROZEN TAB. Un-truncating the query without this rewrite would have made
+  // the page dramatically worse than the bug it fixes.
+  //
+  // Now: O(rows) to bucket + O(rows) total to count (each row belongs to exactly one
+  // member), and started_at is parsed once per ROW instead of once per member×row.
   const totalSessionsMap = {};
-  allSessionRows.forEach((r) => { totalSessionsMap[r.profile_id] = (totalSessionsMap[r.profile_id] || 0) + 1; });
+  const sessionMsByMember = new Map();   // profile_id → epoch-ms timestamps
+  allSessionRows.forEach((r) => {
+    const id = r.profile_id;
+    totalSessionsMap[id] = (totalSessionsMap[id] || 0) + 1;
+    let times = sessionMsByMember.get(id);
+    if (!times) sessionMsByMember.set(id, (times = []));
+    times.push(new Date(r.started_at).getTime());
+  });
+  // NOTE: sessionsFirst90Map is currently WRITE-ONLY — nothing in the v3 memberData
+  // below reads it, and its only consumer signalTenureRiskV2(months, first90Sessions)
+  // is reachable only through the @deprecated signalTenureRisk re-export at the top of
+  // this file. Kept (cheaply) rather than deleted so wiring it into the v3 tenure
+  // signal stays a one-liner — but it is dead today, not a behaviour change.
   const sessionsFirst90Map = {};
   memberRows.forEach((m) => {
-    const cutoff = new Date(new Date(m.created_at).getTime() + 90 * MS_PER_DAY);
-    sessionsFirst90Map[m.id] = allSessionRows.filter(
-      (r) => r.profile_id === m.id && new Date(r.started_at) <= cutoff
-    ).length;
+    // Cutoff parsed ONCE per member, outside the counting loop.
+    const cutoffMs = new Date(m.created_at).getTime() + 90 * MS_PER_DAY;
+    const times = sessionMsByMember.get(m.id);
+    if (!times) { sessionsFirst90Map[m.id] = 0; return; }
+    let n = 0;
+    for (let i = 0; i < times.length; i++) if (times[i] <= cutoffMs) n += 1;
+    sessionsFirst90Map[m.id] = n;
   });
 
   // Activity feed → social trajectory + PR trajectory + last social
@@ -234,10 +329,20 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   historyRows.forEach((r) => { (historyMap[r.profile_id] || (historyMap[r.profile_id] = [])).push(r); });
 
   // ── Cohort frequency percentile (self-tuning per gym) ──
+  // Binary search, not a linear walk. cohortPct is called once per member from the
+  // scoring map below, and the old `for (const v of allFreq)` scan made that
+  // O(members²) — 1000 members was ~500k comparisons, tolerable only because the
+  // member query was truncated at 1000. Un-truncating it (§1) removes that accidental
+  // ceiling, so a 5,000-member gym would have paid ~12.5M comparisons. Identical
+  // result: lower-bound index = count of cohort values strictly below f.
   const allFreq = memberRows.map((m) => (ci30[m.id] || 0) / 4.33).sort((a, b) => a - b);
   const cohortPct = (f) => {
     if (!allFreq.length) return null;
-    let lo = 0; for (const v of allFreq) { if (v < f) lo++; else break; }
+    let lo = 0, hi = allFreq.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (allFreq[mid] < f) lo = mid + 1; else hi = mid;
+    }
     return lo / allFreq.length;
   };
 

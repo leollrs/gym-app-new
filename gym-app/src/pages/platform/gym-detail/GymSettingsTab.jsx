@@ -155,7 +155,7 @@ export default function GymSettingsTab({
       const compressed = await compressImage(file);
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `${gym.id}/logo.${ext}`;
-      const { error: upErr } = await supabase.storage.from('gym-logos').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
+      const { error: upErr } = await supabase.storage.from('gym-logos').upload(path, compressed, { cacheControl: '60', upsert: true, contentType: 'image/jpeg' });
       if (upErr) throw upErr;
       const { error: dbErr } = await supabase.from('gym_branding').upsert({ gym_id: gym.id, logo_url: path, updated_at: new Date().toISOString() }, { onConflict: 'gym_id' });
       if (dbErr) throw dbErr;

@@ -28,6 +28,7 @@ import {
 import { format, nextSaturday, addDays, isSaturday } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../lib/supabase';
+import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import FadeIn from '../../components/platform/FadeIn';
@@ -75,23 +76,37 @@ export default function CardQueue() {
   }, [t]);
 
   // ── Gyms (id → name, fulfillment) ──
+  // Paged: this is the id→name map every card panel resolves against, so a gym
+  // missing from it renders a queue panel with no name (and drops out of the
+  // "all gyms" toggle). PostgREST caps a response at 1000 rows, so the fleet
+  // silently truncating at gym #1000 would be a slow, invisible failure.
   const { data: gyms = [], isError: gymsError, refetch: refetchGyms } = useQuery({
     queryKey: ['platform', 'card-queue', 'gyms'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await selectAllRows((from, to) => supabase
         .from('gyms')
         .select('id, name, card_fulfillment')
-        .order('name');
+        .order('name')
+        .order('id', { ascending: true })
+        .range(from, to));
       if (error) throw error;
       return data || [];
     },
   });
 
   // ── Open cards across all gyms (pending = to print, printed = to deliver) ──
+  // `.limit(2000)` was a FALSE safeguard: PostgREST clamps every response to
+  // 1000 rows on this project, so any limit above that is a no-op. This is the
+  // FLEET-WIDE open queue (pending + printed-but-undelivered across every gym),
+  // so once the backlog crosses 1000 the oldest cards — exactly the ones most
+  // overdue — silently vanish from the operator's queue and never get printed.
+  // Paged with `.range()` instead, keeping the same oldest-first order (id as a
+  // tiebreaker so identical created_at values can't straddle a page boundary
+  // and duplicate/drop a card).
   const { data: cards = [], isLoading, isError: cardsError, refetch: refetchCards } = useQuery({
     queryKey: ['platform', 'card-queue', 'cards'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await selectAllRows((from, to) => supabase
         .from('print_cards')
         .select(`
           id, gym_id, profile_id, occasion, headline, subline, status,
@@ -101,7 +116,8 @@ export default function CardQueue() {
         `)
         .in('status', ['pending', 'printed'])
         .order('created_at', { ascending: true })
-        .limit(2000);
+        .order('id', { ascending: true })
+        .range(from, to), { maxRows: 20000 });
       if (error) throw error;
       return data || [];
     },

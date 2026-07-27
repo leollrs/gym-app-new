@@ -24,7 +24,7 @@ import { subDays } from 'date-fns';
 import logger from '../logger.js';
 import { estimateChurnScoreFallback } from './riskScoring.js';
 import { withQueryTimeout } from '../queryWithTimeout.js';
-import { selectInBatches } from './batchedSelect.js';
+import { selectAllRows, selectAllInBatches } from './batchedSelect.js';
 
 const MS_PER_DAY = 86400000;
 
@@ -33,11 +33,31 @@ export async function fetchChurnFallback(gymId, supabase) {
   const fourteenDaysAgo = subDays(now, 14).toISOString();
   const thirtyDaysAgo = subDays(now, 30).toISOString();
 
+  // All three reads MUST be paged. This is the cold-start path — the first churn
+  // screen a brand-new gym ever sees, before the nightly precompute has run — and all
+  // three were unbounded single requests. PostgREST caps EVERY response at 1000 rows
+  // on this project (max_rows=1000), so:
+  //   • profiles  → only the first 1000 members existed at all; the rest never
+  //                 appeared in the list, at any risk level.
+  //   • check_ins → 30 days ordered newest-first truncates to ~2.6 days at a busy
+  //                 gym, so lastCheckInMap was empty for anyone quieter than that and
+  //                 they scored as `neverActive` — the fallback estimator's most
+  //                 severe bucket — regardless of a long, healthy history.
+  //   • sessions  → recentWorkouts undercounted, pushing scores further up.
+  // Net effect on a cold-start gym: a truncated member list where the members who DID
+  // appear were scored against fabricated inactivity.
+  //
+  // Each query carries a total order (timestamp + unique `id`) — paging a
+  // non-deterministic order can duplicate or drop rows across a page boundary.
+  //
+  // Timeout raised 15s → 45s: paging turns each of these from one request into up to a
+  // dozen sequential round trips, and the old ceiling would now fire on a slow
+  // connection and blank the page instead of merely being slower.
   const [membersRes, checkInsRes, sessionsRes] = await withQueryTimeout(Promise.all([
-    supabase.from('profiles').select('id, full_name, username, created_at').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false),
-    supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', thirtyDaysAgo).order('checked_in_at', { ascending: false }),
-    supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', fourteenDaysAgo),
-  ]), 15_000, 'fetchChurnFallback');
+    selectAllRows((from, to) => supabase.from('profiles').select('id, full_name, username, created_at').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).order('id', { ascending: true }).range(from, to)),
+    selectAllRows((from, to) => supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', thirtyDaysAgo).order('checked_in_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
+    selectAllRows((from, to) => supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', fourteenDaysAgo).order('started_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
+  ]), 45_000, 'fetchChurnFallback');
 
   const memberRows = membersRes.data || [];
   logger.debug('[ChurnFallback] gymId:', gymId, 'membersRes.error:', membersRes.error, 'memberRows:', memberRows.length);
@@ -85,20 +105,39 @@ export async function autoDetectReturns(winBackAttempts, gymId, supabase) {
 
   const memberIds = [...new Set(pending.map(a => a.user_id))];
 
+  // Only rows AFTER the oldest still-open attempt can ever satisfy the
+  // `activity > attempt.created_at` test below, so ask the DB for exactly that window
+  // instead of every session/check-in a member has ever had. Identical result set for
+  // the comparison, typically weeks of rows instead of years.
+  const oldestAttemptMs = pending.reduce((min, a) => {
+    const t = new Date(a.created_at).getTime();
+    return Number.isFinite(t) && t < min ? t : min;
+  }, Infinity);
+  const since = Number.isFinite(oldestAttemptMs) ? new Date(oldestAttemptMs).toISOString() : null;
+  const sinceFilter = (q, col) => (since ? q.gt(col, since) : q);
+
+  // selectAllInBatches, not selectInBatches: the latter chunks the id list for URL
+  // length but does NOT page a chunk, so each 200-member chunk truncated at
+  // PostgREST's 1000-row cap. Ordered ASCENDING, that kept the OLDEST 1000 rows —
+  // precisely the wrong end for "did this member come back AFTER we contacted them?".
+  // Win-back attempts at a busy gym therefore stayed stuck on `pending` even when the
+  // member had already returned, so the outreach report under-counted its own wins.
   const [sessionsRes, checkInsRes] = await Promise.all([
-    selectInBatches(
-      (ids) => supabase.from('workout_sessions')
+    selectAllInBatches(
+      (ids, from, to) => sinceFilter(supabase.from('workout_sessions')
         .select('profile_id, started_at')
         .eq('gym_id', gymId).eq('status', 'completed')
-        .in('profile_id', ids)
-        .order('started_at', { ascending: true }),
+        .in('profile_id', ids), 'started_at')
+        .order('started_at', { ascending: true }).order('id', { ascending: true })
+        .range(from, to),
       memberIds),
-    selectInBatches(
-      (ids) => supabase.from('check_ins')
+    selectAllInBatches(
+      (ids, from, to) => sinceFilter(supabase.from('check_ins')
         .select('profile_id, checked_in_at')
         .eq('gym_id', gymId)
-        .in('profile_id', ids)
-        .order('checked_in_at', { ascending: true }),
+        .in('profile_id', ids), 'checked_in_at')
+        .order('checked_in_at', { ascending: true }).order('id', { ascending: true })
+        .range(from, to),
       memberIds),
   ]);
 
@@ -107,16 +146,40 @@ export async function autoDetectReturns(winBackAttempts, gymId, supabase) {
   const autoDetected = [];
   const toUpdate = [];
 
+  // Group ONCE per member, ascending. The previous shape re-filtered the ENTIRE
+  // sessions array and the ENTIRE check-ins array inside the per-attempt map —
+  // O(attempts × rows), with two Date allocations per element inspected. That was
+  // survivable only because the reads above were silently truncated to 1000 rows;
+  // now that they are fully paged it would scale with the gym's whole activity log.
+  const activityByMember = new Map();   // profile_id → [{ t: epochMs, iso }] ascending
+  const push = (id, iso) => {
+    if (!iso) return;
+    const t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return;
+    let arr = activityByMember.get(id);
+    if (!arr) activityByMember.set(id, (arr = []));
+    arr.push({ t, iso });
+  };
+  sessions.forEach(s => push(s.profile_id, s.started_at));
+  checkIns.forEach(c => push(c.profile_id, c.checked_in_at));
+  // Each list is two already-sorted runs concatenated; sort merges them cheaply.
+  activityByMember.forEach(arr => arr.sort((x, y) => x.t - y.t));
+
   const updated = winBackAttempts.map(a => {
     if (a.outcome !== 'pending' && a.outcome !== 'no_response') return a;
 
-    const memberSessions = sessions.filter(s => s.profile_id === a.user_id && new Date(s.started_at) > new Date(a.created_at));
-    const memberCheckIns = checkIns.filter(c => c.profile_id === a.user_id && new Date(c.checked_in_at) > new Date(a.created_at));
+    const times = activityByMember.get(a.user_id);
+    if (!times) return a;
 
-    if (memberSessions.length > 0 || memberCheckIns.length > 0) {
-      const earliestReturn = [...memberSessions.map(s => s.started_at), ...memberCheckIns.map(c => c.checked_in_at)]
-        .sort((x, y) => new Date(x) - new Date(y))[0];
+    // Ascending, so the first entry past the attempt IS the earliest return. Scans
+    // only this member's own rows, and stops at the first hit.
+    const attemptMs = new Date(a.created_at).getTime();
+    let earliestReturn = null;
+    for (let i = 0; i < times.length; i++) {
+      if (times[i].t > attemptMs) { earliestReturn = times[i].iso; break; }
+    }
 
+    if (earliestReturn) {
       toUpdate.push(a.id);
       autoDetected.push({ attemptId: a.id, memberId: a.user_id, returnedAt: earliestReturn });
       return { ...a, outcome: 'returned', _autoDetected: true, _returnedAt: earliestReturn };

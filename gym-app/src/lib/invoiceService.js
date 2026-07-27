@@ -8,6 +8,7 @@
 // these queries stay simple.
 
 import { supabase } from './supabase';
+import { selectAllRows } from './churn/batchedSelect';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -43,26 +44,54 @@ export async function listInvoiceClients(trainerId) {
     .sort((a, b) => (a.full_name || a.username || '').localeCompare(b.full_name || b.username || ''));
 }
 
-/** All of a trainer's invoices (newest first) with the client's display name. */
+/**
+ * All of a trainer's invoices (newest first) with the client's display name.
+ *
+ * Paged: PostgREST clamps every response to 1000 rows on this project, and this
+ * query has no date window — a trainer billing ~2 invoices/day crosses 1000 in
+ * about two years, at which point the OLDEST invoices silently stop existing as
+ * far as the app is concerned (the list, the totals computed from it, and any
+ * "find that old invoice" search all quietly lose them). `.range()` paging keeps
+ * the same newest-first order and returns the complete set.
+ *
+ * created_at is not unique, so a second `id` sort key keeps page boundaries
+ * deterministic — otherwise a tie straddling a page edge can duplicate one row
+ * and drop another.
+ */
 export async function listInvoices(trainerId) {
   if (!trainerId) return [];
-  const { data, error } = await supabase
+  const { data, error } = await selectAllRows((from, to) => supabase
     .from('trainer_invoices')
     .select('id, invoice_number, status, currency, total, due_date, issued_at, paid_at, created_at, share_token, client:profiles!trainer_invoices_client_id_fkey (id, full_name, username)')
     .eq('trainer_id', trainerId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .range(from, to));
   if (error) throw error;
   return data || [];
 }
 
-/** A single client's invoices (newest first) — for the per-client card. */
+/**
+ * A single client's invoices (newest first) — for the per-client card.
+ *
+ * Paged for the SAME reason as listInvoices above, just with a longer fuse: this
+ * one is scoped to a single client, so it takes years of billing to cross the
+ * 1000-row PostgREST cap instead of months. The failure mode is identical and
+ * silent either way — the oldest invoices stop existing as far as the card is
+ * concerned, and anything the caller totals off this array under-reports with no
+ * error to notice. Same `(created_at desc, id asc)` key so page boundaries are
+ * deterministic: created_at is not unique, and a tie straddling a page edge
+ * duplicates one row and drops another without the tiebreaker.
+ */
 export async function listClientInvoices(clientId) {
   if (!clientId) return [];
-  const { data, error } = await supabase
+  const { data, error } = await selectAllRows((from, to) => supabase
     .from('trainer_invoices')
     .select('id, invoice_number, status, currency, total, due_date, issued_at, paid_at, created_at, share_token')
     .eq('client_id', clientId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .range(from, to));
   if (error) throw error;
   return data || [];
 }

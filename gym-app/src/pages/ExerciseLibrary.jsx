@@ -13,7 +13,7 @@ import ExerciseMuscleHighlight from '../components/ExerciseMuscleHighlight';
 import MuscleGroupPicker from '../components/MuscleGroupPicker';
 import { MUSCLE_BUCKET_BY_ID, bucketGroup } from '../lib/muscleBuckets';
 import { goalAdjustedDefaults, formatRest } from '../lib/goalAdjustedDefaults';
-import { LayoutList, User, AlignJustify, ScanLine } from 'lucide-react';
+import { LayoutList, User, AlignJustify, ScanLine, Pointer } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
@@ -55,6 +55,18 @@ const SORT_OPTIONS = [
   { key: 'muscle',     i18nKey: 'muscle' },
   { key: 'equipment',  i18nKey: 'equipment' },
 ];
+
+/** Returns a NEW sorted array — never mutates the input list. */
+const sortExercises = (list, sortBy) => {
+  const arr = [...list];
+  switch (sortBy) {
+    case 'name-asc':  return arr.sort((a, b) => exName(a).localeCompare(exName(b)));
+    case 'name-desc': return arr.sort((a, b) => exName(b).localeCompare(exName(a)));
+    case 'muscle':    return arr.sort((a, b) => (a.muscle || '').localeCompare(b.muscle || '') || exName(a).localeCompare(exName(b)));
+    case 'equipment': return arr.sort((a, b) => (a.equipment || '').localeCompare(b.equipment || '') || exName(a).localeCompare(exName(b)));
+    default:          return arr;
+  }
+};
 
 /* ── Stat Pill ──────────────────────────────────────────────────────────────── */
 const StatPill = ({ label, value }) => (
@@ -945,11 +957,30 @@ export const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavo
                 scrollSnapStop: 'always',
               }}
             >
+              {/* flexShrink:0 is load-bearing — WITHOUT it the aspectRatio below is
+                  ignored entirely. This panel is `flex flex-col` with a bounded
+                  height, so the video is a flex item defaulting to flex-shrink:1.
+                  `aspect-ratio` only sets a PREFERRED size; once Form Cues and
+                  Common Mistakes claim their intrinsic height, flex-shrink crushes
+                  whatever is left out of the video. That rendered as a ~4.6:1 strip
+                  regardless of the ratio set here — 12/9, 4/5 and 16/9 all looked
+                  identical on device, which is what made the ratio look like the
+                  culprit. The panel is overflowY:auto, so refusing to shrink just
+                  scrolls instead of squashing.
+
+                  16/9: matches the 1280x720 source exactly, so object-cover crops
+                  nothing — the full movement is visible. Confirmed on device
+                  2026-07-26 after the flexShrink fix above finally let a ratio
+                  render honestly; 12/9, 4/5 and 5/4 were all evaluated against the
+                  crushed box and are not meaningful comparisons. Grid tiles
+                  elsewhere stay 4/5 — that crop is fine on a thumbnail you tap,
+                  not on a video you watch. */}
               {hasVideo ? (
                 <div
                   className="rounded-[18px] overflow-hidden"
                   style={{
-                    aspectRatio: '12/9',
+                    aspectRatio: '16 / 9',
+                    flexShrink: 0,
                     background: 'var(--color-bg-primary)',
                     boxShadow: WARM_SHADOW,
                     border: '1px solid var(--color-border-subtle)',
@@ -969,7 +1000,8 @@ export const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavo
                 <div
                   className="rounded-[18px] flex items-center justify-center"
                   style={{
-                    aspectRatio: '12/9',
+                    aspectRatio: '16 / 9',
+                    flexShrink: 0,   // same reason as the video branch above
                     background: 'var(--color-bg-card)',
                     boxShadow: WARM_SHADOW,
                     border: '1px dashed var(--color-border-subtle)',
@@ -1193,6 +1225,11 @@ export const ExerciseCard = React.memo(({ exercise, onSelect, selectable, isFavo
 /* ── Exercise Library (browseable list with search + filters) ────────────────── */
 const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extraExercises = [], favoriteIds = new Set(), onToggleFavorite }) => {
   const { t } = useTranslation('pages');
+  // Was missing: the body-picker's `exercise_viewed` capture below referenced an
+  // undeclared `posthog` inside a try/catch, so the ReferenceError was swallowed
+  // and that event silently never fired. ExerciseCard and the custom-exercise
+  // modal each declare their own; this component never did.
+  const posthog = usePostHog();
   // Live library — re-renders when the DB copy hydrates so counts/lists follow
   // the server without an app rebuild.
   const localExercises = useExercises();
@@ -1400,6 +1437,10 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
               <User size={13} />
             </button>
           </div>
+          {/* Hidden in body mode: there the flat list is replaced by the muscle
+              picker + per-muscle sheet, so `sorted` is never rendered and this
+              control silently does nothing. A control that can't act is friction. */}
+          {viewMode !== 'body' && (
           <div ref={sortRef} className="relative">
           <button
             onClick={() => setShowSortMenu(s => !s)}
@@ -1426,6 +1467,7 @@ const ExerciseLibrary = ({ onSelect, selectable = false, selectedIds = [], extra
             </div>
           )}
         </div>
+          )}
         </div>
       </div>
 
@@ -2712,8 +2754,21 @@ export const ExerciseLibraryPage = () => {
 
       const [globalsRes, customsRes, savedRes, favsRes] = await Promise.all([
         supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').is('gym_id', null).eq('is_active', true),
-        profile.gym_id
-          ? supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').eq('gym_id', profile.gym_id).in('created_by', ownerIds).eq('is_active', true)
+        // NO `.eq('gym_id', …)` — that filter was both redundant and wrong.
+        // `.in('created_by', ownerIds)` already scopes this to me + my accepted
+        // friends, which is the real bound; adding the gym filter on top meant a
+        // friend at a DIFFERENT gym never appeared, even though can_read_exercise()
+        // (migration 0636) matches the friendship pair with no gym predicate at
+        // all. CLAUDE.md lists "friends' exercises access via friendships" as a
+        // shipped feature, and it silently wasn't for cross-gym friends.
+        // Also drops the `profile.gym_id` guard: whose exercises I may see is a
+        // function of who I'm friends with, not which gym I belong to — a member
+        // without a gym_id still has their own customs.
+        // `.limit()` because the scope is now friend-count-shaped rather than
+        // gym-shaped; ownerIds stays well under the ~390-id URL ceiling in
+        // practice, and RLS still evaluates only on these owners' rows.
+        ownerIds.length
+          ? supabase.from('exercises').select('id, name, name_es, muscle_group, equipment, category, default_sets, default_reps, rest_seconds, instructions, instructions_es, primary_regions, secondary_regions, video_url, created_by').in('created_by', ownerIds).eq('is_active', true).limit(1000)
           : Promise.resolve({ data: [] }),
         supabase.from('user_saved_exercises').select('exercise_id').eq('user_id', user.id),
         supabase.from('exercise_favorites').select('exercise_id').eq('user_id', user.id),
@@ -2980,8 +3035,10 @@ export const ExerciseLibraryPage = () => {
     return {};
   };
 
-  const mineExercises   = useMemo(() => customExercises.filter(e => e.createdBy === user?.id || savedIds.has(e.id)), [customExercises, user?.id, savedIds]);
-  const friendExercises = useMemo(() => customExercises.filter(e => friendIds.has(e.createdBy) && !savedIds.has(e.id)), [customExercises, friendIds, savedIds]);
+  // Sorted here, not just counted: the Mine / Friends tabs render these arrays
+  // directly, and they're the only lists the page's sort control can act on.
+  const mineExercises   = useMemo(() => sortExercises(customExercises.filter(e => e.createdBy === user?.id || savedIds.has(e.id)), sortBy), [customExercises, user?.id, savedIds, sortBy]);
+  const friendExercises = useMemo(() => sortExercises(customExercises.filter(e => friendIds.has(e.createdBy) && !savedIds.has(e.id)), sortBy), [customExercises, friendIds, savedIds, sortBy]);
   const extraForAll     = useMemo(() => [...globalDbExercises, ...customExercises], [globalDbExercises, customExercises]);
 
   // Deduplicated count: locals not in DB + all DB exercises
@@ -3079,14 +3136,7 @@ export const ExerciseLibraryPage = () => {
       if (activeChip === 'hiit')     return cat.includes('hiit') || cat.includes('cardio');
       return true;
     });
-    const arr = [...filtered];
-    switch (sortBy) {
-      case 'name-asc':  return arr.sort((a, b) => exName(a).localeCompare(exName(b)));
-      case 'name-desc': return arr.sort((a, b) => exName(b).localeCompare(exName(a)));
-      case 'muscle':    return arr.sort((a, b) => (a.muscle || '').localeCompare(b.muscle || '') || exName(a).localeCompare(exName(b)));
-      case 'equipment': return arr.sort((a, b) => (a.equipment || '').localeCompare(b.equipment || '') || exName(a).localeCompare(exName(b)));
-      default:          return arr;
-    }
+    return sortExercises(filtered, sortBy);
   }, [activeList, debouncedQuery, activeChip, filterMuscle, filterEquipment, sortBy, recentExerciseIds, favoriteIds]);
 
   const activeFilterCount = (filterMuscle !== 'All' ? 1 : 0) + (filterEquipment !== 'All' ? 1 : 0);
@@ -3121,6 +3171,28 @@ export const ExerciseLibraryPage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChip]);
 
+  // Chip predicate for AllExercisesModal. Memoized on purpose: the modal
+  // keys its filter+sort useMemo on this prop, so an inline arrow would
+  // re-filter and re-sort the whole catalog on every parent render.
+  const filterByChip = useCallback((ex, chipId) => {
+    const m = (ex.muscle || '').toLowerCase();
+    const cat = (ex.category || '').toLowerCase();
+    if (chipId === 'recent') {
+      if (recentExerciseIds.size > 0) return recentExerciseIds.has(ex.id);
+      return favoriteIds.has(ex.id);
+    }
+    if (chipId === 'legs')     return m === 'legs' || m === 'quads' || m === 'hamstrings' || m === 'glutes' || m === 'calves';
+    if (chipId === 'core')     return m === 'core' || m === 'abs';
+    if (chipId === 'push')     return m === 'chest' || m === 'shoulders' || m === 'triceps';
+    if (chipId === 'pull')     return m === 'back' || m === 'lats' || m === 'biceps' || m === 'traps';
+    if (chipId === 'chest')    return m === 'chest';
+    if (chipId === 'back')     return m === 'back' || m === 'lats' || m === 'traps';
+    if (chipId === 'arms')     return m === 'biceps' || m === 'triceps' || m === 'forearms';
+    if (chipId === 'mobility') return cat.includes('mobility') || cat.includes('stretch');
+    if (chipId === 'hiit')     return cat.includes('hiit') || cat.includes('cardio');
+    return true;
+  }, [recentExerciseIds, favoriteIds]);
+
   // Regions currently painted on the body picker. Chip overrides any
   // bucket selection so the user sees what category they're filtering.
   const paintedRegions = useMemo(() => {
@@ -3152,13 +3224,17 @@ export const ExerciseLibraryPage = () => {
           viewport — that was making the tooltip fall back to an off-screen
           position above the header. */}
       <header className="mb-3.5" data-tour="tour-exercise-library">
+        {/* Back link — matches the Workouts page's own back button (15px bold,
+            primary text, 22px chevron, 44px touch target) so the two read as
+            the same control. It was a muted 14px/40px whisper before, which
+            users missed. */}
         <button
           onClick={() => navigate('/workouts')}
-          className="flex items-center gap-1 -ml-1 mb-2 min-h-[40px] text-[14px] font-bold active:opacity-70"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="flex items-center gap-1 -ml-1 mb-2 pr-2 min-h-[44px] text-[15px] font-bold active:opacity-70"
+          style={{ color: 'var(--color-text-primary)' }}
           aria-label={t('exerciseLibrary.backToWorkouts', 'Back to Entrenos')}
         >
-          <ChevronLeft size={20} />
+          <ChevronLeft size={22} />
           {t('workouts.title', 'Entrenos')}
         </button>
         <div className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: 'var(--color-accent)' }}>
@@ -3335,28 +3411,21 @@ export const ExerciseLibraryPage = () => {
         </div>
       )}
 
-      {/* ── Section label + sort ────────────────────────────────────────────── */}
+      {/* ── Section label + sort ──────────────────────────────────────────────
+          The sort control is deliberately NOT rendered on the "All" tab: that
+          tab shows the body picker, not a list, so there is nothing on screen
+          for a sort order to act on. Sorting lives where a list actually
+          renders — the Mine / Friends tabs here, and the search modal, which
+          owns its own A–Z / Z–A toggle. */}
+      {/* Nothing in this row belongs to the All tab any more: the "tap a muscle"
+          hint and the "see all <filter>" button both live in the centered slot
+          above the figure now. Skipping the row entirely there also drops its
+          margins, which would otherwise push the figure down for no reason. */}
+      {tab !== 'all' && (
       <div className="mt-4 mb-2.5 flex items-center justify-between gap-3">
-        {tab === 'all' && CHIP_REGIONS[activeChip] ? (
-          <button
-            type="button"
-            onClick={openChipSheet}
-            className="text-[11px] font-extrabold uppercase tracking-[0.08em] min-w-0 truncate inline-flex items-center gap-1.5 active:opacity-70"
-            style={{ color: 'var(--color-accent)' }}
-          >
-            {t('exerciseLibrary.seeAllInFilter', {
-              filter: chipDefs.find((c) => c.id === activeChip)?.label || activeChip,
-              defaultValue: `Ver todo ${chipDefs.find((c) => c.id === activeChip)?.label || activeChip}`,
-            })}
-            <ChevronRight size={12} strokeWidth={2.4} />
-          </button>
-        ) : (
-          <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] min-w-0 truncate" style={{ color: 'var(--color-text-subtle)' }}>
-            {tab === 'all'
-              ? t('exerciseLibrary.tapMuscle', { defaultValue: 'Toca un músculo' }).toUpperCase()
-              : t('exerciseLibrary.exerciseCount', { count: filteredRows.length, defaultValue: '{{count}} exercises' })}
-          </span>
-        )}
+        <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] min-w-0 truncate" style={{ color: 'var(--color-text-subtle)' }}>
+          {t('exerciseLibrary.exerciseCount', { count: filteredRows.length, defaultValue: '{{count}} exercises' })}
+        </span>
         <div className="flex items-center gap-2 flex-shrink-0">
           <div ref={sortMenuRef} className="relative">
           <button
@@ -3394,10 +3463,71 @@ export const ExerciseLibraryPage = () => {
         </div>
         </div>
       </div>
+      )}
 
       {/* ── Tab Content — All tab is body-only now (list view removed). */}
       {tab === 'all' && (
         <div className="mb-4">
+          {/* Centered on its own row, directly above the figure.
+              NOT below it: the Equipment FAB is viewport-fixed at
+              bottom:calc(90px + safe-area) with height 52, so on a 6.1" screen it
+              occupies y 668-720pt while the bottom nav starts at ~733pt. The
+              figure card already runs into that band — there is no free strip
+              under it for a caption without shrinking the figure. Above the
+              figure is the only centered placement the FAB cannot cover, and it
+              also reads better: the instruction comes before the thing it's
+              instructing about. */}
+          <div className="flex justify-center mb-2.5 px-2">
+            {CHIP_REGIONS[activeChip] ? (
+              /* SOLID accent, not the hint's soft fill. Both occupy this one slot,
+                 so they have to be told apart at a glance: this one navigates, the
+                 hint is passive text. Was an 11px uppercase link left-aligned in the
+                 section-label row, which read as a caption rather than a control.
+                 `background` is inline and NOT a Tailwind bg-* class — the global
+                 unlayered `button { background: none }` rule beats those. */
+              <button
+                type="button"
+                onClick={openChipSheet}
+                className="inline-flex items-center gap-1.5 rounded-full min-w-0 active:scale-95 transition-transform"
+                style={{
+                  background: 'var(--color-accent)',
+                  color: 'var(--color-text-on-accent, #001512)',
+                  border: 'none',
+                  minHeight: 40,
+                  padding: '0 16px',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  letterSpacing: '-0.01em',
+                  boxShadow: '0 4px 14px color-mix(in srgb, var(--color-accent) 32%, transparent)',
+                }}
+              >
+                <span className="truncate">
+                  {t('exerciseLibrary.seeAllInFilter', {
+                    filter: chipDefs.find((c) => c.id === activeChip)?.label || activeChip,
+                    defaultValue: `Ver todo ${chipDefs.find((c) => c.id === activeChip)?.label || activeChip}`,
+                  })}
+                </span>
+                <ChevronRight size={15} strokeWidth={2.6} className="flex-shrink-0" />
+              </button>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full min-w-0"
+                style={{
+                  background: ACCENT_SOFT,
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 26%, transparent)',
+                  color: 'var(--color-accent)',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                <Pointer size={14} strokeWidth={2.4} className="flex-shrink-0" />
+                <span className="truncate">
+                  {t('exerciseLibrary.tapMuscleHint', { defaultValue: 'Tap a muscle to see exercises' })}
+                </span>
+              </span>
+            )}
+          </div>
           <BodyMusclePicker
             selected={pickedBucket}
             onSelect={(bucketId) => { setExpandToGroup(false); setPickedBucket(bucketId); }}
@@ -3438,24 +3568,7 @@ export const ExerciseLibraryPage = () => {
         initialSearch=""
         initialChip={activeChip}
         chipDefs={modalChipDefs}
-        filterByChip={(ex, chipId) => {
-          const m = (ex.muscle || '').toLowerCase();
-          const cat = (ex.category || '').toLowerCase();
-          if (chipId === 'recent') {
-            if (recentExerciseIds.size > 0) return recentExerciseIds.has(ex.id);
-            return favoriteIds.has(ex.id);
-          }
-          if (chipId === 'legs')     return m === 'legs' || m === 'quads' || m === 'hamstrings' || m === 'glutes' || m === 'calves';
-          if (chipId === 'core')     return m === 'core' || m === 'abs';
-          if (chipId === 'push')     return m === 'chest' || m === 'shoulders' || m === 'triceps';
-          if (chipId === 'pull')     return m === 'back' || m === 'lats' || m === 'biceps' || m === 'traps';
-          if (chipId === 'chest')    return m === 'chest';
-          if (chipId === 'back')     return m === 'back' || m === 'lats' || m === 'traps';
-          if (chipId === 'arms')     return m === 'biceps' || m === 'triceps' || m === 'forearms';
-          if (chipId === 'mobility') return cat.includes('mobility') || cat.includes('stretch');
-          if (chipId === 'hiit')     return cat.includes('hiit') || cat.includes('cardio');
-          return true;
-        }}
+        filterByChip={filterByChip}
       />
 
       {/* Phantom ExerciseCard rendered in modal-only mode — surfaces the

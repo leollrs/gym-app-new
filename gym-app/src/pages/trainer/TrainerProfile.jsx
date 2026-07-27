@@ -1291,7 +1291,7 @@ export default function TrainerProfile() {
         const path = `${user.id}/${Date.now()}.jpg`;
         const { error: storageErr } = await supabase.storage
           .from('avatars')
-          .upload(path, cleanFile, { upsert: true, contentType: 'image/jpeg' });
+          .upload(path, cleanFile, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
         if (storageErr) throw storageErr;
         const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
         const { error: updateErr } = await supabase
@@ -1338,7 +1338,7 @@ export default function TrainerProfile() {
       const path = `${user.id}/cover-${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
-        .upload(path, cleanFile, { upsert: true, contentType: 'image/jpeg' });
+        .upload(path, cleanFile, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       await upsertColumn('trainer_cover_url', urlData.publicUrl);

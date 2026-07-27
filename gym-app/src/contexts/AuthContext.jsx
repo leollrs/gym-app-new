@@ -892,12 +892,23 @@ export const AuthProvider = ({ children }) => {
     // One channel, both badges: any change to this profile's notification rows
     // refetches the member count and (for admins) the admin count too. A single
     // subscription avoids overlapping postgres_changes filters on one table.
-    const refetch = () => {
+    const runRefetch = () => {
       fetchUnreadNotifications(profile.id);
       if (isAdminish) fetchUnreadAdminNotifications(profile.id, role, extra);
       else setUnreadAdminNotifs(0);
     };
-    refetch();
+    // Trailing-debounced, because this is a `event: '*'` subscription and a bulk
+    // UPDATE emits one realtime event PER ROW. Notifications.jsx bulk-dismisses
+    // stale rows on mount and "clear all" does the same on demand — a member with
+    // 200 stale notifications fired 200 events, and undebounced that was 200
+    // count queries in a burst from one client. Same for the per-member INSERT
+    // storm from an admin gym-wide announcement.
+    let debounce = null;
+    const refetch = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(runRefetch, 300);
+    };
+    runRefetch();
     const channel = supabase
       .channel('unread-notif-badge')
       .on('postgres_changes', {
@@ -908,7 +919,7 @@ export const AuthProvider = ({ children }) => {
       }, refetch)
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => { clearTimeout(debounce); supabase.removeChannel(channel); };
   }, [profile?.id, profile?.role, fetchUnreadNotifications, fetchUnreadAdminNotifications]);
 
   // ── SIGN UP ────────────────────────────────────────────────
@@ -1207,11 +1218,14 @@ export const AuthProvider = ({ children }) => {
     if (!raw || type === 'external_id' || type === 'custom_template') return undefined;
     const toSign = raw.startsWith('gym-') ? raw : `gym-checkin:${raw}`;
     prewarmSignedQR(toSign);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') prewarmSignedQR(toSign);
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    // The boot prewarm above stays — it makes the first QR open instant, which is
+    // the whole point. The `visibilitychange` re-prewarm that used to be here is
+    // gone: prewarmSignedQR calls the `sign-qr` EDGE FUNCTION, so it re-signed on
+    // every single app foreground for a QR the member usually never opened. At
+    // ~6 foregrounds/day that is ~180,000 billed invocations per month per 1,000
+    // daily actives, and it bought nothing — the signature is only valid 60s
+    // server-side, so a prewarm from a foreground even a minute before the user
+    // taps QR has already expired. useSignedQR re-signs on open anyway.
   }, [profile?.qr_code_payload, gymConfig?.qrPayloadType]);
 
   // Optimistic patch — merges safelisted fields into the local profile

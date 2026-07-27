@@ -67,7 +67,7 @@ export default function AdminProfile() {
         const path = `${profile.id}/${Date.now()}.jpg`;
         const { error: upErr } = await supabase.storage
           .from('avatars')
-          .upload(path, cleanFile, { upsert: true, contentType: 'image/jpeg' });
+          .upload(path, cleanFile, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
         if (upErr) throw upErr;
         const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
         const { error } = await supabase.from('profiles')

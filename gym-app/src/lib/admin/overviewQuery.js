@@ -37,20 +37,28 @@ export async function fetchOverviewData(gymId) {
     // wrong for any gym over ~1000 members or 1000 recent sessions.
     selectAllRows((from, to) => supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).range(from, to)),
     selectAllRows((from, to) => supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).range(from, to)),
-    selectAllRows((from, to) => supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).order('score', { ascending: false }).range(from, to)),
+    selectAllRows((from, to) => supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).gte('computed_at', subDays(now, 7).toISOString()).order('score', { ascending: false }).order('profile_id', { ascending: true }).range(from, to)),
     supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).eq('imported_archived', false).gte('created_at', fortyEightHoursAgo).limit(500),
     // Left-join the member's name/avatar (no !inner) so a check-in still renders
     // in the activity feed even when its profile is outside the members query's
     // filters (e.g. archived imports) or otherwise not in memberMap. The weekly
     // pulse uses this same array and just ignores the extra columns.
     selectAllRows((from, to) => supabase.from('check_ins').select('profile_id, checked_in_at, profiles(full_name, avatar_url)').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).range(from, to)),
-  ]), 15_000, 'fetchOverviewData:primary');
+  ]), 25_000, 'fetchOverviewData:primary');   // 15s -> 25s: this wraps the same
+  // loadGymChurnScores that memberQueries.js already had raised for. That helper
+  // now pages the gym's 60-day check-ins and sessions instead of issuing two
+  // capped requests, so the old budget could time the WHOLE Overview into its
+  // error state while Members loaded fine.
 
-  const { data: todayCheckins, error: todayCheckinsErr } = await withQueryTimeout(
+  // head:true — the KPI is a COUNT, so don't fetch rows to call .length on them.
+  // The old `.limit(500)` meant a busy gym (2,000 members at 40% daily attendance
+  // is ~800 check-ins) displayed "500" on the Overview card and stayed pinned
+  // there — the one number a gym owner glances at every morning, silently wrong
+  // on exactly the busiest days.
+  const { count: todayCheckinCount, error: todayCheckinsErr } = await withQueryTimeout(
     supabase
-      .from('check_ins').select('id, profile_id, checked_in_at')
-      .eq('gym_id', gymId).gte('checked_in_at', todayStart)
-      .order('checked_in_at', { ascending: false }).limit(500),
+      .from('check_ins').select('id', { count: 'exact', head: true })
+      .eq('gym_id', gymId).gte('checked_in_at', todayStart),
     10_000,
     'fetchOverviewData:todayCheckins',
   );
@@ -223,7 +231,6 @@ export async function fetchOverviewData(gymId) {
     ? Math.round(dayCountValues.reduce((s, v) => s + v, 0) / dayCountValues.length)
     : 0;
 
-  const todayCheckinsData = todayCheckins || [];
   // Recent-activity check-ins come from the 30-day `checkIns` array (same source
   // as the weekly pulse), NOT the today-only query — otherwise they vanish from
   // the feed any time nobody happened to check in *today* (early morning, sparse
@@ -354,7 +361,7 @@ export async function fetchOverviewData(gymId) {
       // nested inside at-risk.
       atRiskCount: riskTiers.high,
       criticalCount: riskTiers.critical,
-      checkInsToday: todayCheckinsData.length,
+      checkInsToday: todayCheckinCount ?? 0,
       checkInsYesterday,
       newMembersMonth,
       newMembersPrevMonth,

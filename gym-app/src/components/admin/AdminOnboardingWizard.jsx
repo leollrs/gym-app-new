@@ -559,6 +559,13 @@ export default function AdminOnboardingWizard({ onComplete }) {
           const ext = 'jpg';
           const path = `${gymId}/logo.${ext}`;
           await supabase.storage.from('gym-logos').upload(path, compressed, {
+            // Short TTL, NOT a long one: this path is `${gymId}/logo.jpg` and is
+            // overwritten in place with upsert. A long max-age would freeze the
+            // OLD logo on every member's device until it expired — the one asset
+            // where staleness is most visible. Uploads that write a unique path
+            // (avatars, progress photos, exercise videos: all `${id}/${Date.now()}`)
+            // use 31536000 instead, since a new file always means a new URL.
+            cacheControl: '60',
             upsert: true,
             contentType: 'image/jpeg',
           });
@@ -636,6 +643,13 @@ export default function AdminOnboardingWizard({ onComplete }) {
           const compressed = await compressImage(logoFile);
           const path = `${gymId}/logo.jpg`;
           await supabase.storage.from('gym-logos').upload(path, compressed, {
+            // Short TTL, NOT a long one: this path is `${gymId}/logo.jpg` and is
+            // overwritten in place with upsert. A long max-age would freeze the
+            // OLD logo on every member's device until it expired — the one asset
+            // where staleness is most visible. Uploads that write a unique path
+            // (avatars, progress photos, exercise videos: all `${id}/${Date.now()}`)
+            // use 31536000 instead, since a new file always means a new URL.
+            cacheControl: '60',
             upsert: true,
             contentType: 'image/jpeg',
           });

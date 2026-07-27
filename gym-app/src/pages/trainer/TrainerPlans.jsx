@@ -11,7 +11,7 @@ import { useScrollLock } from '../../hooks/useScrollLock';
 import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { useAuth } from '../../contexts/AuthContext';
 import logger from '../../lib/logger';
-import { selectAllRows } from '../../lib/churn/batchedSelect';
+import { selectAllRows, selectInBatches, selectAllInBatches } from '../../lib/churn/batchedSelect';
 import { useToast } from '../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import { format } from 'date-fns';
@@ -2014,6 +2014,9 @@ export default function TrainerPlans() {
   const [assignIds, setAssignIds] = useState([]); // members it's shared with (0644)
   const toggleAssignId = (id) => setAssignIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const [assigning, setAssigning] = useState(false);
+  // Plan whose `weeks` blob is being fetched before the builder opens (the list
+  // query doesn't carry it any more) — drives the spinner on that card's Edit.
+  const [openingPlanId, setOpeningPlanId] = useState(null);
 
   // Nutrition plans state
   const [mealPlans, setMealPlans] = useState(() => readTrainerCache(`tplans:meals:${profile?.id}`) || []);
@@ -2300,7 +2303,7 @@ export default function TrainerPlans() {
     try {
       const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       const path = `${profile.id}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('meal-photos').upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+      const { error: upErr } = await supabase.storage.from('meal-photos').upload(path, file, { cacheControl: '31536000', contentType: file.type || 'image/jpeg', upsert: false });
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage.from('meal-photos').getPublicUrl(path);
       setNewMeal(n => ({ ...n, imageUrl: urlData?.publicUrl || '' }));
@@ -2563,7 +2566,17 @@ export default function TrainerPlans() {
     const [plansRes, clientsRes] = await Promise.all([
       supabase
         .from('trainer_workout_plans')
-        .select('*, profiles!trainer_workout_plans_client_id_fkey(full_name)')
+        // Explicit columns — `weeks` is deliberately absent. It's the whole
+        // program JSONB (~45 KB for a 12-week plan), and `select('*')` pulled it
+        // for EVERY plan on EVERY visit just to render card titles: ~4.5 MB at
+        // 100 plans, ~22 MB at the .limit(500) ceiling. It then got
+        // JSON.stringify'd into sessionStorage, which throws past the ~5 MB
+        // quota — and writeTrainerCache swallows that error, so the page's whole
+        // stale-while-revalidate design silently stopped caching and re-paid the
+        // download on every navigation. Card day/exercise counts now come from
+        // the tiny per-plan stats cache below; the blob is fetched on demand
+        // when a plan is actually opened (openBuilder / confirmDuplicatePlan).
+        .select('id, gym_id, trainer_id, client_id, name, description, duration_weeks, is_active, is_draft, created_at, updated_at, profiles!trainer_workout_plans_client_id_fkey(full_name)')
         .eq('trainer_id', profile.id)
         .order('created_at', { ascending: false })
         .limit(500), // a trainer won't realistically have >500 plans
@@ -2585,8 +2598,17 @@ export default function TrainerPlans() {
     try {
       const ids = loadedPlans.map(p => p.id);
       if (ids.length) {
-        const { data: jm, error: jmErr } = await supabase
-          .from('trainer_plan_members').select('plan_id, member_id').in('plan_id', ids);
+        // Chunked + paged: a raw `.in()` over the 500-plan ceiling is a ~19 KB
+        // querystring (breaks past ~390 uuids), and 500 plans shared with a few
+        // members each blows past PostgREST's 1000-row response cap — which
+        // would have silently under-reported "shared with N members" on the
+        // cards that need it most.
+        const { data: jm, error: jmErr } = await selectAllInBatches(
+          (chunk, from, to) => supabase
+            .from('trainer_plan_members').select('plan_id, member_id')
+            .in('plan_id', chunk).order('plan_id', { ascending: true }).range(from, to),
+          ids,
+        );
         if (!jmErr) {
           const byPlan = new Map();
           (jm || []).forEach(r => {
@@ -2601,6 +2623,48 @@ export default function TrainerPlans() {
         }
       }
     } catch (e) { logger.error('TrainerPlans: member-count load failed (non-fatal):', e); }
+
+    // ── Card stats (days / exercises) without carrying the weeks blob ──────
+    // Both numbers can only be derived from `weeks`, and there's no server-side
+    // aggregate for them, so they're computed ONCE per plan VERSION and kept in
+    // a few-bytes-per-plan cache keyed on updated_at. The blob is re-downloaded
+    // only for plans that are new or edited since the last visit — the steady
+    // state (open Plans, navigate away, come back, background revalidate) now
+    // costs zero JSONB instead of re-pulling the whole library every time. The
+    // rendered numbers are identical: same expression, same complete data.
+    try {
+      const statsCK = `tplans:planstats:${profile.id}`;
+      const stats = readTrainerCache(statsCK) || {};
+      const staleIds = loadedPlans.filter(p => stats[p.id]?.u !== p.updated_at).map(p => p.id);
+      if (staleIds.length) {
+        const { data: blobs, error: blobErr } = await selectInBatches(
+          (chunk) => supabase.from('trainer_workout_plans')
+            .select('id, updated_at, weeks').in('id', chunk),
+          staleIds,
+        );
+        // A failed blob read only costs us the NEW plans' counts — fall through
+        // and still apply every stat we already had cached rather than zeroing
+        // the whole library.
+        if (blobErr) logger.error('TrainerPlans: plan stats fetch failed (non-fatal):', blobErr);
+        (blobs || []).forEach(b => {
+          const days = Object.values(b.weeks || {}).flat();
+          stats[b.id] = {
+            u: b.updated_at,
+            d: days.length,
+            e: days.reduce((sum, day) => sum + (day.exercises?.length || 0), 0),
+          };
+        });
+        // Drop entries for deleted plans so the cache can't grow unbounded.
+        const live = new Set(loadedPlans.map(p => p.id));
+        Object.keys(stats).forEach(id => { if (!live.has(id)) delete stats[id]; });
+        writeTrainerCache(statsCK, stats);
+      }
+      loadedPlans.forEach(p => {
+        p._dayCount = stats[p.id]?.d ?? 0;
+        p._exerciseCount = stats[p.id]?.e ?? 0;
+      });
+    } catch (e) { logger.error('TrainerPlans: plan stats load failed (non-fatal):', e); }
+
     const loadedClients = (clientsRes.data || []).map(tc => tc.profiles).filter(Boolean);
     setPlans(loadedPlans);
     setClients(loadedClients);
@@ -2628,7 +2692,13 @@ export default function TrainerPlans() {
     if (!readTrainerCache(`tplans:meals:${profile.id}`)) setMealPlansLoading(true);
     supabase
       .from('trainer_meal_plans')
-      .select('*, profiles!trainer_meal_plans_client_id_fkey(full_name)')
+      // Explicit columns — `meals` omitted. It's the full week-by-week meal
+      // JSONB, and the cards below render only name / macros / client / date;
+      // `select('*')` pulled every plan's meals on every visit and then
+      // JSON.stringify'd them into sessionStorage, blowing the quota (the write
+      // fails silently, killing this page's whole cache). openMealDetail
+      // fetches the blob for the one plan the trainer actually opens.
+      .select('id, gym_id, trainer_id, client_id, name, description, target_calories, target_protein_g, target_carbs_g, target_fat_g, duration_weeks, is_active, start_date, end_date, created_at, updated_at, profiles!trainer_meal_plans_client_id_fkey(full_name)')
       .eq('trainer_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(100)
@@ -2642,8 +2712,15 @@ export default function TrainerPlans() {
         try {
           const ids = loaded.map(p => p.id);
           if (ids.length) {
-            const { data: jm, error: jmErr } = await supabase
-              .from('trainer_meal_plan_members').select('plan_id, member_id').in('plan_id', ids);
+            // Paged for the same reason as trainer_plan_members above: 100 meal
+            // plans shared with ~10 members each already crosses PostgREST's
+            // 1000-row cap and would under-report the member count.
+            const { data: jm, error: jmErr } = await selectAllInBatches(
+              (chunk, from, to) => supabase
+                .from('trainer_meal_plan_members').select('plan_id, member_id')
+                .in('plan_id', chunk).order('plan_id', { ascending: true }).range(from, to),
+              ids,
+            );
             if (!jmErr) {
               const byPlan = new Map();
               (jm || []).forEach(r => { if (!byPlan.has(r.plan_id)) byPlan.set(r.plan_id, new Set()); byPlan.get(r.plan_id).add(r.member_id); });
@@ -2655,6 +2732,33 @@ export default function TrainerPlans() {
         setMealPlans(loaded);
         setMealPlansLoading(false);
       });
+  };
+
+  // Open the saved-plan detail sheet. The list rows carry no `meals` (see
+  // loadMealPlans), so fetch that one plan's blob here — the detail sheet and
+  // the editor it hands off to are the only things that read it. The sheet
+  // opens immediately on the row we already have and the day strip fills in
+  // when the blob lands, so this never blocks the tap.
+  const openMealDetail = async (plan) => {
+    setMealDetail(plan);
+    setMealDetailDay(0);
+    setMealDetailWeek(0);
+    if (Array.isArray(plan.meals)) return; // already hydrated this session
+    const { data, error } = await supabase
+      .from('trainer_meal_plans').select('meals').eq('id', plan.id).maybeSingle();
+    if (error) {
+      // Leaving `meals` undefined is deliberate: the sheet keys "can I edit
+      // this?" off Array.isArray(meals), and saveMealPlan writes `meals: []`
+      // when the editor has nothing loaded — so opening the editor on a failed
+      // read would WIPE the plan's meals. Blocked + told, not silently unsafe.
+      logger.error('TrainerPlans: failed to load plan meals:', error);
+      showToast(t('trainerPlans.loadMealPlansFailed', 'Could not load meal plans. Try again.'), 'error');
+      return;
+    }
+    const meals = Array.isArray(data?.meals) ? data.meals : [];
+    // Keep the loaded blob on the list row too, so reopening (or Edit) is free.
+    setMealPlans(prev => prev.map(p => (p.id === plan.id ? { ...p, meals } : p)));
+    setMealDetail(d => (d && d.id === plan.id ? { ...d, meals } : d));
   };
 
   // Open the meal builder to EDIT an existing plan in place: prefill settings +
@@ -2821,7 +2925,26 @@ export default function TrainerPlans() {
     loadData();
   };
 
-  const openBuilder = (plan = null) => {
+  // The list no longer carries `weeks`, so fetch it for the ONE plan being
+  // opened. Only saved plans need it: a null plan (new) and the in-memory
+  // template objects from `tmpl.makePlan()` already carry their own weeks.
+  // PlanBuilder reads init.weeks in a useState initializer, so the blob has to
+  // land BEFORE it mounts — hence the await instead of a loading prop.
+  const openBuilder = async (plan = null) => {
+    if (plan?.id && plan.weeks === undefined) {
+      setOpeningPlanId(plan.id);
+      const { data, error } = await supabase
+        .from('trainer_workout_plans').select('weeks').eq('id', plan.id).maybeSingle();
+      setOpeningPlanId(null);
+      if (error) {
+        logger.error('TrainerPlans: failed to load plan weeks:', error);
+        showToast(t('trainerPlans.loadFailed', 'Could not load your plans. Try again.'), 'error');
+        return;
+      }
+      setEditing({ ...plan, weeks: data?.weeks || {} });
+      setView('builder');
+      return;
+    }
     setEditing(plan);
     setView('builder');
   };
@@ -2868,11 +2991,31 @@ export default function TrainerPlans() {
     const plan = duplicateTarget;
     if (!plan || !duplicateClientId) return;
     setDuplicating(true);
-    const { id, profiles, created_at, updated_at, ...rest } = plan;
+    // The list row no longer carries `weeks`, so read the blob for this one plan
+    // — without it the "copy" would be an empty program.
+    const { data: src, error: srcErr } = await supabase
+      .from('trainer_workout_plans').select('weeks').eq('id', plan.id).maybeSingle();
+    if (srcErr) {
+      setDuplicating(false);
+      logger.error('TrainerPlans: failed to read plan for duplicate:', srcErr);
+      showToast(t('trainerPlans.errorDuplicatePlan', 'Failed to duplicate plan'), 'error');
+      return;
+    }
+    // Explicit payload rather than `...rest`. The spread also carried the
+    // client-side `_memberIds` field this page attaches to every plan (0644
+    // shared assignees), and PostgREST rejects an insert naming a column that
+    // doesn't exist — so a spread-based duplicate fails outright once the
+    // junction table is populated.
     const { error } = await supabase.from('trainer_workout_plans').insert({
-      ...rest,
+      gym_id: plan.gym_id,
+      trainer_id: plan.trainer_id,
       client_id: duplicateClientId,
       name: `${plan.name} ${t('trainerPlans.copySuffix', '(Copy)')}`,
+      description: plan.description,
+      duration_weeks: plan.duration_weeks,
+      weeks: src?.weeks || {},
+      is_active: plan.is_active,
+      is_draft: plan.is_draft,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
@@ -2995,8 +3138,16 @@ export default function TrainerPlans() {
     return [...map.entries()].map(([id, name]) => ({ id, name }));
   }, [clients, plans, t]);
 
+  // Card stats read the precomputed counts (loadData) instead of walking a
+  // `weeks` blob the list query no longer downloads. `weeks` is still honoured
+  // when it IS present — a template plan built in memory by openBuilder() has
+  // weeks and no cached stats.
+  const countDaysOf = (plan) => (
+    plan.weeks ? Object.values(plan.weeks).flat().length : (plan._dayCount || 0)
+  );
   const countExercises = (plan) => {
-    const allDays = Object.values(plan.weeks || {}).flat();
+    if (!plan.weeks) return plan._exerciseCount || 0;
+    const allDays = Object.values(plan.weeks).flat();
     return allDays.reduce((sum, d) => sum + (d.exercises?.length || 0), 0);
   };
 
@@ -3020,7 +3171,7 @@ export default function TrainerPlans() {
   const planTone = (plan) => {
     const dur = plan.duration_weeks || 0;
     const totalEx = countExercises(plan);
-    const days = Object.values(plan.weeks || {}).flat().length;
+    const days = countDaysOf(plan);
     if (dur >= 8 && totalEx > 30) {
       return { tone: TT.accent, soft: TT.accentSoft, type: t('trainerPlans.typeStrength', 'Strength') };
     }
@@ -3341,7 +3492,7 @@ export default function TrainerPlans() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5" style={{ alignItems: 'start' }}>
                 {filtered.map((plan, idx) => {
                   const { tone, type } = planTone(plan);
-                  const totalDays = Object.values(plan.weeks || {}).flat().length;
+                  const totalDays = countDaysOf(plan);
                   const totalEx = countExercises(plan);
                   const clientName = plan.profiles?.full_name;
                   // Shared plans (0644): the true assignee count is the junction ∪ client_id.
@@ -3439,7 +3590,11 @@ export default function TrainerPlans() {
                           {plan.description && <p className="line-clamp-2" style={{ fontSize: 12.5, color: MK.ink2, marginBottom: 14 }}>{plan.description}</p>}
                           {/* actions — Edit + Activate/Deactivate (flips) + duplicate + delete */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 14, borderTop: `1px solid ${MK.line}` }}>
-                            <MkBtn size="s" icon={<Pencil size={14} />} onClick={() => openBuilder(plan)} style={{ flex: '1 1 auto' }}>
+                            <MkBtn size="s" disabled={openingPlanId === plan.id}
+                              icon={openingPlanId === plan.id
+                                ? <Loader2 size={14} className="animate-spin" />
+                                : <Pencil size={14} />}
+                              onClick={() => openBuilder(plan)} style={{ flex: '1 1 auto' }}>
                               {t('trainerPlans.edit', 'Edit')}
                             </MkBtn>
                             <MkBtn size="s" variant="soft" accent={isLive ? MK.coral : MK.teal}
@@ -3518,8 +3673,8 @@ export default function TrainerPlans() {
                 const hasMacros = plan.target_calories || macros.protein || macros.carbs || macros.fat;
                 return (
                   <div key={plan.id} className="tt-tap" role="button" tabIndex={0}
-                    onClick={() => { setMealDetail(plan); setMealDetailDay(0); setMealDetailWeek(0); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { setMealDetail(plan); setMealDetailDay(0); } }}
+                    onClick={() => openMealDetail(plan)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') openMealDetail(plan); }}
                     style={{ background: MK.surface, borderRadius: 24, boxShadow: MK.shadow, overflow: 'hidden', cursor: 'pointer' }}>
                     {/* teal-gradient header */}
                     <div style={{ background: `linear-gradient(135deg, ${soft(MK.teal, 16)}, ${soft(MK.teal, 7)})`, padding: '17px 18px', display: 'flex', alignItems: 'center', gap: 13 }}>
@@ -4242,8 +4397,14 @@ export default function TrainerPlans() {
         const dr = planWeekDates(mealDetail, mealDetailWeek);
         const hasMacros = mealDetail.target_calories || mealDetail.target_protein_g || mealDetail.target_carbs_g || mealDetail.target_fat_g;
         const targetMac = { protein: mealDetail.target_protein_g || 0, carbs: mealDetail.target_carbs_g || 0, fat: mealDetail.target_fat_g || 0 };
-        const hasMeals = Array.isArray(mealDetail.meals) && mealDetail.meals.length > 0;
-        const openEdit = () => { const p = mealDetail; setMealDetail(null); openMealEditor(p); };
+        // `meals` arrives a beat after the sheet opens (openMealDetail fetches
+        // the blob on demand). Until it's a real array we must NOT let the
+        // trainer into the editor: saveMealPlan writes `meals: []` whenever the
+        // editor has none loaded, so editing mid-fetch would silently delete
+        // every meal in the plan.
+        const mealsReady = Array.isArray(mealDetail.meals);
+        const hasMeals = mealsReady && mealDetail.meals.length > 0;
+        const openEdit = () => { if (!mealsReady) return; const p = mealDetail; setMealDetail(null); openMealEditor(p); };
         const day = hasMeals ? mealDetail.meals[Math.min(mealDetailDay, mealDetail.meals.length - 1)] : null;
         const ws = planWeekDates(mealDetail, mealDetailWeek)?.ws || (mealDetail.created_at ? new Date(mealDetail.created_at) : null);
         return (
@@ -4255,7 +4416,11 @@ export default function TrainerPlans() {
                   <MkTag c={mealDetail.is_active ? MK.teal : MK.ink3} dot size="s">{mealDetail.is_active ? t('trainerPlans.active', 'Active') : t('trainerPlans.past', 'Past')}</MkTag>
                   {mealDetail.profiles?.full_name && <span style={{ color: MK.ink2 }}>{t('trainerPlans.assignedTo', 'Assigned to {{name}}', { name: mealDetail.profiles.full_name })}</span>}
                 </span>}
-                right={<MkBtn variant="soft" size="s" icon={<Pencil size={15} color={inkOf(MK.teal)} strokeWidth={2.2} />} onClick={openEdit}>{t('trainerPlans.edit', 'Edit')}</MkBtn>} />
+                right={<MkBtn variant="soft" size="s" disabled={!mealsReady}
+                  icon={mealsReady
+                    ? <Pencil size={15} color={inkOf(MK.teal)} strokeWidth={2.2} />
+                    : <Loader2 size={15} className="animate-spin" color={inkOf(MK.teal)} />}
+                  onClick={openEdit}>{t('trainerPlans.edit', 'Edit')}</MkBtn>} />
 
               {hasMacros && (
                 <MkSec><MkSectionHead icon={<Target size={17} strokeWidth={2.1} />}>{t('trainerPlans.macroTargets', 'Macro Targets')}</MkSectionHead>
@@ -4320,6 +4485,13 @@ export default function TrainerPlans() {
                       );
                     })}
                   </div>
+                </MkSec>
+              ) : !mealsReady ? (
+                /* Blob still in flight — a spinner, not the "no meals" copy,
+                   which would read as a factual (and wrong) statement about
+                   the plan for the ~150 ms the fetch takes. */
+                <MkSec style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <Loader2 size={24} className="animate-spin" color={MK.ink3} style={{ margin: '0 auto' }} />
                 </MkSec>
               ) : (
                 <MkSec style={{ textAlign: 'center', padding: '32px 0' }}>

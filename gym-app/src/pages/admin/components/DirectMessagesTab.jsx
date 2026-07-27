@@ -155,13 +155,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
 
   const threadEndRef = useRef(null);
   const inputRef = useRef(null);
-  const convoIdsRef = useRef([]);
   const seedMapRef = useRef({});
-  // Latest activeConvoId for the realtime handler, kept in a ref so the
-  // direct_messages subscription does NOT tear down + re-subscribe every time
-  // the admin clicks a different conversation (that was a WS re-subscribe storm
-  // on normal inbox navigation).
-  const activeConvoIdRef = useRef(activeConvoId);
+  // Which `?member=` deep link has already been applied. loadConversations now
+  // also runs on a poll/foreground refresh, and without this the URL param
+  // would yank the admin back to that conversation on every refresh.
+  const deepLinkedMemberRef = useRef(null);
 
   // ── Load conversations + member list ──────────────────
   const loadConversations = useCallback(async () => {
@@ -215,13 +213,16 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
     }));
 
     setConversations(enriched);
-    convoIdsRef.current = enriched.map(c => c.id);
     seedMapRef.current = Object.fromEntries(convos.map(c => [c.id, c.encryption_seed]));
     setLoading(false);
 
-    // Open specific member conversation from URL params
+    // Open specific member conversation from URL params. Applied once per
+    // distinct `?member=` value — this function also runs on the refresh poll
+    // now, and re-applying would drag the admin out of whatever thread they
+    // had since opened.
     const memberId = searchParams.get('member');
-    if (memberId && enriched.length > 0) {
+    if (memberId && memberId !== deepLinkedMemberRef.current && enriched.length > 0) {
+      deepLinkedMemberRef.current = memberId;
       const existing = enriched.find(c =>
         c.participant_1 === memberId || c.participant_2 === memberId
       );
@@ -378,37 +379,63 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
   }, [adminId, showToast, t]);
 
   // ── Load messages for active conversation ─────────────
+  // Extracted from its effect so the refresh paths below (poll, foreground
+  // catch-up, post-send reconcile) can re-run it. `silent` skips the spinner so
+  // a background refresh never blanks the thread the admin is reading. Refetching
+  // the whole 200-row window is cheap: `decryptMessage` caches the derived key
+  // per conversation, so only the AES-GCM unwrap is repeated.
+  const loadThread = useCallback(async ({ silent = false } = {}) => {
+    const convoId = activeConvoId;
+    if (!convoId) return;
+    if (!silent) setMsgsLoading(true);
+    const { data, error } = await supabase.from('direct_messages')
+      .select('*').eq('conversation_id', convoId)
+      .order('created_at', { ascending: true }).limit(200);
+    if (error) logger.error('AdminMessaging: messages:', error);
+    const seed = seedMapRef.current[convoId];
+    const decrypted = await Promise.all(
+      (data || []).map(async (m) => {
+        try { return { ...m, body: await decryptMessage(m.body, convoId, seed) }; }
+        catch { return m; }
+      })
+    );
+    // Preserve optimistic rows whose INSERT isn't in this snapshot yet, so a
+    // refresh landing mid-send can't make a just-sent bubble vanish.
+    setMessages(prev => {
+      const landed = new Set(decrypted.map(m => m.body));
+      const stillPending = prev.filter(m =>
+        m._pending
+        && !landed.has(m.body)
+        && Date.now() - new Date(m.created_at).getTime() < 60_000
+      );
+      const next = stillPending.length ? [...decrypted, ...stillPending] : decrypted;
+      // Bail out when nothing actually changed. Without this the refresh poll
+      // would hand back a fresh array reference every 20 s, re-firing the
+      // scroll-to-bottom effect below and yanking the admin off whatever older
+      // message they were reading.
+      const sig = (list) => list.map(m => `${m.id}:${m.read_at || ''}`).join('|');
+      return sig(prev) === sig(next) ? prev : next;
+    });
+    if (!silent) setMsgsLoading(false);
+
+    // Mark incoming messages as read
+    await supabase.from('direct_messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('conversation_id', convoId)
+      .neq('sender_id', adminId)
+      .is('read_at', null);
+
+    setConversations(prev => (
+      prev.some(c => c.id === convoId && c.unread_count !== 0)
+        ? prev.map(c => (c.id === convoId ? { ...c, unread_count: 0 } : c))
+        : prev
+    ));
+  }, [activeConvoId, adminId]);
+
   useEffect(() => {
     if (!activeConvoId) { setMessages([]); return; }
-    setMsgsLoading(true);
-    const load = async () => {
-      const { data, error } = await supabase.from('direct_messages')
-        .select('*').eq('conversation_id', activeConvoId)
-        .order('created_at', { ascending: true }).limit(200);
-      if (error) logger.error('AdminMessaging: messages:', error);
-      const seed = seedMapRef.current[activeConvoId];
-      const decrypted = await Promise.all(
-        (data || []).map(async (m) => {
-          try { return { ...m, body: await decryptMessage(m.body, activeConvoId, seed) }; }
-          catch { return m; }
-        })
-      );
-      setMessages(decrypted);
-      setMsgsLoading(false);
-
-      // Mark incoming messages as read
-      await supabase.from('direct_messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('conversation_id', activeConvoId)
-        .neq('sender_id', adminId)
-        .is('read_at', null);
-
-      setConversations(prev => prev.map(c =>
-        c.id === activeConvoId ? { ...c, unread_count: 0 } : c
-      ));
-    };
-    load();
-  }, [activeConvoId, adminId]);
+    loadThread();
+  }, [activeConvoId, loadThread]);
 
   // Auto-scroll on new messages — smooth.
   useEffect(() => {
@@ -439,117 +466,55 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
     return () => { listeners.forEach((h) => h.remove()); };
   }, []);
 
-  // ── Realtime subscription ─────────────────────────────
-  useEffect(() => { activeConvoIdRef.current = activeConvoId; }, [activeConvoId]);
-
+  // ── Inbox freshness ───────────────────────────────────
+  // NO REALTIME HERE — deliberate.
+  //
+  // The `admin_dm_realtime` channel that used to sit here subscribed to ALL
+  // `direct_messages` INSERTs *and* UPDATEs with NO server-side `filter:` on
+  // either (it filtered client-side against `convoIdsRef`, which is not the
+  // same thing — the server still had to evaluate and ship every row). At the
+  // time `direct_messages` was not a member of the `supabase_realtime`
+  // publication, verified against production:
+  //   SELECT tablename FROM pg_publication_tables
+  //    WHERE pubname = 'supabase_realtime';
+  //   -> challenge_prizes, earned_rewards, notifications,
+  //      reward_redemptions, session_cues, session_drafts
+  // …so neither handler ever fired. A separate migration is adding the table;
+  // this subscription was deliberately NOT restored, because unfiltered means
+  // Realtime evaluates the RLS policy once per subscriber per row change.
+  // Publishing broadly is a deliberate cost decision — an estimated ~17.3M
+  // realtime messages/month from a single 2,000-member gym against a 5M/month
+  // plan allowance — so please do not "restore" it. Anything added back here
+  // must carry a server-side `filter: conversation_id=eq.…`, the way the member
+  // and trainer per-thread channels do.
+  //
+  // Replacement paths, all gated on `!document.hidden` so a backgrounded admin
+  // tab does no work:
+  //   - open thread: 20 s poll + foreground catch-up (new inbound messages AND
+  //     read receipts, since `read_at` rides along on the refetched rows),
+  //   - sidebar list: 90 s poll + foreground catch-up (previews, unread badges,
+  //     ordering),
+  //   - the admin's own sends reconcile immediately via loadThread() in handleSend.
   useEffect(() => {
-    if (!gymId || !adminId) return;
-
-    // Debounce helpers to prevent excessive processing from unfiltered realtime events
-    let insertDebounceTimer;
-    let updateDebounceTimer;
-    let pendingInsert = null;
-    let pendingUpdate = null;
-
-    const processInsert = (payload) => {
-      const newMsg = payload.new;
-      if (!convoIdsRef.current.includes(newMsg.conversation_id)) return;
-
-      if (newMsg.conversation_id === activeConvoIdRef.current) {
-        decryptMessage(newMsg.body, activeConvoIdRef.current, seedMapRef.current[activeConvoIdRef.current]).then(decryptedBody => {
-          setMessages(prev => {
-            if (prev.some(m => m.id === newMsg.id)) return prev;
-            // Reconcile with optimistic temp messages from same sender + body.
-            const tempIdx = prev.findIndex(m =>
-              m._pending
-              && m.sender_id === newMsg.sender_id
-              && m.body === decryptedBody
-              && Math.abs(new Date(m.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 60000
-            );
-            if (tempIdx >= 0) {
-              const next = [...prev];
-              next[tempIdx] = { ...newMsg, body: decryptedBody };
-              return next;
-            }
-            return [...prev, { ...newMsg, body: decryptedBody }];
-          });
-        }).catch(() => {
-          setMessages(prev => {
-            if (prev.some(m => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
-        });
-        if (newMsg.sender_id !== adminId) {
-          supabase.from('direct_messages')
-            .update({ read_at: new Date().toISOString() })
-            .eq('id', newMsg.id)
-            .then(() => {});
-        }
-      }
-
-      decryptMessage(newMsg.body, newMsg.conversation_id, seedMapRef.current[newMsg.conversation_id]).then(decryptedPreview => {
-        setConversations(prev => prev.map(c =>
-          c.id === newMsg.conversation_id
-            ? {
-                ...c,
-                last_message_at: newMsg.created_at,
-                last_message_preview: decryptedPreview,
-                last_message_sender_id: newMsg.sender_id,
-                unread_count: c.id === activeConvoIdRef.current ? 0 : c.unread_count + 1,
-              }
-            : c
-        ).sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)));
-      }).catch(() => {});
+    if (!gymId || !adminId) return undefined;
+    const threadPoll = setInterval(() => {
+      if (!document.hidden) loadThread({ silent: true });
+    }, 20_000);
+    const listPoll = setInterval(() => {
+      if (!document.hidden) loadConversations();
+    }, 90_000);
+    const onVisible = () => {
+      if (document.hidden) return;
+      loadThread({ silent: true });
+      loadConversations();
     };
-
-    const processUpdate = (payload) => {
-      if (payload.new.read_at && payload.new.sender_id === adminId) {
-        setMessages(prev => prev.map(m =>
-          m.id === payload.new.id ? { ...m, read_at: payload.new.read_at } : m
-        ));
-      }
-    };
-
-    const channel = supabase.channel('admin_dm_realtime')
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
-        (payload) => {
-          // For messages in the active conversation, process immediately
-          if (payload.new.conversation_id === activeConvoIdRef.current) {
-            clearTimeout(insertDebounceTimer);
-            processInsert(payload);
-          } else {
-            // For sidebar updates, debounce to reduce churn
-            pendingInsert = payload;
-            clearTimeout(insertDebounceTimer);
-            insertDebounceTimer = setTimeout(() => {
-              if (pendingInsert) processInsert(pendingInsert);
-              pendingInsert = null;
-            }, 2000);
-          }
-        }
-      )
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'direct_messages' },
-        (payload) => {
-          pendingUpdate = payload;
-          clearTimeout(updateDebounceTimer);
-          updateDebounceTimer = setTimeout(() => {
-            if (pendingUpdate) processUpdate(pendingUpdate);
-            pendingUpdate = null;
-          }, 2000);
-        }
-      )
-      .subscribe();
-
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
-      clearTimeout(insertDebounceTimer);
-      clearTimeout(updateDebounceTimer);
-      supabase.removeChannel(channel);
+      clearInterval(threadPoll);
+      clearInterval(listPoll);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-    // activeConvoId intentionally NOT a dep — read via activeConvoIdRef so the
-    // channel stays subscribed across conversation switches.
-  }, [gymId, adminId]);
+  }, [gymId, adminId, loadThread, loadConversations]);
 
   // ── Send message ──────────────────────────────────────
   const handleSend = async () => {
@@ -560,8 +525,9 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
 
     const tempId = crypto.randomUUID();
     const now = new Date().toISOString();
-    // Mark _pending so the realtime handler swaps the temp row for the
-    // real DB row instead of duplicating it.
+    // Mark _pending so the post-insert loadThread() below swaps the temp row
+    // for the real DB row instead of duplicating it. (This used to be the job
+    // of the unfiltered realtime handler — see the "Inbox freshness" note.)
     setMessages(prev => [...prev, {
       id: tempId,
       _pending: true,
@@ -587,6 +553,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
       setMessages(prev => prev.filter(m => m.id !== tempId));
       showToast(t('admin.messaging.sendFailed'), 'error');
     } else {
+      // Swap the optimistic bubble for the real row (and pick up its id /
+      // server timestamp / read_at). Silent so the thread never flashes a
+      // spinner mid-conversation.
+      loadThread({ silent: true });
+
       // Tail tasks — fire-and-forget so the input becomes interactive again
       // immediately. Network failures here don't undo the delivered message.
       supabase.from('conversations')
