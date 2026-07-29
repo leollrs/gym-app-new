@@ -21,7 +21,7 @@ import { rasterizeNode, urlToDataUrl } from './ShareSheet';
 import { ShareExportSizes } from './ShareFormats';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
 import { shareToInstagramFeed, isInstagramInstalled, shareToWhatsApp, shareToMessages, isWhatsAppInstalled, canShareViaMessages } from '../../lib/socialShare';
-import { appShareUrl } from '../../lib/appUrls';
+import { gymShareUrl } from '../../lib/appUrls';
 import { ShareMonthCard, SM_CARD_IDS, buildShareMonthData, smVol } from './ShareMonthCard';
 import GymDestIcon from './GymDestIcon';
 import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
@@ -48,14 +48,19 @@ function previewDims(maxW, maxH) {
 
 export default function ShareMonthSheet({ open, onClose, recap, monthSessions = [], monthPRs = [], user, gym, gymLogoUrl, shareLink }) {
   // gym_id for the feed post, and a real toast so the outcome is visible.
-  const { profile } = useAuth();
+  const { profile, gymSlug } = useAuth();
   const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
-  // Download-oriented link: a non-user who taps it lands on the app's "Get the
-  // app" page (/get), not the bare web app. Honor an explicit /get link from the
-  // caller if it already passes one; otherwise upgrade the legacy webapp prop
-  // (e.g. app.tugympr.com/recap) to the download URL.
-  const link = (shareLink && /\/get(\?|$)/.test(shareLink)) ? shareLink : appShareUrl('recap');
+  // A monthly recap is an EXPRESSIVE share: nobody taps it to "join" anything,
+  // so the link's job is attribution — it says where this happened. It points
+  // at the gym (/g/:slug), where middleware.js serves a gym-branded card to the
+  // crawler and forwards a human on to the gym's own website.
+  //
+  // A caller-supplied /g/ or /get link still wins, so nothing that already
+  // passes an explicit link changes behaviour.
+  const link = (shareLink && /\/(get|g)(\/|\?|$)/.test(shareLink))
+    ? shareLink
+    : gymShareUrl(gymSlug, 'recap');
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [styleId, setStyleId] = useState('volume');

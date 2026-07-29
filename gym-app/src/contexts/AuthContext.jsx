@@ -106,6 +106,13 @@ export const AuthProvider = ({ children }) => {
   const [gymName, setGymName] = useState(() => {
     try { return JSON.parse(localStorage.getItem('offline_gym'))?.name || ''; } catch { return ''; }
   });
+  // Public slug. get_auth_context has always returned it (0333:53) — it was just
+  // being dropped on the floor. Needed for /g/:slug share links, which is how an
+  // expressive share (recap, run, PR) points at the gym instead of at a page the
+  // recipient has no reason to open.
+  const [gymSlug, setGymSlug] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('offline_gym'))?.slug || ''; } catch { return ''; }
+  });
   const [gymLogoUrl, setGymLogoUrl] = useState('');
   // If cache is stale (>24h), show loading state until network fetch resolves —
   // we have no current `role`/`additional_roles` to safely route with.
@@ -382,6 +389,7 @@ export const AuthProvider = ({ children }) => {
       if (!gymQueryFailed) {
         const resolvedName = gym?.name || branding?.custom_app_name || '';
         setGymName(resolvedName);
+        setGymSlug(gym?.slug || '');
         setAppName(resolvedName);
         setGymConfig({
           qrEnabled: gym?.qr_enabled ?? false,
@@ -423,6 +431,7 @@ export const AuthProvider = ({ children }) => {
         if (!gymQueryFailed) {
           localStorage.setItem('offline_gym', JSON.stringify({
             name: gym?.name || branding?.custom_app_name || '',
+            slug: gym?.slug || '',
             qrEnabled: gym?.qr_enabled ?? false,
             qrDisplayFormat: gym?.qr_display_format ?? 'qr_code',
             classesEnabled: gym?.classes_enabled ?? false,
@@ -1386,6 +1395,9 @@ export const AuthProvider = ({ children }) => {
     user,
     profile: effProfile,
     gymName: impersonation ? impersonation.gymName : gymName,
+    // Not impersonation-aware on purpose: a platform admin "viewing as" a gym
+    // has no business minting share links that credit that gym.
+    gymSlug,
     gymLogoUrl: impersonation ? impersonation.gymLogoUrl : gymLogoUrl,
     loading,
     gymDeactivated,
@@ -1424,6 +1436,7 @@ export const AuthProvider = ({ children }) => {
     user,
     profile,
     gymName,
+    gymSlug,
     gymLogoUrl,
     loading,
     gymDeactivated,

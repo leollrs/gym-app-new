@@ -3,7 +3,8 @@ import SimpleShareSheet from './SimpleShareSheet';
 import ShareTplSticker from './ShareTplSticker';
 import ShareTplBodyComp from './ShareTplBodyComp';
 import { useTranslation } from 'react-i18next';
-import { appShareUrl } from '../../lib/appUrls';
+import { gymShareUrl } from '../../lib/appUrls';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Thin wrappers around SimpleShareSheet + ShareTplSticker for the share
 // surfaces that aren't full workout sessions. Each one assembles its own
@@ -18,6 +19,7 @@ import { appShareUrl } from '../../lib/appUrls';
 // ── PR (single personal record) ──────────────────────────────────────────
 export function SharePRSheet({ open, onClose, pr, user, gym, gymLogo }) {
   const { t } = useTranslation('pages');
+  const { gymSlug } = useAuth();
   if (!pr) return null;
 
   const data = {
@@ -39,7 +41,7 @@ export function SharePRSheet({ open, onClose, pr, user, gym, gymLogo }) {
       onClose={onClose}
       gymName={gym}
       title={t('share.titlePR', 'Share PR')}
-      shareLink={appShareUrl('pr', pr.id)}
+      shareLink={gymShareUrl(gymSlug, 'pr')}
       shareText={caption}
       accent="#D4AF37"
       renderCard={({ w, h, transparent, accent }) => (
@@ -52,6 +54,7 @@ export function SharePRSheet({ open, onClose, pr, user, gym, gymLogo }) {
 // ── Streak milestone ─────────────────────────────────────────────────────
 export function ShareStreakSheet({ open, onClose, streakDays, milestone, user, gym, gymLogo }) {
   const { t } = useTranslation('pages');
+  const { gymSlug } = useAuth();
   if (!streakDays) return null;
 
   // Milestone label drives subtitle copy. Falls back to "Day N" for any
@@ -76,7 +79,7 @@ export function ShareStreakSheet({ open, onClose, streakDays, milestone, user, g
       onClose={onClose}
       gymName={gym}
       title={t('share.titleStreak', 'Share streak')}
-      shareLink={appShareUrl('streak')}
+      shareLink={gymShareUrl(gymSlug, 'streak')}
       shareText={caption}
       accent="#FF5A2E"
       renderCard={({ w, h, transparent, accent }) => (
@@ -92,6 +95,7 @@ export function ShareStreakSheet({ open, onClose, streakDays, milestone, user, g
 // is forced off here.
 export function ShareBodyCompSheet({ open, onClose, comp, user, gym, gymLogo }) {
   const { t } = useTranslation('pages');
+  const { gymSlug } = useAuth();
   if (!comp || !comp.beforeUrl || !comp.afterUrl) return null;
 
   const data = {
@@ -124,7 +128,7 @@ export function ShareBodyCompSheet({ open, onClose, comp, user, gym, gymLogo }) 
       onClose={onClose}
       gymName={gym}
       title={t('share.titleBodyComp', 'Share progress')}
-      shareLink={appShareUrl('progress')}
+      shareLink={gymShareUrl(gymSlug, 'progress')}
       shareText={caption}
       accent="#2EC4C4"
       allowSticker={false}
@@ -138,6 +142,7 @@ export function ShareBodyCompSheet({ open, onClose, comp, user, gym, gymLogo }) 
 // ── Monthly recap ────────────────────────────────────────────────────────
 export function ShareMonthlySheet({ open, onClose, recap, user, gym, gymLogo }) {
   const { t } = useTranslation('pages');
+  const { gymSlug } = useAuth();
   if (!recap) return null;
 
   const data = {
@@ -163,7 +168,7 @@ export function ShareMonthlySheet({ open, onClose, recap, user, gym, gymLogo }) 
       onClose={onClose}
       gymName={gym}
       title={t('share.titleMonthly', 'Share month')}
-      shareLink={appShareUrl('recap')}
+      shareLink={gymShareUrl(gymSlug, 'recap')}
       shareText={caption}
       accent="#2EC4C4"
       renderCard={({ w, h, transparent, accent }) => (

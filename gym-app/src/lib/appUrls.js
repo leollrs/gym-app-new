@@ -57,6 +57,27 @@ export function appShareUrl(kind, id) {
   return `${PROD_WEB_URL}/get?c=${c}${id ? `&id=${encodeURIComponent(id)}` : ''}`;
 }
 
+// Link for an EXPRESSIVE share — a monthly recap, a run, a PR, a streak.
+//
+// These are different from a class or a referral: nobody taps "join my monthly
+// recap". The link isn't a door, it's a signature — its job is to say WHERE
+// this happened. So it points at the gym, not at an install funnel.
+//
+// The URL stays on app.tugympr.com because whoever owns the domain answers the
+// crawler's "what card do I show?" — point it straight at the gym's site and
+// the card becomes their homepage's, not "Leonel logged 12 workouts at Casa
+// Hierro". middleware.js serves the branded card to bots and forwards humans on
+// to the gym's own website, which is the marketing the gym is paying for.
+//
+// Falls back to the download page when the gym has no slug (impersonation,
+// cold cache), so a share is never left without a link.
+export function gymShareUrl(slug, kind) {
+  const s = String(slug || '').trim();
+  if (!s) return appShareUrl(kind);
+  const from = kind ? `?from=${encodeURIComponent(kind)}` : '';
+  return `${PROD_WEB_URL}/g/${encodeURIComponent(s)}${from}`;
+}
+
 // ── Email / marketing deep links ────────────────────────────────────────────
 // Section key → in-app route. Keys are stable, human-readable slugs used in the
 // deep-link URL (e.g. /invite/go/workout); the route is what the app navigates

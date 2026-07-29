@@ -208,38 +208,55 @@ export default function Referrals() {
   }, [referralCode, showToast, t, posthog]);
 
   // ── Share ───────────────────────────────────────────────────────────────
-  // The invitee isn't a member yet, so an in-app /referral/<code> deep link is
-  // useless to them (and on a phone WITH the app it just opens the app). Give
-  // them the CODE (copied to clipboard, to paste at signup) + a link to GET the
-  // app — never the deep link. In-person sharing still uses the QR button,
-  // which shows the QR + the code below it (and is what the gym scans).
+  // Shares the REFERRAL LINK (/referral/<code>), not the bare app root.
+  //
+  // This used to send PROD_WEB_URL on purpose: back then `/referral/:code`
+  // did nothing but stash the code and bounce to a naked `/signup`, so the
+  // deep link genuinely was useless and the code-in-text was all the invitee
+  // had. That is no longer true — that route now renders a gym-branded landing
+  // (ReferralLanding.jsx): the gym's logo and colours, who invited them, the
+  // welcome offer, and the code presented as a coupon.
+  //
+  // Sending the root meant the invitee landed on a login screen with no gym, no
+  // offer and no code — and `pendingReferralCode` was never set, so the credit
+  // depended on them retyping the code by hand.
+  //
+  // All three arrival paths are now good: no app → the web landing; app but
+  // signed out → the same landing in-app, then signup with the code already
+  // stashed; app and signed in → they're already a member, so App.jsx sends
+  // them home with a toast.
+  //
+  // The code still rides in the message text and on the clipboard: it is what
+  // they say at the front desk, so redundancy is deliberate. In-person sharing
+  // still uses the QR button.
   const handleShare = useCallback(async () => {
     if (!referralCode) return;
     const message = t('referrals.shareMessage', {
       gymName: gymName || 'TuGymPR',
       code: referralCode,
     });
+    const url = referralLink || PROD_WEB_URL;
     try { await navigator.clipboard?.writeText(referralCode); } catch { /* clipboard blocked */ }
     try {
       if (Capacitor.isNativePlatform()) {
         await Share.share({
           title: t('referrals.shareTitle'),
           text: message,
-          url: PROD_WEB_URL,
+          url,
         });
         posthog?.capture('referral_code_shared', { method: 'native_share' });
       } else if (navigator.share) {
-        await navigator.share({ title: t('referrals.shareTitle'), text: `${message}\n${PROD_WEB_URL}` });
+        await navigator.share({ title: t('referrals.shareTitle'), text: `${message}\n${url}` });
         posthog?.capture('referral_code_shared', { method: 'native_share' });
       } else {
-        await navigator.clipboard.writeText(`${message}\n${PROD_WEB_URL}`);
+        await navigator.clipboard.writeText(`${message}\n${url}`);
         posthog?.capture('referral_code_shared', { method: 'copy' });
         showToast(t('referrals.linkCopied'), 'success');
       }
     } catch {
       /* user cancelled */
     }
-  }, [referralCode, gymName, showToast, t, posthog]);
+  }, [referralCode, referralLink, gymName, showToast, t, posthog]);
 
   // ── Add to Apple/Google Wallet ──────────────────────────────────────────
   const handleAddToWallet = useCallback(async () => {
