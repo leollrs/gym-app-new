@@ -11,6 +11,7 @@
 // ranking data we don't compute, so it's intentionally omitted here rather
 // than fabricated. The other four directions run on real recap data.
 import { useTranslation } from 'react-i18next';
+import useInlinedImage from './useInlinedImage';
 
 // ── fonts (Anton added to index.html for the poster numerals) ──────────────
 // Brand fonts (matches the design). They render in the preview via the Google
@@ -119,10 +120,15 @@ function SMTopRow({ d, p, s, tag }) {
 }
 
 function SMWordmark({ s = 1, color = '#fff', sub = 'rgba(255,255,255,0.7)', label, name = 'TuGymPR', logoUrl }) {
+  // Inline the logo (see GymLockup) — a remote url survives the preview and
+  // dies in the rasterised export, leaving a hole where the mark should be.
+  // The dumbbell glyph now covers "missing" AND "couldn't be fetched".
+  const { src: inlinedLogo, failed } = useInlinedImage(logoUrl);
+  const showLogo = !!inlinedLogo && !failed;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7 * s }}>
-      {logoUrl ? (
-        <img src={logoUrl} alt="" crossOrigin="anonymous"
+      {showLogo ? (
+        <img src={inlinedLogo} alt=""
           style={{ width: 22 * s, height: 22 * s, borderRadius: 6 * s, objectFit: 'cover', flexShrink: 0 }}/>
       ) : (
         <SMDumbbell size={15 * s} color={color}/>

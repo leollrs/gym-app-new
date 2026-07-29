@@ -523,6 +523,11 @@ export default function MemberSettings() {
           </div>
         </div>
 
+        {/* Hidden posts used to live here. Moved to Social → My Posts, right
+            beside "Create post": that is where you hide a post and where you go
+            looking when one disappears. Buried under Settings → Privacy it was
+            findable only by someone who already knew it existed. */}
+
         {/* Export My Data */}
         <div>
           <h3 className="text-[11px] font-semibold uppercase tracking-widest mb-3 px-1" style={{ color: 'var(--color-text-subtle)' }}>{t('settings.exportMyData')}</h3>

@@ -1,0 +1,22 @@
+-- ============================================================
+-- 0652 — Add the `class_reminder` notification type
+-- ============================================================
+-- `notifications.type` is the notification_type ENUM (0001), not free text, so
+-- inserting a value that isn't in the enum fails the whole INSERT — there is no
+-- silent fallback. The scheduled-reminders function now sends two class nudges
+-- (evening before / morning of) and both write a notifications row first, so
+-- without this value every one of them would error out.
+--
+-- The existing class values are about someone ELSE acting on your booking:
+--   class_booking       — a booking was made/changed
+--   class_waitlist_full — the waitlist filled
+--   class_proposal      — a co-trainer proposal
+-- None of them mean "the class you booked is coming up", which is what this is.
+--
+-- ADD VALUE IF NOT EXISTS is idempotent, so re-running this migration is safe.
+-- Enum additions cannot run inside a transaction block in older Postgres; on
+-- Supabase (PG 15+) they can, which is why every prior migration here does the
+-- same thing without special handling.
+-- ============================================================
+
+ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'class_reminder';

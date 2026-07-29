@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, Component } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame, Unlink, GripVertical, Trash2 } from 'lucide-react';
+import { Trophy, Dumbbell, Plus, Search, X, ArrowLeftRight, Star, SlidersHorizontal, Minus, Play, Pause, ChevronLeft, SkipForward, Flame, Unlink, GripVertical, Trash2, Clock, Flag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { selectInBatches } from '../lib/churn/batchedSelect';
@@ -924,6 +924,30 @@ const ActiveSession = () => {
   // stays underneath but our modal (z-[300]) covers it visually.
   const [showPauseSheet, setShowPauseSheet] = useState(false);
   const [showDeleteSessionConfirm, setShowDeleteSessionConfirm] = useState(false);
+
+  // Leave the pause sheet and actually resume: close, unpause, and re-anchor
+  // restStartedAt so the paused interval isn't credited as elapsed rest.
+  // Shared by the Resume button and the scrim (the old "Close" button skipped
+  // the re-anchor, which is why closing could skip most of a rest timer).
+  const resumeFromPause = useCallback(() => {
+    setShowPauseSheet(false);
+    setIsPaused(false);
+    try {
+      const raw = localStorage.getItem(restStateKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.isPaused) return;
+      const next = { ...parsed };
+      delete next.isPaused;
+      delete next.pausedAt;
+      if (parsed.pausedAt && parsed.restStartedAt) {
+        const pausedFor = Date.now() - parsed.pausedAt;
+        next.restStartedAt = parsed.restStartedAt + pausedFor;
+        restStartedAt.current = next.restStartedAt;
+      }
+      localStorage.setItem(restStateKey, JSON.stringify(next));
+    } catch { /* non-critical */ }
+  }, [restStateKey]);
 
   const [activePRBanner, setActivePRBanner] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -3843,52 +3867,56 @@ const ActiveSession = () => {
         onDiscardSession={() => { posthog?.capture('workout_abandoned', { routine_name: routineName, duration_seconds: elapsedTime }); sessionEndedRef.current = true; draftSaveRef.current = null; localStorage.removeItem(sessionKey); if (!isEmptyMode) supabase.from('session_drafts').delete().eq('profile_id', user.id).eq('routine_id', id).then(() => {}).catch(() => {}); cancelWorkoutNotification(); endLiveActivity(); syncWorkoutEnded({ duration: elapsedTime, totalVolume: 0, prsHit: 0, setsCompleted: 0 }); navigate('/workouts'); }}
       />
 
-      {/* ── Pause action sheet — Resume / Save for later / Delete ────────── */}
+      {/* ── Pause action sheet — Resume / Save · Finish / Delete ──────────
+          Layout: one full-width primary, then a 50/50 pair, then the
+          destructive action on its own. Four stacked full-width rows all
+          styled the same made every option look equally likely; the hierarchy
+          now matches the actual odds (you almost always resume).
+
+          "Close" is gone. It did exactly what Resume does — minus the rest-
+          timer re-anchor, so closing instead of resuming quietly credited the
+          paused minutes as elapsed rest. Tapping the scrim now runs the real
+          resume path. */}
       {showPauseSheet && !showDeleteSessionConfirm && (
         <div
           className="fixed inset-0 z-[300] flex items-center justify-center px-6"
           style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}
-          role="dialog"
-          aria-labelledby="pause-sheet-title"
+          role="button"
+          tabIndex={0}
+          aria-label={t('activeSession.resume', 'Resume')}
+          onClick={(e) => { if (e.target === e.currentTarget) resumeFromPause(); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') resumeFromPause(); }}
         >
-          <div className="rounded-[20px] w-full max-w-sm p-6 border" style={{ background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pause-sheet-title"
+            className="rounded-[20px] w-full max-w-sm p-6 border"
+            style={{ background: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 id="pause-sheet-title" className="text-[18px] font-bold text-center mb-1" style={{ color: 'var(--color-text-primary)' }}>
               {t('activeSession.pauseTitle', { defaultValue: 'Workout paused' })}
             </h3>
             <p className="text-[13px] text-center leading-relaxed mb-5" style={{ color: 'var(--color-text-subtle)' }}>
               {t('activeSession.pauseSubtitle', { defaultValue: 'What would you like to do?' })}
             </p>
-            <div className="space-y-2.5">
-              <button
-                onClick={() => {
-                  setShowPauseSheet(false);
-                  setIsPaused(false);
-                  try {
-                    const raw = localStorage.getItem(restStateKey);
-                    if (raw) {
-                      const parsed = JSON.parse(raw);
-                      if (parsed?.isPaused) {
-                        const next = { ...parsed };
-                        delete next.isPaused;
-                        delete next.pausedAt;
-                        if (parsed.pausedAt && parsed.restStartedAt) {
-                          const pausedFor = Date.now() - parsed.pausedAt;
-                          next.restStartedAt = parsed.restStartedAt + pausedFor;
-                          restStartedAt.current = next.restStartedAt;
-                        }
-                        localStorage.setItem(restStateKey, JSON.stringify(next));
-                      }
-                    }
-                  } catch { /* non-critical */ }
-                }}
-                className="w-full py-3.5 rounded-2xl font-bold text-[14px] active:scale-[0.97] transition-transform"
-                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
-              >
-                {t('activeSession.resume', 'Resume')}
-              </button>
 
-              {/* Save for later — keep the draft, navigate home. */}
+            {/* 100 — Resume */}
+            <button
+              type="button"
+              onClick={resumeFromPause}
+              className="w-full flex items-center justify-center gap-2 rounded-2xl font-bold text-[15px] active:scale-[0.97] transition-transform"
+              style={{ height: 54, backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
+            >
+              <Play size={17} fill="currentColor" strokeWidth={0} />
+              {t('activeSession.resume', 'Resume')}
+            </button>
+
+            {/* 50 / 50 — Save for later · Finish now */}
+            <div className="grid grid-cols-2 gap-2.5 mt-2.5">
               <button
+                type="button"
                 onClick={() => {
                   try {
                     if (saveRef.current) {
@@ -3906,60 +3934,70 @@ const ActiveSession = () => {
                   setShowPauseSheet(false);
                   navigate('/workouts');
                 }}
-                className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors text-left px-4"
+                className="rounded-2xl px-3 py-3.5 flex flex-col items-center text-center gap-2 active:scale-[0.97] transition-transform"
                 style={{
                   backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
                   color: 'var(--color-text-primary)',
                   border: '1px solid var(--color-border-subtle)',
                 }}
               >
-                <span className="block">{t('activeSession.saveForLater', { defaultValue: 'Save for later' })}</span>
-                <span className="block text-[11px] font-normal mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t('activeSession.saveForLaterDesc', { defaultValue: 'Stop tracking — your progress is saved.' })}
+                <span
+                  className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  <Clock size={16} style={{ color: 'var(--color-text-muted)' }} />
+                </span>
+                <span className="text-[13.5px] font-bold leading-tight">
+                  {t('activeSession.saveForLater', { defaultValue: 'Save for later' })}
+                </span>
+                <span className="text-[10.5px] font-normal leading-snug" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('activeSession.saveForLaterShort', { defaultValue: 'Progress is saved' })}
                 </span>
               </button>
 
-              {/* Finalize workout — go to summary now */}
               <button
                 type="button"
                 onClick={() => { setShowPauseSheet(false); setIsPaused(false); setShowFinishModal(true); }}
-                className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors text-left px-4"
+                className="rounded-2xl px-3 py-3.5 flex flex-col items-center text-center gap-2 active:scale-[0.97] transition-transform"
                 style={{
-                  backgroundColor: 'var(--color-surface-hover, rgba(255,255,255,0.06))',
+                  backgroundColor: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
                   color: 'var(--color-text-primary)',
-                  border: '1px solid var(--color-border-subtle)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
                 }}
               >
-                <span className="block">{t('activeSession.finishWorkoutNow', { defaultValue: 'Finalizar Entrenamiento' })}</span>
-                <span className="block text-[11px] font-normal mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t('activeSession.finishWorkoutNowDesc', { defaultValue: 'Termina aquí y ve al resumen.' })}
+                <span
+                  className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 26%, transparent)',
+                  }}
+                >
+                  <Flag size={16} style={{ color: 'var(--color-accent)' }} />
                 </span>
-              </button>
-
-              {/* Delete session — clear draft, navigate home (with confirm) */}
-              <button
-                onClick={() => setShowDeleteSessionConfirm(true)}
-                className="w-full py-3.5 rounded-2xl font-semibold text-[14px] transition-colors text-left px-4"
-                style={{
-                  backgroundColor: 'rgba(239,68,68,0.10)',
-                  color: '#EF4444',
-                  border: '1px solid rgba(239,68,68,0.25)',
-                }}
-              >
-                <span className="block">{t('activeSession.deleteSession', { defaultValue: 'Delete session' })}</span>
-                <span className="block text-[11px] font-normal mt-0.5" style={{ color: 'rgba(239,68,68,0.75)' }}>
-                  {t('activeSession.deleteSessionDesc', { defaultValue: 'Discard this workout and go back.' })}
+                <span className="text-[13.5px] font-bold leading-tight">
+                  {t('activeSession.finishWorkoutNow', { defaultValue: 'Finalizar Entrenamiento' })}
                 </span>
-              </button>
-
-              <button
-                onClick={() => { setShowPauseSheet(false); setIsPaused(false); }}
-                className="w-full py-3 rounded-2xl font-medium text-[13px]"
-                style={{ color: 'var(--color-text-subtle)' }}
-              >
-                {t('activeSession.close', { defaultValue: 'Close' })}
+                <span className="text-[10.5px] font-normal leading-snug" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('activeSession.finishWorkoutNowShort', { defaultValue: 'Go to summary' })}
+                </span>
               </button>
             </div>
+
+            {/* 100 — Delete (destructive, deliberately the quietest) */}
+            <button
+              type="button"
+              onClick={() => setShowDeleteSessionConfirm(true)}
+              className="w-full flex items-center justify-center gap-2 rounded-2xl font-bold text-[13.5px] mt-2.5 active:scale-[0.97] transition-transform"
+              style={{
+                height: 46,
+                backgroundColor: 'rgba(239,68,68,0.10)',
+                color: '#EF4444',
+                border: '1px solid rgba(239,68,68,0.25)',
+              }}
+            >
+              <Trash2 size={15} strokeWidth={2.2} />
+              {t('activeSession.deleteSession', { defaultValue: 'Delete session' })}
+            </button>
           </div>
         </div>
       )}

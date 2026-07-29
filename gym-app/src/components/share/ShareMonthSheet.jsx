@@ -23,6 +23,10 @@ import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/in
 import { shareToInstagramFeed, isInstagramInstalled, shareToWhatsApp, shareToMessages, isWhatsAppInstalled, canShareViaMessages } from '../../lib/socialShare';
 import { appShareUrl } from '../../lib/appUrls';
 import { ShareMonthCard, SM_CARD_IDS, buildShareMonthData, smVol } from './ShareMonthCard';
+import GymDestIcon from './GymDestIcon';
+import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
+import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 
 // dark sheet chrome (only the CARDS go vivid — the app sheet stays dark,
 // matching the design's smonth-kit SM tokens)
@@ -43,6 +47,9 @@ function previewDims(maxW, maxH) {
 }
 
 export default function ShareMonthSheet({ open, onClose, recap, monthSessions = [], monthPRs = [], user, gym, gymLogoUrl, shareLink }) {
+  // gym_id for the feed post, and a real toast so the outcome is visible.
+  const { profile } = useAuth();
+  const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   // Download-oriented link: a non-user who taps it lands on the app's "Get the
   // app" page (/get), not the bare web app. Honor an explicit /get link from the
@@ -62,6 +69,7 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
   // The card's <img> is then ALREADY inlined before rasterization, so the logo
   // survives the export instead of relying on the rasterizer's inline step.
   const [logoDataUrl, setLogoDataUrl] = useState(null);
+  const [logoFailed, setLogoFailed] = useState(false);
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -81,14 +89,20 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
   // export (matches how the workout/cardio/achievement sheets do it).
   useEffect(() => {
     let cancelled = false;
+    setLogoFailed(false);
     if (!open || !gymLogoUrl || String(gymLogoUrl).startsWith('data:')) { setLogoDataUrl(null); return undefined; }
-    urlToDataUrl(gymLogoUrl).then((d) => { if (!cancelled) setLogoDataUrl(d); });
+    urlToDataUrl(gymLogoUrl).then((d) => {
+      if (cancelled) return;
+      if (d) setLogoDataUrl(d);
+      // See ShareSheet: a url that couldn't be inlined can't be rendered either.
+      else setLogoFailed(true);
+    });
     return () => { cancelled = true; };
   }, [open, gymLogoUrl]);
 
   // Map recap + this month's data → card data (memo-free; cheap, and recap
   // identity is stable while the sheet is open). Use the inlined logo when ready.
-  const data = recap ? buildShareMonthData({ recap, monthSessions, monthPRs, user, gym, gymLogoUrl: logoDataUrl || gymLogoUrl, t, lang: i18n.language }) : null;
+  const data = recap ? buildShareMonthData({ recap, monthSessions, monthPRs, user, gym, gymLogoUrl: logoDataUrl || (logoFailed ? null : gymLogoUrl), t, lang: i18n.language }) : null;
 
   // Story → 1080×1920 (9:16); Feed → 1080×1080 (1:1).
   const exp = format === 'feed' ? ShareExportSizes.square : ShareExportSizes.story;
@@ -149,6 +163,15 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         let landed = false;
         if (blob && await canShareViaMessages()) { const r = await shareToMessages({ blob, text: fullText }); landed = r.ok; }
         if (!landed && blob) await shareBlob(blob, 'tugympr-month.png', fullText);
+      } else if (dest === 'tu') {
+        // Post the recap to the gym's own feed — the same helper the workout,
+        // cardio and achievement sheets use, so this one can't drift back into
+        // the text-only-and-silent shape they all started in.
+        await postShareCardToFeed({
+          blob, text: fullText, userId: user?.id, gymId: profile?.gym_id,
+          extra: { monthly_recap: true },
+        });
+        showToast(t('share.postedToFeed', { defaultValue: 'Posted to your gym feed' }), 'success');
       } else {
         // fb / other → OS share sheet (image-first; Facebook has no clean
         // image deep-link without the FB SDK, so you tap Facebook there).
@@ -161,11 +184,14 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
       try { posthogClient?.capture('content_shared', { type: 'month', dest }); } catch { /* noop */ }
     } catch (err) {
       console.warn('[ShareMonthSheet] share failed', err);
+      showToast(isModerationBlock(err)
+        ? t('moderation.contentBlocked', { defaultValue: 'Post blocked: content violates community guidelines.' })
+        : t('share.shareFailed', { defaultValue: "Couldn't share that. Try again." }), 'error');
     } finally {
       setBusy(false);
       onClose?.();
     }
-  }, [busy, buildBlob, sticker, link, fullText, gym, onClose]);
+  }, [busy, buildBlob, sticker, link, fullText, gym, onClose, user, profile, showToast, t]);
 
   if (!mounted || !data) return null;
 
@@ -277,6 +303,7 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
             <SMDest active={activeDest === 'fb'} onClick={() => setActiveDest('fb')} label="Facebook" color="#1877F2"><FBGlyph/></SMDest>
             <SMDest active={activeDest === 'wa'} onClick={() => setActiveDest('wa')} label="WhatsApp" color="#25D366"><WAGlyph/></SMDest>
             <SMDest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label={t('shareMonth.messages', 'Messages')} color="#34C759"><MsgGlyph/></SMDest>
+            <SMDest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('feed'); }} label={gym || 'TuGymPR'} color="var(--color-accent)"><GymDestIcon logoUrl={gymLogoUrl} /></SMDest>
             <SMDest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('shareMonth.saveShort', 'Save')} color="#5A6570"><Download size={19} color="#fff"/></SMDest>
           </div>
         </div>

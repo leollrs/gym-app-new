@@ -702,18 +702,52 @@ const Dashboard = () => {
       const hasWrappedDays = (sMap?.wrapped_dows?.length ?? 0) > 0;
       const isLastWeek = hasWrappedDays && programWeekNum === totalProgramWeeks;
 
-      // Build a reverse map: normalDow → routineId from workout_schedule
+      // A/B variant for THIS week. A generated program persists two routine sets
+      // (schedule_map.routine_ids_a / _b) with different exercises, and odd/even
+      // weeks are supposed to alternate between them — that is the whole point
+      // of generating two sets. But generation seeds `workout_schedule` with
+      // variant A ONLY, and Home reads `workout_schedule` directly, so Home
+      // showed week 1's routines on every single week of the program while My
+      // Programs correctly alternated. Same plan, two different answers.
+      //
+      // Substitution is by slot index (A[i] ↔ B[i]) and only applies to a day
+      // that still holds its variant-A routine, so a day the user re-assigned by
+      // hand keeps the routine they picked on both A and B weeks.
+      const variantA = Array.isArray(sMap?.routine_ids_a) ? sMap.routine_ids_a : [];
+      const variantB = Array.isArray(sMap?.routine_ids_b) ? sMap.routine_ids_b : [];
+      // Clamped exactly like My Programs' `currentWeekNum`, or the two surfaces
+      // would land on opposite parities in the tail of a program whose
+      // expires_at spills a day past its last calendar week.
+      const variantWeekNum = Math.min(programWeekNum, totalProgramWeeks);
+      const useVariantB = variantA.length > 0 && variantB.length > 0 && variantWeekNum % 2 === 0;
+      const resolveVariant = (routineId) => {
+        if (!useVariantB) return routineId;
+        const slot = variantA.indexOf(routineId);
+        return slot >= 0 && variantB[slot] ? variantB[slot] : routineId;
+      };
+
+      // Build a reverse map: normalDow → routineId from workout_schedule.
+      //
+      // `workout_schedule` is AUTHORITATIVE for which routine sits on which day.
+      // It used to be filtered here to `Auto:`-named routines created after
+      // program_start, as a guard against rows left behind by a previous
+      // program. That guard silently discarded the user's own choices: swapping
+      // a program day to one of their own routines (Home → tap a day → pick)
+      // upserts a row whose routine is neither `Auto:` nor newer than the
+      // program, so the very next load dropped that day and it stayed blank
+      // forever — no routine at all on that weekday.
+      //
+      // The guard is also unnecessary: every path that creates a program wipes
+      // `workout_schedule` for the profile first (personalProgramService,
+      // reactivate, GenerateWorkoutModal, MemberProgramBuilder, gym-template
+      // enrolment), and this RPC only returns a NON-EXPIRED program. So every
+      // row present here was written either by the active program itself or by
+      // a deliberate user swap, and both must be honoured.
       const normalDowToRoutineId = {};
-      const autoRoutines = fetchedProgram
-        ? fetchedRoutines.filter(r => r.name.startsWith('Auto:') && new Date(r.created_at || 0) >= programStart)
-        : [];
       for (const row of scheduleData) {
-        const routine = fetchedRoutines.find(r => r.id === row.routine_id);
-        if (routine) {
-          if (fetchedProgram) {
-            if (!routine.name.startsWith('Auto:') || new Date(routine.created_at || 0) < programStart) continue;
-          }
-          normalDowToRoutineId[row.day_of_week] = row.routine_id;
+        const routineId = resolveVariant(row.routine_id);
+        if (fetchedRoutines.some(r => r.id === routineId)) {
+          normalDowToRoutineId[row.day_of_week] = routineId;
         }
       }
 
@@ -739,15 +773,16 @@ const Dashboard = () => {
         // Last week: only the remaining routines from week 1's wrap
         buildFromPartialMap(sMap.last_week_map);
       } else {
-        // Normal weeks: use workout_schedule directly (packed Mon-start)
+        // Normal weeks: use workout_schedule directly (packed Mon-start).
+        // Unfiltered for the same reason as normalDowToRoutineId above — a day
+        // the user swapped to one of their own routines has to survive here —
+        // and variant-resolved so even weeks run the B rotation.
         for (const row of scheduleData) {
-          const routine = fetchedRoutines.find(r => r.id === row.routine_id);
+          const routineId = resolveVariant(row.routine_id);
+          const routine = fetchedRoutines.find(r => r.id === routineId);
           if (routine) {
-            if (fetchedProgram) {
-              if (!routine.name.startsWith('Auto:') || new Date(routine.created_at || 0) < programStart) continue;
-            }
             scheduleMap[row.day_of_week] = {
-              routineId: row.routine_id,
+              routineId,
               label: localizeRoutineName(routine.name).replace(/ [AB]$/, ''),
             };
           }
@@ -1014,7 +1049,11 @@ const Dashboard = () => {
     if (error) {
       dispatch({ type: 'SET_SCHEDULE', payload: prevSchedule });
       showToast(t('dashboard.scheduleSaveError', "Couldn't save your schedule. Check your connection and try again."), 'error');
+      return;
     }
+    // My Programs keeps its schedule map in a kept-alive component, so tell it
+    // to refetch — otherwise the program card still shows the replaced routine.
+    try { window.dispatchEvent(new CustomEvent('tugympr:schedule-changed')); } catch { /* ignore */ }
   }, [user, profile, pickerDay, allRoutines, schedule, selectedDate, showToast, t]);
 
   const handleClearDay = useCallback(async () => {
@@ -1047,7 +1086,9 @@ const Dashboard = () => {
         dispatch({ type: 'SET_SELECTED_ROUTINE', payload: prevSelected });
       }
       showToast(t('dashboard.scheduleClearError', "Couldn't clear that day. Check your connection and try again."), 'error');
+      return;
     }
+    try { window.dispatchEvent(new CustomEvent('tugympr:schedule-changed')); } catch { /* ignore */ }
   }, [user, pickerDay, schedule, selectedDate, selectedRoutinePayload, showToast, t]);
 
   const handleAssignDay = useCallback((dayOfWeek) => {
@@ -1522,14 +1563,30 @@ const Dashboard = () => {
                 // earlier than now. The banner header switches when every booked
                 // class today has passed — per-row ✓ checked-in still surfaces
                 // attendance independently.
+                //
+                // Built from clock COMPONENTS, not a `${date}T${time}` string.
+                // The Classes page has always done it this way and has always
+                // been right; this one string-concatenated and was not. Any
+                // shape the API returns that isn't a bare `YYYY-MM-DD` (an ISO
+                // timestamp, an offset suffix) makes that concatenation an
+                // Invalid Date, which this code then read as "hasn't happened
+                // yet" — so a 9am class still said "You have a class today" at
+                // 11:27. Component math can't be tripped by the string shape.
                 const now = Date.now();
-                const allPassed = todayClassBookings.every((b) => {
+                const hasPassed = (b) => {
                   const sched = b.gym_class_schedules;
                   const endStr = sched?.end_time || sched?.start_time;
-                  if (!b.booking_date || !endStr) return false;
-                  const endAt = new Date(`${b.booking_date}T${endStr}`).getTime();
-                  return Number.isFinite(endAt) && endAt < now;
-                });
+                  if (!endStr) return false;
+                  const [h, m] = String(endStr).split(':').map(Number);
+                  const endAt = new Date();
+                  endAt.setHours(h || 0, m || 0, 0, 0);
+                  return endAt.getTime() < now;
+                };
+                // Per-booking, and the header keyed on whether anything is still
+                // AHEAD. `.every()` meant one odd row kept the whole banner
+                // saying you had a class coming when you didn't.
+                const passedById = new Map(todayClassBookings.map((b) => [b.id, hasPassed(b)]));
+                const allPassed = todayClassBookings.every((b) => passedById.get(b.id));
                 const tone = allPassed ? '#9CA3AF' : '#818CF8';
                 return (
                 <section className="mb-3">
@@ -1557,12 +1614,19 @@ const Dashboard = () => {
                           const cls = sched?.gym_classes;
                           const className = i18n.language === 'es' && cls?.name_es ? cls.name_es : cls?.name;
                           const isCheckedIn = booking.status === 'attended';
+                          const rowPassed = passedById.get(booking.id);
                           return (
                             <p key={booking.id} className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                              {className} · {sched?.start_time?.slice(0, 5)}
-                              {isCheckedIn && (
+                              <span style={rowPassed && !isCheckedIn ? { textDecoration: 'line-through', opacity: 0.7 } : undefined}>
+                                {className} · {sched?.start_time?.slice(0, 5)}
+                              </span>
+                              {isCheckedIn ? (
                                 <span className="text-[#10B981] font-semibold ml-1.5">
                                   ✓ {t('dashboard.classCheckedIn')}
+                                </span>
+                              ) : rowPassed && (
+                                <span className="font-semibold ml-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+                                  {t('dashboard.classEnded', { defaultValue: 'ended' })}
                                 </span>
                               )}
                             </p>

@@ -25,7 +25,19 @@
     "errName": "Ponle nombre a tu programa",
     "errEmpty": "Añade al menos un ejercicio a un día",
     "saved": "Programa creado",
-    "saveFailed": "No se pudo guardar el programa"
+    "saveFailed": "No se pudo guardar el programa",
+    "weekVariant": "Semana {{variant}}",
+    "weekVariantAHint": "Semanas 1, 3, 5…",
+    "weekVariantBHint": "Semanas 2, 4, 6…",
+    "addDayToWeek": "Añadir un día a la semana {{variant}}",
+    "changeDay": "Cambiar día",
+    "gymClosedShort": "Gym cerrado",
+    "gymClosedTitle": "El gym cierra los {{day}}",
+    "gymClosedBody": "Puedes dejar el entreno aquí igual — solo ten en cuenta que ese día no vas a poder hacer check-in en el gym.",
+    "gymClosedPickAnother": "Escoger otro día",
+    "gymClosedDropDay": "Quitar este día",
+    "gymClosedKeep": "Dejarlo así",
+    "daysMismatch": "Este programa tiene {{count}} días de entreno por semana — pusiste {{target}} en tu configuración. No hay problema, solo confirmando que es a propósito."
   },
   "weekdaysShort": {
     "sunday": "D",
@@ -58,7 +70,12 @@
       "ctaPause": "Mejor pausar mi membresía",
       "ctaCancel": "Cancelar de todas formas",
       "savedToast": "Gracias por contarnos. La puerta queda abierta si cambias de opinión.",
-      "pausedToast": "Membresía pausada. Regresa cuando quieras."
+      "pausedToast": "Membresía pausada. Regresa cuando quieras.",
+      "ctaPauseShort": "Pausar",
+      "pauseConfirmTitle": "¿Pausar tu membresía?",
+      "pauseConfirmBody": "Tu cuenta queda en espera: no vas a poder usar la app, reservar clases ni hacer check-in. No se borra nada — tus entrenos, PRs, racha y puntos quedan tal cual, y puedes reactivarla tú mismo cuando quieras.",
+      "pauseConfirmCta": "Sí, pausar",
+      "pauseBack": "Mejor no"
     }
   },
   "dashboard": {
@@ -437,6 +454,7 @@
     "showMore": "Mostrar más",
     "showingCount": "{{visible}} / {{total}}",
     "noActivityYet": "Aún no hay actividad registrada",
+    "noSetsLogged": "No se registraron series en este entreno.",
     "volumeLbs": "{{value}} lbs",
     "phonePlaceholder": "787 555 1234",
     "phoneNumber": "Número de teléfono",
@@ -454,7 +472,8 @@
     "myTrainerSubtitle": "Ver a tu entrenador",
     "trainerNext": "Próxima: {{when}}",
     "messageTrainer": "Mensaje",
-    "openChatFailed": "No se pudo abrir el chat. Inténtalo de nuevo."
+    "openChatFailed": "No se pudo abrir el chat. Inténtalo de nuevo.",
+    "gymClosedOnDay": "Ojo — el gym cierra los {{day}}. Igual te planificamos entreno ese día, solo que no vas a poder hacer check-in."
   },
   "rewards": {
     "title": "Recompensas",
@@ -908,7 +927,17 @@
     "requestsSent": "Solicitudes enviadas",
     "cancel": "Cancelar",
     "tryThis": "Prueba esto",
-    "shareSubtitle": "Toca un destino para compartir"
+    "shareSubtitle": "Toca un destino para compartir",
+    "hiddenPosts": "Publicaciones ocultas",
+    "noHiddenPosts": "No has ocultado ninguna publicación",
+    "hiddenPostFallback": "Publicación oculta",
+    "unhidePost": "Mostrar",
+    "postUnhidden": "Publicación restaurada en tu feed",
+    "typeWorkout": "Entreno",
+    "typePR": "Récord personal",
+    "typeAchievement": "Logro",
+    "typeCheckIn": "Check-in",
+    "typePost": "Publicación"
   },
   "nutrition": {
     "title": "Nutrición",
@@ -1743,6 +1772,7 @@
     "pauseSubtitle": "¿Qué quieres hacer?",
     "saveForLater": "Guardar para después",
     "saveForLaterDesc": "Deja de registrar — tu progreso queda guardado.",
+    "saveForLaterShort": "Tu progreso se guarda",
     "deleteSession": "Borrar sesión",
     "deleteSessionDesc": "Descarta este entrenamiento y vuelve.",
     "deleteSessionConfirm": "¿Borrar este entrenamiento? Las series registradas se perderán.",
@@ -1791,6 +1821,7 @@
     "swapSameMuscle": "Alternativas de {{muscle}}",
     "finishWorkoutNow": "Finalizar Entrenamiento",
     "finishWorkoutNowDesc": "Termina aquí y ve al resumen.",
+    "finishWorkoutNowShort": "Ir al resumen",
     "cue": {
       "restExtended": "El coach extendió tu descanso {{seconds}}s",
       "restQueued": "El coach añadió {{seconds}}s a tu próximo descanso",
@@ -1836,7 +1867,8 @@
     "resumeMembership": "Reactivar mi membresía",
     "resuming": "Reactivando…",
     "gymDeactivatedStaffBody": "El acceso de este gimnasio a TuGymPR está desactivado.",
-    "gymDeactivatedStaffDetail": "Si crees que es un error, contacta al soporte de TuGymPR."
+    "gymDeactivatedStaffDetail": "Si crees que es un error, contacta al soporte de TuGymPR.",
+    "memberSelfPausedDetail": "La pausaste tú, así que puedes reactivarla aquí mismo. No se borró nada — tus entrenos, PRs y tu racha te están esperando."
   },
   "ageVerify": {
     "title": "Confirma tu edad",
@@ -1925,7 +1957,8 @@
     "health": {
       "title": "Sincronización con Salud",
       "body": "Leer tus pasos, peso, calorías y frecuencia cardíaca para personalizar tus macros y gráficos de progreso. También podemos escribir las calorías de tus entrenamientos a Apple Salud. Tus datos quedan en tu dispositivo a menos que elijas compartirlos."
-    }
+    },
+    "changeInSettingsPrefix": "Puedes cambiarlo cuando quieras en"
   },
   "workouts": {
     "coachManaged": "Plan del entrenador",
@@ -2198,7 +2231,8 @@
     "adaptUnderperformBody": "{{count}} ejercicio(s) con bajo cumplimiento. Considera bajar el peso o cambiarlos.",
     "adaptGeneralBody": "Tu programa va por buen camino. Sigue llegando al gym.",
     "gotIt": "Entendido",
-    "programEmptyHint": "Este programa aún no tiene entrenamientos — pídele a tu gimnasio que lo complete."
+    "programEmptyHint": "Este programa aún no tiene entrenamientos — pídele a tu gimnasio que lo complete.",
+    "deletingProgress": "Borrando {{done}}/{{total}}…"
   },
   "quickStart": {
     "startWorkout": "Empezar Entrenamiento",
@@ -2207,6 +2241,9 @@
     "todaysWorkout": "Entrenamiento de Hoy",
     "chooseRoutine": "Elegir Rutina",
     "available": "disponibles",
+    "searchRoutines": "Buscar rutinas",
+    "noRoutinesFound": "Ninguna rutina coincide con esa búsqueda.",
+    "close": "Cerrar",
     "createNew": "Crear Nueva",
     "buildWorkout": "Crea un entrenamiento",
     "noRoutinesYet": "Aún no hay rutinas",
@@ -8763,7 +8800,8 @@
     "dismissFailed": "Error al descartar",
     "dismiss": "Descartar",
     "newTitle": "Nueva notificación",
-    "viewAction": "Ver"
+    "viewAction": "Ver",
+    "typeClassReminder": "Recordatorio de clase"
   },
   "adminNotifications": {
     "title": "Alertas",
@@ -9338,7 +9376,10 @@
     "permissionFailed": "No se pudo activar la sincronización de salud.",
     "dataFromAppleHealth": "Datos de Apple Health",
     "dataFromHealthConnect": "Datos de Health Connect",
-    "poweredByHealthKit": "Funciona con Apple Health"
+    "poweredByHealthKit": "Funciona con Apple Health",
+    "disconnectConfirm": "¿Dejar de sincronizar con Apple Health? El peso, los entrenos y la actividad dejarán de entrar y salir. No se borra nada de lo ya guardado, y puedes reconectar cuando quieras.",
+    "keepConnected": "Dejarlo activo",
+    "disconnectYes": "Sí, desconectar"
   },
   "appTour": {
     "step1Title": "Tu Plan Diario",
@@ -14243,7 +14284,32 @@
       "gym": "Compartir en {{gym}}",
       "share": "Compartir"
     },
-    "stickerMode": "Sticker sobre tu foto"
+    "stickerMode": "Sticker sobre tu foto",
+    "noRoute": "Sin ruta",
+    "cardioKcal": "{{count}} kcal",
+    "cardioPart": {
+      "morning": "mañana",
+      "afternoon": "tarde",
+      "evening": "noche",
+      "night": "madrugada"
+    },
+    "cardioType": {
+      "run": "Carrera",
+      "walk": "Caminata",
+      "ride": "Ruta",
+      "swim": "Natación",
+      "row": "Remo",
+      "hike": "Senderismo",
+      "session": "Sesión"
+    },
+    "cardioLine1": "Una más en el banco.",
+    "cardioLine2": "Aparecí. Esa era la parte difícil.",
+    "cardioLine3": "Ya voy por la próxima.",
+    "cardioLine4": "Aquí no hubo atajos.",
+    "cardioLine5": "Gánale a ayer. De eso se trata.",
+    "cardioTitle": "{{type}} de la {{part}}",
+    "postedToFeed": "Publicado en el feed de tu gym",
+    "shareFailed": "No se pudo compartir. Inténtalo otra vez."
   },
   "achievementToast": {
     "dismiss": "Descartar"
@@ -14391,7 +14457,8 @@
   },
   "legal": {
     "loadFailed": "No se pudo cargar desde la web. Revisa tu conexión.",
-    "openInBrowser": "Abrir en el navegador"
+    "openInBrowser": "Abrir en el navegador",
+    "opensInBrowser": "Esto abre en un navegador seguro dentro de la app."
   },
   "legalViewer": {
     "title": "Legal",
@@ -14547,7 +14614,9 @@
     "declineSent": "Le avisamos a tu entrenador",
     "respondFailed": "No pudimos enviar tu respuesta. Intenta de nuevo.",
     "packsRemaining": "Te quedan {{left}} de {{total}} sesiones",
-    "about": "Sobre mí"
+    "about": "Sobre mí",
+    "textSmsShort": "SMS",
+    "messageSelf": "Ese es tu propio perfil."
   },
   "trainerLive": {
     "watchLive": "Ver en vivo",

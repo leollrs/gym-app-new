@@ -6748,6 +6748,22 @@ export default function Nutrition({ embedded = false }) {
     // Also scroll the nearest scrollable parent
     document.querySelector('.min-h-screen')?.scrollTo(0, 0);
   }, []);
+
+  // Same reset when the PAGE itself comes back into view.
+  //
+  // `/nutrition` is a keep-alive route (App.jsx KEEP_ALIVE_MAP): the component
+  // never unmounts, it just gets `display:none`. So switching VIEWS scrolled to
+  // top (above) but ARRIVING did not — the body kept whatever offset you left
+  // behind, and the page opened halfway down. App.jsx's ScrollToTop fires on the
+  // route change, but it runs while this subtree is still hidden and zero-height,
+  // so there is nothing to scroll yet. Doing it when the page actually becomes
+  // visible is the moment that works.
+  useEffect(() => {
+    if (!isPageActive) return;
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [isPageActive]);
   // ── Cached server state ────────────────────────────────────────────────
   // Nutrition was the last member page still painting a full-page skeleton on
   // EVERY visit — targets/logs/favorites were plain useState, so bouncing to

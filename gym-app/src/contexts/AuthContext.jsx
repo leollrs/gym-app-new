@@ -486,7 +486,15 @@ export const AuthProvider = ({ children }) => {
       if (branding?.logo_url) {
         supabase.storage
           .from('gym-logos')
-          .createSignedUrl(branding.logo_url, 60 * 60 * 24) // 1 day
+          // 7 days, not 1. `gym-logos` is a private bucket, so this URL carries
+          // an expiring token — and a phone that never signs out keeps the same
+          // AuthContext alive for days. Once the token lapses every consumer of
+          // the logo 400s at once: the share cards, the wordmark on the monthly
+          // recap, the badge on the achievement card. That is the "images stop
+          // loading everywhere" shape. A longer window doesn't fix the class of
+          // bug (see the fallbacks added alongside this), it just stops it being
+          // the normal case. Still scoped + still expiring.
+          .createSignedUrl(branding.logo_url, 60 * 60 * 24 * 7)
           .then(({ data: signed, error }) => {
             setGymLogoUrl(!error && signed?.signedUrl ? signed.signedUrl : '');
           });
@@ -1337,7 +1345,8 @@ export const AuthProvider = ({ children }) => {
     const b = brandRes.data;
     let logoUrl = '';
     if (b?.logo_url) {
-      const { data: signed } = await supabase.storage.from('gym-logos').createSignedUrl(b.logo_url, 60 * 60 * 24);
+      // Same 7-day window as the member path above, for the same reason.
+      const { data: signed } = await supabase.storage.from('gym-logos').createSignedUrl(b.logo_url, 60 * 60 * 24 * 7);
       logoUrl = signed?.signedUrl || '';
     }
     const imp = {

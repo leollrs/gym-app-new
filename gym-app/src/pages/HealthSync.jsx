@@ -24,10 +24,13 @@ const HealthSync = () => {
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [todaySteps, setTodaySteps] = useState(0);
-  const [weeklyCalories, setWeeklyCalories] = useState(0);
+  // null = HealthKit gave us nothing (no data, or the read was denied —
+  // HealthKit does not distinguish). Rendered as an em dash, never guessed.
+  const [weeklyCalories, setWeeklyCalories] = useState(null);
   // Permission explainer modal — shown before triggering the OS prompt so
   // the user understands *why* we want Health access (App Store 5.1.1).
   const [explainerOpen, setExplainerOpen] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const explainerResolverRef = useRef(null);
 
   const openExplainer = useCallback(() => new Promise((resolve) => {
@@ -100,8 +103,14 @@ const HealthSync = () => {
         readWeeklyActivitySummary(),
       ]);
       setTodaySteps(steps);
-      // If no calorie data from HealthKit, estimate from steps (~0.04 cal/step)
-      setWeeklyCalories(weekly.calories > 0 ? weekly.calories : Math.round(weekly.steps * 0.04));
+      // NO ESTIMATE. This used to fall back to `steps * 0.04` whenever HealthKit
+      // returned no active-energy data — under a card that says "Data from
+      // Apple Health", which made an invented number look like a reading. And
+      // it fires often: HealthKit deliberately reports DENIED read permissions
+      // as empty results rather than errors, so "user didn't grant calories" is
+      // indistinguishable from "zero calories" and both landed on the guess.
+      // A dash is honest; a fabricated 2,631 is not.
+      setWeeklyCalories(weekly.calories > 0 ? weekly.calories : null);
     } catch {}
     setRefreshing(false);
   }, [connected, available]);
@@ -161,7 +170,7 @@ const HealthSync = () => {
       syncWeight: false, syncWorkouts: false, importWeight: false,
     }));
     setTodaySteps(0);
-    setWeeklyCalories(0);
+    setWeeklyCalories(null);
   };
 
 
@@ -201,11 +210,34 @@ const HealthSync = () => {
                   {t('healthSync.connectedDesc', 'Weight, workouts, and activity data are syncing automatically. Manage permissions in Settings > Health.')}
                 </p>
               </div>
-              <button type="button" onClick={handleDisconnect}
-                className="w-full py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-                style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                {t('healthSync.disconnect')}
-              </button>
+              {/* Disconnecting stops every health sync at once and the button
+                  sat one stray tap away from doing it silently. Confirm inline —
+                  a second step, not a second screen. */}
+              {confirmDisconnect ? (
+                <div className="rounded-xl p-3" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                  <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('healthSync.disconnectConfirm', 'Stop syncing with Apple Health? Weight, workouts and activity will no longer flow in or out. Nothing already saved is deleted, and you can reconnect anytime.')}
+                  </p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setConfirmDisconnect(false)}
+                      className="flex-1 min-w-0 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+                      style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}>
+                      {t('healthSync.keepConnected', 'Keep it on')}
+                    </button>
+                    <button type="button" onClick={() => { setConfirmDisconnect(false); handleDisconnect(); }}
+                      className="flex-1 min-w-0 py-2.5 rounded-xl text-[13px] font-bold transition-colors"
+                      style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: 'var(--color-danger)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                      {t('healthSync.disconnectYes', 'Yes, disconnect')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setConfirmDisconnect(true)}
+                  className="w-full py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+                  style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                  {t('healthSync.disconnect')}
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -259,7 +291,7 @@ const HealthSync = () => {
               <div className="rounded-xl p-4 text-center overflow-hidden" style={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border-subtle)' }}>
                 <Dumbbell size={20} style={{ color: 'var(--color-accent)' }} className="mx-auto mb-2" />
                 <p className="text-[24px] font-bold tabular-nums leading-none truncate" style={{ color: 'var(--color-text-primary)' }}>
-                  {weeklyCalories.toLocaleString()}
+                  {weeklyCalories == null ? '\u2014' : weeklyCalories.toLocaleString()}
                 </p>
                 <p className="text-[11px] mt-1 uppercase tracking-wider truncate" style={{ color: 'var(--color-text-muted)' }}>{t('healthSync.cal7d')}</p>
               </div>

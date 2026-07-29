@@ -1,5 +1,9 @@
 .vercel
 
+# Dependencies + tool caches (a root-level node_modules/.vite appears when
+# vitest runs from the repo root rather than gym-app/)
+node_modules/
+
 # macOS metadata
 ._*
 .DS_Store

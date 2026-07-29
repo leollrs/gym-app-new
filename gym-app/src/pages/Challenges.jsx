@@ -201,11 +201,16 @@ const ParticipantList = ({ challengeId, t, refreshKey }) => {
 // (score null or 0 — i.e. "Didn't post"). For team challenges: shows teams that
 // did not accumulate any score.
 const PastChallengeParticipants = ({ challenge, t }) => {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Renders only for a FINISHED challenge, so these rows can never change
+  // again — cache them and never refetch. Every open of a past challenge used
+  // to hit the network to redraw an identical list.
+  const dnfCacheKey = `challenge-dnf-${challenge.id}`;
+  const [rows, setRows] = useCachedState(dnfCacheKey, []);
+  const [loading, setLoading] = useState(!hasCachedState(dnfCacheKey));
   const isTeam = challenge.type === 'team';
 
   useEffect(() => {
+    if (hasCachedState(dnfCacheKey)) return undefined;
     let cancelled = false;
     const load = async () => {
       if (isTeam) {
@@ -243,7 +248,7 @@ const PastChallengeParticipants = ({ challenge, t }) => {
     };
     load();
     return () => { cancelled = true; };
-  }, [challenge.id, isTeam]);
+  }, [challenge.id, isTeam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -537,9 +542,14 @@ const Leaderboard = ({ challenge, myId, t, refreshKey }) => {
   // challenge detail modal, which is conditionally mounted, so every open is a
   // cold mount and therefore a fresh fetch. `refreshKey` (the viewer's join
   // state) re-runs it in place when they join or leave.
+  // An ENDED challenge is FROZEN: end_date has passed, so no session can add to
+  // anyone's score and the standings cannot move again. Revalidating on every
+  // open was a guaranteed-identical round trip — the member watched a spinner
+  // to be shown the same rows. Live/upcoming still revalidate every time.
   useEffect(() => {
+    if (status === 'ended' && hasCachedState(lbCacheKey)) return;
     fetch();
-  }, [fetch, challenge.id, refreshKey]);
+  }, [fetch, challenge.id, refreshKey, status, lbCacheKey]);
 
   const unit = t(`challenges.typeUnits.${TYPE_META[challenge.type]?.unitKey ?? challenge.type}`, TYPE_META[challenge.type]?.unitKey ?? '');
   const myRank = entries.findIndex(e => e.id === myId);
@@ -674,8 +684,9 @@ const Leaderboard = ({ challenge, myId, t, refreshKey }) => {
 
 // ── Team Leaderboard ──────────────────────────────────────
 const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
-  const [teams, setTeams] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const tlCacheKey = `challenge-teams-${challenge.id}`;
+  const [teams, setTeams] = useCachedState(tlCacheKey, []);
+  const [loading, setLoading] = useState(!hasCachedState(tlCacheKey));
   const [expandedTeam, setExpandedTeam] = useState(null);
   const status = statusOf(challenge);
 
@@ -683,7 +694,7 @@ const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
     const { data } = await supabase.rpc('get_team_leaderboard', { p_challenge_id: challenge.id });
     setTeams(data || []);
     setLoading(false);
-  }, [challenge.id]);
+  }, [challenge.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // NO REALTIME — `workout_sessions` is not in the `supabase_realtime`
   // publication (full note on the member Leaderboard above), so the
@@ -693,9 +704,14 @@ const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
   // allowance. Refresh path: this only renders inside the challenge detail
   // modal, so each open is a cold mount + fresh fetch, and `refreshKey`
   // re-runs it when the viewer joins or leaves.
+  // An ENDED challenge is FROZEN: end_date has passed, so no session can add to
+  // anyone's score and the standings cannot move again. Revalidating on every
+  // open was a guaranteed-identical round trip — the member watched a spinner
+  // to be shown the same rows. Live/upcoming still revalidate every time.
   useEffect(() => {
+    if (status === 'ended' && hasCachedState(tlCacheKey)) return;
     fetchTeams();
-  }, [fetchTeams, challenge.id, refreshKey]);
+  }, [fetchTeams, challenge.id, refreshKey, status, tlCacheKey]);
 
   const myTeam = teams.find(team => team.members?.some(m => m.profile_id === myId));
   const metricLabel = t(`challenges.typeUnits.${challenge.scoring_metric || 'consistency'}`, '');
@@ -790,8 +806,9 @@ const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
 const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
   const rewards = parseRewards(challenge);
   const hasCustomRewards = challenge.reward_description != null;
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const clCacheKey = `challenge-club-${challenge.id}`;
+  const [entries, setEntries] = useCachedState(clCacheKey, []);
+  const [loading, setLoading] = useState(!hasCachedState(clCacheKey));
   const status = statusOf(challenge);
   const threshold = challenge.milestone_target ? Number(challenge.milestone_target) : null;
 
@@ -816,7 +833,7 @@ const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
         score: Math.round(p.score ?? 0),
       })));
     setLoading(false);
-  }, [challenge.id]);
+  }, [challenge.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // NO REALTIME — `workout_sessions` is not in the `supabase_realtime`
   // publication (full note on the member Leaderboard above), so the
@@ -826,9 +843,14 @@ const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
   // allowance. Refresh path: this only renders inside the challenge detail
   // modal, so each open is a cold mount + fresh fetch, and `refreshKey`
   // re-runs it when the viewer joins or leaves.
+  // An ENDED challenge is FROZEN: end_date has passed, so no session can add to
+  // anyone's score and the standings cannot move again. Revalidating on every
+  // open was a guaranteed-identical round trip — the member watched a spinner
+  // to be shown the same rows. Live/upcoming still revalidate every time.
   useEffect(() => {
+    if (status === 'ended' && hasCachedState(clCacheKey)) return;
     fetch();
-  }, [fetch, challenge.id, refreshKey]);
+  }, [fetch, challenge.id, refreshKey, status, clCacheKey]);
 
   const myEntry = entries.find(e => e.id === myId);
   const myRank = entries.findIndex(e => e.id === myId);

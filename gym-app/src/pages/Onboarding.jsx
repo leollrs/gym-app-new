@@ -1663,14 +1663,25 @@ const Onboarding = () => {
       .eq('gym_id', gymId);
     const closedDays = new Set((gymHoursData || []).filter(h => h.is_closed).map(h => h.day_of_week));
 
+    // NOT filtered by gym closures — see the same note in
+    // personalProgramService. A closed day used to be deleted from the member's
+    // choice, which dropped the count below N and swapped their whole schedule
+    // for a generic one. Closures only steer the days we invent for them.
     const userDows = (snapshot.preferred_training_days || [])
       .map(d => DAY_TO_DOW[d])
-      .filter(n => typeof n === 'number' && !closedDays.has(n))
+      .filter(n => typeof n === 'number')
       .sort((a, b) => a - b);
     // N is the per-variant slot count, not the combined A+B total. Each DOW
     // has one A routine and one B routine that alternate by week parity.
     const N = createdRoutineIdsA.length;
-    let pickedDows = userDows.length >= N ? userDows.slice(0, N) : (fallbackByN[N] || [1, 3, 5]).filter(d => !closedDays.has(d)).slice(0, N);
+    // Start from the member's OWN days — see the same fix in
+    // personalProgramService. All-or-nothing meant one closed day (e.g. they
+    // picked Sunday and the gym shuts Sundays) discarded every other day they
+    // chose and substituted a generic pattern. The top-up below fills the gap.
+    let pickedDows = userDows.slice(0, N);
+    if (pickedDows.length === 0) {
+      pickedDows = (fallbackByN[N] || [1, 3, 5]).filter(d => !closedDays.has(d)).slice(0, N);
+    }
 
     if (pickedDows.length < N) {
       const allOpenDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !closedDays.has(d));

@@ -214,7 +214,7 @@ function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTransl
 }
 
 // ── A day card (name + day-of-week + exercises with drag) ──
-function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, onChangeEx, onRemoveEx, reorderEx, usedDows, t, lang, onShowInfo }) {
+function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, onChangeEx, onRemoveEx, reorderEx, usedDows, closedDows, t, lang, onShowInfo }) {
   const { dragId, draggedTranslate, start } = useDragSort(day.exercises.map(e => e._uid), reorderEx);
   const [open, setOpen] = useState(false); // collapsible day — default closed
   const dowLabel = t(`days.${DOW_SHORT_KEYS[day.dow]}`, { ns: 'common' });
@@ -235,6 +235,18 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
           className="flex-1 min-w-0 bg-transparent outline-none text-[16px] font-bold"
           style={{ color: 'var(--color-text-primary)', fontFamily: "'Familjen Grotesk','Archivo',system-ui" }}
         />
+        {/* The weekday lived only inside the expanded card, so from the collapsed
+            list there was no sign the day could be changed at all. This chip is
+            the affordance: it reads as a control and opens straight to the picker. */}
+        <button
+          type="button" onClick={() => setOpen(true)}
+          aria-label={t('programBuilder.changeDay', 'Change day')}
+          className="h-8 px-2.5 rounded-lg text-[11.5px] font-bold shrink-0 flex items-center gap-1"
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)' }}
+        >
+          {dowLabel}
+          <ChevronDown size={13} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .18s ease' }} />
+        </button>
         {total > 1 && (
           <button type="button" onClick={onRemove} aria-label={t('programBuilder.removeDay', 'Remove day')} className="w-9 h-9 flex items-center justify-center shrink-0" style={{ color: 'var(--color-text-muted)' }}>
             <Trash2 size={16} />
@@ -246,7 +258,6 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
         <button type="button" onClick={() => setOpen(true)} className="w-full text-left mt-1.5 pl-7 text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
           {t('programBuilder.exercisesShort', { count: day.exercises.length, defaultValue: `${day.exercises.length} exercises` })}
           {dayMinutes ? ` · ~${dayMinutes} ${t('dashboard.min', 'min')}` : ''}
-          {dowLabel ? ` · ${dowLabel}` : ''}
         </button>
       )}
       {open && (<>
@@ -255,13 +266,19 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
         {DOW_KEYS.map((key, dow) => {
           const selected = day.dow === dow;
           const taken = !selected && usedDows.has(dow);
+          // Gym shut that weekday. NOT disabled — the member may train
+          // elsewhere — but marked, so the choice is informed rather than blind.
+          const closed = closedDows?.has(dow);
           return (
             <button
               key={dow} type="button" disabled={taken} onClick={() => onDow(dow)}
+              title={closed ? t('programBuilder.gymClosedShort', 'Gym closed') : undefined}
               className="h-9 px-2.5 min-w-[2.75rem] rounded-lg text-[11.5px] font-bold disabled:opacity-30 transition-colors"
               style={selected
                 ? { background: 'var(--color-accent)', color: 'var(--color-text-on-accent,#fff)' }
-                : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+                : closed
+                  ? { background: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)', textDecoration: 'line-through', opacity: 0.75 }
+                  : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
             >
               {t(`days.${DOW_SHORT_KEYS[dow]}`, { ns: 'common' })}
             </button>
@@ -312,6 +329,14 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
   // to shorten the current run (keep its start + progress) or start fresh.
   const [lowerPrompt, setLowerPrompt] = useState(false);
   const [infoExercise, setInfoExercise] = useState(null); // tapped thumbnail → exercise info card
+  // Weekdays the gym is shut. The builder happily let a member schedule a
+  // training day on a day the gym is closed and said nothing about it.
+  const [closedDows, setClosedDows] = useState(() => new Set());
+  // { dayUid, dow } while we ask what to do about a closed-day pick.
+  const [closedDayPrompt, setClosedDayPrompt] = useState(null);
+  // The member's own training-days-per-week from onboarding, so the builder can
+  // point out when the program they are drawing doesn't match what they said.
+  const [targetDaysPerWeek, setTargetDaysPerWeek] = useState(null);
 
   // Edit context: is this an ACTIVE program (in progress), how long was it, and
   // which week is the user currently on. Used to guard shortening the duration.
@@ -327,6 +352,24 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
     return () => { document.body.style.overflow = prev; };
   }, []);
 
+  // Gym closures + the member's stated training frequency. Both are advisory:
+  // they warn, they never block. A member can legitimately train somewhere else
+  // on a closed day, or deliberately run more days than they first said.
+  useEffect(() => {
+    if (!profile?.gym_id || !user?.id) return undefined;
+    let cancelled = false;
+    Promise.all([
+      supabase.from('gym_hours').select('day_of_week, is_closed').eq('gym_id', profile.gym_id),
+      supabase.from('member_onboarding').select('training_days_per_week').eq('profile_id', user.id).maybeSingle(),
+    ]).then(([hoursRes, onbRes]) => {
+      if (cancelled) return;
+      setClosedDows(new Set((hoursRes.data || []).filter(h => h.is_closed).map(h => h.day_of_week)));
+      const n = onbRes.data?.training_days_per_week;
+      if (n) setTargetDaysPerWeek(Number(n));
+    });
+    return () => { cancelled = true; };
+  }, [profile?.gym_id, user?.id]);
+
   // ── Edit mode: reconstruct the days from the program's routines + exercises ──
   useEffect(() => {
     if (!editProgram?.id) return;
@@ -334,9 +377,25 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
     (async () => {
       try {
         const sm = editProgram.schedule_map || {};
-        const ids = Array.isArray(sm.routine_ids) && sm.routine_ids.length
-          ? sm.routine_ids
-          : (sm.routine_ids_a || []);
+        // A generated program persists TWO routine sets that alternate by week
+        // parity (odd weeks A, even weeks B). `routine_day_map` indexes SLOTS,
+        // not routines, so both sets share it: slot 0 is Monday in week A and
+        // in week B alike.
+        //
+        // The old loader flattened routine_ids (A followed by B) into one list
+        // and read `routine_day_map[i]` off the FLAT index — which only lined up
+        // for the A half. Every B routine fell through to `(i + 1) % 7`, so an
+        // 8-routine program rendered as eight rows marching Mon, Tue, Wed, Thu,
+        // Fri, Sat, Sun, Mon regardless of when it was actually programmed.
+        const A = Array.isArray(sm.routine_ids_a) ? sm.routine_ids_a.filter(Boolean) : [];
+        const B = Array.isArray(sm.routine_ids_b) ? sm.routine_ids_b.filter(Boolean) : [];
+        // Member-built programs store the SAME ids in both, which is one week,
+        // not two. Only treat it as A/B when the sets genuinely differ.
+        const hasVariants = A.length > 0 && B.length > 0 && B.some((id, i) => id !== A[i]);
+        const groups = hasVariants
+          ? [{ variant: 'A', ids: A }, { variant: 'B', ids: B }]
+          : [{ variant: null, ids: (Array.isArray(sm.routine_ids) && sm.routine_ids.length ? sm.routine_ids : A) }];
+        const ids = [...new Set(groups.flatMap(g => g.ids))];
         const dayMap = {};
         (sm.routine_day_map || []).forEach((e) => { dayMap[e.routine_index] = e.day_of_week; });
         const [{ data: routs }, { data: exRows }] = await Promise.all([
@@ -345,14 +404,17 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         ]);
         const byRoutine = {};
         (exRows || []).forEach((r) => { (byRoutine[r.routine_id] ||= []).push(r); });
-        const loadedDays = ids.map((rid, i) => {
-          const r = (routs || []).find(x => x.id === rid);
-          if (!r) return null; // routine deleted (a newer program cleared it) — skip, don't show an empty day
-          const exs = (byRoutine[rid] || []).sort((a, b) => a.position - b.position).map((re) => ({
-            _uid: uid('ex'), id: re.exercise_id, sets: re.target_sets || 3, reps: String(re.target_reps || '8-12'), restSeconds: re.rest_seconds || 90,
-          }));
-          return { _uid: uid('day'), name: (r.name || '').replace(/^Auto:\s*/, ''), dow: dayMap[i] ?? ((i + 1) % 7), exercises: exs };
-        }).filter(Boolean);
+        const loadedDays = groups.flatMap(({ variant, ids: groupIds }) =>
+          groupIds.map((rid, slot) => {
+            const r = (routs || []).find(x => x.id === rid);
+            if (!r) return null; // routine deleted (a newer program cleared it) — skip, don't show an empty day
+            const exs = (byRoutine[rid] || []).sort((a, b) => a.position - b.position).map((re) => ({
+              _uid: uid('ex'), id: re.exercise_id, sets: re.target_sets || 3, reps: String(re.target_reps || '8-12'), restSeconds: re.rest_seconds || 90,
+            }));
+            // Slot index within its own variant — that is what routine_day_map keys on.
+            return { _uid: uid('day'), variant, name: (r.name || '').replace(/^Auto:\s*/, ''), dow: dayMap[slot] ?? ((slot + 1) % 7), exercises: exs };
+          })
+        ).filter(Boolean);
         if (!cancelled) {
           if (loadedDays.length) {
             setName(sm.display_name || editProgram.name || '');
@@ -371,11 +433,33 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
     return () => { cancelled = true; };
   }, [editProgram]);
 
-  const usedDows = useMemo(() => new Set(days.map(d => d.dow)), [days]);
+  // Weekday collisions are per WEEK, not across the whole program: an A/B plan
+  // is meant to reuse Monday in both rotations, so week A owning Monday must not
+  // grey Monday out in week B.
+  const usedDowsByVariant = useMemo(() => {
+    const m = new Map();
+    for (const d of days) {
+      const k = d.variant ?? '_';
+      if (!m.has(k)) m.set(k, new Set());
+      m.get(k).add(d.dow);
+    }
+    return m;
+  }, [days]);
+  const dowsFor = (variant) => usedDowsByVariant.get(variant ?? '_') || new Set();
+  // Rendered groups. `null` variant = a single-week program; it renders exactly
+  // as before, with no week headings.
+  const dayGroups = useMemo(() => {
+    const variants = [...new Set(days.map(d => d.variant ?? null))];
+    if (variants.length <= 1 && variants[0] == null) return [{ variant: null, days }];
+    return ['A', 'B']
+      .filter(v => variants.includes(v))
+      .map(v => ({ variant: v, days: days.filter(d => d.variant === v) }));
+  }, [days]);
 
-  const addDay = () => {
-    const free = [1, 3, 5, 2, 4, 6, 0].find(d => !usedDows.has(d)) ?? 1;
-    setDays(prev => [...prev, { _uid: uid('day'), name: '', dow: free, exercises: [] }]);
+  const addDay = (variant = null) => {
+    const used = dowsFor(variant);
+    const free = [1, 3, 5, 2, 4, 6, 0].find(d => !used.has(d)) ?? 1;
+    setDays(prev => [...prev, { _uid: uid('day'), variant, name: '', dow: free, exercises: [] }]);
   };
   const removeDay = (dUid) => setDays(prev => prev.filter(d => d._uid !== dUid));
   const setDayField = (dUid, field, val) => setDays(prev => prev.map(d => d._uid === dUid ? { ...d, [field]: val } : d));
@@ -413,7 +497,12 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
     setLowerPrompt(false);
     setSaving(true);
     try {
-      const sorted = [...validDays].sort((a, b) => a.dow - b.dow);
+      // Rebuild each week separately so an A/B program stays an A/B program.
+      // `sortedA` defines the SLOTS (routine_day_map / normal_dows / the
+      // workout_schedule seed); `sortedB` fills the same slots for even weeks.
+      // A single-week program has no B and behaves exactly as before.
+      const sortedA = validDays.filter(d => d.variant !== 'B').sort((a, b) => a.dow - b.dow);
+      const sortedB = validDays.filter(d => d.variant === 'B').sort((a, b) => a.dow - b.dow);
       // Snapshot old Auto: routines (the previous active program) for cleanup AFTER.
       const { data: oldAuto } = await supabase.from('routines').select('id').eq('created_by', user.id).like('name', 'Auto:%');
       const oldIds = (oldAuto || []).map(r => r.id);
@@ -429,27 +518,51 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
       }
 
       const startDate = new Date(); startDate.setHours(0, 0, 0, 0);
-      const routineIds = [];
-      for (const day of sorted) {
-        const dayLabel = day.name.trim() || t('programBuilder.dayNamePlaceholder', { n: sorted.indexOf(day) + 1, defaultValue: `Day ${sorted.indexOf(day) + 1}` });
-        const { data: r, error: rErr } = await supabase.from('routines')
-          .insert({ name: `Auto: ${dayLabel}`, created_by: user.id, gym_id: profile.gym_id })
-          .select('id').single();
-        if (rErr || !r?.id) continue;
-        routineIds.push(r.id);
-        const rows = day.exercises.map((ex, i) => ({
-          routine_id: r.id, exercise_id: ex.id, position: i + 1,
-          target_sets: Number(ex.sets) || 3, target_reps: String(ex.reps || '8-12'),
-          rest_seconds: Number(ex.restSeconds) || 90, group_id: null, group_type: null,
-        }));
-        if (rows.length) await supabase.from('routine_exercises').insert(rows);
+
+      // Clear the whole weekly schedule before re-seeding it, the way every
+      // other program-creation path does (personalProgramService, reactivate,
+      // GenerateWorkoutModal). The per-routine delete at the end of this
+      // function only removes rows pointing at the previous program's `Auto:`
+      // routines, so a day the user had swapped to one of their OWN routines
+      // survived into the new program and kept showing a workout on a day this
+      // program doesn't train. Home now treats `workout_schedule` as
+      // authoritative, so a leftover row would be rendered verbatim.
+      await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
+
+      const createWeek = async (weekDays) => {
+        const created = [];
+        for (let i = 0; i < weekDays.length; i++) {
+          const day = weekDays[i];
+          const dayLabel = day.name.trim() || t('programBuilder.dayNamePlaceholder', { n: i + 1, defaultValue: `Day ${i + 1}` });
+          const { data: r, error: rErr } = await supabase.from('routines')
+            .insert({ name: `Auto: ${dayLabel}`, created_by: user.id, gym_id: profile.gym_id })
+            .select('id').single();
+          if (rErr || !r?.id) continue;
+          created.push({ id: r.id, dow: day.dow });
+          const rows = day.exercises.map((ex, p) => ({
+            routine_id: r.id, exercise_id: ex.id, position: p + 1,
+            target_sets: Number(ex.sets) || 3, target_reps: String(ex.reps || '8-12'),
+            rest_seconds: Number(ex.restSeconds) || 90, group_id: null, group_type: null,
+          }));
+          if (rows.length) await supabase.from('routine_exercises').insert(rows);
+        }
+        return created;
+      };
+      const madeA = await createWeek(sortedA);
+      const madeB = await createWeek(sortedB);
+      if (madeA.length === 0) throw new Error('no routines created');
+
+      // Seed workout_schedule from week A only — every other surface resolves
+      // the B routine for even weeks from routine_ids_b by slot index.
+      for (const { id, dow } of madeA) {
         await supabase.from('workout_schedule').upsert({
-          profile_id: user.id, gym_id: profile.gym_id, day_of_week: day.dow, routine_id: r.id, updated_at: new Date().toISOString(),
+          profile_id: user.id, gym_id: profile.gym_id, day_of_week: dow, routine_id: id, updated_at: new Date().toISOString(),
         }, { onConflict: 'profile_id,day_of_week' });
       }
-      if (routineIds.length === 0) throw new Error('no routines created');
 
-      const dows = sorted.map(d => d.dow);
+      const idsA = madeA.map(r => r.id);
+      const idsB = madeB.map(r => r.id);
+      const dows = madeA.map(r => r.dow);
       const scheduleMap = {
         routine_day_map: dows.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
         week1_map: dows.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
@@ -458,9 +571,11 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         week1_dows: dows,
         wrapped_dows: [],
         normal_dows: dows,
-        routine_ids: routineIds,
-        routine_ids_a: routineIds,
-        routine_ids_b: routineIds,
+        routine_ids: [...idsA, ...idsB],
+        routine_ids_a: idsA,
+        // No B week authored → both parities run the same set, which is what a
+        // plain one-week program means.
+        routine_ids_b: idsB.length ? idsB : idsA,
         total_calendar_weeks: weeks,
         display_name: name.trim(),
       };
@@ -471,7 +586,7 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         const expiresAt = new Date(origStart); expiresAt.setDate(expiresAt.getDate() + weeks * 7);
         scheduleMap.start_dow = origStart.getDay();
         const { error: gpErr } = await supabase.from('generated_programs').update({
-          routines_a_count: sorted.length, duration_weeks: weeks, schedule_map: scheduleMap, expires_at: expiresAt.toISOString(),
+          routines_a_count: idsA.length, duration_weeks: weeks, schedule_map: scheduleMap, expires_at: expiresAt.toISOString(),
         }).eq('id', editProgram.id);
         if (gpErr) throw gpErr;
       } else {
@@ -479,14 +594,27 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         const { error: gpErr } = await supabase.from('generated_programs').insert({
           profile_id: user.id, gym_id: profile.gym_id, split_type: 'custom',
           program_start: startDate.toISOString(), expires_at: expiresAt.toISOString(),
-          routines_a_count: sorted.length, duration_weeks: weeks, schedule_map: scheduleMap,
+          routines_a_count: idsA.length, duration_weeks: weeks, schedule_map: scheduleMap,
         });
         if (gpErr) throw gpErr;
       }
 
-      // Clean up the previous program's Auto: routines now that the new ones exist.
-      const newSet = new Set(routineIds);
-      const toDelete = oldIds.filter(id => !newSet.has(id));
+      // Clean up ORPHAN Auto: routines now that the new ones exist.
+      //
+      // "Orphan" means claimed by no program at all. This used to delete every
+      // old Auto: routine, which quietly destroyed the past programs' workouts —
+      // and those are exactly what "Resume" needs. The regenerate confirm tells
+      // the member their current program stays in their history, so the history
+      // has to remain resumable. Mirrors the claim check in
+      // `regenerateMemberProgram`, which already got this right.
+      const newSet = new Set([...idsA, ...idsB]);
+      const { data: allUserPrograms } = await supabase
+        .from('generated_programs').select('schedule_map').eq('profile_id', user.id);
+      const claimed = new Set();
+      for (const p of allUserPrograms || []) {
+        for (const rid of p.schedule_map?.routine_ids || []) claimed.add(rid);
+      }
+      const toDelete = oldIds.filter(id => !newSet.has(id) && !claimed.has(id));
       if (toDelete.length) {
         await supabase.from('routine_exercises').delete().in('routine_id', toDelete);
         await supabase.from('workout_schedule').delete().in('routine_id', toDelete).then(() => {}, () => {});
@@ -569,32 +697,81 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
             <div className="mb-4 rounded-xl px-4 py-3 text-[13px] font-medium" style={{ background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)', color: 'var(--color-danger)' }}>{error}</div>
           )}
 
-          {/* Days */}
-          <div className="flex flex-col gap-3">
-            {days.map((day, i) => (
-              <DayCard
-                key={day._uid} day={day} index={i} total={days.length}
-                onName={(v) => setDayField(day._uid, 'name', v)}
-                onDow={(v) => setDayField(day._uid, 'dow', v)}
-                onRemove={() => removeDay(day._uid)}
-                onAddExercise={() => setPickerDayUid(day._uid)}
-                onChangeEx={(exUid, field, val) => changeEx(day._uid, exUid, field, val)}
-                onRemoveEx={(exUid) => removeEx(day._uid, exUid)}
-                reorderEx={(orderedUids) => reorderEx(day._uid, orderedUids)}
-                usedDows={usedDows}
-                t={t} lang={lang}
-                onShowInfo={setInfoExercise}
-              />
-            ))}
-          </div>
+          {/* The builder validated total weeks but never the DAYS — you could
+              say "3 days a week" in onboarding and quietly draw a 6-day
+              program. Advisory, not a block: changing your mind about frequency
+              is exactly what building your own program is for. Counts week A
+              only, since B mirrors the same slots. */}
+          {(() => {
+            const weekADays = days.filter(d => d.variant !== 'B').length;
+            if (!targetDaysPerWeek || weekADays === targetDaysPerWeek || weekADays === 0) return null;
+            return (
+              <div className="mb-4 rounded-xl px-4 py-3 text-[12.5px] leading-relaxed"
+                style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)', color: 'var(--color-text-muted)', border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)' }}>
+                {t('programBuilder.daysMismatch', {
+                  count: weekADays,
+                  target: targetDaysPerWeek,
+                  defaultValue: `This program has ${weekADays} training days a week — you set ${targetDaysPerWeek} in your setup. That's fine, just checking it's on purpose.`,
+                })}
+              </div>
+            );
+          })()}
 
-          <button
-            onClick={addDay}
-            className="w-full mt-3 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[14px] font-bold"
-            style={{ background: 'var(--color-bg-card)', border: '1px dashed var(--color-border-default)', color: 'var(--color-text-muted)' }}
-          >
-            <Calendar size={16} /> {t('programBuilder.addDay', 'Add a day')}
-          </button>
+          {/* Days — grouped by the week they belong to. An A/B program alternates
+              two rotations, so listing all of them in one flat run (and numbering
+              their weekdays straight through) misrepresented the plan. */}
+          {dayGroups.map(({ variant, days: groupDays }) => (
+            <div key={variant ?? 'single'} className={variant ? 'mb-5' : ''}>
+              {variant && (
+                <div className="flex items-center gap-2 mb-2 mt-1">
+                  <span
+                    className="text-[11px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full"
+                    style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', color: 'var(--color-accent)' }}
+                  >
+                    {t('programBuilder.weekVariant', { variant, defaultValue: `Week ${variant}` })}
+                  </span>
+                  <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                    {variant === 'A'
+                      ? t('programBuilder.weekVariantAHint', 'Weeks 1, 3, 5…')
+                      : t('programBuilder.weekVariantBHint', 'Weeks 2, 4, 6…')}
+                  </span>
+                </div>
+              )}
+              <div className="flex flex-col gap-3">
+                {groupDays.map((day, i) => (
+                  <DayCard
+                    key={day._uid} day={day} index={i} total={groupDays.length}
+                    onName={(v) => setDayField(day._uid, 'name', v)}
+                    onDow={(v) => {
+                      // Closed day → ask instead of silently scheduling a
+                      // session on a day the member can't get in the door.
+                      if (closedDows.has(v)) { setClosedDayPrompt({ dayUid: day._uid, dow: v }); return; }
+                      setDayField(day._uid, 'dow', v);
+                    }}
+                    closedDows={closedDows}
+                    onRemove={() => removeDay(day._uid)}
+                    onAddExercise={() => setPickerDayUid(day._uid)}
+                    onChangeEx={(exUid, field, val) => changeEx(day._uid, exUid, field, val)}
+                    onRemoveEx={(exUid) => removeEx(day._uid, exUid)}
+                    reorderEx={(orderedUids) => reorderEx(day._uid, orderedUids)}
+                    usedDows={dowsFor(day.variant)}
+                    t={t} lang={lang}
+                    onShowInfo={setInfoExercise}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={() => addDay(variant)}
+                className="w-full mt-3 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[14px] font-bold"
+                style={{ background: 'var(--color-bg-card)', border: '1px dashed var(--color-border-default)', color: 'var(--color-text-muted)' }}
+              >
+                <Calendar size={16} />
+                {variant
+                  ? t('programBuilder.addDayToWeek', { variant, defaultValue: `Add a day to week ${variant}` })
+                  : t('programBuilder.addDay', 'Add a day')}
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -615,21 +792,71 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
 
       {/* Shorten-in-progress choice — shortening the current run keeps its start
           date and progress; starting new resets the clock from today. */}
+      {/* Closed-day prompt — the three ways out the member actually has:
+          pick a different day, drop the day entirely (a shorter week), or keep
+          it because they train somewhere else that day. Never a hard block. */}
+      {closedDayPrompt && (() => {
+        const dowName = t(`days.${DOW_KEYS[closedDayPrompt.dow]}`, { ns: 'common' });
+        const close = () => setClosedDayPrompt(null);
+        return (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('cancel', { ns: 'common' })} onClick={close} onKeyDown={(e) => { if (e.key === 'Escape') close(); }}>
+            <div className="rounded-[20px] w-full max-w-sm p-6" role="dialog" aria-modal="true" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
+              <h3 className="text-[17px] font-extrabold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: "'Familjen Grotesk','Archivo',system-ui" }}>
+                {t('programBuilder.gymClosedTitle', { day: dowName, defaultValue: `The gym is closed on ${dowName}` })}
+              </h3>
+              <p className="text-[13px] mb-5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                {t('programBuilder.gymClosedBody', { day: dowName, defaultValue: `You can still put a workout here — just know you won't be able to check in at the gym that day.` })}
+              </p>
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={close}
+                  className="w-full py-3 rounded-xl text-[14px] font-bold"
+                  style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent,#fff)' }}
+                >
+                  {t('programBuilder.gymClosedPickAnother', 'Pick another day')}
+                </button>
+                <div className="flex gap-2.5">
+                  <button
+                    onClick={() => { removeDay(closedDayPrompt.dayUid); close(); }}
+                    className="flex-1 min-w-0 py-3 rounded-xl text-[13.5px] font-bold"
+                    style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-default)' }}
+                  >
+                    {t('programBuilder.gymClosedDropDay', 'Drop this day')}
+                  </button>
+                  <button
+                    onClick={() => { setDayField(closedDayPrompt.dayUid, 'dow', closedDayPrompt.dow); close(); }}
+                    className="flex-1 min-w-0 py-3 rounded-xl text-[13.5px] font-bold"
+                    style={{ background: 'transparent', color: 'var(--color-text-subtle)', border: '1px solid var(--color-border-subtle)' }}
+                  >
+                    {t('programBuilder.gymClosedKeep', 'Keep it')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {lowerPrompt && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('cancel', { ns: 'common' })} onClick={() => setLowerPrompt(false)} onKeyDown={(e) => { if (e.key === 'Escape') setLowerPrompt(false); }}>
           <div className="rounded-[20px] w-full max-w-sm p-6" role="dialog" aria-modal="true" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
             <h3 className="text-[17px] font-extrabold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: "'Familjen Grotesk','Archivo',system-ui" }}>{t('programBuilder.shortenTitle', 'Shorten this program?')}</h3>
             <p className="text-[13px] mb-5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{t('programBuilder.shortenDesc', { weeks, defaultValue: `You set the length to ${weeks} weeks. Keep your current program and just end it sooner, or start a fresh ${weeks}-week program from today?` })}</p>
+            {/* Primary full width, the two secondaries side by side. Three
+                equal-weight stacked buttons made the choice read as a list of
+                three equals when only one of them is the recommended path. */}
             <div className="flex flex-col gap-2.5">
               <button onClick={() => handleSave('current')} disabled={saving} className="w-full py-3 rounded-xl text-[14px] font-bold disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent,#fff)' }}>
                 {saving ? <Loader2 size={15} className="animate-spin" /> : null}{t('programBuilder.shortenCurrent', 'Shorten current program')}
               </button>
-              <button onClick={() => handleSave('new')} disabled={saving} className="w-full py-3 rounded-xl text-[14px] font-bold disabled:opacity-50" style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-default)' }}>
-                {t('programBuilder.shortenNew', 'Start a new program')}
-              </button>
-              <button onClick={() => setLowerPrompt(false)} className="w-full py-2.5 text-[13px] font-semibold" style={{ color: 'var(--color-text-subtle)' }}>
-                {t('cancel', { ns: 'common' })}
-              </button>
+              <div className="flex gap-2.5">
+                <button onClick={() => handleSave('new')} disabled={saving} className="flex-1 min-w-0 py-3 rounded-xl text-[13.5px] font-bold disabled:opacity-50 truncate" style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-default)' }}>
+                  {t('programBuilder.shortenNew', 'Start a new program')}
+                </button>
+                <button onClick={() => setLowerPrompt(false)} disabled={saving} className="flex-1 min-w-0 py-3 rounded-xl text-[13.5px] font-bold disabled:opacity-50" style={{ background: 'transparent', color: 'var(--color-text-subtle)', border: '1px solid var(--color-border-subtle)' }}>
+                  {t('cancel', { ns: 'common' })}
+                </button>
+              </div>
             </div>
           </div>
         </div>

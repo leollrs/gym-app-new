@@ -180,3 +180,48 @@ export function programImageUrl(path, opts) {
     .getPublicUrl(clean, transform ? { transform } : undefined);
   return data?.publicUrl || null;
 }
+
+// ── Signed (private-bucket) transforms ───────────────────────────────────────
+// `social-posts` is private, so its URLs come from createSignedUrls(). That
+// BATCH api — the one the feed uses to sign every photo in a page with a single
+// round trip — does NOT accept a `transform` option; only the singular
+// createSignedUrl() does. So the feed was serving the FULL-SIZE original of
+// every photo: member uploads are stored at up to 2048px (stripExif), and share
+// cards are rasterised at 1080x1920.
+//
+// Measured on a representative grained share card (1080x1920):
+//     stored original .......... 374 KB
+//     800w q72 via transform ....  73 KB   (-80%)
+// A photo feed is a dozen of those at once, which is what makes it crawl.
+//
+// Going one-signed-URL-per-image to get `transform` would trade one request for
+// N. Instead: the storage API exposes the SAME token on a render/image route,
+// so the batch-signed URL can simply be pointed at it.
+//
+// VERIFIED against THIS project on 2026-07-28 (curl):
+//   /storage/v1/object/sign/social-posts/x.png?token=fake
+//        → 400 {"error":"InvalidJWT"}          route exists, token rejected
+//   /storage/v1/render/image/sign/social-posts/x.png?token=fake&width=800
+//        → 400 {"error":"InvalidJWT"}          same — route exists, same token
+//   /storage/v1/render/image/sign/social-posts/x.png   (no token)
+//        → 400 "querystring must have required property 'token'"
+// i.e. the render route is live and authenticates with the identical token,
+// so rewriting the path is sufficient. Returns the input untouched for
+// anything that isn't a signed object URL, so a caller can pass through
+// already-absolute or already-rendered urls safely.
+export function signedImageUrl(signedUrl, { width, quality } = {}) {
+  if (!signedUrl || typeof signedUrl !== 'string') return signedUrl;
+  if (!signedUrl.includes('/storage/v1/object/sign/')) return signedUrl;
+  const w = Number(width) || 0;
+  const q = Number(quality) || 0;
+  if (!w && !q) return signedUrl;
+  try {
+    const u = new URL(signedUrl);
+    u.pathname = u.pathname.replace('/storage/v1/object/sign/', '/storage/v1/render/image/sign/');
+    if (w) u.searchParams.set('width', String(Math.round(w)));
+    if (q) u.searchParams.set('quality', String(Math.round(q)));
+    return u.toString();
+  } catch {
+    return signedUrl;   // not parseable — never break an image over an optimisation
+  }
+}

@@ -25,7 +25,19 @@
     "errName": "Name your program",
     "errEmpty": "Add at least one exercise to a day",
     "saved": "Program created",
-    "saveFailed": "Could not save program"
+    "saveFailed": "Could not save program",
+    "weekVariant": "Week {{variant}}",
+    "weekVariantAHint": "Weeks 1, 3, 5…",
+    "weekVariantBHint": "Weeks 2, 4, 6…",
+    "addDayToWeek": "Add a day to week {{variant}}",
+    "changeDay": "Change day",
+    "gymClosedShort": "Gym closed",
+    "gymClosedTitle": "The gym is closed on {{day}}",
+    "gymClosedBody": "You can still put a workout here — just know you won't be able to check in at the gym that day.",
+    "gymClosedPickAnother": "Pick another day",
+    "gymClosedDropDay": "Drop this day",
+    "gymClosedKeep": "Keep it",
+    "daysMismatch": "This program has {{count}} training days a week — you set {{target}} in your setup. That's fine, just checking it's on purpose."
   },
   "weekdaysShort": {
     "sunday": "S",
@@ -58,7 +70,12 @@
       "ctaPause": "Pause my membership instead",
       "ctaCancel": "Cancel anyway",
       "savedToast": "Thanks for telling us. Door's open if you change your mind.",
-      "pausedToast": "Membership paused. Come back anytime."
+      "pausedToast": "Membership paused. Come back anytime.",
+      "ctaPauseShort": "Pause instead",
+      "pauseConfirmTitle": "Pause your membership?",
+      "pauseConfirmBody": "Your account goes on hold: you won't be able to use the app, book classes or check in. Nothing is deleted — your workouts, PRs, streak history and points all stay exactly as they are, and you can switch it back on yourself whenever you want.",
+      "pauseConfirmCta": "Yes, pause it",
+      "pauseBack": "Never mind"
     }
   },
   "dashboard": {
@@ -437,6 +454,7 @@
     "showMore": "Show more",
     "showingCount": "{{visible}} / {{total}}",
     "noActivityYet": "No activity recorded yet",
+    "noSetsLogged": "No sets logged for this workout.",
     "volumeLbs": "{{value}} lbs",
     "phonePlaceholder": "787 555 1234",
     "phoneNumber": "Phone number",
@@ -454,7 +472,8 @@
     "myTrainerSubtitle": "View your coach",
     "trainerNext": "Next: {{when}}",
     "messageTrainer": "Message",
-    "openChatFailed": "Could not open the chat. Try again."
+    "openChatFailed": "Could not open the chat. Try again.",
+    "gymClosedOnDay": "Heads up — the gym is closed on {{day}}. We'll still plan a workout for that day, you just won't be able to check in."
   },
   "rewards": {
     "title": "Rewards",
@@ -908,7 +927,17 @@
     "requestsSent": "Requests sent",
     "cancel": "Cancel",
     "tryThis": "Try this",
-    "shareSubtitle": "Tap a target to share"
+    "shareSubtitle": "Tap a target to share",
+    "hiddenPosts": "Hidden posts",
+    "noHiddenPosts": "You haven't hidden any posts",
+    "hiddenPostFallback": "Hidden post",
+    "unhidePost": "Unhide",
+    "postUnhidden": "Post restored to your feed",
+    "typeWorkout": "Workout",
+    "typePR": "Personal record",
+    "typeAchievement": "Achievement",
+    "typeCheckIn": "Check-in",
+    "typePost": "Post"
   },
   "nutrition": {
     "title": "Nutrition",
@@ -1743,6 +1772,7 @@
     "pauseSubtitle": "What would you like to do?",
     "saveForLater": "Save for later",
     "saveForLaterDesc": "Stop tracking — your progress is saved.",
+    "saveForLaterShort": "Progress is saved",
     "deleteSession": "Delete session",
     "deleteSessionDesc": "Discard this workout and go back.",
     "deleteSessionConfirm": "Delete this workout? Your logged sets will be lost.",
@@ -1791,6 +1821,7 @@
     "swapSameMuscle": "{{muscle}} alternatives",
     "finishWorkoutNow": "Finish Workout",
     "finishWorkoutNowDesc": "End here and see the summary.",
+    "finishWorkoutNowShort": "Go to summary",
     "cue": {
       "restExtended": "Coach extended rest by {{seconds}}s",
       "restQueued": "Coach added {{seconds}}s to your next rest",
@@ -1836,7 +1867,8 @@
     "resumeMembership": "Reactivate my membership",
     "resuming": "Reactivating…",
     "gymDeactivatedStaffBody": "This gym's TuGymPR access is currently deactivated.",
-    "gymDeactivatedStaffDetail": "If you believe this is a mistake, contact TuGymPR support."
+    "gymDeactivatedStaffDetail": "If you believe this is a mistake, contact TuGymPR support.",
+    "memberSelfPausedDetail": "You paused this yourself, so you can turn it back on right here. Nothing was deleted — your workouts, PRs and streak history are all waiting for you."
   },
   "ageVerify": {
     "title": "Confirm your age",
@@ -1925,7 +1957,8 @@
     "health": {
       "title": "Health data sync",
       "body": "Read your steps, weight, calories, and heart rate to personalize macros and progress charts. We can also write your workout calories back to Apple Health. Your data stays on your device unless you choose to share it."
-    }
+    },
+    "changeInSettingsPrefix": "You can change this anytime in"
   },
   "workouts": {
     "title": "Workouts",
@@ -2196,7 +2229,8 @@
     "adaptUnderperformBody": "{{count}} exercise(s) have low completion. Consider reducing weight or swapping them.",
     "adaptGeneralBody": "Your program is on track. Keep showing up.",
     "gotIt": "Got it",
-    "programEmptyHint": "This program has no workouts yet — ask your gym to finish it."
+    "programEmptyHint": "This program has no workouts yet — ask your gym to finish it.",
+    "deletingProgress": "Deleting {{done}}/{{total}}…"
   },
   "quickStart": {
     "startWorkout": "Start Workout",
@@ -2205,6 +2239,9 @@
     "todaysWorkout": "Today's Workout",
     "chooseRoutine": "Choose Routine",
     "available": "available",
+    "searchRoutines": "Search routines",
+    "noRoutinesFound": "No routines match that search.",
+    "close": "Close",
     "createNew": "Create New",
     "buildWorkout": "Build a workout",
     "noRoutinesYet": "No routines yet",
@@ -8591,7 +8628,8 @@
     "dismissFailed": "Failed to dismiss",
     "dismiss": "Dismiss",
     "newTitle": "New notification",
-    "viewAction": "View"
+    "viewAction": "View",
+    "typeClassReminder": "Class reminder"
   },
   "adminNotifications": {
     "title": "Alerts",
@@ -9166,7 +9204,10 @@
     "permissionFailed": "Could not enable Health sync.",
     "dataFromAppleHealth": "Data from Apple Health",
     "dataFromHealthConnect": "Data from Health Connect",
-    "poweredByHealthKit": "Works with Apple Health"
+    "poweredByHealthKit": "Works with Apple Health",
+    "disconnectConfirm": "Stop syncing with Apple Health? Weight, workouts and activity will no longer flow in or out. Nothing already saved is deleted, and you can reconnect anytime.",
+    "keepConnected": "Keep it on",
+    "disconnectYes": "Yes, disconnect"
   },
   "appTour": {
     "step1Title": "Your Daily Plan",
@@ -13846,7 +13887,32 @@
       "gym": "Share to {{gym}}",
       "share": "Share"
     },
-    "stickerMode": "Sticker mode (overlay on your photo)"
+    "stickerMode": "Sticker mode (overlay on your photo)",
+    "noRoute": "No route",
+    "cardioKcal": "{{count}} kcal",
+    "cardioPart": {
+      "morning": "Morning",
+      "afternoon": "Afternoon",
+      "evening": "Evening",
+      "night": "Night"
+    },
+    "cardioType": {
+      "run": "Run",
+      "walk": "Walk",
+      "ride": "Ride",
+      "swim": "Swim",
+      "row": "Row",
+      "hike": "Hike",
+      "session": "Session"
+    },
+    "cardioLine1": "One more in the bank.",
+    "cardioLine2": "Showed up. That was the hard part.",
+    "cardioLine3": "Chasing the next one.",
+    "cardioLine4": "No shortcuts on this one.",
+    "cardioLine5": "Beat yesterday. That's the whole game.",
+    "cardioTitle": "{{part}} {{type}}",
+    "postedToFeed": "Posted to your gym feed",
+    "shareFailed": "Couldn't share that. Try again."
   },
   "achievementToast": {
     "dismiss": "Dismiss"
@@ -13994,7 +14060,8 @@
   },
   "legal": {
     "loadFailed": "Couldn't load from the web. Check your connection.",
-    "openInBrowser": "Open in browser"
+    "openInBrowser": "Open in browser",
+    "opensInBrowser": "This opens in a secure in-app browser."
   },
   "legalViewer": {
     "title": "Legal",
@@ -14150,7 +14217,9 @@
     "declineSent": "We let your trainer know",
     "respondFailed": "Couldn't send your response. Try again.",
     "packsRemaining": "You have {{left}} of {{total}} sessions left",
-    "about": "About"
+    "about": "About",
+    "textSmsShort": "Text",
+    "messageSelf": "That's your own profile."
   },
   "trainerLive": {
     "watchLive": "Watch live",

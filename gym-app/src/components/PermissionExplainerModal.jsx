@@ -9,6 +9,11 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Bell, Camera as CameraIcon, MapPin, Heart, X, Check } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { getAppName } from '../lib/appName';
+
+// "iOS Settings" was hardcoded, which is simply wrong on Android.
+const settingsLabel = Capacitor.getPlatform() === 'android' ? 'Settings' : 'iOS Settings';
 
 const ICON_BY_TYPE = {
   notifications: Bell,
@@ -91,7 +96,17 @@ export default function PermissionExplainerModal({ open, type, status, onAgree, 
         {isDecided && (
           <p className="text-[12px] leading-relaxed mb-4 px-3 py-2.5 rounded-[12px]"
             style={{ color: 'var(--color-text-subtle)', background: 'var(--color-bg-elevated, var(--color-surface-hover))' }}>
-            {t('permissionExplainer.changeInSettings', 'You can change this anytime in iOS Settings › TuGymPR.')}
+            {/* The path is ONE thing. Left to wrap freely it broke after the
+                "›" and orphaned the app name on its own line, reading like two
+                separate instructions. `nowrap` keeps "Settings › TuGymPR"
+                together — it moves to the next line whole, or not at all.
+                The name comes from getAppName() so a white-labelled gym sees
+                its OWN app in the path, not ours. */}
+            {t('permissionExplainer.changeInSettingsPrefix', 'You can change this anytime in')}{' '}
+            <span style={{ whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+              {settingsLabel} › {getAppName()}
+            </span>
+            .
           </p>
         )}
 
@@ -104,9 +119,17 @@ export default function PermissionExplainerModal({ open, type, status, onAgree, 
               {t('permissionExplainer.allow', 'Allow')}
             </button>
           )}
+          {/* A transparent full-width label is not a button. When the OS has
+              already decided this IS the only action on the card, so it has to
+              look pressable; the accent "Allow" above still owns the hierarchy
+              when both are present. */}
           <button type="button" onClick={onCancel}
-            className="w-full py-2.5 rounded-[14px] text-[13px] font-semibold"
-            style={{ background: 'transparent', color: 'var(--color-text-muted)' }}>
+            className="w-full py-3 rounded-[14px] text-[14px] font-bold transition-transform active:scale-[0.99]"
+            style={{
+              background: 'var(--color-surface-hover)',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-primary)',
+            }}>
             {isDecided || status === 'unsupported'
               ? t('permissionExplainer.close', 'Close')
               : t('permissionExplainer.notNow', 'Not now')}

@@ -15,14 +15,10 @@ import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import {
   ArrowLeft,
-  ChevronRight,
   ChevronDown,
   Mail,
   HelpCircle,
   Bug,
-  Shield,
-  FileText,
-  Trash2,
   Info,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -229,55 +225,15 @@ export default function Support() {
         </div>
 
         {/* Privacy & terms / data shortcuts */}
-        <div>
-          <h3
-            className="text-[11px] font-semibold uppercase tracking-widest mb-3 px-1"
-            style={{ color: 'var(--color-text-subtle)' }}
-          >
-            {t('support.legalHeading')}
-          </h3>
-          <div className="rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden divide-y divide-white/[0.06]">
-            <button
-              type="button"
-              onClick={() => navigate('/legal/privacy')}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
-            >
-              <div className="flex items-center gap-3">
-                <Shield size={16} style={{ color: 'var(--color-text-subtle)' }} />
-                <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                  {t('support.openPrivacyPolicy')}
-                </span>
-              </div>
-              <ChevronRight size={16} style={{ color: 'var(--color-text-subtle)' }} />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/legal/terms')}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
-            >
-              <div className="flex items-center gap-3">
-                <FileText size={16} style={{ color: 'var(--color-text-subtle)' }} />
-                <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                  {t('support.openTerms')}
-                </span>
-              </div>
-              <ChevronRight size={16} style={{ color: 'var(--color-text-subtle)' }} />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/settings')}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"
-            >
-              <div className="flex items-center gap-3">
-                <Trash2 size={16} className="text-red-400" />
-                <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                  {t('support.deleteAccountLink')}
-                </span>
-              </div>
-              <ChevronRight size={16} style={{ color: 'var(--color-text-subtle)' }} />
-            </button>
-          </div>
-        </div>
+        {/* "Privacy & Data" used to live here too — Privacy Policy, Terms and
+            "Delete my account". Removed, because this page is reached ONLY from
+            Settings (MemberSettings → Help & Support), so it was a child page
+            repeating its own parent. Worse, its delete row was not a delete
+            button at all: it called navigate('/settings') and dropped you back
+            where you started, one screen further from the thing you asked for.
+            Settings owns all three — including the real typed-DELETE flow — and
+            the FAQ entry above ("How do I delete my account?") names that path
+            explicitly. Help stays help. */}
 
         {/* App version footer */}
         <div className="pt-2 pb-6 text-center">

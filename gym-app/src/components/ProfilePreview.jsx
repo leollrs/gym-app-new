@@ -30,7 +30,7 @@ const LEVEL_META = {
 const ProfilePreview = ({ userId, isOpen, onClose }) => {
   const { t } = useTranslation('pages');
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, activeView } = useAuth();
   const { showToast } = useToast();
   const [profileData, setProfileData] = useState(null);
   const [stats, setStats]             = useState({ workouts: 0, streak: 0, prs: 0 });
@@ -353,9 +353,18 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={async () => {
-                  const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: userId });
                   onClose();
-                  if (convId) navigate(`/messages/${convId}`);
+                  // `/messages/:id` is a MEMBER-view route — ProtectedRoute
+                  // bounces an admin- or trainer-view viewer somewhere else
+                  // entirely, so the tap looked like it did nothing. Send each
+                  // view to its own inbox (admin deep-links by member id).
+                  if (activeView === 'admin' || activeView === 'super_admin') {
+                    navigate(`/admin/messages?member=${userId}`);
+                    return;
+                  }
+                  const { data: convId } = await supabase.rpc('get_or_create_conversation', { p_other_user: userId });
+                  if (!convId) return;
+                  navigate(activeView === 'trainer' ? `/trainer/messages/${convId}` : `/messages/${convId}`);
                 }}
                 className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-center transition-colors active:scale-[0.98] flex items-center justify-center gap-2"
                 style={{ backgroundColor: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }}
@@ -363,11 +372,19 @@ const ProfilePreview = ({ userId, isOpen, onClose }) => {
                 <MessageCircle size={16} />
                 {t('messages.message', { ns: 'pages' })}
               </button>
+              {/* Was `--color-bg-card` on a card that IS `--color-bg-card`, with
+                  a `border-white/6` hardcode left over from dark-only days —
+                  invisible on a light background, so "Close" read as bare text
+                  sitting next to a real button. Theme-aware surface + border. */}
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 py-3 rounded-xl text-[14px] font-semibold text-center transition-colors border border-white/[0.06] hover:bg-white/[0.06] active:scale-[0.98]"
-                style={{ background: 'var(--color-bg-card)', color: 'var(--color-text-primary)' }}
+                className="flex-1 py-3 rounded-xl text-[14px] font-bold text-center transition-colors active:scale-[0.98]"
+                style={{
+                  background: 'var(--color-surface-hover)',
+                  border: '1px solid var(--color-border-subtle)',
+                  color: 'var(--color-text-primary)',
+                }}
               >
                 {t('profile.preview.close')}
               </button>

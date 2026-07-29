@@ -108,23 +108,54 @@ export async function generateAndSavePersonalProgram({ supabase, user, gymId, sn
     .eq('gym_id', gymId);
   const closedDays = new Set((gymHoursData || []).filter((h) => h.is_closed).map((h) => h.day_of_week));
 
+  // The member's days, NOT filtered by gym closures.
+  //
+  // Closures used to silently delete days from this list. Picking Sun–Fri at a
+  // gym that shuts Sundays didn't just lose Sunday — losing it dropped the
+  // count below N, which sent the whole thing to a generic fallback and handed
+  // back Mon–Sat: a Saturday they never asked for, and no Sunday. From the
+  // member's side they set their days, hit regenerate, and got different days
+  // with no explanation.
+  //
+  // A closed gym is information, not a veto. Plenty of people train somewhere
+  // else on a closed day, and the schedule they chose is the one they meant.
+  // Closures still steer the days we INVENT for them below — that's the part
+  // where we're guessing and should guess well.
   const userDows = (snapshot.preferred_training_days || [])
     .map((d) => DAY_TO_DOW[d])
-    .filter((n) => typeof n === 'number' && !closedDays.has(n))
+    .filter((n) => typeof n === 'number')
     .sort((a, b) => a - b);
 
   // N is the number of training slots per week (one per DOW). Each slot has
   // an A and a B routine that alternate weekly — N is the per-variant count,
   // not the combined total.
   const N = createdRoutineIdsA.length;
-  let pickedDows = userDows.length >= N
-    ? userDows.slice(0, N)
-    : (FALLBACK_DOWS_BY_N[N] || [1, 3, 5]).filter((d) => !closedDays.has(d)).slice(0, N);
+  // ALWAYS start from the days the member actually chose.
+  //
+  // This used to be all-or-nothing: `userDows.length >= N ? theirDays :
+  // GENERIC_FALLBACK`. So a member who picked Sun–Fri at a gym that closes on
+  // Sundays lost ONE valid day to the closure filter above, dropped below N,
+  // and had their entire choice thrown away for a stock Mon–Sat pattern —
+  // training on the Saturday they never asked for and skipping days they did.
+  // One conflicting day must not discard the other five. Take what they gave
+  // us; the block below tops up whatever is still missing.
+  let pickedDows = userDows.slice(0, N);
+  if (pickedDows.length === 0) {
+    pickedDows = (FALLBACK_DOWS_BY_N[N] || [1, 3, 5]).filter((d) => !closedDays.has(d)).slice(0, N);
+  }
 
   if (pickedDows.length < N) {
-    const allOpenDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => !closedDays.has(d));
+    // Prefer open days when filling gaps, then take closed ones rather than
+    // leave a slot empty: `pickedDows[i]` becomes the day_of_week of routine i,
+    // and a hole there writes `undefined` into workout_schedule — a failed
+    // insert and a routine with no day at all. A closed-day workout the member
+    // can move beats a workout that never got scheduled.
     const used = new Set(pickedDows);
-    for (const d of allOpenDays) {
+    const byPreference = [
+      ...[0, 1, 2, 3, 4, 5, 6].filter((d) => !closedDays.has(d)),
+      ...[0, 1, 2, 3, 4, 5, 6].filter((d) => closedDays.has(d)),
+    ];
+    for (const d of byPreference) {
       if (pickedDows.length >= N) break;
       if (!used.has(d)) { pickedDows.push(d); used.add(d); }
     }

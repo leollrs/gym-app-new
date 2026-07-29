@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, laz
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2, Circle, Lock,
-  Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw, Play,
+  Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw, Play, Loader2,
 } from 'lucide-react';
 import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 // Lazy so the heavy ExerciseLibrary module only loads when a routine exercise is
@@ -738,6 +738,7 @@ const Workouts = () => {
   const [selectedProgramIds, setSelectedProgramIds] = useState(() => new Set());
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(null); // { kind:'routines'|'programs', count } | null
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(null); // { done, total } while a bulk routine delete runs
   // Page→page navigation within Workouts: a hub (today + entry cards) that
   // drills into focused pages. Decluttered from the old single long scroll.
   const [workoutsView, setWorkoutsView] = useState('hub'); // 'hub' | 'routines' | 'myPrograms' | 'browse'
@@ -1000,19 +1001,34 @@ const Workouts = () => {
     }
   };
 
-  // Load workout schedule (routine -> day mapping)
+  // Load workout schedule (routine -> day mapping).
+  //
+  // Also refetch on `tugympr:schedule-changed`: this page is kept alive between
+  // navigations, so a day the user re-assigned on Home would otherwise sit in a
+  // stale map until a full app restart — the program card kept rendering the
+  // routine the swap replaced.
   useEffect(() => {
     if (!user?.id) return;
-    supabase
-      .from('workout_schedule')
-      .select('routine_id, day_of_week')
-      .eq('profile_id', user.id)
-      .then(({ data }) => {
-        const map = {};
-        (data || []).forEach(s => { map[s.routine_id] = s.day_of_week; });
-        setWorkoutScheduleMap(map);
-      });
-  }, [user?.id]);
+    let cancelled = false;
+    const loadSchedule = () => {
+      supabase
+        .from('workout_schedule')
+        .select('routine_id, day_of_week')
+        .eq('profile_id', user.id)
+        .then(({ data }) => {
+          if (cancelled) return;
+          const map = {};
+          (data || []).forEach(s => { map[s.routine_id] = s.day_of_week; });
+          setWorkoutScheduleMap(map);
+        });
+    };
+    loadSchedule();
+    window.addEventListener('tugympr:schedule-changed', loadSchedule);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('tugympr:schedule-changed', loadSchedule);
+    };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch today's completed workout sessions
   useEffect(() => {
@@ -1141,6 +1157,25 @@ const Workouts = () => {
       .lt('completed_at', upperBound.toISOString())
       .then(({ count }) => setProgramCompletedDays(count || 0));
   }, [user?.id, generatedProgram, programViewWeek]);
+
+  // Which of the past programs can actually be resumed.
+  //
+  // A program row keeps its `schedule_map.routine_ids` forever, but earlier
+  // builds swept those routines away when a new program was created, so the id
+  // list alone is not proof the workouts still exist. Offering "Resume" on a
+  // program whose routines are gone just produces an error alert. One batched
+  // existence check (≤ 20 programs × ~8 ids) settles it for the whole list.
+  const [liveProgramRoutineIds, setLiveProgramRoutineIds] = useState(null);
+  useEffect(() => {
+    if (!user?.id || allPrograms.length === 0) return;
+    const ids = [...new Set(allPrograms.flatMap(p => p.schedule_map?.routine_ids || []))];
+    if (ids.length === 0) { setLiveProgramRoutineIds(new Set()); return; }
+    let cancelled = false;
+    supabase.from('routines').select('id').in('id', ids).then(({ data }) => {
+      if (!cancelled) setLiveProgramRoutineIds(new Set((data || []).map(r => r.id)));
+    });
+    return () => { cancelled = true; };
+  }, [user?.id, allPrograms.map(p => p.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Enforce single active program — deactivate all but the latest
   useEffect(() => {
@@ -1315,6 +1350,38 @@ const Workouts = () => {
     if (!programActive) return [];
     const autoRoutines = routines.filter(r => r.name.startsWith('Auto:'));
 
+    // Days the user re-assigned by hand (Home → tap a weekday → pick a routine)
+    // live in `workout_schedule`. The variant lookup below reads only
+    // schedule_map.routine_ids_a/_b, so without this the program card kept
+    // showing the original routine on a day Home had already changed — and if
+    // the swap fell through to the schedule-driven branch it resolved against
+    // `autoRoutines`, so a swap to one of the user's OWN routines matched
+    // nothing and the day vanished from the week entirely.
+    //
+    // Every generator seeds `workout_schedule` with the variant-A routine of
+    // each slot, so a slot whose scheduled routine differs from its variant-A
+    // id is a deliberate swap. `workout_schedule` is keyed by weekday alone, so
+    // that swap is recurring: it wins on every week, A and B alike.
+    const baseIds = Array.isArray(schedMap?.routine_ids_a) && schedMap.routine_ids_a.length
+      ? schedMap.routine_ids_a
+      : (Array.isArray(schedMap?.routine_ids) ? schedMap.routine_ids : []);
+    // Schedule-driven lookups resolve against ALL of the member's routines, not
+    // just `Auto:`-named ones: a day swapped to a routine they built themselves
+    // has no `Auto:` prefix, and filtering it out is what made the day vanish
+    // from the week entirely instead of showing the routine they picked.
+    const routineById = (id) => routines.find(r => r.id === id) || null;
+    const userSwapForSlot = (routineIdx, fallbackDow) => {
+      // No persisted routine ids (gym-template enrolments) means no baseline to
+      // compare against, so nothing here can be called a swap — those programs
+      // keep resolving through the schedule-driven branches below.
+      if (baseIds.length === 0) return null;
+      const slotDow = schedMap?.normal_dows?.[routineIdx] ?? fallbackDow;
+      if (slotDow === undefined) return null;
+      const scheduledId = routineIdByNormalDow[String(slotDow)];
+      if (!scheduledId || scheduledId === baseIds[routineIdx]) return null;
+      return routineById(scheduledId);
+    };
+
     // Determine which DOW map to use for this week
     // Week 1 ALWAYS uses week1 map (handles "Start Today" on non-standard days)
     let dowMap;
@@ -1338,37 +1405,47 @@ const Workouts = () => {
       : null;
 
     // Build the list: for each DOW in this week's map, find the matching routine.
-    // Defensive deduping below — orphan rows in `workout_schedule` from prior
-    // program adjustments can leave the same routine.id mapped to multiple
-    // DOWs (or multiple routine_ids on the same DOW). Without this guard the
-    // user sees stacked "Mondays" pile up across navigation. We dedupe on
-    // both axes: each DOW appears once, and each routine.id appears once.
+    //
+    // Dedupe on DOW ONLY. There used to be a second guard that dropped any
+    // routine whose id had already appeared this week, meant to stop orphan
+    // `workout_schedule` rows from stacking Mondays. But stacked Mondays are
+    // DOW duplication, which `seenDow` already covers — and `dowEntries` comes
+    // from a DOW-keyed map, so a DOW cannot repeat in the first place.
+    //
+    // What the id guard actually did was DELETE A TRAINING DAY. Swap Monday to
+    // a routine that week B already runs on Wednesday, and week B rendered
+    // Monday=that routine, then silently dropped Wednesday as a "duplicate" —
+    // a 4-day week became 3, and the same for every B week after it. Running
+    // the same routine twice in a week is a legitimate thing to ask for;
+    // quietly losing a day is not.
     const result = [];
     const seenDow = new Set();
-    const seenRoutineId = new Set();
     const dowEntries = Object.entries(dowMap).map(([d, idx]) => [Number(d), idx]).sort((a, b) => a[0] - b[0]);
     for (const [dow, routineIdx] of dowEntries) {
       if (seenDow.has(dow)) continue;
-      let routine;
-      if (variantIds) {
+      let routine = userSwapForSlot(routineIdx, dow);
+      if (routine) {
+        // fall through to the dedupe + push below
+      } else if (variantIds) {
         // A/B variant-aware lookup: routine_index → variantIds[index] → routine.
         const rid = variantIds[routineIdx];
         routine = rid ? autoRoutines.find(r => r.id === rid) : null;
       } else if (weekNum === 1 || (hasWrappedDays && weekNum === totalProgramWeeks)) {
         const normalDow = schedMap?.normal_dows?.[routineIdx];
         const rid = normalDow !== undefined ? routineIdByNormalDow[String(normalDow)] : null;
-        routine = rid ? autoRoutines.find(r => r.id === rid) : null;
+        routine = rid ? routineById(rid) : null;
         if (!routine && routineIdx < autoRoutines.length) {
           routine = autoRoutines[routineIdx];
         }
       } else {
         const rid = routineIdByNormalDow[String(dow)];
-        routine = rid ? autoRoutines.find(r => r.id === rid) : null;
+        routine = rid ? routineById(rid) : null;
       }
-      if (routine && !seenRoutineId.has(routine.id)) {
+      if (routine) {
         seenDow.add(dow);
-        seenRoutineId.add(routine.id);
-        result.push({ ...routine, _displayDow: dow });
+        // Key by DOW, not routine id — the same routine can now legitimately
+        // appear on two days, and React needs distinct keys for both rows.
+        result.push({ ...routine, _displayDow: dow, _rowKey: `${dow}-${routine.id}` });
       }
     }
     return result;
@@ -1707,14 +1784,17 @@ const Workouts = () => {
     try {
       // Never delete active-program routines, even if somehow selected.
       const ids = [...selectedRoutineIds].filter(id => !isActiveRoutine(routines.find(r => r.id === id)));
-      for (const id of ids) {
-        await deleteRoutine(id);
+      setBulkProgress({ done: 0, total: ids.length });
+      for (let i = 0; i < ids.length; i++) {
+        await deleteRoutine(ids[i]);
+        setBulkProgress({ done: i + 1, total: ids.length });
       }
     } catch (err) {
       logger.error(err);
       alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setBulkDeleting(false);
+      setBulkProgress(null);
       setBulkDeleteConfirm(null);
       exitRoutineSelect();
     }
@@ -1835,6 +1915,13 @@ const Workouts = () => {
         .eq('created_by', user.id)
         .like('name', 'Auto:%');
       const oldAutoRoutineIds = (oldAutoRoutines || []).map(r => r.id);
+
+      // Clear the weekly schedule before re-seeding it, matching every other
+      // program-creation path. The deferred cleanup below only removes rows
+      // pointing at old `Auto:` routines, so a weekday the user had swapped to
+      // one of their OWN routines survived into the new program and kept
+      // showing a workout on a day this program doesn't train.
+      await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
 
       // 3. Create a generated_programs entry (inserted after scheduleDays is computed below)
       const startDate = new Date();
@@ -2073,9 +2160,19 @@ const Workouts = () => {
       // the user has no active program routines if the network fails mid-creation.
       if (oldAutoRoutineIds.length > 0) {
         // Exclude any old IDs that overlap with the new routines (shouldn't happen,
-        // but guards against accidental deletion if IDs were recycled).
+        // but guards against accidental deletion if IDs were recycled) — and any
+        // routine a PAST program still claims. Deleting those broke Resume: the
+        // program row survived with its routine_ids intact but the routines
+        // behind them were gone, so "resume" could only fail. Same claim check
+        // `regenerateMemberProgram` uses.
         const newIds = new Set(createdRoutineIds);
-        const safeToDelete = oldAutoRoutineIds.filter(id => !newIds.has(id));
+        const { data: allUserPrograms } = await supabase
+          .from('generated_programs').select('schedule_map').eq('profile_id', user.id);
+        const claimed = new Set();
+        for (const p of allUserPrograms || []) {
+          for (const rid of p.schedule_map?.routine_ids || []) claimed.add(rid);
+        }
+        const safeToDelete = oldAutoRoutineIds.filter(id => !newIds.has(id) && !claimed.has(id));
         if (safeToDelete.length > 0) {
           await supabase.from('routine_exercises').delete().in('routine_id', safeToDelete);
           await supabase.from('workout_schedule').delete().in('routine_id', safeToDelete).then(() => {}).catch(() => {});
@@ -2354,7 +2451,12 @@ const Workouts = () => {
                 {weekRoutines.length > 0 && (
                   <div className="space-y-2">
                     {weekRoutines.map(routine => {
-                      const isExpanded = expandedProgramRoutineId === routine.id;
+                      // Rows are identified by DAY + routine, not routine alone:
+                      // a routine can now sit on two days of the same week, and
+                      // keying on the id alone made React collapse them and made
+                      // expanding one row expand both.
+                      const rowKey = routine._rowKey || routine.id;
+                      const isExpanded = expandedProgramRoutineId === rowKey;
                       const scheduledDow = routine._displayDow ?? workoutScheduleMap[routine.id];
                       const DOW_LABELS = [
                         t('days.sun', { ns: 'common' }), t('days.mon', { ns: 'common' }), t('days.tue', { ns: 'common' }),
@@ -2370,7 +2472,7 @@ const Workouts = () => {
                       // Today's routine → dark "UP NEXT" card
                       if (isToday && !isCompleted) {
                         return (
-                          <div key={routine.id}>
+                          <div key={rowKey}>
                             <div className="rounded-[18px] p-4" style={{ background: '#1a1a1e', color: '#fff' }}>
                               <div className="flex items-center gap-1.5 mb-2">
                                 <p className="text-[10px] font-bold uppercase" style={{ color: TU_ACCENT, letterSpacing: '0.08em' }}>
@@ -2381,7 +2483,7 @@ const Workouts = () => {
                                 {/* Tap the routine info to drop down its exercises, like the other rows. */}
                                 <button
                                   type="button"
-                                  onClick={() => setExpandedProgramRoutineId(isExpanded ? null : routine.id)}
+                                  onClick={() => setExpandedProgramRoutineId(isExpanded ? null : rowKey)}
                                   aria-expanded={isExpanded}
                                   className="flex items-center gap-3 min-w-0 flex-1 text-left active:opacity-80 transition-opacity"
                                 >
@@ -2414,10 +2516,10 @@ const Workouts = () => {
 
                       // Other routines → clean row with day on right
                       return (
-                        <div key={routine.id}>
+                        <div key={rowKey}>
                           <button
                             type="button"
-                            onClick={() => setExpandedProgramRoutineId(isExpanded ? null : routine.id)}
+                            onClick={() => setExpandedProgramRoutineId(isExpanded ? null : rowKey)}
                             className="w-full flex items-center gap-3 px-4 py-3 rounded-[16px] transition-colors duration-200 text-left"
                             style={{ background: isExpanded ? 'var(--color-surface-hover, rgba(0,0,0,0.04))' : 'transparent' }}
                           >
@@ -2646,6 +2748,11 @@ const Workouts = () => {
                 {visible.map(routine => {
                   const active = isActiveRoutine(routine);
                   const selected = selectedRoutineIds.has(routine.id);
+                  // Deleting cascades routine_exercises → workout_schedule →
+                  // routines. On a weak connection the card just sat there while
+                  // that ran, so the tile marks itself busy the moment it starts.
+                  const isDeleting = deletingId === routine.id
+                    || (bulkDeleting && selectedRoutineIds.has(routine.id) && !active);
                   return (
                     <div key={routine.id} className="relative">
                       <button
@@ -2677,6 +2784,17 @@ const Workouts = () => {
                           </span>
                         )}
                       </button>
+                      {isDeleting && (
+                        <div
+                          className="absolute inset-0 rounded-[18px] flex items-center justify-center gap-2"
+                          style={{ background: 'color-mix(in srgb, var(--color-bg-card) 82%, transparent)', backdropFilter: 'blur(1px)' }}
+                        >
+                          <Loader2 size={16} className="animate-spin" style={{ color: 'var(--color-danger, #DC2626)' }} />
+                          <span className="text-[12px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                            {t('workouts.deleting', 'Deleting…')}
+                          </span>
+                        </div>
+                      )}
                       {routineSelectMode && (
                         <span className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center pointer-events-none" style={{ background: 'var(--color-bg-card)' }}>
                           {active
@@ -2976,9 +3094,16 @@ const Workouts = () => {
               const selected = selectedProgramIds.has(prog.id);
               const adh = programAdherence(prog);
 
-              // Past programs are a read-only record — their routines are deleted
-              // once a newer program supersedes them, so no edit/resume. We show
-              // real adherence (workouts done vs planned) + which weeks were trained.
+              // Past programs show real adherence (workouts done vs planned) +
+              // which weeks were trained, and — when their routines are still
+              // around — a Resume action right on the card. The regenerate
+              // confirm promises the current program stays in the member's
+              // history; burying the only way to act on that history inside a
+              // detail modal made the promise read as empty.
+              // Only once the existence check has answered, and only if at least
+              // one of its routines survived — see liveProgramRoutineIds.
+              const canResume = !!liveProgramRoutineIds
+                && (prog.schedule_map?.routine_ids || []).some(id => liveProgramRoutineIds.has(id));
               return (
                 <div key={prog.id} className="relative rounded-2xl p-5 pr-14" style={{
                   backgroundColor: 'var(--color-surface-hover)',
@@ -3005,6 +3130,20 @@ const Workouts = () => {
                       </div>
                     )}
                   </div>
+                  {canResume && !programSelectMode && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setReactivateConfirm(prog); }}
+                      className="w-full mt-3.5 py-2.5 rounded-xl font-bold text-[12.5px] flex items-center justify-center gap-1.5 transition-colors active:scale-[0.99]"
+                      style={{
+                        color: 'var(--color-accent)',
+                        backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                      }}
+                    >
+                      <RotateCcw size={13} strokeWidth={2.4} />
+                      {t('workouts.resumeProgram', 'Resume Program')}
+                    </button>
+                  )}
                   {/* Whole-card tap toggles selection in multi-select mode. */}
                   {programSelectMode && (
                     <button onClick={() => toggleProgramSel(prog.id)} className="absolute inset-0 rounded-2xl" aria-label={t('workouts.select', 'Select')} />
@@ -3026,23 +3165,26 @@ const Workouts = () => {
                 </div>
               );
             })}
-            {!showAllMyPrograms && allPrograms.length > 3 && (
-              <button
-                onClick={() => setShowAllMyPrograms(true)}
-                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold transition-colors duration-200"
-                style={{ color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' }}
-              >
-                {t('workouts.showAllPrograms', { count: allPrograms.length })}
-              </button>
-            )}
-            {showAllMyPrograms && allPrograms.length > 3 && (
-              <button
-                onClick={() => setShowAllMyPrograms(false)}
-                className="w-full py-2.5 mt-1 rounded-xl text-[12px] font-semibold transition-colors duration-200"
-                style={{ color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' }}
-              >
-                {t('workouts.showLess')}
-              </button>
+            {/* Solid accent pill, centred and self-sized — it reads as a real
+                control instead of a full-bleed grey strip that looked like
+                another card. Matches the "See all" pill in the exercise library. */}
+            {allPrograms.length > 3 && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => setShowAllMyPrograms(v => !v)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[12px] font-bold transition-transform active:scale-[0.97]"
+                  style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #000)' }}
+                >
+                  {showAllMyPrograms
+                    ? t('workouts.showLess')
+                    : t('workouts.showAllPrograms', { count: allPrograms.length })}
+                  <ChevronRight
+                    size={13}
+                    strokeWidth={2.6}
+                    style={{ transform: showAllMyPrograms ? 'rotate(-90deg)' : 'rotate(90deg)', transition: 'transform .2s' }}
+                  />
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -3532,24 +3674,40 @@ const Workouts = () => {
                     {currentWeekDays.length === 0 ? (
                       <div className="rounded-xl py-6 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}><p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.restWeek')}</p></div>
                     ) : currentWeekDays.map((day, di) => (
-                      <div key={di} className="rounded-xl p-4" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                        <p className="text-[13px] font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>{dayName(day) || t('workouts.dayN', { n: di + 1 })}</p>
-                        <div className="space-y-1.5">
+                      // Same visual language as ProgRoutineRow / the active
+                      // program card: accent icon tile, display-font title,
+                      // exercise count + estimated time. The old version was a
+                      // flat grey box with a bare numbered list, which is why
+                      // this preview looked like a different app.
+                      <div key={di} className="rounded-[14px] overflow-hidden" style={{ backgroundColor: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}>
+                        <div className="flex items-center gap-3 px-3.5 py-3">
+                          <div className="w-10 h-10 rounded-[11px] flex items-center justify-center flex-shrink-0" style={{ background: `color-mix(in srgb, ${TU_ACCENT} 14%, transparent)` }}>
+                            <Dumbbell size={17} style={{ color: TU_ACCENT }} strokeWidth={2} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)', fontFamily: TU_DISPLAY, letterSpacing: -0.2 }}>
+                              {dayName(day) || t('workouts.dayN', { n: di + 1 })}
+                            </p>
+                            <div className="flex items-center gap-2.5 text-[11px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+                              <span>{(day.exercises || []).length} {t('workouts.exercises')}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="px-3.5 pb-3 space-y-1.5">
                           {(day.exercises || []).map((ex, i) => {
                             const exId = typeof ex === 'string' ? ex : ex?.id;
                             const sets = typeof ex === 'object' ? ex.sets : null;
                             const reps = typeof ex === 'object' ? (ex.reps || ex.target_reps) : null;
                             const rest = typeof ex === 'object' ? ex.rest_seconds : null;
                             return (
-                              <div key={i} className="flex items-center justify-between">
-                                <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                                  <span className="mr-1.5" style={{ color: 'var(--color-text-subtle)' }}>{i + 1}.</span>
+                              <div key={i} className="flex items-center justify-between gap-3 rounded-[10px] px-2.5 py-2" style={{ background: 'var(--color-bg-card)' }}>
+                                <p className="text-[12.5px] font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+                                  <span className="mr-1.5 tabular-nums" style={{ color: 'var(--color-text-subtle)' }}>{i + 1}.</span>
                                   {exName(exerciseNameMap[exId]) ?? exId}
                                 </p>
-                                <div className="flex items-center gap-2 text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
-                                  {sets && <span>{sets} {t('workouts.sets')}</span>}
-                                  {reps && <span>x {reps}</span>}
-                                  {rest && <span style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.sRest', { seconds: rest })}</span>}
+                                <div className="flex items-center gap-1.5 text-[10px] font-semibold flex-shrink-0 whitespace-nowrap" style={{ color: 'var(--color-text-subtle)' }}>
+                                  {sets && <span className="px-1.5 py-0.5 rounded-md" style={{ background: 'var(--color-surface-hover)' }}>{sets}{reps ? `×${reps}` : ` ${t('workouts.sets')}`}</span>}
+                                  {rest && <span>{t('workouts.sRest', { seconds: rest })}</span>}
                                 </div>
                               </div>
                             );
@@ -3597,7 +3755,8 @@ const Workouts = () => {
                 </button>
               ) : (
                 <div className="space-y-2">
-                  {prog.schedule_map?.routine_ids?.length > 0 && (
+                  {!!liveProgramRoutineIds
+                    && (prog.schedule_map?.routine_ids || []).some(id => liveProgramRoutineIds.has(id)) && (
                     <button
                       onClick={() => setReactivateConfirm(prog)}
                       className="w-full py-4 rounded-2xl font-bold text-[15px] transition-colors flex items-center justify-center gap-2 text-[var(--color-text-on-secondary,#fff)]"
@@ -4239,11 +4398,14 @@ const Workouts = () => {
             <button
               onClick={handleConfirmDeleteRoutine}
               disabled={deletingId === deleteRoutineConfirm.id}
-              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors disabled:opacity-50"
+              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {deletingId === deleteRoutineConfirm.id
-                ? t('workouts.deleting', 'Deleting…')
-                : t('workouts.confirmDeleteRoutine', 'Yes, delete')}
+              {/* A label change alone read as "nothing happened" on a slow
+                  connection — the delete cascades three tables. The spinner is
+                  what tells the member the app isn't stuck. */}
+              {deletingId === deleteRoutineConfirm.id ? (
+                <><Loader2 size={14} className="animate-spin" />{t('workouts.deleting', 'Deleting…')}</>
+              ) : t('workouts.confirmDeleteRoutine', 'Yes, delete')}
             </button>
           </div>
         </div>
@@ -4277,11 +4439,19 @@ const Workouts = () => {
             <button
               onClick={bulkDeleteConfirm.kind === 'programs' ? handleBulkDeletePrograms : handleBulkDeleteRoutines}
               disabled={bulkDeleting}
-              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors disabled:opacity-50"
+              className="w-full py-3 rounded-2xl font-medium text-[13px] text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {bulkDeleting
-                ? t('workouts.deleting', 'Deleting…')
-                : t('workouts.bulkDeleteConfirmBtn', { count: bulkDeleteConfirm.count, defaultValue: 'Delete {{count}}' })}
+              {/* Routines are deleted one at a time in a loop, so a 7-routine
+                  bulk delete is 7 sequential round-trips — the slowest thing on
+                  this page and the one that most looked frozen. Show progress. */}
+              {bulkDeleting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  {bulkProgress
+                    ? t('workouts.deletingProgress', { done: bulkProgress.done, total: bulkProgress.total, defaultValue: `Deleting ${bulkProgress.done}/${bulkProgress.total}…` })
+                    : t('workouts.deleting', 'Deleting…')}
+                </>
+              ) : t('workouts.bulkDeleteConfirmBtn', { count: bulkDeleteConfirm.count, defaultValue: 'Delete {{count}}' })}
             </button>
           </div>
         </div>

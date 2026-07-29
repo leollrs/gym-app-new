@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import { sanitize } from '../lib/sanitize';
+import { localizeRoutineName } from '../lib/exerciseName';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import BackdatedWorkoutModal from '../components/BackdatedWorkoutModal';
@@ -79,8 +80,11 @@ const SessionCard = ({ session, onEdit }) => {
 
         {/* Info */}
         <div className="flex-1 min-w-0">
+          {/* Sessions logged before routine names were localised on write can
+              still carry the raw "Auto: " prefix in workout_sessions.name.
+              Strip it on the way out — the member should never see it. */}
           <p className="font-bold text-[16px] leading-tight truncate" style={{ color: 'var(--color-text-primary)' }}>
-            {sanitize(session.name)}
+            {sanitize(localizeRoutineName(session.name))}
           </p>
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
             <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>

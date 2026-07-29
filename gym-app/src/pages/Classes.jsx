@@ -9,7 +9,7 @@ import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { classImageUrl } from '../lib/classImageUrl';
+import ClassImage from '../components/ClassImage';
 import { PROD_WEB_URL } from '../lib/appUrls';
 import { format, addDays, startOfWeek, isSameDay, subDays, addWeeks } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -444,7 +444,6 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
     return () => { cancelled = true; };
   }, [sched.id, dateStr]);
 
-  const imgUrl = classImageUrl(cls.image_path);
   const dur = durationMinutes(sched.start_time, sched.end_time);
   const accent = cls.color || cls.accent_color || 'var(--color-accent)';
   const count = bookingCounts[sched.id] || 0;
@@ -501,11 +500,12 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
           border: '1px solid var(--color-border-subtle)', position: 'relative' }}>
           {/* hero */}
           <div style={{ position: 'relative', flexShrink: 0, height: 208 }}>
-            {imgUrl ? (
-              <img src={imgUrl} alt={cls.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(150deg, color-mix(in srgb, ${accent} 42%, #12161a) 0%, #12161a 55%, #0c0f12 100%)` }} />
-            )}
+            {/* ClassImage, not a bare <img>: a stored image_path whose object is
+                missing from the bucket used to render the browser's broken-image
+                glyph. It carries the same gradient as its own fallback. */}
+            <ClassImage path={cls.image_path} accent={accent} alt={cls.name}
+              style={{ position: 'absolute', inset: 0 }}
+              imgClassName="absolute inset-0 w-full h-full object-cover" loading="eager" />
             <div style={{ position: 'absolute', inset: 0,
               background: 'linear-gradient(180deg, rgba(9,11,13,0.35) 0%, rgba(9,11,13,0) 32%, rgba(9,11,13,0.55) 72%, var(--color-bg-card) 100%)' }} />
             {stateKey === 'passed' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(9,11,13,0.5)' }} />}
@@ -612,8 +612,11 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
             </div>
           </div>
 
-          {/* sticky action bar */}
-          <div style={{ flexShrink: 0, padding: '14px 20px calc(22px + env(safe-area-inset-bottom, 0px))',
+          {/* sticky action bar.
+              No `env(safe-area-inset-bottom)` here: this is a CENTERED modal, not
+              a bottom sheet, so its lower edge never reaches the home indicator.
+              Adding the inset just padded ~34px of dead space under the button. */}
+          <div style={{ flexShrink: 0, padding: '14px 20px 16px',
             borderTop: '1px solid var(--color-border-subtle)',
             background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-bg-card) 0%, transparent) 0%, var(--color-bg-card) 22%)' }}>
             {/* primary CTA per state */}
@@ -674,9 +677,22 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
                       </button>
                     </div>
                   </div>
+                ) : isPastClass ? (
+                  /* The class already ended. `status` wins over `isPastClass`
+                     when stateKey is computed, so a booking you never checked
+                     into kept showing "Cancel booking" days later — cancelling
+                     a class that already happened, which also freed a spot
+                     nobody could use and promoted someone off the waitlist
+                     into the past. Nothing to cancel here; just say so. */
+                  <div style={{ marginTop: 10, height: 46, borderRadius: 13,
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border-subtle)',
+                    color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    fontFamily: CFB, fontWeight: 700, fontSize: 13.5 }}>
+                    <Clock size={15} strokeWidth={2.2} />{t('classes.statusFinishedFull', 'Clase finalizada')}
+                  </div>
                 ) : (
                 <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                  {stateKey === 'booked' && isToday && !isPastClass && (
+                  {stateKey === 'booked' && isToday && (
                     <button onClick={() => { close(); onCheckIn(booking.id, cls.name); }} disabled={isActing}
                       className="active:scale-[0.98] transition-transform disabled:opacity-50"
                       style={{ flex: 1, height: 48, borderRadius: 14, border: 'none', cursor: 'pointer',
@@ -732,6 +748,9 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
 
 /* ---------- Week list (vertical day-by-day) ---------- */
 function WeekListView({ weekDays, allSchedules, bookingsByDate, countsByKey, todayStr, fmt, dateFnsLocale, onSelectClass, t }) {
+  // Re-read on every render (cheap) so a class crossing its end time while the
+  // page sits open still greys out on the next paint.
+  const nowMs = Date.now();
   return (
     <div className="space-y-3">
       {weekDays.map(({ date, isPastDay }) => {
@@ -768,19 +787,50 @@ function WeekListView({ weekDays, allSchedules, bookingsByDate, countsByKey, tod
                   const booking = myDayBookings.find((b) => b.schedule_id === s.id);
                   const count = countsByKey[`${s.id}|${dateStr}`] || 0;
                   const cap = s.override_capacity || cls.max_capacity || 20;
+                  // Whoever the gym assigned to teach it. `trainer` is stitched on
+                  // in a second query (see attachTrainers); `instructor` is the
+                  // free-text fallback for gyms that type a name instead.
+                  const teacher = cls.trainer?.full_name || cls.instructor || '';
+                  // Per-CLASS past state, not just per-day: at 5pm today's 9am
+                  // class is over and must read as over, the way the trainer
+                  // calendar greys out sessions whose end time has passed.
+                  let isOver = isPastDay && !isToday;
+                  if (!isOver && isToday && s.end_time) {
+                    const [eh, em] = String(s.end_time).split(':').map(Number);
+                    const endDt = new Date(date);
+                    endDt.setHours(eh || 0, em || 0, 0, 0);
+                    isOver = endDt.getTime() < nowMs;
+                  }
                   return (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => onSelectClass({ sched: s, cls, booking, dateStr })}
                       className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-left transition-colors active:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]"
-                      style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+                      // Only dim the ROW on today — a past day already carries
+                      // 0.55 on its whole card, and stacking the two multiplies
+                      // down to an unreadable 0.28.
+                      style={{ backgroundColor: 'var(--color-bg-secondary)', opacity: isOver && isToday ? 0.5 : 1 }}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{cls.name}</p>
-                        <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{fmt(s.start_time)} · {count}/{cap}</p>
+                        <p
+                          className="text-[13px] font-semibold truncate"
+                          style={{ color: 'var(--color-text-primary)', textDecoration: isOver ? 'line-through' : 'none' }}
+                        >
+                          {cls.name}
+                        </p>
+                        <p className="text-[11px] truncate" style={{ color: 'var(--color-text-muted)' }}>
+                          {fmt(s.start_time)} · {count}/{cap}{teacher ? ` · ${teacher}` : ''}
+                        </p>
                       </div>
-                      {booking && (
+                      {isOver ? (
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
+                        >
+                          {t('classes.statusFinished', 'Finalizada')}
+                        </span>
+                      ) : booking && (
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
                           style={{
@@ -1460,7 +1510,12 @@ export default function Classes() {
               const isFull = count >= capacity;
               const spotsLeft = capacity - count;
               const dur = durationMinutes(sched.start_time, sched.end_time);
-              const imgUrl = classImageUrl(cls.image_path);
+              // Who the gym assigned to teach it. Falls back to the free-text
+              // `instructor` column for gyms that type a name instead of picking
+              // a trainer account. Takes the duration's slot when present —
+              // "who" is more useful to a member than "60 min", which the fact
+              // strip in the detail sheet already states.
+              const teacher = cls.trainer?.full_name || cls.instructor || '';
               const accentColor = cls.color || 'var(--color-accent)';
               const isActing = actionLoading === sched.id || actionLoading === bookingId;
 
@@ -1499,11 +1554,9 @@ export default function Classes() {
                 >
                   {/* hero — photo finally earns its place; melts into the card */}
                   <div className="relative" style={{ height: 132 }}>
-                    {imgUrl ? (
-                      <img src={imgUrl} alt={`${cls.name} class`} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="absolute inset-0" style={{ background: `linear-gradient(150deg, color-mix(in srgb, ${accentColor} 42%, #12161a) 0%, #12161a 55%, #0c0f12 100%)` }} />
-                    )}
+                    {/* See the note on the detail hero — same broken-object guard. */}
+                    <ClassImage path={cls.image_path} accent={accentColor} alt={`${cls.name} class`}
+                      style={{ position: 'absolute', inset: 0 }} />
                     <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(9,11,13,0.25), rgba(9,11,13,0.05) 45%, var(--color-bg-card) 100%)' }} />
                     {hasTemplate && <div style={{ position: 'absolute', top: 13, left: 14 }}><ClassCatTag t={t} /></div>}
                     <div style={{ position: 'absolute', top: 13, right: 14 }}>
@@ -1524,7 +1577,9 @@ export default function Classes() {
                         <Clock size={15} style={{ color: accentColor }} strokeWidth={2} />{fmt(sched.start_time)} – {fmt(sched.end_time)}
                       </span>
                       <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--color-text-muted)', flexShrink: 0 }} />
-                      {dur && <span style={{ fontFamily: CFB, fontSize: 13, color: 'var(--color-text-muted)' }}>{t('classes.minutes', { count: dur })}</span>}
+                      {teacher
+                        ? <span style={{ fontFamily: CFB, fontSize: 13, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{teacher}</span>
+                        : dur && <span style={{ fontFamily: CFB, fontSize: 13, color: 'var(--color-text-muted)' }}>{t('classes.minutes', { count: dur })}</span>}
                       <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <Users size={14} style={{ color: 'var(--color-text-muted)' }} />
                         <span style={{ fontFamily: CFM, fontSize: 12, fontWeight: 600,

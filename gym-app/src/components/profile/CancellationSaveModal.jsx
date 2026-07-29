@@ -57,6 +57,9 @@ export default function CancellationSaveModal({
   const [reasonHint, setReasonHint] = useState(null);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Second step for "Pause instead". Pausing freezes the account — a real
+  // lockout — so the CTA explains it and asks before doing it.
+  const [confirmPause, setConfirmPause] = useState(false);
 
   // Reset state every time the modal opens. We do NOT pre-fill from any
   // prior attempt — each open is a fresh decision.
@@ -65,6 +68,7 @@ export default function CancellationSaveModal({
     setReasonHint(null);
     setNote('');
     setSubmitting(false);
+    setConfirmPause(false);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
@@ -277,52 +281,116 @@ export default function CancellationSaveModal({
               </div>
             </div>
 
-            {/* CTAs — stacked, ordered to surface the save path first */}
-            <div className="flex flex-col gap-2 px-6 pb-6">
-              {/* a) I'll stay — primary save path, accent-colored */}
-              <button
-                type="button"
-                onClick={handleStay}
-                disabled={submitting}
-                className="w-full py-3 rounded-[14px] text-[14px] font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{
-                  background: 'var(--color-accent)',
-                  color: 'var(--color-text-on-accent, #000)',
-                }}
-              >
-                {submitting ? <Loader2 size={16} className="animate-spin" /> : <Heart size={16} />}
-                {t('cancellation.saveModal.ctaStay', { defaultValue: "I'll stay for now" })}
-              </button>
+            {/* CTAs — the save path gets the full width; the two ways OUT share
+                a 50/50 row beneath it. Three equal stacked buttons read as three
+                equally-good options, which is the wrong story on a save screen. */}
+            {confirmPause ? (
+              /* Pausing locks the member out of the whole app until they turn it
+                 back on, so it cannot be a one-tap side effect of a button whose
+                 label doesn't say that. Explain, then confirm. */
+              <div className="flex flex-col gap-3 px-6 pb-6">
+                <div
+                  className="rounded-[14px] px-4 py-3.5"
+                  style={{
+                    background: 'var(--color-bg-secondary, rgba(127,127,127,0.08))',
+                    border: '1px solid var(--color-border-subtle, rgba(127,127,127,0.16))',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <PauseCircle size={16} style={{ color: 'var(--color-accent)' }} />
+                    <span className="text-[14px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                      {t('cancellation.saveModal.pauseConfirmTitle', { defaultValue: 'Pause your membership?' })}
+                    </span>
+                  </div>
+                  <p className="text-[12.5px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('cancellation.saveModal.pauseConfirmBody', {
+                      defaultValue: "Your account goes on hold: you won't be able to use the app, book classes or check in. Nothing is deleted — your workouts, PRs, streak history and points all stay exactly as they are, and you can switch it back on yourself whenever you want.",
+                    })}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmPause(false)}
+                    disabled={submitting}
+                    className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-bold transition-colors disabled:opacity-50"
+                    style={{
+                      background: 'var(--color-bg-secondary, rgba(127,127,127,0.08))',
+                      border: '1px solid var(--color-border-subtle, rgba(127,127,127,0.16))',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    {t('cancellation.saveModal.pauseBack', { defaultValue: 'Never mind' })}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePause}
+                    disabled={submitting}
+                    className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{
+                      background: 'var(--color-accent)',
+                      color: 'var(--color-text-on-accent, #000)',
+                    }}
+                  >
+                    {submitting ? <Loader2 size={15} className="animate-spin" /> : null}
+                    {t('cancellation.saveModal.pauseConfirmCta', { defaultValue: 'Yes, pause it' })}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 px-6 pb-6">
+                {/* a) I'll stay — primary save path, accent-colored, full width */}
+                <button
+                  type="button"
+                  onClick={handleStay}
+                  disabled={submitting}
+                  className="w-full py-3 rounded-[14px] text-[14px] font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{
+                    background: 'var(--color-accent)',
+                    color: 'var(--color-text-on-accent, #000)',
+                  }}
+                >
+                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <Heart size={16} />}
+                  {t('cancellation.saveModal.ctaStay', { defaultValue: "I'll stay for now" })}
+                </button>
 
-              {/* b) Pause — secondary save path */}
-              <button
-                type="button"
-                onClick={handlePause}
-                disabled={submitting}
-                className="w-full py-3 rounded-[14px] text-[14px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{
-                  background: 'var(--color-bg-secondary, rgba(127,127,127,0.08))',
-                  border: '1px solid var(--color-border-subtle, rgba(127,127,127,0.16))',
-                  color: 'var(--color-text-primary)',
-                }}
-              >
-                <PauseCircle size={16} style={{ color: 'var(--color-text-muted)' }} />
-                {t('cancellation.saveModal.ctaPause', { defaultValue: 'Pause my membership instead' })}
-              </button>
+                <div className="flex gap-2">
+                  {/* b) Pause — secondary save path. Opens the explanation above. */}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmPause(true)}
+                    disabled={submitting}
+                    className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    style={{
+                      background: 'var(--color-bg-secondary, rgba(127,127,127,0.08))',
+                      border: '1px solid var(--color-border-subtle, rgba(127,127,127,0.16))',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    <PauseCircle size={15} style={{ color: 'var(--color-text-muted)' }} />
+                    {t('cancellation.saveModal.ctaPauseShort', { defaultValue: 'Pause instead' })}
+                  </button>
 
-              {/* c) Cancel anyway — quiet exit. Not destructive-red because the
-                  cancel flow itself has its own DELETE-typed confirmation. */}
-              <button
-                type="button"
-                onClick={handleProceed}
-                disabled={submitting}
-                className="w-full py-2.5 rounded-[14px] text-[13px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                {t('cancellation.saveModal.ctaCancel', { defaultValue: 'Cancel anyway' })}
-                <ArrowRight size={14} />
-              </button>
-            </div>
+                  {/* c) Cancel anyway — destructive, and dressed like it. It used
+                      to be a muted grey text link, which made ending the
+                      membership look as harmless as closing the sheet. */}
+                  <button
+                    type="button"
+                    onClick={handleProceed}
+                    disabled={submitting}
+                    className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    style={{
+                      background: 'color-mix(in srgb, var(--color-danger, #DC2626) 12%, transparent)',
+                      border: '1px solid color-mix(in srgb, var(--color-danger, #DC2626) 32%, transparent)',
+                      color: 'var(--color-danger, #DC2626)',
+                    }}
+                  >
+                    {t('cancellation.saveModal.ctaCancel', { defaultValue: 'Cancel anyway' })}
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}

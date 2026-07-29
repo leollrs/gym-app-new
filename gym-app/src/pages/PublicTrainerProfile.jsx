@@ -129,46 +129,50 @@ function ContactPickerModal({ open, onClose, trainerName, isClient, onOpenMessag
               ? t('publicTrainerProfile.bookCta.openMessages', 'Open messages')
               : t('publicTrainerProfile.bookCta.sendMessage', 'Send message')}
           </button>
+          {/* The two off-platform routes share a 50/50 row under the primary.
+              Four equal full-width buttons made every option look equally
+              recommended, when only the in-app message is the one we want. */}
           {phone && (
-            <>
+            <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
                 onClick={onSms}
                 style={{
-                  width: '100%', padding: '11px 14px', borderRadius: 12,
+                  flex: 1, minWidth: 0, padding: '11px 10px', borderRadius: 12,
                   border: `1px solid ${TT.borderSolid}`, background: TT.surface2,
                   color: TT.text, fontFamily: TFont.body, fontWeight: 700, fontSize: 13.5,
                   cursor: 'pointer', minHeight: 44,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                 }}
               >
                 <MessageSquare size={14} strokeWidth={2.2} />
-                {t('publicTrainerProfile.textSms', 'Text message')}
+                {t('publicTrainerProfile.textSmsShort', 'Text')}
               </button>
               <button
                 type="button"
                 onClick={onWhatsApp}
                 style={{
-                  width: '100%', padding: '11px 14px', borderRadius: 12,
+                  flex: 1, minWidth: 0, padding: '11px 10px', borderRadius: 12,
                   border: '1px solid color-mix(in srgb, #25D366 40%, transparent)',
                   background: 'color-mix(in srgb, #25D366 12%, transparent)',
                   color: TT.text, fontFamily: TFont.body, fontWeight: 800, fontSize: 13.5,
                   cursor: 'pointer', minHeight: 44,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                 }}
               >
                 <MessageCircle size={15} strokeWidth={2.4} color="#1FA855" />
                 {t('publicTrainerProfile.whatsapp', 'WhatsApp')}
               </button>
-            </>
+            </div>
           )}
+          {/* A transparent label is not a button. Give it a surface. */}
           <button
             type="button"
             onClick={onClose}
             style={{
-              width: '100%', padding: '10px 14px', borderRadius: 12,
-              background: 'transparent', border: 'none', color: TT.textSub,
-              fontSize: 13, fontWeight: 700, cursor: 'pointer', minHeight: 44,
+              width: '100%', padding: '11px 14px', borderRadius: 12,
+              background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
+              color: TT.text, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', minHeight: 44,
             }}
           >
             {t('common:cancel', 'Cancel')}
@@ -673,15 +677,32 @@ export default function PublicTrainerProfile() {
   const openMessages = useCallback(async () => {
     if (!user?.id || !trainer?.id) return;
     setContactOpen(false);
+    // Nothing stops `get_or_create_conversation` from pairing you with
+    // yourself — there is no CHECK on `conversations` — so this would silently
+    // create a self-thread that then sits in the inbox forever.
+    if (trainer.id === user.id) {
+      showToast(t('publicTrainerProfile.messageSelf', "That's your own profile."), 'info');
+      return;
+    }
+    // This page is reachable from every role, and every role has a DIFFERENT
+    // messaging route. The member route `/messages/:id` is member-view only —
+    // ProtectedRoute redirects an admin-view viewer straight to /admin. Trainer
+    // view was already handled here; ADMIN was not, so an admin tapping "Send
+    // message" got silently bounced to the dashboard. That is the "doesn't
+    // work": the navigation happened, it just went somewhere else.
+    //
+    // Admin messaging is a single inbox page that deep-links by MEMBER id
+    // (DirectMessagesTab reads `?member=`), not by conversation id.
+    if (activeView === 'admin' || activeView === 'super_admin') {
+      navigate(`/admin/messages?member=${trainer.id}`);
+      return;
+    }
     const { data: convId, error } = await supabase
       .rpc('get_or_create_conversation', { p_other_user: trainer.id });
     if (error || !convId) {
       showToast(t('publicTrainerProfile.messageFailed', 'Could not open messages'), 'error');
       return;
     }
-    // This page is reachable from every role. A viewer in trainer view gets
-    // bounced off the member /messages route by ProtectedRoute, so send them
-    // to the trainer chat instead (same conversation table underneath).
     // Pass `from` so the conversation's Back button returns HERE, not to the
     // messages list (Messages.handleBack prefers location.state.from).
     navigate(
@@ -930,8 +951,14 @@ export default function PublicTrainerProfile() {
             </button>
             {/* Apple G1.2 — Report / Block on profile surfaces. Wrapped to
                 visually match the favorite/share buttons on the cover. The
-                inner trigger is 32px; the wrapper provides the 44px target. */}
-            {trainer?.id && (
+                inner trigger is 32px; the wrapper provides the 44px target.
+
+                `trainer.id !== user.id` is load-bearing, not a nicety:
+                ContentActionMenu renders NOTHING when the viewer is the author
+                (you can't report or block yourself), but this wrapper rendered
+                anyway — so your own profile showed a third translucent square
+                with no icon and no action. That empty button was the bug. */}
+            {trainer?.id && trainer.id !== user?.id && (
               <div
                 style={{
                   width: 44, height: 44, borderRadius: 12,

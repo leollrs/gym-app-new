@@ -29,7 +29,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
-import { formatStatNumber, statFontSize } from '../lib/formatStatValue';
+import { formatStatNumber } from '../lib/formatStatValue';
 import { Capacitor } from '@capacitor/core';
 import { usePostHog } from '@posthog/react';
 import { WalletPass } from '../lib/walletPass';
@@ -1916,6 +1916,12 @@ export default function Rewards() {
     }
   };
 
+  // Hero points font size, measured on the string that actually renders.
+  const heroPointsDisplay = formatStatNumber(availablePoints);
+  const heroPointsSize = heroPointsDisplay.length >= 7 ? 'text-[30px]'
+    : heroPointsDisplay.length >= 6 ? 'text-[38px]'
+    : 'text-[46px]';
+
   return (
     <div
       className="min-h-screen bg-[var(--color-bg-primary)] pb-28 md:pb-12"
@@ -1972,8 +1978,14 @@ export default function Rewards() {
       </AnimatePresence>
 
       {/* ── Sticky Header ─────────────────────────────────────── */}
-      <div className="sticky sticky-under-appbar z-20 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-[var(--color-border-subtle)]">
-        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-5 pb-4">
+      {/* NOT sticky. The page title, the tier hero AND the tab bar were all
+          pinned together, so roughly two thirds of the screen never moved and
+          the only thing that could scroll was the short strip of tab content
+          underneath — which is why the list felt trapped and you couldn't see
+          what was in it. Only the tab bar earns a pin (below); everything above
+          it scrolls away, the way every other member page behaves. */}
+      <div className="bg-[var(--color-bg-primary)]">
+        <div className="max-w-[480px] md:max-w-4xl lg:max-w-6xl mx-auto px-4 pt-5 pb-0">
           <div className="flex items-center gap-3 mb-4">
             <div
               className="w-11 h-11 rounded-[13px] flex items-center justify-center"
@@ -2021,7 +2033,14 @@ export default function Rewards() {
                   </div>
                   <div className="flex items-baseline gap-2 mt-1">
                     <span
-                      className={`${statFontSize(availablePoints, 'text-[46px]')} font-extrabold text-[var(--color-text-primary)] leading-none tabular-nums`}
+                      // Sized for THIS card, not by the shared statFontSize.
+                      // That helper measures the raw number (it was handed
+                      // 10842, not the "10.8k" actually printed) and its
+                      // thresholds are tuned for 22px stat tiles — so a hero
+                      // meant to be 46px was rendering at 18px. A big empty
+                      // card with a tiny number in it, which is what looked
+                      // wrong. The hero is wide; "10.8k" fits at full size.
+                      className={`${heroPointsSize} font-extrabold text-[var(--color-text-primary)] leading-none tabular-nums`}
                       style={{ fontFamily: FONT_DISPLAY, letterSpacing: '-1.5px' }}
                     >
                       <AnimatedPoints value={availablePoints} />
@@ -2086,8 +2105,13 @@ export default function Rewards() {
             </div>
           </div>
 
-          {/* Tab bar */}
-          <div className="flex gap-1.5" role="tablist" aria-label={t('rewards.tabNavigation', 'Rewards navigation')}>
+          {/* Tab bar — the one element worth pinning, so you can switch tabs
+              without scrolling back up. */}
+          <div
+            className="sticky sticky-under-appbar z-20 flex gap-1.5 py-3 bg-[var(--color-bg-primary)]/95 backdrop-blur-xl"
+            role="tablist"
+            aria-label={t('rewards.tabNavigation', 'Rewards navigation')}
+          >
             {TAB_KEYS.map((tabKey) => {
               const active = tab === tabKey;
               return (

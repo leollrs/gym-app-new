@@ -14,12 +14,14 @@ import { X, Image as ImageIcon, Camera as CameraIcon, Layers as LayersIcon } fro
 import { Share } from '@capacitor/share';
 import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
-import { supabase } from '../../lib/supabase';
+import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
 import { appShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { shareBlob } from '../ShareCardRenderer';
 import ShareTplCardio from './ShareTplCardio';
 import PreviewOverlay from './PreviewOverlay';
+import GymDestIcon from './GymDestIcon';
 import StickerComposer from './StickerComposer';
 import ShareCtaButton from './ShareCtaButton';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
@@ -102,13 +104,6 @@ const FBIcon = () => (
     <path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z" />
   </svg>
 );
-const TuShareIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-on-accent, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
-    <circle cx="10" cy="7" r="4" />
-    <path d="M18 8v6M21 11h-6" />
-  </svg>
-);
 // stroke=currentColor so the Save chip's icon inherits the Dest container's
 // color (var(--color-text-primary)) — visible on the neutral chip in BOTH
 // light and dark mode. (Was hardcoded near-black → invisible in dark.)
@@ -169,9 +164,73 @@ function normalizeCardioData(raw) {
   };
 }
 
+// Default share caption, Strava-shaped.
+//
+// It used to be `"running 0.00 mi"` — the raw type slug plus a number. Sent to
+// a friend that reads like a database row, and when the caption was empty the
+// message fell all the way back to the bare gym name, so the only thing the
+// recipient saw was the link preview's generic "Train. Compete. Progress."
+//
+// Strava's move is two parts: a named session ("Morning Run") and the numbers
+// that earned it. We add a third — one line of why-it-counted. The line is
+// picked from the session id, not at random, so it stays put across re-renders
+// and matches whatever the member saw before they hit send.
+function buildCardioCaption(d, t) {
+  if (!d) return '';
+  const TYPE_KEYS = { running: 'run', walking: 'walk', cycling: 'ride', swimming: 'swim', rowing: 'row', hiking: 'hike' };
+  const typeKey = TYPE_KEYS[d.cardioType] || 'session';
+  const hour = new Date().getHours();
+  const partKey = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+  const partLabel = t(`share.cardioPart.${partKey}`, {
+    defaultValue: { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' }[partKey],
+  });
+  const typeLabel = t(`share.cardioType.${typeKey}`, {
+    defaultValue: { run: 'Run', walk: 'Walk', ride: 'Ride', swim: 'Swim', row: 'Row', hike: 'Hike', session: 'Session' }[typeKey],
+  });
+  // Assembled from a per-language template, not concatenated: English puts the
+  // time of day first ("Morning Run"), Spanish puts it last and needs an article
+  // ("Carrera de la mañana"). Gluing the two words together produced
+  // "Mañana Carrera".
+  const title = t('share.cardioTitle', { part: partLabel, type: typeLabel, defaultValue: `${partLabel} ${typeLabel}` });
+
+  // Stats line — only the parts that actually have data.
+  const bits = [];
+  const dist = d.distanceKm ? (d.unit === 'mi' ? d.distanceKm / 1.60934 : d.distanceKm) : 0;
+  if (dist > 0.02) bits.push(`${dist.toFixed(2)} ${d.unit}`);
+  if (d.durationSeconds > 0) {
+    const h = Math.floor(d.durationSeconds / 3600);
+    const m = Math.floor((d.durationSeconds % 3600) / 60);
+    const sec = Math.floor(d.durationSeconds % 60);
+    bits.push(h > 0
+      ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+      : `${m}:${String(sec).padStart(2, '0')}`);
+  }
+  if (d.calories > 0) bits.push(t('share.cardioKcal', { count: d.calories, defaultValue: `${d.calories} kcal` }));
+
+  const LINES = [
+    t('share.cardioLine1', { defaultValue: 'One more in the bank.' }),
+    t('share.cardioLine2', { defaultValue: 'Showed up. That was the hard part.' }),
+    t('share.cardioLine3', { defaultValue: 'Chasing the next one.' }),
+    t('share.cardioLine4', { defaultValue: 'No shortcuts on this one.' }),
+    t('share.cardioLine5', { defaultValue: "Beat yesterday. That's the whole game." }),
+  ];
+  // Deterministic pick from the session id — same session, same line, always.
+  const seed = String(d.sessionId || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const line = LINES[seed % LINES.length];
+
+  return bits.length ? `${title} · ${bits.join(' · ')}\n${line}` : `${title}\n${line}`;
+}
+
 export default function ShareCardioSheet({ open, onClose, data: rawData, accent = '#2EC4C4' }) {
   const { t } = useTranslation('pages');
   const { user, profile, gymName: authGymName, gymLogoUrl: authGymLogoUrl } = useAuth();
+  // The REAL toast. This used to call `window.__tugymToast`, which does not
+  // exist anywhere in the app — so every message fell through to `alert()`,
+  // and alert() is silently dropped by the Capacitor iOS WebView. Posting to
+  // the gym feed therefore succeeded and said absolutely nothing, which is
+  // indistinguishable from a dead button. The sheet renders from a page inside
+  // ToastProvider, so the context is right here.
+  const { showToast } = useToast();
   const data = React.useMemo(() => {
     const d = normalizeCardioData(rawData);
     if (!d) return null;
@@ -209,6 +268,8 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   // Gym logo inlined as a data URL so it survives rasterization (external <img>
   // URLs don't load inside the SVG-as-image used to export the card).
   const [logoDataUrl, setLogoDataUrl] = useState(null);
+  // True once both inlining strategies have failed — see the resolver effect.
+  const [logoFailed, setLogoFailed] = useState(false);
   // Bumping mapVersion forces StaticRouteMapImage to re-mount so its useEffect
   // re-runs the renderRouteMap chain. Used by the "Regenerate" button after we
   // clear the IndexedDB cache for the current session.
@@ -284,10 +345,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
 
   useEffect(() => {
     if (open && !caption && data) {
-      const km = data.distanceKm ? `${(data.unit === 'mi' ? data.distanceKm / 1.60934 : data.distanceKm).toFixed(2)} ${data.unit}` : '';
-      setCaption(
-        `${data.cardioType ? data.cardioType.replace(/_/g, ' ') : 'Cardio'} ${km}`.trim()
-      );
+      setCaption(buildCardioCaption(data, t));
     }
   }, [open, data]); // eslint-disable-line
 
@@ -295,8 +353,16 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
   useEffect(() => {
     let cancelled = false;
     const src = data?.gymLogoUrl;
+    setLogoFailed(false);
     if (!open || !src || String(src).startsWith('data:')) { setLogoDataUrl(null); return undefined; }
-    urlToDataUrl(src).then((d) => { if (!cancelled) setLogoDataUrl(d); });
+    urlToDataUrl(src).then((d) => {
+      if (cancelled) return;
+      if (d) setLogoDataUrl(d);
+      // Both inlining strategies failed — the raw URL is the same resource and
+      // will fail the same way, leaving an empty badge on the card. Drop it so
+      // the template shows the gym's initial instead.
+      else setLogoFailed(true);
+    });
     return () => { cancelled = true; };
   }, [open, data?.gymLogoUrl]);
 
@@ -403,7 +469,10 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       // app-download landing (never the bare webapp). appShareUrl owns the URL
       // shape (rides the CDN-propagated /invite/* applink).
       const link = appShareUrl('cardio', data?.sessionId || 'run');
-      const text = caption?.trim() || authGymName || 'TuGymPR';
+      // Falling back to the bare gym name meant a cleared caption sent a message
+      // whose entire content was the gym's name plus a link — the recipient saw
+      // only the landing page's generic OG title. Rebuild the real caption.
+      const text = caption?.trim() || buildCardioCaption(data, t) || authGymName || 'TuGymPR';
       const full = `${text}\n${link}`;
 
       if (dest === 'save') {
@@ -411,24 +480,17 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         // Old code wrote to Directory.Documents (app sandbox) — image was lost.
         if (blob) await saveBlob(`tugympr-run-${Date.now()}.png`, blob);
       } else if (dest === 'tu') {
-        if (user?.id && profile?.gym_id) {
-          const { error: postErr } = await supabase.from('activity_feed_items').insert({
-            actor_id: user.id,
-            gym_id: profile.gym_id,
-            type: 'user_post',
-            post_type: 'user',
-            is_public: true,
-            body: text,
-            data: {
-              body: text,
-              cardio_session_id: data?.sessionId || null,
-              cardio_type: data?.cardioType,
-              distance_km: data?.distanceKm,
-              duration_seconds: data?.durationSeconds,
-            },
-          });
-          if (postErr) console.error('[ShareCardioSheet] post failed', postErr);
-        }
+        await postShareCardToFeed({
+          blob, text, userId: user?.id, gymId: profile?.gym_id,
+          extra: {
+            cardio_session_id: data?.sessionId || null,
+            cardio_type: data?.cardioType,
+            distance_km: data?.distanceKm,
+            duration_seconds: data?.durationSeconds,
+          },
+        });
+        showToast(t('share.postedToFeed', { defaultValue: 'Posted to your gym feed' }), 'success');
+        onClose?.();
       } else if (dest === 'ig-story') {
         // Direct deep link into the IG Stories composer — same flow as the
         // workout share sheet. Photo template with Clear background renders
@@ -515,21 +577,18 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
       try { posthogClient?.capture('content_shared', { type: 'cardio', dest }); } catch { /* noop */ }
     } catch (err) {
       console.error('[ShareCardioSheet] share failed:', err?.message || err);
-      try {
-        // Surface a lightweight toast. The app exposes window.__tugymToast in
-        // most hosts; fall back to alert so the user sees *something*.
-        const msg = "Couldn't render share card";
-        if (typeof window !== 'undefined' && typeof window.__tugymToast === 'function') {
-          window.__tugymToast(msg, 'error');
-        } else if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-          window.alert(msg);
-        }
-      } catch {}
+      // The moderation trigger raises 23514 with a guidelines message; anything
+      // else is a genuine failure. Either way the member gets told — silence is
+      // what made this feel broken.
+      const blocked = isModerationBlock(err);
+      showToast(blocked
+        ? t('moderation.contentBlocked', { defaultValue: 'Post blocked: content violates community guidelines.' })
+        : t('share.shareFailed', { defaultValue: "Couldn't share that. Try again." }), 'error');
     } finally {
       setBusy(false);
       onClose?.();
     }
-  }, [busy, buildCard, caption, data, profile, user, onClose, composedBlob, photoTransparent]);
+  }, [busy, buildCard, caption, data, profile, user, onClose, composedBlob, photoTransparent, t]);
 
   const handleCta = () => {
     if (!activeDest) return;
@@ -551,8 +610,12 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
 
   const tplProps = {
     variant,
-    // Inject the inlined logo data URL so the gym logo survives rasterization.
-    data: logoDataUrl ? { ...data, gymLogoUrl: logoDataUrl } : data,
+    // Inject the inlined logo data URL so the gym logo survives rasterization,
+    // or strip the url entirely when it proved unloadable so the card falls back
+    // to the gym's initial rather than an empty badge.
+    data: logoDataUrl ? { ...data, gymLogoUrl: logoDataUrl }
+      : logoFailed ? { ...data, gymLogoUrl: null }
+      : data,
     accent: customAccent || accent,
     customTitle: customTitle?.trim() || undefined,
     themeMode,
@@ -1001,7 +1064,7 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
             <Dest active={activeDest === 'fb'} onClick={() => { setActiveDest('fb'); setFormat('square'); }} label="Facebook" color="#1877F2"><FBIcon /></Dest>
             <Dest active={activeDest === 'wa'} onClick={() => { setActiveDest('wa'); setFormat('square'); }} label="WhatsApp" color="#25D366"><WAIcon /></Dest>
             <Dest active={activeDest === 'im'} onClick={() => { setActiveDest('im'); setFormat('square'); }} label="Messages" color="#34C759"><MsgIcon /></Dest>
-            <Dest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('square'); }} label={authGymName || 'TuGymPR'} color="var(--color-accent)"><TuShareIcon /></Dest>
+            <Dest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('square'); }} label={authGymName || 'TuGymPR'} color="var(--color-accent)"><GymDestIcon logoUrl={authGymLogoUrl} /></Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('cardio.share.save', 'Save')} color="#5A6570" light><SaveIcon /></Dest>
           </div>
         </div>

@@ -11,6 +11,7 @@ import UserAvatar from '../components/UserAvatar';
 import FriendsPanel from '../components/FriendsPanel';
 import EmptyState from '../components/EmptyState';
 import ContentActionMenu from '../components/ContentActionMenu';
+import ProfilePreview from '../components/ProfilePreview';
 import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { useScrollLock } from '../hooks/useScrollLock';
@@ -38,6 +39,80 @@ const DM_DISCLOSURE_KEY = 'dm_encryption_disclosure_seen_v1';
 const DM_PAGE_SIZE = 50;
 // Scroll distance from the top of the thread that triggers the next page.
 const DM_LOAD_OLDER_THRESHOLD_PX = 80;
+
+// Unread counts for ALL conversations in ONE query — was a per-conversation
+// head-count (N round-trips) on every list load, realtime INSERT, and
+// foreground. Rows are conversation_id-only, tallied by the caller.
+//
+// PAGED, because the tally is per-conversation and the cap is not: PostgREST
+// clamps every response to 1000 rows on this project, so once a member's TOTAL
+// unread crosses 1000 this query returned an arbitrary 1000-row slice and every
+// conversation outside that slice tallied to 0 — i.e. threads with genuinely
+// unread messages rendered with NO badge and in the un-bold "read" style. Not
+// an off-by-a-few: which conversations lose their badge is whatever order the
+// planner happened to emit. A `.limit()` cannot fix this (it only lowers the
+// same ceiling), and a `count: 'exact'` head-count can't either — one scalar
+// can't produce a per-conversation breakdown, and doing it per conversation is
+// the N round-trips this query exists to avoid.
+//
+// `.order('id')` is required, not decoration: `.range()` paging over an
+// unordered result set has no defined page boundary, so rows can repeat across
+// pages (inflating a badge) or be skipped (losing one). id is the PK — unique,
+// so no tie can straddle an edge.
+//
+// maxRows caps the walk at 5 round trips. The badge renders `9+` past 9 and the
+// conversation list is itself capped at 200, so 200x10 = 2,000 rows is all it
+// takes to render every badge exactly as designed; 5,000 is >2x that headroom,
+// and beyond it the displayed badges are identical anyway. Normal accounts
+// (<1000 unread) still cost exactly ONE request — selectAllRows stops as soon
+// as a page comes back short.
+async function loadUnreadCounts(convIds, userId) {
+  if (!convIds.length) return [];
+  const { data } = await selectAllRows(
+    (from, to) => supabase
+      .from('direct_messages')
+      .select('conversation_id')
+      .in('conversation_id', convIds)
+      .neq('sender_id', userId)
+      .is('read_at', null)
+      .order('id', { ascending: true })
+      .range(from, to),
+    { maxRows: 5000 },
+  );
+  return data || [];
+}
+
+// Last message per conversation — same de-N+1 treatment as the unread counts
+// above. It used to be one round trip PER CONVERSATION inside the enrichment
+// Promise.all, re-run on every list load, every realtime INSERT (debounced 2s)
+// and every foreground.
+//
+// PostgREST has no DISTINCT ON, so instead: pull a window of the newest rows
+// across the outstanding conversation ids and keep the FIRST row seen per
+// conversation (the query is newest-first). A quiet thread can fall outside the
+// window when a busy one floods it, so we repeat over ONLY the misses — each
+// round spends its whole window on progressively quieter threads, which
+// converges in 2-3 round trips regardless of how many conversations there are.
+// Bailing when a round makes no progress stops conversations that genuinely
+// have zero messages from looping.
+async function loadLastMessages(convIds) {
+  const lastByConv = {};
+  let outstanding = convIds;
+  for (let round = 0; round < 3 && outstanding.length; round++) {
+    const { data: rows } = await supabase
+      .from('direct_messages')
+      .select('conversation_id, body, sender_id, created_at, read_at')
+      .in('conversation_id', outstanding)
+      .order('created_at', { ascending: false })
+      .limit(Math.min(500, Math.max(50, outstanding.length * 5)));
+    if (!rows?.length) break;
+    rows.forEach(r => { if (!lastByConv[r.conversation_id]) lastByConv[r.conversation_id] = r; });
+    const next = outstanding.filter(cid => !lastByConv[cid]);
+    if (next.length === outstanding.length) break; // no progress — the rest have no messages
+    outstanding = next;
+  }
+  return lastByConv;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 // Pass `lang` (i18next language) so dates render in the user-selected app
@@ -486,6 +561,8 @@ const ChatView = ({ conversationId, onBack }) => {
   const posthog = usePostHog();
   const [messages, setMessages] = useState([]);
   const [otherUser, setOtherUser] = useState(null);
+  // Tapping the header avatar opens the shared profile preview sheet.
+  const [previewUserId, setPreviewUserId] = useState(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -585,11 +662,29 @@ const ChatView = ({ conversationId, onBack }) => {
       didInitialScrollRef.current = false;
 
       try {
-        const { data: conv } = await supabase
-          .from('conversations')
-          .select('participant_1, participant_2, encryption_seed')
-          .eq('id', conversationId)
-          .single();
+        // The messages query needs only `conversationId`, so it must NOT wait
+        // behind the conversation row — and the partner profile only gates the
+        // header, not the thread. Opening a thread used to cost THREE serial
+        // round trips (conversation → profile → messages) before a single
+        // bubble could paint; the two that matter now overlap.
+        //
+        // Newest page first (descending + limit), reversed below for display.
+        // Ascending-with-no-limit handed us the OLDEST 1000 and stranded the
+        // rest; descending guarantees the thread always opens on what just
+        // arrived, however long the history is.
+        const [{ data: conv }, { data: msgs }] = await Promise.all([
+          supabase
+            .from('conversations')
+            .select('participant_1, participant_2, encryption_seed')
+            .eq('id', conversationId)
+            .single(),
+          supabase
+            .from('direct_messages')
+            .select('*')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: false })
+            .limit(DM_PAGE_SIZE),
+        ]);
 
         if (cancelled) return;
         if (!conv) { setLoading(false); return; }
@@ -599,24 +694,14 @@ const ChatView = ({ conversationId, onBack }) => {
 
         const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
 
-        const { data: profile } = await supabase
+        // Fire-and-forget: the header avatar/name filling in a beat later is
+        // invisible next to blocking every message behind it.
+        supabase
           .from('gym_member_profiles_safe')
           .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
           .eq('id', otherId)
-          .single();
-
-        if (!cancelled) setOtherUser(profile);
-
-        // Newest page first (descending + limit), reversed below for display.
-        // Ascending-with-no-limit handed us the OLDEST 1000 and stranded the
-        // rest; descending guarantees the thread always opens on what just
-        // arrived, however long the history is.
-        const { data: msgs } = await supabase
-          .from('direct_messages')
-          .select('*')
-          .eq('conversation_id', conversationId)
-          .order('created_at', { ascending: false })
-          .limit(DM_PAGE_SIZE);
+          .single()
+          .then(({ data: profile }) => { if (!cancelled) setOtherUser(profile); });
 
         if (!cancelled) {
           const page = (msgs || []).slice().reverse(); // → oldest-first, the order the bubble list renders in
@@ -644,8 +729,13 @@ const ChatView = ({ conversationId, onBack }) => {
         // on direct_messages can be silently blocked by the gym-scoped
         // messages_update policy, which left the unread bubble stuck. Then notify
         // the nav badge / list to recount.
-        await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
-        try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId } })); } catch { /* no-op */ }
+        //
+        // NOT awaited: it changes nothing the member is looking at, and awaiting
+        // it held `loading` true — and therefore the spinner — for one extra
+        // round trip after every message had already been decrypted.
+        supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId }).then(() => {
+          try { window.dispatchEvent(new CustomEvent('dm:read', { detail: { conversationId } })); } catch { /* no-op */ }
+        });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -670,13 +760,22 @@ const ChatView = ({ conversationId, onBack }) => {
   useEffect(() => {
     if (skipAutoScrollRef.current) { skipAutoScrollRef.current = false; return; }
     if (!messages.length) return;
+    // WAIT FOR THE BUBBLES TO EXIST. `setMessages` resolves BEFORE
+    // `setLoading(false)`, and while `loading` is true the render swaps the
+    // whole bubble list for a spinner — `bottomRef` is mounted but sits in an
+    // empty container. So this effect fired, scrolled a zero-height list
+    // (a no-op), and set `didInitialScrollRef` anyway. When the messages then
+    // painted, `messages` had not changed, so the effect never re-ran and
+    // nothing ever scrolled: the thread opened at the TOP with the newest
+    // message below the fold, every time.
+    if (loading) return;
     const isFirstPaint = !didInitialScrollRef.current;
     bottomRef.current?.scrollIntoView({ behavior: isFirstPaint ? 'auto' : 'smooth' });
     if (isFirstPaint) {
       didInitialScrollRef.current = true;
       requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }));
     }
-  }, [messages]);
+  }, [messages, loading]);
 
   // Pull the page above the one we're holding. Keyed on the oldest loaded
   // `created_at` rather than an offset so messages arriving in realtime can't
@@ -1000,7 +1099,18 @@ const ChatView = ({ conversationId, onBack }) => {
           })()}
         </div>
         <div className="flex-shrink-0 flex items-center gap-1">
-          {otherUser && <UserAvatar user={otherUser} size={32} />}
+          {/* Tapping the avatar opens the same profile preview the feed uses.
+              It was the only avatar in the app that did nothing on tap. */}
+          {otherUser && (
+            <button
+              type="button"
+              onClick={() => setPreviewUserId(otherUser.id)}
+              aria-label={t('social.viewProfile', { name: displayName, defaultValue: `View ${displayName}'s profile` })}
+              className="rounded-full focus:outline-none focus:ring-2 focus:ring-[#D4AF37] active:scale-95 transition-transform"
+            >
+              <UserAvatar user={otherUser} size={32} />
+            </button>
+          )}
           {otherUser && (
             <div className="relative" ref={headerMenuRef}>
               <button
@@ -1042,6 +1152,12 @@ const ChatView = ({ conversationId, onBack }) => {
         onClose={() => setConfirmBlock(false)}
         onConfirm={handleBlockOther}
         t={t}
+      />
+
+      <ProfilePreview
+        userId={previewUserId}
+        isOpen={!!previewUserId}
+        onClose={() => setPreviewUserId(null)}
       />
 
       {/* First-DM-open encryption disclosure banner (one-time) */}
@@ -1440,101 +1556,50 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
       return;
     }
 
-    // Per-user archive / soft-delete state (RLS scopes rows to this user).
-    const { data: stateRows } = await supabase
-      .from('conversation_member_state')
-      .select('conversation_id, archived_at, deleted_at, purged_at');
+    const otherIds = convs.map(c => c.participant_1 === user.id ? c.participant_2 : c.participant_1);
+    const uniqueIds = [...new Set(otherIds)];
+    const convIds = convs.map(c => c.id);
+
+    // ── Everything below needs only `convs`, so it all runs at once ──────────
+    //
+    // These four used to execute strictly in sequence: member state, then
+    // profiles, then the unread tally, then the last-message window — each one
+    // waiting on the previous for no reason other than the order it was
+    // written in. On a phone that is four full latencies stacked end to end
+    // before the list can paint, and the last two are themselves multi-round
+    // pagers. Independent work belongs in one Promise.all.
+    const [
+      { data: stateRows },
+      { data: profiles },
+      unreadRowsRes,
+      lastByConv,
+    ] = await Promise.all([
+      // Per-user archive / soft-delete state (RLS scopes rows to this user).
+      supabase
+        .from('conversation_member_state')
+        .select('conversation_id, archived_at, deleted_at, purged_at'),
+      // Batched: a user's conversation-partner list grows unbounded; plain .in()
+      // would exceed the URL limit past ~390 unique participants.
+      selectInBatches(
+        (ids) => supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
+          .in('id', ids),
+        uniqueIds,
+      ),
+      loadUnreadCounts(convIds, user.id),
+      loadLastMessages(convIds),
+    ]);
+
     const sMap = {};
     (stateRows || []).forEach(s => { sMap[s.conversation_id] = s; });
     setStateMap(sMap);
 
-    const otherIds = convs.map(c => c.participant_1 === user.id ? c.participant_2 : c.participant_1);
-    const uniqueIds = [...new Set(otherIds)];
-
-    // Batched: a user's conversation-partner list grows unbounded; plain .in()
-    // would exceed the URL limit past ~390 unique participants.
-    const { data: profiles } = await selectInBatches(
-      (ids) => supabase
-        .from('gym_member_profiles_safe')
-        .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
-        .in('id', ids),
-      uniqueIds,
-    );
-
     const profileMap = {};
     (profiles || []).forEach(p => { profileMap[p.id] = p; });
 
-    // Unread counts for ALL conversations in ONE query — was a per-conversation
-    // head-count (N round-trips) on every list load, realtime INSERT, and
-    // foreground. Rows are conversation_id-only, tallied client-side.
-    //
-    // PAGED, because the tally is per-conversation and the cap is not: PostgREST
-    // clamps every response to 1000 rows on this project, so once a member's
-    // TOTAL unread crosses 1000 this query returned an arbitrary 1000-row slice
-    // and every conversation outside that slice tallied to 0 — i.e. threads with
-    // genuinely unread messages rendered with NO badge and in the un-bold "read"
-    // style. Not an off-by-a-few: which conversations lose their badge is
-    // whatever order the planner happened to emit. A `.limit()` cannot fix this
-    // (it only lowers the same ceiling), and a `count: 'exact'` head-count can't
-    // either — one scalar can't produce a per-conversation breakdown, and doing
-    // it per conversation is the N round-trips this query exists to avoid.
-    //
-    // `.order('id')` is required, not decoration: `.range()` paging over an
-    // unordered result set has no defined page boundary, so rows can repeat
-    // across pages (inflating a badge) or be skipped (losing one). id is the
-    // PK — unique, so no tie can straddle an edge.
-    //
-    // maxRows caps the walk at 5 round trips. The badge renders `9+` past 9 and
-    // the conversation list is itself capped at 200 above, so 200x10 = 2,000
-    // rows is all it takes to render every badge exactly as designed; 5,000 is
-    // >2x that headroom, and beyond it the displayed badges are identical
-    // anyway. Normal accounts (<1000 unread) still cost exactly ONE request —
-    // selectAllRows stops as soon as a page comes back short.
-    const convIds = convs.map(c => c.id);
     const unreadByConv = {};
-    if (convIds.length) {
-      const { data: unreadRows } = await selectAllRows(
-        (from, to) => supabase
-          .from('direct_messages')
-          .select('conversation_id')
-          .in('conversation_id', convIds)
-          .neq('sender_id', user.id)
-          .is('read_at', null)
-          .order('id', { ascending: true })
-          .range(from, to),
-        { maxRows: 5000 },
-      );
-      (unreadRows || []).forEach(r => { unreadByConv[r.conversation_id] = (unreadByConv[r.conversation_id] || 0) + 1; });
-    }
-
-    // Last message per conversation — same de-N+1 treatment as the unread
-    // counts above. It used to be one round trip PER CONVERSATION inside the
-    // enrichment Promise.all, re-run on every list load, every realtime INSERT
-    // (debounced 2s) and every foreground.
-    //
-    // PostgREST has no DISTINCT ON, so instead: pull a window of the newest
-    // rows across the outstanding conversation ids and keep the FIRST row seen
-    // per conversation (the query is newest-first). A quiet thread can fall
-    // outside the window when a busy one floods it, so we repeat over ONLY the
-    // misses — each round spends its whole window on progressively quieter
-    // threads, which converges in 2-3 round trips regardless of how many
-    // conversations there are. Bailing when a round makes no progress stops
-    // conversations that genuinely have zero messages from looping.
-    const lastByConv = {};
-    let outstanding = convIds;
-    for (let round = 0; round < 3 && outstanding.length; round++) {
-      const { data: rows } = await supabase
-        .from('direct_messages')
-        .select('conversation_id, body, sender_id, created_at, read_at')
-        .in('conversation_id', outstanding)
-        .order('created_at', { ascending: false })
-        .limit(Math.min(500, Math.max(50, outstanding.length * 5)));
-      if (!rows?.length) break;
-      rows.forEach(r => { if (!lastByConv[r.conversation_id]) lastByConv[r.conversation_id] = r; });
-      const next = outstanding.filter(cid => !lastByConv[cid]);
-      if (next.length === outstanding.length) break; // no progress — the rest have no messages
-      outstanding = next;
-    }
+    (unreadRowsRes || []).forEach(r => { unreadByConv[r.conversation_id] = (unreadByConv[r.conversation_id] || 0) + 1; });
 
     const enriched = await Promise.all(convs.map(async (conv) => {
       const otherId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
@@ -1777,8 +1842,20 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin" />
+        // Skeleton rows, not a bare spinner: the list has a known shape, so
+        // showing it immediately makes the wait read as "filling in" instead of
+        // "nothing is happening" — which is what an empty page with a spinner
+        // in the middle looks like on a slow connection.
+        <div className="px-3 pt-1">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 py-3" style={{ opacity: 1 - i * 0.12 }}>
+              <div className="w-12 h-12 rounded-full flex-shrink-0 animate-pulse" style={{ background: 'var(--color-surface-hover)' }} />
+              <div className="flex-1 min-w-0">
+                <div className="h-[13px] rounded-md animate-pulse" style={{ background: 'var(--color-surface-hover)', width: `${45 + ((i * 13) % 30)}%` }} />
+                <div className="h-[11px] rounded-md mt-2 animate-pulse" style={{ background: 'var(--color-surface-hover)', width: `${60 + ((i * 17) % 25)}%` }} />
+              </div>
+            </div>
+          ))}
         </div>
       ) : conversations.length === 0 ? (
         <EmptyState

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Play, Plus, Dumbbell, ChevronRight, ChevronDown, Clock, X, CheckCircle2, Zap, Pencil, Trophy, Moon, Activity } from 'lucide-react';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -72,6 +74,179 @@ for (const ex of exerciseLibrary) {
 
 const CYCLE_MS = 3500;
 
+/* ── Routine picker ─────────────────────────────────────────────────────────
+   Choosing a routine used to expand a list UNDER the three cards, at the very
+   bottom of the page — so tapping "Choose Routine" scrolled you away from the
+   thing you tapped, and with 100+ routines the list ran forever inside the
+   page. It's a modal now: it opens over everything, it has its own scroll, and
+   it can be searched. */
+function RoutinePickerModal({ routines, onClose, onStart, onEdit, t }) {
+  useScrollLock(true);
+  const [query, setQuery] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return routines;
+    return routines.filter(r => localizeRoutineName(r.name).toLowerCase().includes(q));
+  }, [routines, query]);
+
+  const exercisesFor = (r) => [...(r.routine_exercises || [])]
+    .sort((a, b) => (a.position || 0) - (b.position || 0))
+    .map(ex => ({ name: ex.exercises?.name || 'Exercise', sets: ex.target_sets, reps: ex.target_reps }));
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      role="button"
+      tabIndex={0}
+      aria-label={t('quickStart.close', 'Close')}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('quickStart.chooseRoutine')}
+        className="w-full sm:max-w-md rounded-t-[24px] sm:rounded-[24px] flex flex-col"
+        style={{
+          background: 'var(--color-bg-primary)',
+          border: '1px solid var(--color-border-subtle)',
+          maxHeight: '86vh',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-[17px] font-black truncate" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui', letterSpacing: -0.3 }}>
+              {t('quickStart.chooseRoutine')}
+            </p>
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--color-text-subtle)' }}>
+              {routines.length} {t('quickStart.available')}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('quickStart.close', 'Close')}
+            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 active:scale-[0.94] transition-transform"
+            style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
+          >
+            <X size={18} style={{ color: 'var(--color-text-muted)' }} />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pb-3">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('quickStart.searchRoutines', 'Search routines')}
+            className="w-full px-4 h-11 rounded-xl text-[14px] focus:outline-none focus:ring-2"
+            style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border-subtle)',
+              color: 'var(--color-text-primary)',
+              '--tw-ring-color': 'var(--color-accent)',
+            }}
+          />
+        </div>
+
+        {/* List */}
+        <div className="px-5 pb-5 overflow-y-auto space-y-1.5" style={{ WebkitOverflowScrolling: 'touch' }}>
+          {filtered.length === 0 ? (
+            <p className="text-[13px] text-center py-10" style={{ color: 'var(--color-text-subtle)' }}>
+              {t('quickStart.noRoutinesFound', 'No routines match that search.')}
+            </p>
+          ) : filtered.map(r => {
+            const isExpanded = expandedId === r.id;
+            const exs = isExpanded ? exercisesFor(r) : [];
+            return (
+              <div key={r.id}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                  aria-expanded={isExpanded}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-colors text-left active:scale-[0.99]"
+                  style={{
+                    background: 'var(--color-bg-card)',
+                    borderColor: isExpanded ? 'color-mix(in srgb, var(--color-accent) 40%, transparent)' : 'var(--color-border-subtle)',
+                  }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
+                  >
+                    <Dumbbell size={16} style={{ color: 'var(--color-text-subtle)' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                      {localizeRoutineName(r.name).replace(/ [AB]$/, '')}
+                    </p>
+                    <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      {r.exerciseCount} {t('quickStart.exercises')}
+                      {r.lastPerformedAt && ` · ${formatTimeAgo(r.lastPerformedAt)}`}
+                    </p>
+                  </div>
+                  <ChevronDown
+                    size={15}
+                    className="shrink-0 transition-transform duration-200"
+                    style={{ color: 'var(--color-text-muted)', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                  />
+                </button>
+
+                {isExpanded && (
+                  <div className="mt-1 mx-2 rounded-xl p-4" style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}>
+                    {exs.length === 0 ? (
+                      <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
+                        {t('quickStart.noExercisesYet', 'No exercises yet. Tap Edit to add some.')}
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5 mb-4">
+                        {exs.map((ex, i) => (
+                          <div key={i} className="flex items-center justify-between">
+                            <p className="text-[13px] truncate flex-1" style={{ color: 'var(--color-text-primary)' }}>{ex.name}</p>
+                            <p className="text-[12px] ml-3 shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{ex.sets}&times;{ex.reps}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(r.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl text-[13px] font-semibold active:scale-[0.97] transition-transform"
+                        style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+                      >
+                        <Pencil size={14} />
+                        {t('quickStart.edit', 'Edit')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onStart(r.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl text-[13px] font-bold active:scale-[0.97] transition-transform"
+                        style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}
+                      >
+                        <Play size={14} fill="currentColor" strokeWidth={0} />
+                        {t('quickStart.start', 'Start')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // Stale-while-revalidate cache — painted on mount so the page feels instant
 // on repeat visits. Background fetch replaces the data once complete.
 const cacheKey = (userId) => `qs_cache_v1_${userId}`;
@@ -112,9 +287,6 @@ const QuickStart = () => {
   const [todayCompleted, setTodayCompleted] = useState(false);
   const [completedSession, setCompletedSession] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [expandedRoutineId, setExpandedRoutineId] = useState(null);
-  const [expandedExercises, setExpandedExercises] = useState([]);
-  const [loadingExercises, setLoadingExercises] = useState(false);
   const [isRestDay, setIsRestDay] = useState(false);
   const [isGymClosed, setIsGymClosed] = useState(false);
   const [includeWarmUp, setIncludeWarmUp] = useState(true);
@@ -159,7 +331,9 @@ const QuickStart = () => {
           .eq('profile_id', user.id),
         supabase
           .from('generated_programs')
-          .select('id, program_start, split_type, expires_at, routines_a_count')
+          // schedule_map carries routine_ids_a/_b — needed to alternate the A/B
+          // rotation per week (see the variant resolution below).
+          .select('id, program_start, split_type, expires_at, routines_a_count, schedule_map')
           .eq('profile_id', user.id)
           .gt('expires_at', new Date().toISOString())
           .order('created_at', { ascending: false })
@@ -186,20 +360,49 @@ const QuickStart = () => {
       }));
       setRoutines(enriched);
 
-      // Build schedule map (same logic as Dashboard)
+      // Build schedule map (same logic as Dashboard).
+      //
+      // `workout_schedule` is authoritative. The old `Auto:` + created-after-
+      // program filter here threw away exactly the rows the member chose
+      // themselves: swapping a program day to one of their own routines made
+      // this hero read the day as a REST DAY, with no way to start the workout
+      // they had just scheduled. Every program-creation path wipes
+      // `workout_schedule` first, so there are no stale rows to filter out.
+      //
+      // Variant resolution: generation seeds `workout_schedule` with variant A
+      // only, so without this the Record tab offered week 1's routine on every
+      // week of the program. Substitute B on even weeks, by slot index, and
+      // only for days still holding their variant-A routine so a hand-picked
+      // day keeps what the member chose.
       const scheduleData = !scheduleRes.error ? (scheduleRes.data || []) : [];
+      const sMap = fetchedProgram?.schedule_map || null;
+      const variantA = Array.isArray(sMap?.routine_ids_a) ? sMap.routine_ids_a : [];
+      const variantB = Array.isArray(sMap?.routine_ids_b) ? sMap.routine_ids_b : [];
+      const programWeekNum = (() => {
+        if (!fetchedProgram || !programStart) return 0;
+        const start = new Date(programStart); start.setHours(0, 0, 0, 0);
+        const todayMid = new Date(); todayMid.setHours(0, 0, 0, 0);
+        if (sMap) {
+          const startSunday = new Date(start);
+          startSunday.setDate(startSunday.getDate() - startSunday.getDay());
+          return Math.max(1, Math.floor((todayMid - startSunday) / 86400000 / 7) + 1);
+        }
+        return Math.max(1, Math.floor((todayMid - start) / 86400000 / 7) + 1);
+      })();
+      // Clamped like My Programs' `currentWeekNum` so all three surfaces agree
+      // on the A/B parity even in the tail week of a program.
+      const totalProgramWeeks = sMap?.total_calendar_weeks ?? Infinity;
+      const variantWeekNum = Math.min(programWeekNum, totalProgramWeeks);
+      const useVariantB = variantA.length > 0 && variantB.length > 0 && variantWeekNum % 2 === 0;
       const scheduleMap = {};
       for (const row of scheduleData) {
-        const routine = allRoutines.find(r => r.id === row.routine_id);
-        if (routine) {
-          // When an active program exists, only include Auto: routines created
-          // after the program start — filters out stale manual schedule entries
-          if (fetchedProgram) {
-            const isAutoRoutine = routine.name.startsWith('Auto:');
-            const createdAfterProgram = new Date(routine.created_at || 0) >= programStart;
-            if (!isAutoRoutine || !createdAfterProgram) continue;
-          }
-          scheduleMap[row.day_of_week] = row.routine_id;
+        let routineId = row.routine_id;
+        if (useVariantB) {
+          const slot = variantA.indexOf(routineId);
+          if (slot >= 0 && variantB[slot]) routineId = variantB[slot];
+        }
+        if (allRoutines.some(r => r.id === routineId)) {
+          scheduleMap[row.day_of_week] = routineId;
         }
       }
 
@@ -373,31 +576,6 @@ const QuickStart = () => {
 
   const currentEx = todayExercises[cycleIndex] || {};
   const otherRoutines = routines.filter(r => r.id !== todayRoutine?.id);
-
-  const handleToggleExpand = async (routineId) => {
-    if (expandedRoutineId === routineId) {
-      setExpandedRoutineId(null);
-      setExpandedExercises([]);
-      return;
-    }
-    setExpandedRoutineId(routineId);
-    setLoadingExercises(true);
-    // The routine data already has routine_exercises from the initial query
-    const routine = routines.find(r => r.id === routineId);
-    if (routine?.routine_exercises?.length > 0) {
-      const exs = [...routine.routine_exercises]
-        .sort((a, b) => (a.position || 0) - (b.position || 0))
-        .map(ex => ({
-          name: ex.exercises?.name || 'Exercise',
-          sets: ex.target_sets,
-          reps: ex.target_reps,
-        }));
-      setExpandedExercises(exs);
-    } else {
-      setExpandedExercises([]);
-    }
-    setLoadingExercises(false);
-  };
 
   if (loading) {
     return (
@@ -638,10 +816,10 @@ const QuickStart = () => {
 
         {/* ── START ANOTHER — three cards ────────────────────── */}
         <div className="grid grid-cols-3 gap-3">
-          {/* Choose Existing */}
+          {/* Choose Existing — opens the picker modal */}
           <button
             type="button"
-            onClick={() => setShowOther(v => !v)}
+            onClick={() => setShowOther(true)}
             className="rounded-[16px] p-3.5 text-left active:scale-[0.97] focus:ring-2 focus:outline-none"
             style={{
               background: 'var(--color-bg-card)',
@@ -748,101 +926,18 @@ const QuickStart = () => {
           </button>
         </div>
 
-        {/* ── ROUTINE LIST (expanded) ─────────────────────────── */}
-        <AnimatePresence>
-          {showOther && otherRoutines.length > 0 && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              className="overflow-hidden"
-            >
-              <div className="space-y-1.5 pb-28">
-                {otherRoutines.map(r => {
-                  const isExpanded = expandedRoutineId === r.id;
-                  return (
-                    <div key={r.id}>
-                      <button
-                        onClick={() => handleToggleExpand(r.id)}
-                        aria-expanded={isExpanded}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-colors text-left active:scale-[0.99] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none ${
-                          isExpanded ? 'border-[#D4AF37]/30' : 'border-white/[0.06] hover:border-white/[0.1]'
-                        }`}
-                        style={{ background: 'var(--color-bg-card)' }}
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
-                          <Dumbbell size={16} style={{ color: 'var(--color-text-subtle)' }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                            {localizeRoutineName(r.name).replace(/ [AB]$/, '')}
-                          </p>
-                          <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                            {r.exerciseCount} {t('quickStart.exercises')}
-                            {r.lastPerformedAt && ` · ${formatTimeAgo(r.lastPerformedAt)}`}
-                          </p>
-                        </div>
-                        <ChevronDown size={14} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
-                      </button>
-
-                      {/* Expanded exercise details */}
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="mt-1 ml-2 mr-2 rounded-xl border border-white/[0.04] p-4" style={{ background: 'var(--color-bg-card)' }}>
-                              {loadingExercises ? (
-                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('quickStart.loadingExercises', 'Loading...')}</p>
-                              ) : expandedExercises.length === 0 ? (
-                                <p className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>{t('quickStart.noExercisesYet', 'No exercises yet. Tap Edit to add some.')}</p>
-                              ) : (
-                                <div className="space-y-1.5 mb-4">
-                                  {expandedExercises.map((ex, i) => (
-                                    <div key={i} className="flex items-center justify-between">
-                                      <p className="text-[13px] truncate flex-1" style={{ color: 'var(--color-text-primary)' }}>{ex.name}</p>
-                                      <p className="text-[12px] ml-3 shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{ex.sets}&times;{ex.reps}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="flex gap-2 mt-3">
-                                <button
-                                  onClick={() => navigate(`/workouts/${r.id}/edit?from=/quick-start`)}
-                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-semibold bg-white/[0.06] border border-white/[0.06] hover:bg-white/[0.1] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                                  style={{ color: 'var(--color-text-primary)' }}
-                                >
-                                  <Pencil size={14} />
-                                  {t('quickStart.edit', 'Edit')}
-                                </button>
-                                <button
-                                  onClick={() => navigate(`/session/${r.id}`, { state: { skipWarmUp: !includeWarmUp } })}
-                                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-bold transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                                  style={{ background: '#D4AF37', color: '#fff' }}
-                                >
-                                  <Play size={14} fill="white" strokeWidth={0} />
-                                  {t('quickStart.start', 'Start')}
-                                </button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
       </div>
     </div>
+
+    {showOther && otherRoutines.length > 0 && (
+      <RoutinePickerModal
+        routines={otherRoutines}
+        onClose={() => setShowOther(false)}
+        onEdit={(routineId) => { setShowOther(false); navigate(`/workouts/${routineId}/edit?from=/quick-start`); }}
+        onStart={(routineId) => { setShowOther(false); navigate(`/session/${routineId}`, { state: { skipWarmUp: !includeWarmUp } }); }}
+        t={t}
+      />
+    )}
 
     {showCreateModal && (
       <CreateRoutineModal

@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
   Search, UserPlus, Check, X, Users, Flag,
-  Image, Link, MoreHorizontal, EyeOff, VolumeX,
+  Image, Link, MoreHorizontal, VolumeX,
   AlertTriangle, Trash2, PenSquare, Ban,
   Footprints, Bike, Waves, CircleDot, TrendingUp,
   Droplets, PersonStanding, Flame,
@@ -28,6 +28,7 @@ import LoadMoreButton from '../components/LoadMoreButton';
 import FeatureDisabledScreen from '../components/FeatureDisabledScreen';
 import { useFeatureEnabled } from '../hooks/usePlatformFlags';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
+import { signedImageUrl } from '../lib/imageUrl';
 import { timeAgoFine as timeAgo, fmtDuration } from '../lib/dateUtils';
 import { takePhoto } from '../lib/takePhoto';
 
@@ -404,7 +405,14 @@ const FeedContent = ({ type, data, t }) => {
           <img
             src={data.photo_url}
             alt={data.body ? `${t('social.postImage')}: ${data.body.slice(0, 80)}` : t('social.postImage')}
-            className="w-full rounded-xl object-cover max-h-[400px]"
+            // `object-cover` + a max-height CROPS: the browser clamps the box
+            // to 400px and then fills it, cutting the top and bottom off any
+            // portrait image. Share cards are 9:16 and 4:5, so every single one
+            // came through with its middle sliced out. `contain` shows the whole
+            // picture; the tinted box behind it makes the letterboxing read as
+            // deliberate rather than as a gap.
+            className="w-full rounded-xl object-contain max-h-[70vh]"
+            style={{ background: 'var(--color-surface-hover)' }}
             loading="lazy"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
@@ -529,7 +537,7 @@ const CommentRow = ({ comment }) => {
 };
 
 // ── Feed Card ─────────────────────────────────────────────────────────────────
-const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, onHide, onMute, onBlock, onDelete, onProfilePreview, reportedIds, t }) => {
+const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onReport, onMute, onBlock, onDelete, onProfilePreview, reportedIds, t }) => {
   const posthogCard = usePostHog();
   const { showToast } = useToast();
   const [showComments, setShowComments] = useState(false);
@@ -774,15 +782,6 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           </button>
           {showMenu && (
             <div className="absolute right-0 top-10 z-30 w-48 rounded-xl border border-white/10 shadow-xl overflow-hidden" style={{ background: 'var(--color-bg-card)' }}>
-              <button
-                type="button"
-                onClick={() => { onHide(item.id); setShowMenu(false); }}
-                className="flex items-center gap-2.5 w-full px-4 py-3 text-[13px] hover:bg-white/[0.06] transition-colors text-left"
-                style={{ color: 'var(--color-text-primary)' }}
-              >
-                <EyeOff size={15} style={{ color: 'var(--color-text-muted)' }} />
-                {t('social.hidePost')}
-              </button>
               {item.actor_id !== currentUserId && (
                 <button
                   type="button"
@@ -860,29 +859,60 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
         )}
       </div>
 
-      {/* Delete confirmation */}
-      {confirmDelete && (
-        <div className="px-5 py-4 border-t border-red-500/20 bg-red-900/10">
-          <p className="text-[13px] text-red-300 font-semibold mb-3">{t('social.deleteConfirm')}</p>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(false)}
-              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold bg-white/[0.06] hover:bg-white/[0.08] transition-colors"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              {t('social.report.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={() => { onDelete(item.id); setConfirmDelete(false); }}
-              className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-              style={{ background: 'rgb(220,38,38)', color: '#fff' }}
-            >
-              {t('social.deletePost')}
-            </button>
+      {/* Delete confirmation — CENTRED MODAL, portaled to <body>.
+          It used to render inline at the BOTTOM of the card. On any post longer
+          than the viewport that put the confirmation below the fold, so tapping
+          Delete looked like it did nothing at all — the menu closed and the
+          post stayed. A destructive confirmation has to appear where the eye
+          already is. */}
+      {confirmDelete && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center px-6"
+          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          role="button"
+          tabIndex={0}
+          aria-label={t('social.report.cancel')}
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmDelete(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setConfirmDelete(false); }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-sm rounded-[20px] p-6"
+            style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'color-mix(in srgb, var(--color-danger, #DC2626) 15%, transparent)' }}>
+              <Trash2 size={26} style={{ color: 'var(--color-danger, #DC2626)' }} />
+            </div>
+            <p className="text-[15px] font-bold text-center mb-5" style={{ color: 'var(--color-text-primary)' }}>
+              {t('social.deleteConfirm')}
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="w-full py-3 rounded-xl text-[14px] font-bold transition-colors"
+                style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
+              >
+                {t('social.report.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { onDelete(item.id); setConfirmDelete(false); }}
+                className="w-full py-3 rounded-xl text-[14px] font-bold transition-colors"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-danger, #DC2626) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-danger, #DC2626) 32%, transparent)',
+                  color: 'var(--color-danger, #DC2626)',
+                }}
+              >
+                {t('social.deletePost')}
+              </button>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Comments section */}
@@ -962,6 +992,18 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
 const FEED_TTL_MS = 60_000;
 const feedFetchedAt = new Map(); // userId → last full-feed-load timestamp (ms)
 
+// A post made ANYWHERE invalidates that timestamp.
+//
+// The in-component listener added earlier only fires while this page is
+// mounted. Post to the gym feed from a share sheet on Profile, then walk over
+// to Community: the page mounts, sees a cache younger than the TTL, and skips
+// the network entirely — so the post you just made is missing and it reads as
+// "the share failed". Clearing the timestamp at MODULE scope means the next
+// mount always revalidates, whether or not anyone was listening at the time.
+if (typeof window !== 'undefined') {
+  window.addEventListener('tugympr:feed-changed', () => feedFetchedAt.clear());
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 // hideComposer: used by the trainer embed (TrainerSocial) — hides the
 // create-post composer + "My Posts" tab and renders only the For You feed.
@@ -1003,6 +1045,22 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   }, [embedded, searchParams, setSearchParams]);
   const FEED_TABS = ['forYou', 'mine'];
   const [tab, setTab]                 = useState('forYou');
+  // Arrive from a share sheet via /social?tab=mine. "For You" filters your own
+  // items out on purpose, so a share that landed on the default tab looked
+  // like it had failed. Consume the flag, force My Posts to refetch (it
+  // lazy-loads once and would otherwise show a list from before the post), and
+  // clear the param so the next share is a real location change again.
+  useEffect(() => {
+    if (embedded || searchParams.get('tab') !== 'mine') return;
+    setTab('mine');
+    setMyPostsLoaded(false);
+    const next = new URLSearchParams(searchParams);
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
+    // /social is keep-alive: the scroll position from the last visit is still
+    // there, so without this you land mid-feed instead of on the new post.
+    try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch { /* non-browser host */ }
+  }, [embedded, searchParams, setSearchParams]);
   const [friendStreaks, setFriendStreaks] = useCachedState(`social-streaks-${user?.id || 'anon'}`, []);
   // All accepted friends (resolved via the safe view) for the feed's friend row —
   // shown regardless of streak, with the streak overlaid as a badge when > 0.
@@ -1011,9 +1069,13 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
   // friends-only) — drives the green "training now" ring on the friend row.
   const [trainingIds, setTrainingIds] = useCachedState(`social-training-${user?.id || 'anon'}`, new Set());
   const [reportedIds, setReportedIds] = useState(new Set());
-  const [hiddenIds, setHiddenIds]     = useState(new Set());
   const [mutedUsers, setMutedUsers]   = useState(() => new Set(getMutedUsers()));
   const [blockedUsers, setBlockedUsers] = useState(new Set());
+  // Posts dismissed from THIS session's feed after being reported. Session-only
+  // and deliberately not persisted: it exists so a post you just reported stops
+  // staring at you, not as a hide feature. (The persisted hide/unhide flow was
+  // pulled — it shipped half-built and is deferred to its own update.)
+  const [dismissedIds, setDismissedIds] = useState(() => new Set());
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [previewUserId, setPreviewUserId] = useState(null);
   const [reportTarget, setReportTarget] = useState(null);
@@ -1069,18 +1131,6 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       .eq('blocker_id', user.id)
       .then(({ data }) => {
         if (data?.length) setBlockedUsers(new Set(data.map(b => b.blocked_id)));
-      });
-  }, [user?.id]);
-
-  // Load hidden posts from DB
-  useEffect(() => {
-    if (!user?.id) return;
-    supabase
-      .from('hidden_posts')
-      .select('feed_item_id')
-      .eq('profile_id', user.id)
-      .then(({ data }) => {
-        if (data?.length) setHiddenIds(new Set(data.map(h => h.feed_item_id)));
       });
   }, [user?.id]);
 
@@ -1183,8 +1233,13 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
 
     const enrichmentMap = {};
     (enrichRes.data ?? []).forEach(e => { enrichmentMap[e.feed_item_id] = e; });
+    // Serve a RESIZED copy, not the stored original. Feed photos render at most
+    // a phone-width column; the stored file is up to 2048px (member uploads) or
+    // 1080x1920 (share cards). ~-80% on the wire — see signedImageUrl.
     const signedUrlMap = {};
-    (signedRes.data ?? []).forEach(s => { if (s.signedUrl) signedUrlMap[s.path] = s.signedUrl; });
+    (signedRes.data ?? []).forEach(s => {
+      if (s.signedUrl) signedUrlMap[s.path] = signedImageUrl(s.signedUrl, { width: 800, quality: 72 });
+    });
 
     return items.map(item => {
       const e = enrichmentMap[item.id] ?? {};
@@ -1327,7 +1382,14 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
     if (!user || !profile) return undefined;
     const onChanged = () => { loadFeed(null); };
     window.addEventListener('tugympr:workouts-changed', onChanged);
-    return () => window.removeEventListener('tugympr:workouts-changed', onChanged);
+    // Posts made from a share sheet (workout / cardio / achievement / monthly
+    // recap) land straight in activity_feed_items without going through this
+    // page, so nothing here knew they existed. See lib/shareToFeed.js.
+    window.addEventListener('tugympr:feed-changed', onChanged);
+    return () => {
+      window.removeEventListener('tugympr:workouts-changed', onChanged);
+      window.removeEventListener('tugympr:feed-changed', onChanged);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, profile]);
 
@@ -1436,21 +1498,11 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       }
     } else {
       setReportedIds(prev => new Set([...prev, reportTarget]));
-      setHiddenIds(prev => new Set([...prev, reportTarget]));
+      setDismissedIds(prev => new Set([...prev, reportTarget]));
       showToast(t('social.report.success'), 'success');
     }
     setReportTarget(null);
   };
-
-  const handleHide = useCallback(async (itemId) => {
-    setHiddenIds(prev => new Set([...prev, itemId]));
-    if (!user?.id) return;
-    await supabase.from('hidden_posts').upsert(
-      { profile_id: user.id, feed_item_id: itemId },
-      { onConflict: 'profile_id,feed_item_id' }
-    );
-    showToast(t('social.postHidden'), 'success');
-  }, [user?.id, showToast, t]);
 
   const handleMute = useCallback((userId) => {
     const updated = addMutedUser(userId);
@@ -1526,8 +1578,11 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
       session_id:       workoutSession.id,
     } : {};
     // New posts land in My Posts (For You excludes your own posts). Mark the
-    // tab loaded so the optimistic item renders instead of a skeleton.
+    // tab loaded so the optimistic item renders instead of a skeleton — and
+    // SWITCH to it: posting from For You used to leave you staring at a feed
+    // that structurally cannot contain what you just wrote.
     setMyPostsLoaded(true);
+    setTab('mine');
     setMyPosts(prev => [{
       id: tempId,
       actor_id: user.id,
@@ -1574,7 +1629,12 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
         const storagePath = `${user.id}/${Date.now()}.jpg`;
         const { error: uploadErr } = await supabase.storage.from('social-posts').upload(storagePath, cleanPhoto, { cacheControl: '31536000', contentType: 'image/jpeg' });
         if (uploadErr) { rollback(genericError); return; }
-        const { data: signedData } = await supabase.storage.from('social-posts').createSignedUrl(storagePath, 3600);
+        // Singular createSignedUrl DOES take `transform` natively — use it, so
+        // the optimistic post you see right after publishing is the same
+        // lightweight copy everyone else gets, not the full-size original.
+        const { data: signedData } = await supabase.storage
+          .from('social-posts')
+          .createSignedUrl(storagePath, 3600, { transform: { width: 800, quality: 72 } });
         signedPhotoUrl = signedData?.signedUrl ?? null;
         photo_url = storagePath; // store the path, not the signed URL
       }
@@ -1674,8 +1734,8 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
 
   // Filter hidden and muted
   const visibleFeed = useMemo(
-    () => feed.filter(item => !hiddenIds.has(item.id) && !mutedUsers.has(item.actor_id) && !blockedUsers.has(item.actor_id)),
-    [feed, hiddenIds, mutedUsers, blockedUsers]
+    () => feed.filter(item => !dismissedIds.has(item.id) && !mutedUsers.has(item.actor_id) && !blockedUsers.has(item.actor_id)),
+    [feed, dismissedIds, mutedUsers, blockedUsers]
   );
 
   // Ranked feed (For You) — engagement scored
@@ -1710,7 +1770,6 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
               onToggleLike={handleReact}
               onReact={handleReact}
               onReport={handleReport}
-              onHide={handleHide}
               onMute={handleMute}
               onBlock={handleBlock}
               onDelete={handleDelete}
@@ -1918,7 +1977,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
 
             {/* My Posts tab */}
             <div>
-              {/* Create post button */}
+              {/* Create post */}
               <button
                 type="button"
                 onClick={() => setShowCreatePost(true)}
@@ -1946,8 +2005,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
                       onToggleLike={handleReact}
                       onReact={handleReact}
                       onReport={handleReport}
-                      onHide={handleHide}
-                      onMute={handleMute}
+                              onMute={handleMute}
                       onBlock={handleBlock}
                       onDelete={handleDelete}
                       onProfilePreview={setPreviewUserId}

@@ -32,11 +32,13 @@ import {
 import { Share } from '@capacitor/share';
 import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
-import { supabase } from '../../lib/supabase';
+import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
 import { appShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { shareBlob } from '../ShareCardRenderer';
 import { rasterizeNode, urlToDataUrl } from './ShareSheet';
+import GymDestIcon from './GymDestIcon';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
 import {
   shareToMessages,
@@ -82,13 +84,6 @@ const MsgIcon = () => (
 const FBIcon = () => (
   <svg width="14" height="22" viewBox="0 0 320 512" fill="#fff" aria-hidden="true">
     <path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z" />
-  </svg>
-);
-const TuShareIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-on-accent, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
-    <circle cx="10" cy="7" r="4" />
-    <path d="M18 8v6M21 11h-6" />
   </svg>
 );
 // stroke=currentColor so the Save chip's icon inherits the Dest container's
@@ -336,6 +331,9 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl, t, lang }) 
 export default function ShareAchievementSheet({ open = true, onClose, achievement }) {
   const { t, i18n } = useTranslation('pages');
   const { user, profile, gymName, gymLogoUrl } = useAuth();
+  // Real toast, not console.error: posting to the gym feed used to succeed or
+  // fail in total silence, which reads as a dead button either way.
+  const { showToast } = useToast();
   const [activeDest, setActiveDest] = useState(null);
   const [format, setFormat] = useState('portrait'); // 'story' | 'square' | 'portrait'
   const [busy, setBusy] = useState(false);
@@ -345,6 +343,8 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
   // actually appears in the exported/shared image (external <img> URLs don't
   // load inside an SVG-as-image).
   const [logoDataUrl, setLogoDataUrl] = useState(null);
+  // True once both inlining strategies have failed — see the effect below.
+  const [logoFailed, setLogoFailed] = useState(false);
   const cardRef = useRef(null);
 
   // Identity + gym come from useAuth (same source the workout/cardio sheets
@@ -377,12 +377,21 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
   // Resolve the gym logo (https → inline data URL) when the sheet opens.
   useEffect(() => {
     let cancelled = false;
+    setLogoFailed(false);
     if (!open || !gymLogoUrl || String(gymLogoUrl).startsWith('data:')) { setLogoDataUrl(null); return undefined; }
-    urlToDataUrl(gymLogoUrl).then((d) => { if (!cancelled) setLogoDataUrl(d); });
+    urlToDataUrl(gymLogoUrl).then((d) => {
+      if (cancelled) return;
+      if (d) setLogoDataUrl(d);
+      // urlToDataUrl already tried fetch() AND a crossOrigin <img>. If both
+      // failed, the raw URL is not going to work either — it is the same
+      // resource — and handing it to the card just renders an empty circle
+      // where the gym badge should be. Fall back to the initial instead.
+      else setLogoFailed(true);
+    });
     return () => { cancelled = true; };
   }, [open, gymLogoUrl]);
 
-  const resolvedLogo = logoDataUrl || gymLogoUrl || null;
+  const resolvedLogo = logoDataUrl || (logoFailed ? null : gymLogoUrl) || null;
 
   // Preview + export sizes adapt to the chosen format (story 9:16 / square 1:1
   // / portrait 4:5). Cap the preview height so the sheet still fits the screen.
@@ -432,22 +441,15 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
           // Old code wrote to Directory.Documents (app sandbox) — image was lost.
           if (blob) await saveBlob(`tugympr-achievement-${Date.now()}.png`, blob);
         } else if (dest === 'tu') {
-          if (user?.id && profile?.gym_id) {
-            const { error: postErr } = await supabase.from('activity_feed_items').insert({
-              actor_id: user.id,
-              gym_id: profile.gym_id,
-              type: 'user_post',
-              post_type: 'user',
-              is_public: true,
-              body: text,
-              data: {
-                body: text,
-                achievement_key: achievement.key || null,
-                achievement_label: achievement.label || null,
-              },
-            });
-            if (postErr) console.error('[ShareAchievementSheet] post failed', postErr);
-          }
+          await postShareCardToFeed({
+            blob, text, userId: user?.id, gymId: profile?.gym_id,
+            extra: {
+              achievement_key: achievement.key || null,
+              achievement_label: achievement.label || null,
+            },
+          });
+          showToast(t('share.postedToFeed', { defaultValue: 'Posted to your gym feed' }), 'success');
+          onClose?.();
         } else if (dest === 'ig-story') {
           // Story format (9:16) → fill the whole Story as a background. Other
           // formats (4:5 / 1:1) → place as a centered sticker on a gym-color
@@ -495,6 +497,11 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
         try { posthogClient?.capture('content_shared', { type: 'achievement', dest }); } catch { /* noop */ }
       } catch (err) {
         console.warn('[ShareAchievementSheet] share failed', err);
+        // Tell the member. This used to console.warn and stop — a failed
+        // post looked exactly like a successful one.
+        showToast(isModerationBlock(err)
+          ? t('moderation.contentBlocked', { defaultValue: 'Post blocked: content violates community guidelines.' })
+          : t('share.shareFailed', { defaultValue: "Couldn't share that. Try again." }), 'error');
       } finally {
         setBusy(false);
         onClose?.();
@@ -689,7 +696,7 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
               <MsgIcon />
             </Dest>
             <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label={gym?.name || 'TuGymPR'} color="var(--color-accent)">
-              <TuShareIcon />
+              <GymDestIcon logoUrl={gymLogoUrl} />
             </Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('sessionSummary.share.save', 'Save')} color="#5A6570" light>
               <SaveIcon />

@@ -452,27 +452,37 @@ const MemberBlockedScreen = () => {
         <p className="text-[14px] text-[#9CA3AF] mb-2">
           {t(`blocking.${variant.bodyKey}`, { gymName: gymName || '' })}
         </p>
+        {/* A member who paused THEMSELVES can un-pause themselves — the button
+            right below does exactly that. Telling them to "visit the front desk"
+            in that case is simply wrong, and it makes the button look like it
+            can't be trusted. Only members frozen BY the gym need to go ask. */}
         <p className="text-[13px] text-[#6B7280] mb-8">
-          {t(`blocking.${variant.detailKey}`, { gymName: gymName || '' })}
+          {memberBlocked === 'frozen' && selfPaused
+            ? t('blocking.memberSelfPausedDetail', 'You paused this yourself, so you can turn it back on right here. Nothing was deleted — your workouts, PRs and streak history are all waiting for you.')
+            : t(`blocking.${variant.detailKey}`, { gymName: gymName || '' })}
         </p>
-        {memberBlocked === 'frozen' && selfPaused && (
+        {/* One column, one width. The primary was capped at 260px while Sign Out
+            sized to its own text, so the two sat as mismatched centred blobs. */}
+        <div className="flex flex-col items-center gap-3">
+          {memberBlocked === 'frozen' && selfPaused && (
+            <button
+              onClick={handleResume}
+              disabled={resuming}
+              className="w-full max-w-[280px] rounded-xl px-6 py-3 text-[13px] font-semibold transition-colors disabled:opacity-60"
+              style={{ background: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }}
+            >
+              {resuming
+                ? t('blocking.resuming', 'Reactivating…')
+                : t('blocking.resumeMembership', 'Reactivate my membership')}
+            </button>
+          )}
           <button
-            onClick={handleResume}
-            disabled={resuming}
-            className="block w-full max-w-[260px] mx-auto mb-3 rounded-xl px-6 py-3 text-[13px] font-semibold transition-colors disabled:opacity-60"
-            style={{ background: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }}
+            onClick={signOut}
+            className="w-full max-w-[280px] bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-6 py-3 text-[13px] font-medium transition-colors"
           >
-            {resuming
-              ? t('blocking.resuming', 'Reactivating…')
-              : t('blocking.resumeMembership', 'Reactivate my membership')}
+            {t('blocking.signOut')}
           </button>
-        )}
-        <button
-          onClick={signOut}
-          className="bg-white/6 hover:bg-white/10 border border-white/8 text-[#E5E7EB] rounded-xl px-6 py-3 text-[13px] font-medium transition-colors"
-        >
-          {t('blocking.signOut')}
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -1420,15 +1430,25 @@ function App() {
 
           const toastTitle = row.title || t('notifications.newTitle', { defaultValue: 'New notification' });
           const toastBody = row.body ? `${toastTitle} — ${row.body}` : toastTitle;
+          const route = row.data?.route || '/notifications';
+          // Only offer "View" when it would actually take you somewhere.
+          //
+          // Most notifications are triggered by something you just did ON the
+          // page the notification points at — booking a class raises a
+          // notification whose route is `/classes`, and you are almost always
+          // standing on /classes when you book. Tapping View then navigated to
+          // the route you were already on, the toast dismissed, and nothing
+          // happened. It read as a dead button; it was a no-op navigation.
+          const here = window.location?.pathname || '';
+          const alreadyThere = here === route || here.startsWith(`${route}/`);
           showToast(toastBody, 'info', {
             durationMs: 6000,
-            action: {
-              label: t('notifications.viewAction', { defaultValue: 'View' }),
-              onClick: () => {
-                const route = row.data?.route || '/notifications';
-                navigate(route);
+            ...(alreadyThere ? {} : {
+              action: {
+                label: t('notifications.viewAction', { defaultValue: 'View' }),
+                onClick: () => navigate(route),
               },
-            },
+            }),
           });
         },
       )

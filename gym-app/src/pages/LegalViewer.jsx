@@ -10,6 +10,9 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+
+const isNative = Capacitor.isNativePlatform();
 
 const FONT_DISPLAY = '"Archivo", "Familjen Grotesk", system-ui, sans-serif';
 const FONT_BODY = '"Familjen Grotesk", "Archivo", system-ui, sans-serif';
@@ -74,6 +77,14 @@ export default function LegalViewer({ page }) {
     document.title = t(config.titleKey, config.fallbackTitle);
     setLoaded(false);
     setError(false);
+    if (isNative) {
+      // No iframe to wait on — hand straight off to the in-app browser so the
+      // member gets the document in one tap, not two. The button behind it
+      // stays as a retry if they dismiss the sheet.
+      setLoaded(true);
+      openExternalUrl(config.url);
+      return undefined;
+    }
     // Safety timeout — in iOS WKWebView, cross-origin iframe blocks do NOT
     // fire onError; they fire onLoad with a blank document or never fire at
     // all. After 10 s with no load we treat it as an error so the
@@ -181,7 +192,35 @@ export default function LegalViewer({ page }) {
             </button>
           </div>
         )}
-        {!error && (
+        {/* NATIVE: no iframe. Capacitor serves the app from a local origin and
+            routes through a MemoryRouter, so a cross-origin iframe pointing at
+            tugympr.com can drive the TOP-LEVEL frame — the WebView navigates
+            away and the whole app cold-restarts. That is the "opening the
+            privacy policy reloads the app" report. SFSafariViewController
+            (@capacitor/browser) shows the same page over the app, keeps the
+            session alive, and dismisses back to exactly where the member was.
+
+            WEB: the iframe is fine — same browser, no MemoryRouter, no reload. */}
+        {!error && (isNative ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center gap-4">
+            <p className="text-[14px]" style={{ color: 'var(--color-text-muted)' }}>
+              {t('legal.opensInBrowser', 'This opens in a secure in-app browser.')}
+            </p>
+            <button
+              type="button"
+              onClick={() => { openExternalUrl(config.url); }}
+              style={{
+                padding: '12px 22px', borderRadius: 999,
+                background: 'var(--color-accent)',
+                color: 'var(--color-text-on-accent, #000)',
+                fontWeight: 800, fontSize: 14, letterSpacing: 0.2,
+                border: 'none',
+              }}
+            >
+              {t('legal.openInBrowser', 'Open in browser')}
+            </button>
+          </div>
+        ) : (
           <iframe
             src={config.url}
             title={t(config.titleKey, config.fallbackTitle)}
@@ -192,7 +231,7 @@ export default function LegalViewer({ page }) {
               background: 'var(--color-bg-primary)',
             }}
           />
-        )}
+        ))}
       </div>
     </div>
   );

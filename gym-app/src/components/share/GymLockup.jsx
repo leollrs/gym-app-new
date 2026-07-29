@@ -1,11 +1,22 @@
 import React from 'react';
 import { TuFont } from './ShareFormats';
+import useInlinedImage from './useInlinedImage';
 
 /**
  * Gym branding lockup for share cards.
  * Ported from the Share Workout reference (Vol. 01).
  */
 export default function GymLockup({ gym = {}, size = 'md', tone = 'light', logoUrl, style = {}, s = 1 }) {
+  // Inline the logo HERE rather than trusting the url. A remote <img> renders
+  // perfectly in the live preview and then paints NOTHING in the exported PNG,
+  // because rasterizeNode serialises the DOM into an SVG-as-image and browsers
+  // refuse to fetch external resources from inside one. Since the DOM image
+  // never errors, the initial-letter fallback below never got its chance and
+  // the card shipped with an empty badge. Resolving to a data URL means the
+  // node we rasterise contains either a self-contained image or the fallback —
+  // nothing that can quietly disappear on export.
+  const { src: inlinedLogo, failed } = useInlinedImage(logoUrl);
+  const showLogo = !!inlinedLogo && !failed;
   const light = tone === 'light';
   const fg = light ? '#fff' : '#0A0D10';
   const sub = light ? 'rgba(255,255,255,0.72)' : 'rgba(10,13,16,0.6)';
@@ -47,11 +58,11 @@ export default function GymLockup({ gym = {}, size = 'md', tone = 'light', logoU
           flexShrink: 0,
         }}
       >
-        {logoUrl ? (
+        {showLogo ? (
+          // Always a data: URL by this point — no crossOrigin, nothing to fetch.
           <img
-            src={logoUrl}
+            src={inlinedLogo}
             alt=""
-            crossOrigin="anonymous"
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (

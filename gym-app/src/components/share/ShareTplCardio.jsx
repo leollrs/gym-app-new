@@ -16,6 +16,7 @@
 import React from 'react';
 import { routeToSvgPoints, formatPace } from '../../lib/gpsTracker';
 import StaticRouteMapImage from './StaticRouteMapImage';
+import useInlinedImage from './useInlinedImage';
 
 // Brand fonts — embedded into the raster (embeddedFonts.js) so the export
 // matches the preview.
@@ -47,7 +48,13 @@ function paceDisplay(secPerKm, unit) {
 // on the export. Default 1 keeps the in-app preview behaviour for any
 // caller that doesn't pass `s` yet.
 function GymLockup({ gymName, gymLogoUrl, light, s = 1 }) {
+  // Same fix as components/share/GymLockup.jsx — inline the logo so the
+  // rasterised export contains a self-contained image or the initial, never a
+  // remote url that renders fine in preview and vanishes in the PNG.
+  // Hook must run before the early return.
+  const { src: inlinedLogo, failed } = useInlinedImage(gymLogoUrl);
   if (!gymName) return null;
+  const showLogo = !!inlinedLogo && !failed;
   const boxBg = light ? 'rgba(255,255,255,0.12)' : 'rgba(10,13,16,0.06)';
   const boxBorder = light ? 'rgba(255,255,255,0.2)' : 'rgba(10,13,16,0.12)';
   const initial = (gymName.trim()[0] || 'G').toUpperCase();
@@ -64,18 +71,17 @@ function GymLockup({ gymName, gymLogoUrl, light, s = 1 }) {
       <div
         style={{
           width: 18 * s, height: 18 * s, borderRadius: 5 * s,
-          background: gymLogoUrl ? 'transparent' : boxBg,
-          border: gymLogoUrl ? 'none' : `${1 * s}px solid ${boxBorder}`,
+          background: showLogo ? 'transparent' : boxBg,
+          border: showLogo ? 'none' : `${1 * s}px solid ${boxBorder}`,
           overflow: 'hidden',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
         }}
       >
-        {gymLogoUrl ? (
+        {showLogo ? (
           <img
-            src={gymLogoUrl}
+            src={inlinedLogo}
             alt=""
-            crossOrigin="anonymous"
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
@@ -135,6 +141,12 @@ export default function ShareTplCardio({
   const sessionId = safeData.sessionId || safeData.session_id || safeData.id || null;
 
   const polyPoints = routeToSvgPoints(route, 900, 520, 20);
+  // A route needs actual MOVEMENT to be worth drawing. A treadmill session or a
+  // run that never left the start still logs a couple of near-identical GPS
+  // points, which passes `route.length >= 2` but gives the map renderer a
+  // degenerate bounding box — it fails, and the card exports with a dead black
+  // rectangle where the map should be. Gate on distance instead.
+  const hasDrawableRoute = route.length >= 2 && distanceKm > 0.02;
 
   const distLabel = displayDistance(distanceKm, unit);
   const paceLabel = paceDisplay(avgPaceSecPerKm, unit);
@@ -191,7 +203,7 @@ export default function ShareTplCardio({
                 boxShadow: `0 ${8 * s}px ${24 * s}px rgba(0,0,0,0.4)`,
               }}
             >
-              {route.length >= 2 ? (
+              {hasDrawableRoute ? (
                 <StaticRouteMapImage
                   key={`map-${mapVersion}-${light ? 'l' : 'd'}`}
                   route={route} width={colW} height={mapSide}
@@ -297,7 +309,7 @@ export default function ShareTplCardio({
               boxShadow: `0 ${10 * s}px ${30 * s}px rgba(0,0,0,0.45), inset 0 0 0 ${1 * s}px rgba(255,255,255,0.06)`,
             }}
           >
-            {route.length >= 2 ? (
+            {hasDrawableRoute ? (
               <StaticRouteMapImage
                 key={`map-${mapVersion}-${light ? 'l' : 'd'}`}
                 route={route} width={mapW} height={mapH}

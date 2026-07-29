@@ -335,6 +335,12 @@ const WorkoutBuilder = () => {
   const [swapReason, setSwapReason] = useState(null);
 
   const [name, setName]                       = useState(t('workoutBuilder.newWorkoutDefault', 'New Workout'));
+  // Program-generated routines are stored as "Auto: Iron Crown". The prefix is
+  // load-bearing in the DB — ownership, cleanup and the week resolver all key
+  // off `name.startsWith('Auto:')` — but it must never reach the member: "Auto"
+  // reads as machine-made, i.e. not built for them. So it is split off here,
+  // the field edits the bare name, and it is re-attached on save.
+  const autoPrefixRef = useRef('');
   const [routineExercises, setRoutineExercises] = useState([]);
   const [originalExercises, setOriginalExercises] = useState([]);
   const [selectedIndices, setSelectedIndices]   = useState(new Set());
@@ -361,7 +367,10 @@ const WorkoutBuilder = () => {
         .single();
 
       if (!err && data) {
-        setName(data.name);
+        const rawName = data.name || '';
+        const prefix = rawName.match(/^Auto:\s*/)?.[0] || '';
+        autoPrefixRef.current = prefix;
+        setName(rawName.slice(prefix.length));
         const exs = (data.routine_exercises || [])
           .sort((a, b) => a.position - b.position)
           .map(re => ({
@@ -543,10 +552,11 @@ const WorkoutBuilder = () => {
     setSaving(true);
     setError('');
     try {
-      // Update routine name
+      // Update routine name — re-attach the hidden "Auto: " prefix so the
+      // routine keeps being recognised as program-owned.
       const { error: nameErr } = await supabase
         .from('routines')
-        .update({ name, updated_at: new Date().toISOString() })
+        .update({ name: `${autoPrefixRef.current}${name}`, updated_at: new Date().toISOString() })
         .eq('id', id);
       if (nameErr) throw nameErr;
 
@@ -686,16 +696,27 @@ const WorkoutBuilder = () => {
 
         {/* Save lives on the sticky bottom bar ("Save and Done") + a quiet
             "saved ✓" inline indicator here when the autosave round trip
-            completes. One canonical write action; the header just confirms. */}
-        {saved && (
-          <span
-            className="font-bold text-[12px] flex-shrink-0 inline-flex items-center gap-1"
-            style={{ color: '#10B981' }}
-            aria-live="polite"
-          >
-            ✓ {t('workoutBuilder.saved')}
-          </span>
-        )}
+            completes. One canonical write action; the header just confirms.
+
+            The wrapper is ALWAYS rendered at the back button's width. Without
+            it the centred title only had the 40px button on its left and
+            nothing on its right, so "centred in the remaining space" sat 20px
+            right of the screen's true centre — and it jumped again whenever the
+            "saved ✓" chip appeared. A matching spacer makes the header
+            symmetric and stops the title moving. */}
+        <div className="flex-shrink-0 relative flex items-center" style={{ width: 40 }}>
+          {saved && (
+            <span
+              className="font-bold text-[12px] inline-flex items-center gap-1 whitespace-nowrap"
+              // Absolute so the chip's own width never re-centres the title
+              // when it fades in and out.
+              style={{ color: '#10B981', position: 'absolute', right: 0 }}
+              aria-live="polite"
+            >
+              ✓ {t('workoutBuilder.saved')}
+            </span>
+          )}
+        </div>
       </header>
 
       {/* Scrollable body */}

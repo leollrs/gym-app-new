@@ -403,6 +403,86 @@ async function checkWorkoutReminder(supabase: ReturnType<typeof createClient>, m
   }
 }
 
+// ── Class reminders ─────────────────────────────────────────
+// A member books a class and then has to remember it themselves. Two nudges:
+// the evening BEFORE (so they can still cancel and free the spot for the
+// waitlist) and the morning OF.
+//
+// Gated on notif_workout_reminders — the same "transactional" bucket as the
+// workout nudge, which is what a class you personally booked is. There is no
+// separate class toggle; adding one would ship a preference the Settings screen
+// doesn't render, so a member could never turn it back on.
+//
+// Dedup keys carry the booking id AND the date, so a recurring weekly booking
+// still fires each week while a re-run of this cron within the hour does not
+// double-send. Cancelled bookings are excluded by the status filter, so
+// cancelling before the reminder window means no ping at all.
+async function checkClassReminders(
+  supabase: ReturnType<typeof createClient>,
+  member: Member,
+  today: string,
+  when: 'today' | 'tomorrow',
+) {
+  if (member.notif_workout_reminders === false) return;
+
+  // `today` is already the member's LOCAL calendar date (Intl, member.timezone),
+  // so tomorrow is that date +1 day — computed on the date string, not on the
+  // server's clock, which could be a day ahead or behind.
+  const targetDate = when === 'today'
+    ? today
+    : (() => {
+        const d = new Date(`${today}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 1);
+        return d.toISOString().slice(0, 10);
+      })();
+
+  const { data: bookings } = await supabase
+    .from('gym_class_bookings')
+    .select('id, booking_date, status, gym_class_schedules(start_time, gym_classes(name, name_es))')
+    .eq('profile_id', member.id)
+    .eq('booking_date', targetDate)
+    .in('status', ['confirmed', 'attended'])
+    .limit(5);
+
+  if (!bookings?.length) return;
+
+  const lang = (member.language || 'en').startsWith('es') ? 'es' : 'en';
+
+  for (const raw of bookings) {
+    // The nested embed makes supabase-js infer the row as `never`, the same way
+    // it does for every other embedded select in this file — read through one
+    // cast rather than sprinkling them per property.
+    const b = raw as Record<string, any>;
+    const sched = b.gym_class_schedules;
+    const cls = sched?.gym_classes;
+    if (!cls) continue;
+    // Attended already → they showed up; nothing to remind them about.
+    if (b.status === 'attended') continue;
+
+    const className = (lang === 'es' && cls.name_es) ? cls.name_es : cls.name;
+    const startTime = String(sched.start_time || '').slice(0, 5);
+
+    const title = lang === 'es'
+      ? (when === 'today' ? 'Tienes clase hoy' : 'Tienes clase mañana')
+      : (when === 'today' ? 'You have a class today' : 'You have a class tomorrow');
+    const body = lang === 'es'
+      ? `${className} a las ${startTime}.${when === 'tomorrow' ? ' Si no puedes ir, cancela para liberar el cupo.' : ''}`
+      : `${className} at ${startTime}.${when === 'tomorrow' ? " Can't make it? Cancel to free the spot." : ''}`;
+
+    const dedupKey = `class_${when}_${b.id}_${targetDate}`;
+    const inserted = await insertNotif(
+      supabase, member.id, member.gym_id, 'class_reminder', title, body, dedupKey,
+    );
+    if (inserted) {
+      await sendPush(
+        supabase, member.id, title, body,
+        { route: '/classes', type: 'class_reminder' },
+        isQuietHours(member.timezone),
+      );
+    }
+  }
+}
+
 async function checkStreakAtRisk(supabase: ReturnType<typeof createClient>, member: Member, today: string) {
   if (member.notif_streak_alerts === false) return;
 
@@ -839,6 +919,17 @@ Deno.serve(async (req) => {
           // Morning window (8–10am local): rest-day acknowledgement
           if (memberHour >= 8 && memberHour <= 10) {
             await checkRestDay(supabase, member, memberToday, memberDow);
+          }
+
+          // Class you booked for TODAY — early enough to still get there.
+          if (memberHour >= 7 && memberHour <= 9) {
+            await checkClassReminders(supabase, member, memberToday, 'today');
+          }
+
+          // Class TOMORROW — evening before, while cancelling still frees the
+          // spot for whoever is on the waitlist.
+          if (memberHour >= 18 && memberHour <= 20) {
+            await checkClassReminders(supabase, member, memberToday, 'tomorrow');
           }
 
           // Late morning / early afternoon (11am–1pm local): nutrition nudge if untracked

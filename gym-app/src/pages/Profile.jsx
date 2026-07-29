@@ -10,7 +10,7 @@ import {
   UtensilsCrossed, QrCode, Gift, Settings, ChevronRight, Trash2, AlertTriangle, Heart,
   Camera, X, Loader2, Sprout, Zap, Activity, Sparkles, Building2,
   Target, TrendingUp, UserPlus, Users, Brain, Medal, Gem, Rocket, RotateCw, CalendarCheck, Weight,
-  Share2, Copy, Link, Clock, Repeat,
+  Share2, Copy, Link, Clock, Repeat, ChevronDown,
 } from 'lucide-react';
 import ViewSwitcherModal from '../components/ViewSwitcherModal';
 import {
@@ -87,6 +87,41 @@ const GOALS = [
 ];
 
 const FREQUENCIES = [1, 2, 3, 4, 5, 6, 7];
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_NAME_TO_DOW = Object.fromEntries(DAY_NAMES.map((n, i) => [n, i]));
+// Order we ADD days in when the member picks a frequency instead of days:
+// Mon/Wed/Fri first (the classic spread), then Tue/Thu/Sat, weekend last.
+const DAY_PREFERENCE = [1, 3, 5, 2, 4, 6, 0];
+
+/**
+ * Grow or shrink a preferred-days list to exactly `n` entries, keeping what the
+ * member already chose. Frequency and the day list are the same setting; this
+ * is what keeps them from disagreeing when they edit either one.
+ * Closed days are used last — we only avoid them when WE are choosing.
+ */
+function resizeTrainingDays(current, n, closedDows = new Set()) {
+  const kept = DAY_NAMES.filter((d) => (current || []).includes(d));
+  if (kept.length === n) return kept;
+  if (kept.length > n) {
+    // Trim from the least-preferred end so a 6→3 drop leaves Mon/Wed/Fri, not
+    // whatever three happened to sort first.
+    const ranked = [...kept].sort(
+      (a, b) => DAY_PREFERENCE.indexOf(DAY_NAME_TO_DOW[a]) - DAY_PREFERENCE.indexOf(DAY_NAME_TO_DOW[b]),
+    );
+    return DAY_NAMES.filter((d) => ranked.slice(0, n).includes(d));
+  }
+  const have = new Set(kept);
+  const candidates = [
+    ...DAY_PREFERENCE.filter((dow) => !closedDows.has(dow)),
+    ...DAY_PREFERENCE.filter((dow) => closedDows.has(dow)),
+  ];
+  for (const dow of candidates) {
+    if (have.size >= n) break;
+    have.add(DAY_NAMES[dow]);
+  }
+  return DAY_NAMES.filter((d) => have.has(d));
+}
 
 const EQUIPMENT_OPTIONS = [
   { value: 'Barbell',         labelKey: 'barbell' },
@@ -367,6 +402,11 @@ const Profile = () => {
   const [onboarding, setOnboarding]     = useCachedState(`${cacheKey}-onboarding`, null);
   const [editingGoals, setEditingGoals] = useState(false);
   const [goalsDraft, setGoalsDraft]     = useState(null);
+  // Weekdays the gym is shut. Advisory only — the generator honours the
+  // member's chosen days literally now, so the editor has to be the place that
+  // tells them a day is closed rather than quietly overriding it later.
+  const [closedDows, setClosedDows]     = useState(() => new Set());
+  const [closedDayNotice, setClosedDayNotice] = useState(null); // day name or null
   const [savingGoals, setSavingGoals]   = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [shareAchievement, setShareAchievement]   = useState(null);
@@ -383,8 +423,52 @@ const Profile = () => {
   const [deleteInput, setDeleteInput] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  // Activity pagination
-  const [visibleActivity, setVisibleActivity] = useState(10);
+  // Activity pagination — 5 to start (10 pushed everything else off the
+  // screen), then +10 per tap.
+  const [visibleActivity, setVisibleActivity] = useState(5);
+
+  // Expanded session detail. The list query only pulls session headers
+  // (name/date/volume/duration) — the actual work done is in
+  // session_exercises → session_sets, which is far too much to fetch for 50
+  // sessions up front. So it's lazy: one query the first time a row is
+  // opened, cached by session id for the rest of the visit.
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
+  const [sessionDetails, setSessionDetails] = useState({}); // id → exercises[]
+  const [loadingDetailId, setLoadingDetailId] = useState(null);
+
+  const toggleSessionDetail = async (sessionId) => {
+    if (expandedSessionId === sessionId) { setExpandedSessionId(null); return; }
+    setExpandedSessionId(sessionId);
+    if (sessionDetails[sessionId]) return;
+    setLoadingDetailId(sessionId);
+    try {
+      const { data, error } = await supabase
+        .from('session_exercises')
+        .select('id, snapshot_name, position, session_sets(set_number, weight_lbs, reps, is_completed, is_pr)')
+        .eq('session_id', sessionId)
+        .order('position', { ascending: true });
+      if (error) throw error;
+      // A routine can list the same movement twice; merge so the member sees
+      // each exercise once with all of its sets (same rule as WorkoutLog).
+      const byKey = new Map();
+      for (const ex of data ?? []) {
+        const key = (ex.snapshot_name || '').trim().toLowerCase() || ex.id;
+        const sets = (ex.session_sets ?? []).filter(s => s.is_completed);
+        if (byKey.has(key)) byKey.get(key).sets.push(...sets);
+        else byKey.set(key, { id: ex.id, name: ex.snapshot_name, sets: [...sets] });
+      }
+      const merged = [...byKey.values()].map(ex => ({
+        ...ex,
+        sets: ex.sets.sort((a, b) => (a.set_number || 0) - (b.set_number || 0)),
+      }));
+      setSessionDetails(prev => ({ ...prev, [sessionId]: merged }));
+    } catch (err) {
+      logger.error('Profile: failed to load session detail:', err);
+      setSessionDetails(prev => ({ ...prev, [sessionId]: [] }));
+    } finally {
+      setLoadingDetailId(null);
+    }
+  };
 
   // Friend code & referral state
   const [friendCode, setFriendCode] = useState(profile?.friend_code ?? null);
@@ -403,6 +487,17 @@ const Profile = () => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, [showGymInfo]);
+
+  // Gym closures, for the training-days editor.
+  useEffect(() => {
+    if (!profile?.gym_id) return undefined;
+    let cancelled = false;
+    supabase.from('gym_hours').select('day_of_week, is_closed').eq('gym_id', profile.gym_id)
+      .then(({ data }) => {
+        if (!cancelled) setClosedDows(new Set((data || []).filter(h => h.is_closed).map(h => h.day_of_week)));
+      });
+    return () => { cancelled = true; };
+  }, [profile?.gym_id]);
 
   // Declared before the load effect because that effect lists refreshKey in
   // its deps (const is not hoisted — referencing it earlier would TDZ-throw).
@@ -1135,7 +1230,9 @@ const Profile = () => {
                 </p>
               </div>
 
-              {/* Session list */}
+              {/* Session list — each row opens to show what was actually
+                  logged. The row used to be a dead div: date, duration and a
+                  volume number, with no way to see the workout itself. */}
               {sessions.slice(0, visibleActivity).map((s) => {
                 const date = new Date(s.completed_at);
                 const lang = i18n.language || 'en';
@@ -1143,50 +1240,119 @@ const Profile = () => {
                 const timeStr = date.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' });
                 const volume = parseFloat(s.total_volume_lbs) || 0;
                 const durationMin = s.duration_seconds ? Math.round(s.duration_seconds / 60) : null;
+                const isOpen = expandedSessionId === s.id;
+                const detail = sessionDetails[s.id];
                 return (
-                  <div
-                    key={s.id}
-                    className="rounded-[22px] bg-[var(--color-bg-card)] px-4 py-3.5 flex items-center gap-3.5"
-                  >
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'var(--color-accent-alpha, rgba(212,175,55,0.12))' }}
+                  <div key={s.id} className="rounded-[22px] bg-[var(--color-bg-card)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleSessionDetail(s.id)}
+                      aria-expanded={isOpen}
+                      className="w-full px-4 py-3.5 flex items-center gap-3.5 text-left active:scale-[0.99] transition-transform"
                     >
-                      <Dumbbell size={18} style={{ color: 'var(--color-accent, #2EC4C4)' }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {s.name || t('profile.workouts')}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                          {dateStr} {timeStr}
-                        </span>
-                        {durationMin != null && (
-                          <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                            <Clock size={11} /> {durationMin} min
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'var(--color-accent-alpha, rgba(212,175,55,0.12))' }}
+                      >
+                        <Dumbbell size={18} style={{ color: 'var(--color-accent, #2EC4C4)' }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                          {s.name || t('profile.workouts')}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                            {dateStr} {timeStr}
                           </span>
+                          {durationMin != null && (
+                            <span className="flex items-center gap-1 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                              <Clock size={11} /> {durationMin} min
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {volume > 0 && (
+                        <p className="text-[13px] font-bold flex-shrink-0" style={{ color: 'var(--color-accent, #2EC4C4)' }}>
+                          {formatStatNumber(Math.round(volume))} <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>lbs</span>
+                        </p>
+                      )}
+                      <ChevronDown
+                        size={16}
+                        className="flex-shrink-0 transition-transform duration-200"
+                        style={{ color: 'var(--color-text-subtle)', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      />
+                    </button>
+
+                    {isOpen && (
+                      <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        {loadingDetailId === s.id && !detail ? (
+                          <p className="text-[12px] pt-3" style={{ color: 'var(--color-text-subtle)' }}>
+                            {t('profile.loadingActivity', 'Loading activity')}…
+                          </p>
+                        ) : !detail || detail.length === 0 ? (
+                          <p className="text-[12px] pt-3" style={{ color: 'var(--color-text-subtle)' }}>
+                            {t('profile.noSetsLogged', 'No sets logged for this workout.')}
+                          </p>
+                        ) : (
+                          <div className="flex flex-col gap-3 pt-3">
+                            {detail.map((ex) => (
+                              <div key={ex.id}>
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                                    {ex.name}
+                                  </p>
+                                  {ex.sets.some(set => set.is_pr) && (
+                                    <Trophy size={12} style={{ color: 'var(--color-accent, #2EC4C4)' }} />
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {ex.sets.length === 0 ? (
+                                    <span className="text-[11.5px]" style={{ color: 'var(--color-text-subtle)' }}>—</span>
+                                  ) : ex.sets.map((set, si) => (
+                                    <span
+                                      key={`${ex.id}-${si}`}
+                                      className="px-2 py-1 rounded-lg text-[11.5px] font-semibold"
+                                      style={{
+                                        background: set.is_pr
+                                          ? 'color-mix(in srgb, var(--color-accent) 16%, transparent)'
+                                          : 'var(--color-surface-hover, rgba(127,127,127,0.08))',
+                                        color: set.is_pr ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                                        fontVariantNumeric: 'tabular-nums',
+                                      }}
+                                    >
+                                      {Math.round(parseFloat(set.weight_lbs) || 0)} × {set.reps ?? 0}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    </div>
-                    {volume > 0 && (
-                      <p className="text-[13px] font-bold flex-shrink-0" style={{ color: 'var(--color-accent, #2EC4C4)' }}>
-                        {formatStatNumber(Math.round(volume))} <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>lbs</span>
-                      </p>
                     )}
                   </div>
                 );
               })}
 
-              {/* Show more button */}
+              {/* Show more — a real button, not a ghost outline. The old one was
+                  a thin border on the page background and read as a divider. */}
               {visibleActivity < sessions.length && (
                 <button
                   type="button"
                   onClick={() => setVisibleActivity(prev => prev + 10)}
-                  className="w-full py-3.5 rounded-2xl border border-[var(--color-border-subtle)] text-[14px] font-semibold hover:bg-[var(--color-bg-card)] transition-colors"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl text-[14px] font-bold active:scale-[0.98] transition-transform"
+                  style={{
+                    height: 50,
+                    background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+                    color: 'var(--color-accent)',
+                  }}
                 >
+                  <ChevronDown size={16} strokeWidth={2.6} />
                   {t('profile.showMore')}
+                  <span className="text-[12px] font-semibold" style={{ opacity: 0.75 }}>
+                    ({sessions.length - visibleActivity})
+                  </span>
                 </button>
               )}
             </>
@@ -1306,167 +1472,7 @@ const Profile = () => {
       {/* ── Goals Tab ────────────────────────────────────────────────────── */}
       {activeTab === 'goals' && (
         <div className="animate-fade-in">
-          {editingGoals && goalsDraft ? (
-            /* ── EDIT MODE ─────────────────────────────────────────────── */
-            <div className="flex flex-col gap-6 pb-2">
-
-              {/* Fitness Level */}
-              <div>
-                <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.fitnessLevel')}</h3>
-                <div className="flex flex-col gap-3">
-                  {FITNESS_LEVELS.map(l => (
-                    <button key={l.value} type="button"
-                      onClick={() => setGoalsDraft(d => ({ ...d, fitness_level: l.value }))}
-                      className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
-                        goalsDraft.fitness_level === l.value
-                          ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)]'
-                          : 'bg-[var(--color-bg-card)] border-[var(--color-border-subtle)]'
-                      }`}
-                    >
-                      <l.icon size={22} className="text-[var(--color-accent)] flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-[15px] ${goalsDraft.fitness_level === l.value ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>{t(`profile_options.fitnessLevels.${l.value}`)}</p>
-                        <p className="text-[12px] mt-0.5 text-[var(--color-text-muted)]">{t(`profile_options.fitnessLevels.${l.value}_desc`)}</p>
-                      </div>
-                      {goalsDraft.fitness_level === l.value && <Check size={16} className="text-[var(--color-accent)] flex-shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Primary Goal */}
-              <div>
-                <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.primaryGoal')}</h3>
-                <div className="flex flex-col gap-3">
-                  {GOALS.map(g => (
-                    <button key={g.value} type="button"
-                      onClick={() => setGoalsDraft(d => ({ ...d, primary_goal: g.value }))}
-                      className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
-                        goalsDraft.primary_goal === g.value
-                          ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)]'
-                          : 'bg-[var(--color-bg-card)] border-[var(--color-border-subtle)]'
-                      }`}
-                    >
-                      <g.icon size={22} className="text-[var(--color-accent)] flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-[15px] ${goalsDraft.primary_goal === g.value ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>{t(`profile_options.goals.${g.value}`)}</p>
-                        <p className="text-[12px] mt-0.5 text-[var(--color-text-muted)]">{t(`profile_options.goals.${g.value}_desc`)}</p>
-                      </div>
-                      {goalsDraft.primary_goal === g.value && <Check size={16} className="text-[var(--color-accent)] flex-shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Training Days */}
-              <div>
-                <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.daysPerWeek')}</h3>
-                <div className="flex gap-2">
-                  {FREQUENCIES.map(n => (
-                    <button key={n} type="button"
-                      onClick={() => setGoalsDraft(d => ({ ...d, training_days_per_week: n }))}
-                      className={`flex-1 py-3 rounded-xl text-[15px] font-bold transition-all border ${
-                        goalsDraft.training_days_per_week === n
-                          ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] text-[var(--color-accent)]'
-                          : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Preferred Training Days */}
-              <div>
-                <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-2" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.trainingDays')}</h3>
-                <p className="text-[11px] text-[var(--color-text-muted)] mb-3">{t('profile.trainingDaysHint')}</p>
-                <div className="flex gap-1.5">
-                  {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(day => {
-                    const short = t(`profile.dayShort.${day}`);
-                    const active = (goalsDraft.preferred_training_days ?? []).includes(day);
-                    return (
-                      <button key={day} type="button"
-                        onClick={() => setGoalsDraft(d => ({
-                          ...d,
-                          preferred_training_days: active
-                            ? (d.preferred_training_days || []).filter(dd => dd !== day)
-                            : [...(d.preferred_training_days || []), day],
-                        }))}
-                        className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all border ${
-                          active
-                            ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] text-[var(--color-accent)]'
-                            : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
-                        }`}
-                      >
-                        {short}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Equipment */}
-              <div>
-                <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.availableEquipment')}</h3>
-                <div className="flex flex-wrap gap-2">
-                  {EQUIPMENT_OPTIONS.map(eq => {
-                    const active = (goalsDraft.available_equipment ?? []).includes(eq.value);
-                    return (
-                      <button key={eq.value} type="button"
-                        onClick={() => setGoalsDraft(d => ({
-                          ...d,
-                          available_equipment: active
-                            ? (d.available_equipment ?? []).filter(e => e !== eq.value)
-                            : [...(d.available_equipment ?? []), eq.value],
-                        }))}
-                        className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
-                          active
-                            ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] text-[var(--color-accent)]'
-                            : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
-                        }`}
-                      >
-                        {t(`profile_options.equipment.${eq.labelKey}`)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Injuries */}
-              <div>
-                <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.injuriesLimitations')}</h3>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {INJURY_OPTIONS.map(inj => {
-                    const active = (goalsDraft.injury_areas ?? []).includes(inj.value);
-                    return (
-                      <button key={inj.value} type="button"
-                        onClick={() => setGoalsDraft(d => ({
-                          ...d,
-                          injury_areas: active
-                            ? (d.injury_areas ?? []).filter(v => v !== inj.value)
-                            : [...(d.injury_areas ?? []), inj.value],
-                        }))}
-                        className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
-                          active
-                            ? 'bg-red-900/30 border-red-700 text-red-400'
-                            : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
-                        }`}
-                      >
-                        {t(`profile_options.injuries.${inj.labelKey}`)}
-                      </button>
-                    );
-                  })}
-                </div>
-                {(goalsDraft.injury_areas ?? []).length === 0 && (
-                  <p className="text-[11px] text-[var(--color-text-muted)]">{t('profile.nothingSelectedAllExercises')}</p>
-                )}
-              </div>
-
-              {/* Spacer so last field isn't hidden behind sticky bar */}
-              <div className="h-24" />
-            </div>
-          ) : (
+          {(
             /* ── VIEW MODE ─────────────────────────────────────────────── */
             <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4">
               {loading ? (
@@ -1588,40 +1594,289 @@ const Profile = () => {
                       setGoalsDraft({ ...onboarding, injury_areas, preferred_training_days: profile?.preferred_training_days || [] });
                       setEditingGoals(true);
                     }}
-                    className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl border border-[var(--color-border-subtle)] font-semibold text-[14px] text-[var(--color-text-muted)] bg-[var(--color-bg-card)] hover:bg-[var(--color-bg-deep)] transition-colors"
+                    // Solid accent, not a muted grey outline. It is the only
+                    // action on this tab and it looked like a disabled panel.
+                    className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl font-bold text-[14.5px] transition-transform active:scale-[0.99]"
+                    style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
                   >
-                    <Edit2 size={15} /> {t('profile.editGoalsSetup')}
+                    <Edit2 size={15} strokeWidth={2.4} /> {t('profile.editGoalsSetup')}
                   </button>
                 </>
               )}
             </div>
           )}
-
-          {/* ── Sticky save bar ────────────────────────────────────── */}
-          {/* Portaled to <body>: the enclosing `.animate-fade-in` wrapper ends its
-              keyframe on `transform: translateY(0)` with `animation-fill-mode:
-              forwards`, so it keeps a non-`none` transform forever — which makes
-              it the containing block for `position: fixed`. Left in place, this bar
-              parked at the END of the long goals form (user had to scroll to the
-              bottom to find Save) and was only as wide as the 480px column. */}
-          {editingGoals && goalsDraft && createPortal(
-            <div className="fixed bottom-[56px] md:bottom-0 left-0 right-0 z-50 flex gap-3 px-4 py-3 md:pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom)))] bg-[var(--color-bg-primary)] border-t border-[var(--color-border-subtle)]">
-              <button type="button"
-                onClick={() => setEditingGoals(false)}
-                className="flex-1 py-3.5 rounded-xl border border-[var(--color-border-subtle)] text-[15px] font-semibold text-[var(--color-text-primary)] bg-[var(--color-bg-elevated)]">
-                {t('profile.cancel')}
-              </button>
-              <button type="button"
-                onClick={saveGoals}
-                disabled={savingGoals}
-                className="flex-1 py-3.5 rounded-xl text-[15px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50"
-                style={{ background: 'var(--color-accent)' }}>
-                {savingGoals ? t('profile.savingEllipsis') : t('profile.saveChanges')}
-              </button>
-            </div>,
-            document.body,
-          )}
         </div>
+      )}
+
+      {/* ── Goals editor — FULL-SCREEN MODAL ──────────────────────────────
+          It used to replace the tab in place, which meant its Save/Cancel bar
+          had to be a fixed strip offset by a hardcoded `bottom-[56px]` — a
+          guess at the height of the bottom nav that is wrong on any device
+          with a home indicator, so the bar sat ON TOP of the nav. A modal owns
+          the whole screen: the nav is covered, the footer sits on the real
+          bottom edge with the safe-area inset, and closing it returns you to
+          the tab you were already on instead of re-rendering it. */}
+      {editingGoals && goalsDraft && createPortal(
+        <div className="fixed inset-0 z-[120] flex flex-col" style={{ background: 'var(--color-bg-primary)' }} role="dialog" aria-modal="true">
+          <div
+            className="flex items-center gap-2 px-4 flex-shrink-0 border-b"
+            style={{ paddingTop: 'calc(12px + env(safe-area-inset-top,0px))', paddingBottom: 12, borderColor: 'var(--color-border-subtle)' }}
+          >
+            <button
+              type="button"
+              onClick={() => setEditingGoals(false)}
+              aria-label={t('profile.cancel')}
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
+            >
+              <X size={19} />
+            </button>
+            <h2
+              className="flex-1 text-[17px] font-extrabold truncate"
+              style={{ color: 'var(--color-text-primary)', fontFamily: DISPLAY_FONT, letterSpacing: -0.4 }}
+            >
+              {t('profile.editGoalsSetup')}
+            </h2>
+            {/* Fixed-width spacer keeps the title optically centred against the close button. */}
+            <div className="w-10 flex-shrink-0" />
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+              {/* A bare block comment used to sit here. Inside the ternary's
+                  expression container it was a real JS comment; moving the
+                  block into a JSX element turned it into plain TEXT, so the
+                  sheet literally printed "EDIT MODE" with a long rule at the
+                  top — and that rule forced the page to scroll sideways. */}
+              <div className="flex flex-col gap-6 pb-2">
+
+                {/* Fitness Level */}
+                <div>
+                  <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.fitnessLevel')}</h3>
+                  <div className="flex flex-col gap-3">
+                    {FITNESS_LEVELS.map(l => (
+                      <button key={l.value} type="button"
+                        onClick={() => setGoalsDraft(d => ({ ...d, fitness_level: l.value }))}
+                        className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
+                          goalsDraft.fitness_level === l.value
+                            ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)]'
+                            : 'bg-[var(--color-bg-card)] border-[var(--color-border-subtle)]'
+                        }`}
+                      >
+                        <l.icon size={22} className="text-[var(--color-accent)] flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-[15px] ${goalsDraft.fitness_level === l.value ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>{t(`profile_options.fitnessLevels.${l.value}`)}</p>
+                          <p className="text-[12px] mt-0.5 text-[var(--color-text-muted)]">{t(`profile_options.fitnessLevels.${l.value}_desc`)}</p>
+                        </div>
+                        {goalsDraft.fitness_level === l.value && <Check size={16} className="text-[var(--color-accent)] flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Primary Goal */}
+                <div>
+                  <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.primaryGoal')}</h3>
+                  <div className="flex flex-col gap-3">
+                    {GOALS.map(g => (
+                      <button key={g.value} type="button"
+                        onClick={() => setGoalsDraft(d => ({ ...d, primary_goal: g.value }))}
+                        className={`w-full text-left flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all ${
+                          goalsDraft.primary_goal === g.value
+                            ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)]'
+                            : 'bg-[var(--color-bg-card)] border-[var(--color-border-subtle)]'
+                        }`}
+                      >
+                        <g.icon size={22} className="text-[var(--color-accent)] flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-[15px] ${goalsDraft.primary_goal === g.value ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>{t(`profile_options.goals.${g.value}`)}</p>
+                          <p className="text-[12px] mt-0.5 text-[var(--color-text-muted)]">{t(`profile_options.goals.${g.value}_desc`)}</p>
+                        </div>
+                        {goalsDraft.primary_goal === g.value && <Check size={16} className="text-[var(--color-accent)] flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Training Days */}
+                <div>
+                  <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.daysPerWeek')}</h3>
+                  <div className="flex gap-2">
+                    {FREQUENCIES.map(n => (
+                      <button key={n} type="button"
+                        onClick={() => setGoalsDraft(d => ({
+                          ...d,
+                          training_days_per_week: n,
+                          // Frequency and the day list are ONE setting shown two
+                          // ways — they used to drift freely, so you could say
+                          // "3 days" while six days were lit, and the generator
+                          // then built to one number against the other's days.
+                          // Keep the days you already picked and add or trim to
+                          // land on n, preferring Mon/Wed/Fri then Tue/Thu/Sat,
+                          // and skipping days the gym is closed when we're the
+                          // ones choosing.
+                          preferred_training_days: resizeTrainingDays(d.preferred_training_days || [], n, closedDows),
+                        }))}
+                        className={`flex-1 py-3 rounded-xl text-[15px] font-bold transition-all border ${
+                          goalsDraft.training_days_per_week === n
+                            ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] text-[var(--color-accent)]'
+                            : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Preferred Training Days */}
+                <div>
+                  <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-2" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.trainingDays')}</h3>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mb-3">{t('profile.trainingDaysHint')}</p>
+                  {closedDayNotice && (
+                    <div
+                      className="mb-3 rounded-xl px-3.5 py-3 text-[12.5px] leading-relaxed flex items-start gap-2"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)',
+                        color: 'var(--color-text-muted)',
+                      }}
+                      role="status"
+                    >
+                      <span className="flex-1">
+                        {t('profile.gymClosedOnDay', {
+                          day: t(`profile.dayShort.${closedDayNotice}`),
+                          defaultValue: `Heads up — the gym is closed on ${t(`profile.dayShort.${closedDayNotice}`)}. We'll still plan a workout for that day, you just won't be able to check in.`,
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setClosedDayNotice(null)}
+                        aria-label={t('profile.cancel')}
+                        className="flex-shrink-0 -mt-0.5"
+                        style={{ color: 'var(--color-text-subtle)' }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(day => {
+                      const short = t(`profile.dayShort.${day}`);
+                      const active = (goalsDraft.preferred_training_days ?? []).includes(day);
+                      return (
+                        <button key={day} type="button"
+                          onClick={() => {
+                            // Turning ON a day the gym is shut → say so. It is
+                            // still allowed (people train elsewhere), but it
+                            // must not happen silently: the generator honours
+                            // this list literally now.
+                            if (!active && closedDows.has(DAY_NAME_TO_DOW[day])) setClosedDayNotice(day);
+                            setGoalsDraft(d => {
+                              const next = active
+                                ? (d.preferred_training_days || []).filter(dd => dd !== day)
+                                : [...(d.preferred_training_days || []), day];
+                              // The count IS the frequency. Keeping them in sync
+                              // here is what stops the two controls disagreeing.
+                              return { ...d, preferred_training_days: next, training_days_per_week: next.length || 1 };
+                            });
+                          }}
+                          className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-all border ${
+                            active
+                              ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] text-[var(--color-accent)]'
+                              : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
+                          }`}
+                          style={closedDows.has(DAY_NAME_TO_DOW[day]) && !active
+                            ? { textDecoration: 'line-through', opacity: 0.6 } : undefined}
+                        >
+                          {short}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Equipment */}
+                <div>
+                  <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.availableEquipment')}</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {EQUIPMENT_OPTIONS.map(eq => {
+                      const active = (goalsDraft.available_equipment ?? []).includes(eq.value);
+                      return (
+                        <button key={eq.value} type="button"
+                          onClick={() => setGoalsDraft(d => ({
+                            ...d,
+                            available_equipment: active
+                              ? (d.available_equipment ?? []).filter(e => e !== eq.value)
+                              : [...(d.available_equipment ?? []), eq.value],
+                          }))}
+                          className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                            active
+                              ? 'bg-[var(--color-bg-elevated)] border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] text-[var(--color-accent)]'
+                              : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
+                          }`}
+                        >
+                          {t(`profile_options.equipment.${eq.labelKey}`)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Injuries */}
+                <div>
+                  <h3 className="text-[13px] text-[var(--color-text-muted)] uppercase tracking-widest mb-3" style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, letterSpacing: '0.05em' }}>{t('profile.injuriesLimitations')}</h3>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {INJURY_OPTIONS.map(inj => {
+                      const active = (goalsDraft.injury_areas ?? []).includes(inj.value);
+                      return (
+                        <button key={inj.value} type="button"
+                          onClick={() => setGoalsDraft(d => ({
+                            ...d,
+                            injury_areas: active
+                              ? (d.injury_areas ?? []).filter(v => v !== inj.value)
+                              : [...(d.injury_areas ?? []), inj.value],
+                          }))}
+                          className={`text-[13px] font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                            active
+                              ? 'bg-red-900/30 border-red-700 text-red-400'
+                              : 'bg-[var(--color-bg-deep)] border-[var(--color-border-subtle)] text-[var(--color-text-muted)]'
+                          }`}
+                        >
+                          {t(`profile_options.injuries.${inj.labelKey}`)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(goalsDraft.injury_areas ?? []).length === 0 && (
+                    <p className="text-[11px] text-[var(--color-text-muted)]">{t('profile.nothingSelectedAllExercises')}</p>
+                  )}
+                </div>
+
+                {/* No bottom spacer needed any more: the Save bar is a flex
+                    SIBLING of this scroller inside the modal, not a fixed strip
+                    floating over it, so nothing can be hidden behind it. */}
+              </div>
+          </div>
+
+          <div
+            className="flex-shrink-0 flex gap-3 px-4 pt-3 border-t"
+            style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom,0px))', borderColor: 'var(--color-border-subtle)', background: 'var(--color-bg-primary)' }}
+          >
+            <button type="button"
+              onClick={() => setEditingGoals(false)}
+              className="flex-1 py-3.5 rounded-xl border border-[var(--color-border-subtle)] text-[15px] font-semibold text-[var(--color-text-primary)] bg-[var(--color-bg-elevated)]">
+              {t('profile.cancel')}
+            </button>
+            <button type="button"
+              onClick={saveGoals}
+              disabled={savingGoals}
+              className="flex-1 py-3.5 rounded-xl text-[15px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50"
+              style={{ background: 'var(--color-accent)' }}>
+              {savingGoals ? t('profile.savingEllipsis') : t('profile.saveChanges')}
+            </button>
+          </div>
+        </div>,
+        document.body,
       )}
 
 

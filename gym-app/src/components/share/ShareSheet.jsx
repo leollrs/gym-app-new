@@ -4,13 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { X, Image as ImageIcon, Sparkles, Layers as LayersIcon } from 'lucide-react';
 import StickerComposer from './StickerComposer';
 import PreviewOverlay from './PreviewOverlay';
+import GymDestIcon from './GymDestIcon';
 import ShareCtaButton from './ShareCtaButton';
 import { Share } from '@capacitor/share';
 import { saveBlob } from '../../lib/saveBlob';
 import posthogClient from 'posthog-js';
-import { supabase } from '../../lib/supabase';
+import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
 import { appShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { shareBlob } from '../ShareCardRenderer';
 import { shareToInstagramStory, isInstagramStoriesAvailable } from '../../lib/instagramShare';
 import {
@@ -27,6 +29,11 @@ import ShareTplPoster from './ShareTplPoster';
 import ShareTplPhoto from './ShareTplPhoto';
 import ShareTplSticker from './ShareTplSticker';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
+// Moved to lib/ so the card components can inline their own images without
+// importing this module (which imports them). Re-exported because three sheets
+// already pull it from here.
+import { urlToDataUrl } from '../../lib/imageInline';
+export { urlToDataUrl };
 
 // Destination icons (ported from reference)
 const IGIcon = () => (
@@ -49,13 +56,6 @@ const MsgIcon = () => (
 const FBIcon = () => (
   <svg width="14" height="22" viewBox="0 0 320 512" fill="#fff" aria-hidden="true">
     <path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z" />
-  </svg>
-);
-const TuShareIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-on-accent, #fff)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
-    <circle cx="10" cy="7" r="4" />
-    <path d="M18 8v6M21 11h-6" />
   </svg>
 );
 // stroke=currentColor so the Save chip's icon inherits the Dest container's
@@ -342,7 +342,18 @@ export async function rasterizeNode(node, targetW, targetH, { transparent = fals
       const src = im.getAttribute('src');
       if (src && /^https?:/i.test(src)) {
         const d = await urlToDataUrl(src);
-        if (d) im.setAttribute('src', d);
+        if (d) {
+          im.setAttribute('src', d);
+          // The clone inherits crossOrigin="anonymous" from the live node. On a
+          // data: URL that attribute is meaningless, and inside the SVG raster
+          // it is one more way for the image to be rejected. Drop it.
+          im.removeAttribute('crossorigin');
+        } else {
+          // Un-inlinable. It cannot paint inside the SVG-as-image no matter
+          // what, so leaving it only reserves a blank rectangle where a
+          // fallback (gym initial, wordmark glyph) could otherwise sit.
+          im.remove();
+        }
       }
     }));
   } catch { /* best-effort — fall through with whatever resolved */ }
@@ -392,46 +403,6 @@ export async function rasterizeNode(node, targetW, targetH, { transparent = fals
 // rasterization. Supabase storage allows cross-origin GET and CSP connect-src
 // includes supabase, so the fetch works; on any failure we return null and the
 // template falls back to its no-logo (initial/box) treatment.
-export async function urlToDataUrl(url) {
-  if (!url || typeof url !== 'string' || url.startsWith('data:')) return url || null;
-  // 1) fetch → blob → data URL. Works when connect-src + CORS allow it.
-  try {
-    const res = await fetch(url);
-    if (res.ok) {
-      const blob = await res.blob();
-      const d = await new Promise((resolve) => {
-        const r = new FileReader();
-        r.onloadend = () => resolve(String(r.result));
-        r.onerror = () => resolve(null);
-        r.readAsDataURL(blob);
-      });
-      if (d) return d;
-    }
-  } catch { /* fall through to the <img> path */ }
-  // 2) Fallback: load via a crossOrigin <img> and read it back off a canvas.
-  // Supabase signed URLs display fine as an <img> (the preview proves it) but
-  // their fetch() can be blocked by a cross-host redirect / CSP — the image
-  // path isn't, and a CORS-clean image draws to canvas without tainting it.
-  try {
-    return await new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        try {
-          const c = document.createElement('canvas');
-          c.width = img.naturalWidth || 256;
-          c.height = img.naturalHeight || 256;
-          c.getContext('2d').drawImage(img, 0, 0);
-          resolve(c.toDataURL('image/png'));
-        } catch { resolve(null); }
-      };
-      img.onerror = () => resolve(null);
-      img.src = url;
-    });
-  } catch {
-    return null;
-  }
-}
 
 // ── Main component ─────────────────────────────────────────────────────────
 // `kind` controls what the card describes. Defaults to 'workout' for back-compat.
@@ -445,6 +416,9 @@ export async function urlToDataUrl(url) {
 export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', kind = 'workout' }) {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
+  // Real toast, not console.error: posting to the gym feed used to succeed or
+  // fail in total silence, which reads as a dead button either way.
+  const { showToast } = useToast();
   // Default to 'sticker' for non-workout kinds (PR / streak / monthly / body)
   // — those are conceptually small achievement cards designed to overlay on
   // a user photo, not full-bleed posters. Workout summaries keep 'editorial'
@@ -488,6 +462,8 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   // Gym logo inlined as a data URL (see urlToDataUrl) so it survives the SVG
   // rasterization and actually appears in the exported/shared image.
   const [logoDataUrl, setLogoDataUrl] = useState(null);
+  // True once both inlining strategies have failed — see the resolver effect.
+  const [logoFailed, setLogoFailed] = useState(false);
   const cardRef = useRef(null);
   // Second offscreen card kept permanently at IG Stories' 1080×1920. The
   // user-picked format drives Save / Copy / IG Feed sizing, but IG Stories
@@ -570,8 +546,17 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   useEffect(() => {
     let cancelled = false;
     const src = data?.gymLogoUrl;
+    setLogoFailed(false);
     if (!open || !src || String(src).startsWith('data:')) { setLogoDataUrl(null); return undefined; }
-    urlToDataUrl(src).then((d) => { if (!cancelled) setLogoDataUrl(d); });
+    urlToDataUrl(src).then((d) => {
+      if (cancelled) return;
+      if (d) setLogoDataUrl(d);
+      // Both inlining strategies failed (fetch AND crossOrigin <img>), so the
+      // raw URL — the same resource — will fail too. Handing it to the card
+      // paints an empty badge into the exported PNG; drop it so the template
+      // falls back to the gym initial.
+      else setLogoFailed(true);
+    });
     return () => { cancelled = true; };
   }, [open, data?.gymLogoUrl]);
 
@@ -681,27 +666,17 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
         // PNG silently vanished where the user could never reach it.
         if (blob) await saveBlob(`tugympr-workout-${Date.now()}.png`, blob);
       } else if (dest === 'tu') {
-        // Create a post in activity_feed_items (existing social post mechanism).
-        if (user?.id && profile?.gym_id) {
-          // Note: Supabase doesn't throw on Postgres errors — it returns them
-          // in `error`. Catching the promise alone hides every failure.
-          const { error: postErr } = await supabase.from('activity_feed_items').insert({
-            actor_id: user.id,
-            gym_id: profile.gym_id,
-            type: 'user_post',
-            post_type: 'user',
-            is_public: true,
-            body: text,
-            data: {
-              body: text,
-              session_id: data?.sessionId || null,
-              workout_name: data?.name || null,
-              duration_seconds: data?.durationSeconds || null,
-              total_volume_lbs: data?.volume || null,
-            },
-          });
-          if (postErr) console.error('[ShareSheet] post failed', postErr);
-        }
+        await postShareCardToFeed({
+          blob, text, userId: user?.id, gymId: profile?.gym_id,
+          extra: {
+            session_id: data?.sessionId || null,
+            workout_name: data?.name || null,
+            duration_seconds: data?.durationSeconds || null,
+            total_volume_lbs: data?.volume || null,
+          },
+        });
+        showToast(t('share.postedToFeed', { defaultValue: 'Posted to your gym feed' }), 'success');
+        onClose?.();
       } else if (dest === 'ig-story') {
         // Direct deep link into the IG Stories composer — skips the native
         // share sheet middle step. Always rasterize from the dedicated
@@ -810,11 +785,15 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
       try { posthogClient?.capture('content_shared', { type: kind || 'workout', dest }); } catch { /* noop */ }
     } catch (err) {
       console.warn('[ShareSheet] share failed', err);
+      // Tell the member. A failed post used to look exactly like a good one.
+      showToast(isModerationBlock(err)
+        ? t('moderation.contentBlocked', { defaultValue: 'Post blocked: content violates community guidelines.' })
+        : t('share.shareFailed', { defaultValue: "Couldn't share that. Try again." }), 'error');
     } finally {
       setBusy(false);
       onClose?.();
     }
-  }, [buildCard, caption, data, profile, user, onClose, busy, isTransparentExport, composedBlob]);
+  }, [buildCard, caption, data, profile, user, onClose, busy, isTransparentExport, composedBlob, showToast, t]);
 
   const handleCta = () => {
     if (!activeDest) return;
@@ -832,7 +811,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
     ...(trimmedTitle ? { name: trimmedTitle.slice(0, 32) } : {}),
     // Use the inlined logo data URL so the gym logo survives rasterization;
     // fall back to the raw URL if it hasn't resolved yet.
-    gymLogoUrl: logoDataUrl || data?.gymLogoUrl || null,
+    gymLogoUrl: logoDataUrl || (logoFailed ? null : data?.gymLogoUrl) || null,
   };
 
   const templateProps = {
@@ -1371,7 +1350,7 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
               <MsgIcon />
             </Dest>
             <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label={profile?.gym_name || 'TuGymPR'} color="var(--color-accent)" disabled={!!composedBlob}>
-              <TuShareIcon />
+              <GymDestIcon logoUrl={data?.gymLogoUrl} />
             </Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('sessionSummary.share.save', 'Save')} color="#5A6570" light disabled={!!composedBlob}>
               <SaveIcon />
