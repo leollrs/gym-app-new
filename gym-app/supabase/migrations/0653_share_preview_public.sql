@@ -100,14 +100,27 @@ UPDATE public.gyms
 -- C. gyms_public — add website_url
 -- ════════════════════════════════════════════════════════════════════════════
 --
--- The security-barrier view anon already reads for signup (0110:64). Adding the
--- website keeps the "use the view, not the table" path viable for the client.
--- Column list is otherwise unchanged.
+-- The view anon already reads for signup. Adding the website keeps the "use the
+-- view, not the table" path viable for the client.
+--
+-- Recreated VERBATIM from its LATEST definition (0551:478) with ONE column
+-- appended. Two things this file got wrong on the way here, both worth stating:
+--
+--   1. CREATE OR REPLACE VIEW can only APPEND columns, never insert. Putting
+--      website_url anywhere but last makes Postgres read the statement as a
+--      RENAME of whatever sat in that position and fail with 42P16.
+--
+--   2. The definition to copy is the LATEST one, not the original. 0110 created
+--      this view with 4 columns; 0233 added `security_invoker = on` as a
+--      security fix and 0551 appended `registration_mode`. Rebuilding from 0110
+--      would have silently DROPPED security_invoker — turning a view that reads
+--      `gyms` with the CALLER's privileges (RLS applies) into one that reads as
+--      its OWNER (RLS bypassed).
 
 CREATE OR REPLACE VIEW public.gyms_public
-  WITH (security_barrier = true)
+  WITH (security_barrier = true, security_invoker = on)
 AS
-  SELECT id, name, slug, website_url, is_active
+  SELECT id, name, slug, is_active, registration_mode, website_url
   FROM public.gyms
   WHERE is_active = TRUE;
 
@@ -402,6 +415,13 @@ END;
 $$;
 
 -- Anonymous by design: the whole point is a visitor with no account and no app.
+--
+-- IF 0363 IS EVER RE-RUN, ADD 'get_share_preview' TO ITS EXEMPT LIST. That
+-- migration revokes EXECUTE from anon/authenticated on every SECURITY DEFINER
+-- function in `public` that its grep didn't find behind a `supabase.rpc(...)`
+-- call. This one IS called that way, but the list is a hardcoded snapshot from
+-- 2026-05-04 and its own header says to keep it in sync. A silent revoke here
+-- looks like "the share links stopped working" with nothing in the diff.
 GRANT EXECUTE ON FUNCTION public.get_share_preview(TEXT, TEXT) TO anon;
 GRANT EXECUTE ON FUNCTION public.get_share_preview(TEXT, TEXT) TO authenticated;
 

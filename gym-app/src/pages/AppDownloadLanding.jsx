@@ -108,10 +108,18 @@ export default function AppDownloadLanding({ variant = 'trainer' }) {
           {t('appDownload.brandTagline', 'Train. Compete. Progress.')}
         </div>
 
+        {/* color is EXPLICIT — do not remove. index.css:900 sets
+            `h1,h2,…{ color: var(--color-text-primary) }`, which beats the
+            `color:#fff` inherited from the page shell. Visitors here are never
+            signed in, so applyBranding() never runs and that variable is still
+            at its LIGHT-mode default: near-black on this dark gradient. This
+            headline was invisible in production on /get, /t/:id and
+            /invite/t/:id — the pages every shared caption links to. */}
         <h1 style={{
           fontFamily: '"Barlow Condensed", Barlow, system-ui, sans-serif',
           fontWeight: 800, fontSize: 30, lineHeight: 1.1, letterSpacing: -0.4,
           margin: '34px 0 12px',
+          color: '#fff',
         }}>
           {name
             ? t('appDownload.headlineNamed', 'Train with {{name}} on TuGymPR', { name })

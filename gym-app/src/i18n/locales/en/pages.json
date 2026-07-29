@@ -4366,7 +4366,18 @@
       "errorInvalidPoints": "Invalid point value",
       "errorRlsBlocked": "Save was blocked — you may not have admin permission on this gym.",
       "fieldType": "Type",
-      "fieldAmount": "Amount"
+      "fieldAmount": "Amount",
+      "joinOffer": "Welcome offer",
+      "joinOfferHelp": "What a NON-member sees when they open a referral link. The points above mean nothing to a stranger — this does.",
+      "offerHeadline": "Offer",
+      "offerHeadlinePh": "50% off your first month",
+      "offerHeadlineEn": "Offer in English (optional)",
+      "offerHeadlineEnPh": "50% off your first month",
+      "offerEndsOn": "Valid through (optional)",
+      "offerDetail": "Supporting line (optional)",
+      "offerDetailPh": "Mention the code at the front desk",
+      "offerCacheWarning": "Changing the offer updates the page instantly, but it does NOT change the cards on links already shared — those stay cached in the recipient's chat.",
+      "errorOfferHeadline": "Write the offer headline, or turn the offer off."
     },
     "offers": {
       "title": "Offers & Promotions",
@@ -5423,7 +5434,9 @@
       "cardsErrTarget": "Habit target must be between 1 and 50 workouts",
       "saveFailed": "Failed to save",
       "gymAddress": "Address",
-      "gymAddressPlaceholder": "Street, city, country"
+      "gymAddressPlaceholder": "Street, city, country",
+      "gymWebsite": "Website",
+      "gymWebsiteDesc": "Shown on the page your referral links open — it's where you send a visitor who isn't a member yet."
     },
     "moderation": {
       "title": "Moderation",
@@ -14758,5 +14771,18 @@
     "playStore": "Download for Android",
     "haveApp": "Already have the app?",
     "openIt": "Open it"
+  },
+  "referralLanding": {
+    "genericTitle": "You've been invited to train",
+    "genericBody": "Create your account and join your friend's gym.",
+    "invitedBy": "{{name}} is inviting you to train here.",
+    "invitedGeneric": "You've been invited to train here.",
+    "offerEyebrow": "Your welcome offer",
+    "validUntil": "Valid through {{date}}",
+    "codeLabel": "Mention this code at the front desk",
+    "copied": "Copied",
+    "createAccount": "Create my account",
+    "visitGym": "Visit {{name}}",
+    "poweredBy": "powered by TuGymPR"
   }
 }

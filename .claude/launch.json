@@ -25,6 +25,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["/Users/leollorens/robotic-arm-simulator/serve.py", "4610"],
       "port": 4610
+    },
+    {
+      "name": "casa-hierro",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4620", "--directory", "/Users/leollorens/casa-hierro-demo"],
+      "port": 4620
     }
   ]
 }

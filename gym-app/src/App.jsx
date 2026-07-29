@@ -114,6 +114,7 @@ const Classes          = lazy(() => import('./pages/Classes'));
 const MySessions       = lazy(() => import('./pages/MySessions'));
 const PublicTrainerProfile = lazy(() => import('./pages/PublicTrainerProfile'));
 const AppDownloadLanding = lazy(() => import('./pages/AppDownloadLanding'));
+const ReferralLanding  = lazy(() => import('./pages/ReferralLanding'));
 
 // ── Lazy-loaded trainer pages ───────────────────────────────
 const TrainerLayout        = lazy(() => import('./layouts/TrainerLayout'));
@@ -1582,9 +1583,14 @@ function App() {
         showToast(t('referralForNewSignups', 'Referral codes are for new signups'), 'info');
         navigate('/', { replace: true });
       } else {
-        // Store code and redirect to signup
+        // Store code so signup can claim it whichever way they get there.
         localStorage.setItem('pendingReferralCode', referralCode);
-        navigate('/signup', { replace: true });
+        // `?ref=` can ride on ANY page, so it keeps bouncing to signup. The
+        // PATH form is a link a member deliberately shared with someone who —
+        // by definition — does not have the app, so it renders ReferralLanding
+        // instead: the gym, its offer, and the code as a coupon. Dropping a
+        // stranger on a bare password field was the whole problem.
+        if (!referralMatch) navigate('/signup', { replace: true });
       }
       return;
     }
@@ -1684,7 +1690,11 @@ function App() {
       {/* Deep link catch routes — the useEffect above handles redirect logic */}
       <Route path="/siri/*"            element={<LoadingScreen />} />
       <Route path="/invite/:code"     element={<LoadingScreen />} />
-      <Route path="/referral/:code"   element={<LoadingScreen />} />
+      {/* Public gym-branded landing for a shared referral link. The effect
+          above stashes the code and, for this path form, deliberately does NOT
+          redirect — a logged-out visitor renders the landing. A logged-in one
+          still gets bounced home by that effect. */}
+      <Route path="/referral/:code"   element={<ErrorBoundary><ReferralLanding /></ErrorBoundary>} />
       <Route path="/add-friend/:code" element={<LoadingScreen />} />
       {/* Invite deep links → focus the class / challenge in-app so they can join */}
       <Route path="/challenge/:id"    element={<LoadingScreen />} />

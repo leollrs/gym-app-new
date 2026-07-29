@@ -20,6 +20,32 @@ const tr = (key, fallback, commonKey) => {
   }
 };
 
+// A lazy route's chunk failed to load — almost always because a deploy landed
+// while this tab was open. On web the service worker precaches the whole app
+// shell with `registerType: 'autoUpdate'` (vite.config.js), so the new SW
+// activates mid-session and drops the old precache while THIS page is still
+// running off the old index.html and still asking for old chunk hashes. The
+// request 404s, the SPA rewrite answers with index.html, and the browser gets
+// HTML where it wanted JavaScript.
+//
+// Every engine words it differently, hence the list. Safari says "'text/html'
+// is not a valid JavaScript MIME type", Chrome "Failed to fetch dynamically
+// imported module", Firefox "error loading dynamically imported module".
+const CHUNK_ERROR_PATTERNS = [
+  'is not a valid javascript mime type',
+  'failed to fetch dynamically imported module',
+  'error loading dynamically imported module',
+  'importing a module script failed',
+  'failed to load module script',
+  'loading chunk',
+  'loading css chunk',
+];
+
+function isStaleChunkError(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  return CHUNK_ERROR_PATTERNS.some((p) => msg.includes(p));
+}
+
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -32,6 +58,26 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('[ErrorBoundary]', error, errorInfo);
+
+    // Stale chunk → the running build no longer exists on the server. The
+    // normal "Reiniciar" is useless here: it routes to the last good page,
+    // which is ALSO lazy and will fail on the same missing chunks. Only a hard
+    // reload picks up the new index.html.
+    //
+    // sessionStorage-guarded so a genuinely broken deploy can't put the user in
+    // a reload loop — second time through we fall past this and show the normal
+    // error UI. Same one-shot pattern as the boot-failure net in index.html.
+    if (isStaleChunkError(error)) {
+      try {
+        if (!sessionStorage.getItem('__chunk_reload__')) {
+          sessionStorage.setItem('__chunk_reload__', '1');
+          trackError('stale_chunk_reload', error, { componentStack: errorInfo.componentStack });
+          window.location.reload();
+          return;
+        }
+      } catch { /* private mode — fall through to the error UI */ }
+    }
+
     trackError('react_crash', error, { componentStack: errorInfo.componentStack });
   }
 
@@ -51,7 +97,14 @@ class ErrorBoundary extends Component {
     // (not the incoming one) is what makes lazy pages work: a lazy route shows
     // a Suspense fallback first (no error), so recording the incoming path
     // would wrongly mark the page that's about to crash as "good".
-    if (prevProps.resetKey) recordGoodPath(prevProps.resetKey);
+    if (prevProps.resetKey) {
+      recordGoodPath(prevProps.resetKey);
+      // A route rendered cleanly, so whatever chunk problem triggered the
+      // one-shot reload is behind us. Clear the guard or a SECOND deploy
+      // landing in this same tab session would hit the error UI instead of
+      // healing itself.
+      try { sessionStorage.removeItem('__chunk_reload__'); } catch { /* private mode */ }
+    }
   }
 
   componentWillUnmount() {

@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.tugympr.app",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_RELEASE_SIGNING_SHA256_FINGERPRINT"
+        "8B:3C:09:CF:B9:72:CA:04:50:A2:8A:4E:8F:DA:18:F7:1E:D1:06:F0:39:6A:E0:1F:84:93:50:49:46:4A:57:A6",
+        "CE:C6:6E:77:BF:C0:28:29:F2:C7:2A:E5:C4:C3:2D:6B:83:30:7C:0B:3D:FE:70:A3:E3:51:A8:7A:B2:2A:70:78"
       ]
     }
   }

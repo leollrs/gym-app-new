@@ -4368,7 +4368,18 @@
       "errorInvalidPoints": "Valor de puntos inválido",
       "errorRlsBlocked": "El guardado fue bloqueado — puede que no tengas permisos de admin en este gimnasio.",
       "fieldType": "Tipo",
-      "fieldAmount": "Cantidad"
+      "fieldAmount": "Cantidad",
+      "joinOffer": "Oferta de bienvenida",
+      "joinOfferHelp": "Lo que ve quien NO es miembro cuando abre el link de un referido. Los puntos de arriba no le dicen nada a un desconocido — esto sí.",
+      "offerHeadline": "Oferta",
+      "offerHeadlinePh": "50% de descuento tu primer mes",
+      "offerHeadlineEn": "Oferta en inglés (opcional)",
+      "offerHeadlineEnPh": "50% off your first month",
+      "offerEndsOn": "Válida hasta (opcional)",
+      "offerDetail": "Línea de apoyo (opcional)",
+      "offerDetailPh": "Menciona el código en recepción",
+      "offerCacheWarning": "Cambiar la oferta actualiza la página al instante, pero NO cambia las tarjetas de los links que ya se compartieron — esas quedan cacheadas en el chat de quien las recibió.",
+      "errorOfferHeadline": "Escribe el titular de la oferta, o apaga la oferta."
     },
     "offers": {
       "title": "Ofertas y Promociones",
@@ -5425,7 +5436,9 @@
       "cardsErrTarget": "La meta de hábito debe estar entre 1 y 50 entrenos",
       "saveFailed": "Error al guardar",
       "gymAddress": "Dirección",
-      "gymAddressPlaceholder": "Calle, ciudad, país"
+      "gymAddressPlaceholder": "Calle, ciudad, país",
+      "gymWebsite": "Sitio web",
+      "gymWebsiteDesc": "Se enseña en la página que abren los links de referido — es a donde mandas al visitante que todavía no es miembro."
     },
     "moderation": {
       "title": "Moderación",
@@ -15156,5 +15169,18 @@
     "playStore": "Descargar para Android",
     "haveApp": "¿Ya tienes la app?",
     "openIt": "Ábrela"
+  },
+  "referralLanding": {
+    "genericTitle": "Te invitaron a entrenar",
+    "genericBody": "Crea tu cuenta y únete al gimnasio de tu amigo.",
+    "invitedBy": "{{name}} te invita a entrenar aquí.",
+    "invitedGeneric": "Te invitaron a entrenar aquí.",
+    "offerEyebrow": "Tu oferta de bienvenida",
+    "validUntil": "Válida hasta el {{date}}",
+    "codeLabel": "Menciona este código en recepción",
+    "copied": "Copiado",
+    "createAccount": "Crear mi cuenta",
+    "visitGym": "Conoce {{name}}",
+    "poweredBy": "con tecnología de TuGymPR"
   }
 }

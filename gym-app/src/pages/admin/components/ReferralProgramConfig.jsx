@@ -13,7 +13,26 @@ const DEFAULT_REFERRAL_CONFIG = {
   max_referrals_per_month: null,
   referrer_reward: { type: 'points', value: 250 },
   referred_reward: { type: 'points', value: 100 },
+  // Shown on the PUBLIC referral landing (/referral/:code) to someone who has
+  // never heard of this gym. Deliberately separate from referred_reward: that
+  // one is points, and "100 points" means nothing to a stranger. This is the
+  // line that makes them walk in — "50% off your first month". Free text so the
+  // owner can swap campaigns without a deploy. See migration 0653.
+  join_offer: { enabled: false, headline: '', headline_en: '', detail: '', ends_on: '' },
 };
+
+// Older gyms have a referral_config with no join_offer at all (backfilled by
+// 0653, but a config saved by an older client can still arrive without it).
+function normalizeJoinOffer(o) {
+  const j = (o && typeof o === 'object') ? o : {};
+  return {
+    enabled:     !!j.enabled,
+    headline:    j.headline    || '',
+    headline_en: j.headline_en || '',
+    detail:      j.detail      || '',
+    ends_on:     j.ends_on     || '',
+  };
+}
 
 // Tolerate legacy shapes saved by older builds:
 //   { type: 'points', points: 5000, label: '...' }   → { type: 'points', value: 5000 }
@@ -93,6 +112,7 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
       ...incoming,
       referrer_reward: normalizeRewardShape(incoming.referrer_reward),
       referred_reward: normalizeRewardShape(incoming.referred_reward),
+      join_offer: normalizeJoinOffer(incoming.join_offer),
     });
   }, [config]);
 
@@ -126,11 +146,25 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
         return { type: 'points', value: v };
       };
 
+      // An offer switched ON with no headline would render an empty box on the
+      // public landing — worse than no offer at all. Refuse it here.
+      const jo = normalizeJoinOffer(draft.join_offer);
+      if (jo.enabled && !jo.headline.trim()) {
+        throw new Error(t('admin.referral.errorOfferHeadline', 'Write the offer headline, or turn the offer off.'));
+      }
+
       const payload = {
         ...draft,
         max_referrals_per_month: draft.max_referrals_per_month ? Number(draft.max_referrals_per_month) : null,
         referrer_reward: cleanReward(draft.referrer_reward),
         referred_reward: cleanReward(draft.referred_reward),
+        join_offer: {
+          enabled:     jo.enabled,
+          headline:    jo.headline.trim()    || null,
+          headline_en: jo.headline_en.trim() || null,
+          detail:      jo.detail.trim()      || null,
+          ends_on:     jo.ends_on            || null,
+        },
       };
       // .select() so an RLS-silent-fail (0 rows updated) surfaces as an error
       // instead of looking like a successful no-op.
@@ -227,6 +261,86 @@ export default function ReferralProgramConfig({ gymId, config, t, isEs }) {
                 {t('admin.referral.approvalRequired', 'Require admin approval before reward is granted')}
               </span>
             </label>
+          </div>
+
+          {/* ── Join offer — the PUBLIC half ──────────────────────────────
+              Everything above is for members. This block is the only thing on
+              the page a non-member ever sees: it renders on /referral/:code,
+              the page their friend's link opens. */}
+          <div style={{ marginTop: 26, paddingTop: 22, borderTop: `1px solid ${TK.divider}` }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 16 }}>
+              <div style={{ minWidth: 220, flex: 1 }}>
+                <RewardColHeader>{t('admin.referral.joinOffer', 'Oferta de bienvenida')}</RewardColHeader>
+                <p style={{ fontFamily: FK.body, fontSize: 13, lineHeight: 1.5, color: TK.textMute, margin: 0, maxWidth: 460 }}>
+                  {t('admin.referral.joinOfferHelp', 'Lo que ve quien NO es miembro cuando abre el link de un referido. Los puntos de arriba no le dicen nada a un desconocido — esto sí.')}
+                </p>
+              </div>
+              <TogglePill
+                on={!!draft.join_offer?.enabled}
+                onClick={() => set('join_offer.enabled', !draft.join_offer?.enabled)}
+                onLabel={t('admin.settings.enabled', 'Enabled')}
+                offLabel={t('admin.settings.disabled', 'Disabled')}
+              />
+            </div>
+
+            {draft.join_offer?.enabled && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <span style={fieldLabel}>{t('admin.referral.offerHeadline', 'Oferta')}</span>
+                  <input
+                    type="text"
+                    maxLength={70}
+                    value={draft.join_offer?.headline || ''}
+                    onChange={e => set('join_offer.headline', e.target.value)}
+                    placeholder={t('admin.referral.offerHeadlinePh', '50% de descuento tu primer mes')}
+                    style={{ width: '100%', padding: '13px 15px', borderRadius: 12, background: TK.surface, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 14.5, fontWeight: 600, color: TK.text, outline: 'none' }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-7 md:gap-8">
+                  <div>
+                    <span style={fieldLabel}>{t('admin.referral.offerHeadlineEn', 'Oferta en inglés (opcional)')}</span>
+                    <input
+                      type="text"
+                      maxLength={70}
+                      value={draft.join_offer?.headline_en || ''}
+                      onChange={e => set('join_offer.headline_en', e.target.value)}
+                      placeholder={t('admin.referral.offerHeadlineEnPh', '50% off your first month')}
+                      style={{ width: '100%', padding: '13px 15px', borderRadius: 12, background: TK.surface, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 14.5, fontWeight: 600, color: TK.text, outline: 'none' }}
+                    />
+                  </div>
+                  <div>
+                    {/* One campaign date for everyone — NOT a per-visitor
+                        countdown. A timer that restarts for each person is a
+                        lie, and people compare screenshots. */}
+                    <span style={fieldLabel}>{t('admin.referral.offerEndsOn', 'Válida hasta (opcional)')}</span>
+                    <input
+                      type="date"
+                      value={draft.join_offer?.ends_on || ''}
+                      onChange={e => set('join_offer.ends_on', e.target.value)}
+                      style={{ width: '100%', padding: '12px 15px', borderRadius: 12, background: TK.surface, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 14.5, fontWeight: 600, color: TK.text, outline: 'none' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <span style={fieldLabel}>{t('admin.referral.offerDetail', 'Línea de apoyo (opcional)')}</span>
+                  <input
+                    type="text"
+                    maxLength={110}
+                    value={draft.join_offer?.detail || ''}
+                    onChange={e => set('join_offer.detail', e.target.value)}
+                    placeholder={t('admin.referral.offerDetailPh', 'Menciona el código en recepción')}
+                    style={{ width: '100%', padding: '13px 15px', borderRadius: 12, background: TK.surface, border: `1px solid ${TK.borderSolid}`, fontFamily: FK.body, fontSize: 14.5, fontWeight: 600, color: TK.text, outline: 'none' }}
+                  />
+                </div>
+
+                {/* The one thing an owner will not guess on their own. */}
+                <p style={{ fontFamily: FK.body, fontSize: 12.5, lineHeight: 1.5, color: TK.textMute, margin: '14px 0 0' }}>
+                  {t('admin.referral.offerCacheWarning', 'Cambiar la oferta actualiza la página al instante, pero NO cambia las tarjetas de los links que ya se compartieron — esas quedan cacheadas en el chat de quien las recibió.')}
+                </p>
+              </>
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>

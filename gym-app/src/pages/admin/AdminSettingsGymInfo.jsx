@@ -39,6 +39,9 @@ export default function AdminSettingsGymInfo() {
   const [saved, setSaved] = useState(false);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
+  // Public site. Shown on the referral landing and used as the redirect target
+  // for shared links — see migration 0653.
+  const [website, setWebsite] = useState('');
   const [showViewSwitcher, setShowViewSwitcher] = useState(false);
 
   useEffect(() => { document.title = `${t('admin.settings.gymName', 'Gym Name')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
@@ -48,10 +51,11 @@ export default function AdminSettingsGymInfo() {
     queryFn: async () => {
       let { data, error: gymErr } = await supabase
         .from('gyms')
-        .select('name, slug, address')
+        .select('name, slug, address, website_url')
         .eq('id', gymId)
         .single();
-      // `address` (migration 0519) may not be deployed yet — retry without it.
+      // `address` (0519) / `website_url` (0653) may not be deployed yet —
+      // retry without either rather than breaking the whole settings page.
       if (gymErr && isMissingColumn(gymErr)) {
         ({ data, error: gymErr } = await supabase.from('gyms').select('name, slug').eq('id', gymId).single());
       }
@@ -64,13 +68,23 @@ export default function AdminSettingsGymInfo() {
   useEffect(() => {
     if (gymData?.name != null) setName(gymData.name);
     if (gymData?.address != null) setAddress(gymData.address);
+    if (gymData?.website_url != null) setWebsite(gymData.website_url);
   }, [gymData]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const base = { name, updated_at: new Date().toISOString() };
-      let { error: gymErr } = await supabase.from('gyms').update({ ...base, address: address.trim() || null }).eq('id', gymId);
-      // `address` (migration 0519) may not be deployed yet — still save the rest.
+      // Normalise a bare "maxfitness.com" to https://. A link stored without a
+      // scheme is treated as RELATIVE by the browser, so the "visit gym" button
+      // on the referral landing would navigate to app.tugympr.com/maxfitness.com
+      // instead of leaving the site.
+      let site = website.trim();
+      if (site && !/^https?:\/\//i.test(site)) site = `https://${site}`;
+      let { error: gymErr } = await supabase.from('gyms')
+        .update({ ...base, address: address.trim() || null, website_url: site || null })
+        .eq('id', gymId);
+      // `address` (0519) / `website_url` (0653) may not be deployed yet — still
+      // save the rest rather than failing the whole form.
       if (gymErr && isMissingColumn(gymErr)) {
         ({ error: gymErr } = await supabase.from('gyms').update(base).eq('id', gymId));
       }
@@ -128,6 +142,11 @@ export default function AdminSettingsGymInfo() {
             <TextField value={name} onChange={e => setName(e.target.value)} />
             <Fld>{t('admin.settings.gymAddress', 'Address')}</Fld>
             <TextField value={address} onChange={e => setAddress(e.target.value)} placeholder={t('admin.settings.gymAddressPlaceholder', 'Street, city, country')} />
+            <Fld>{t('admin.settings.gymWebsite', 'Website')}</Fld>
+            <TextField value={website} onChange={e => setWebsite(e.target.value)} placeholder="maxfitness.com" />
+            <div style={{ fontFamily: FK.body, fontSize: 12.5, lineHeight: 1.5, color: TK.textMute, marginTop: 6 }}>
+              {t('admin.settings.gymWebsiteDesc', 'Se enseña en la página que abren los links de referido — es a donde mandas al visitante que todavía no es miembro.')}
+            </div>
             <div style={{ marginTop: 18, fontFamily: FK.body, fontSize: 14, fontWeight: 700, color: TK.text }}>{t('admin.settings.gymSlug', 'Gym Slug')}</div>
             <div style={{ fontFamily: FK.body, fontSize: 13.5, color: TK.textMute, marginTop: 5, wordBreak: 'break-word' }}>
               {t('admin.settings.gymSlugDesc', 'Members sign up using:')}{' '}
