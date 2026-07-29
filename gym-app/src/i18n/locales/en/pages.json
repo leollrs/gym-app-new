@@ -10171,7 +10171,9 @@
     "friendsGoing_other": "{{count}} friends going",
     "pastClasses": "Past",
     "inviteText": "Join me at {{name}} ({{when}}) on {{gym}}",
-    "inviteCopied": "Invite link copied"
+    "inviteCopied": "Invite link copied",
+    "linkCopied": "Link copied",
+    "shareFailed": "Couldn't share the link."
   },
   "trainerClasses": {
     "title": "Classes",

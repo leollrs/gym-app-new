@@ -19,17 +19,26 @@
 //
 // SAFETY
 // This sits in the request path of a production domain, so it is built to fail
-// open. The matcher covers only four route families — a total failure here
-// cannot touch /, /login, /workouts or anything else. And every branch is
+// open. The matcher covers only the seven shareable route families — a total
+// failure here cannot touch /, /login, /workouts or anything else. Every branch is
 // wrapped: on ANY error we return undefined, which hands the request straight
 // back to the normal SPA rewrite. The worst case is the old generic card, never
 // a broken page.
 //
-// Data comes from get_share_preview (migration 0653) — an anon-callable RPC
-// that returns only title/subtitle/image material. No session, no service key.
+// Data comes from get_share_preview (0653, extended to every link kind in
+// 0655) — an anon-callable RPC that returns only title/subtitle/image
+// material. No session, no service key.
 
 export const config = {
-  matcher: ['/referral/:path*', '/class/:path*', '/challenge/:path*', '/g/:path*'],
+  matcher: [
+    '/referral/:path*',
+    '/class/:path*',
+    '/challenge/:path*',
+    '/g/:path*',
+    '/invite/:path*',   // both /invite/:code and /invite/t/:id — see routing below
+    '/t/:path*',
+    '/add-friend/:path*',
+  ],
 };
 
 // Link-preview fetchers. Deliberately broad: a missed bot just gets the old
@@ -65,6 +74,31 @@ function cardImage(bucket, path) {
   return base.replace('/object/public/', '/render/image/public/') + '?width=1200&height=630&resize=cover&quality=80';
 }
 
+/**
+ * First candidate that actually resolves.
+ *
+ * The old code did `cardImage(classPhoto) || logo`, which falls back when there
+ * is no PATH — never when the path is DEAD. A class whose image_path pointed at
+ * a deleted file produced a perfectly-formed URL that 404s, and the fallback
+ * never fired. That is not a cosmetic loss: when og:image fails to load,
+ * iMessage collapses the whole card to a bare title and drops the description
+ * too. One dead row cost the entire preview.
+ *
+ * A crawler cannot be told "try the next one", so the check happens here. HEAD,
+ * with a short timeout, and any failure just moves to the next candidate.
+ * Crawler traffic is rare, so this costs approximately nothing.
+ */
+async function firstLiveImage(candidates) {
+  for (const url of candidates) {
+    if (!url) continue;
+    try {
+      const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2500) });
+      if (res.ok) return url;
+    } catch { /* unreachable or too slow — next candidate */ }
+  }
+  return null;
+}
+
 async function getPreview(kind, id) {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_share_preview`, {
@@ -82,6 +116,17 @@ async function getPreview(kind, id) {
 }
 
 const DAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** 'YYYY-MM-DD' → '30 de agosto'. Parsed by hand: `new Date('2026-08-30')` is
+ *  read as UTC midnight and renders the day BEFORE for anyone west of GMT. */
+function fmtDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!m) return '';
+  const month = MONTHS_ES[Number(m[2]) - 1];
+  return month ? `${Number(m[3])} de ${month}` : '';
+}
 
 /** Build title / description / image for a preview payload. */
 function cardFor(preview, canonicalUrl) {
@@ -98,8 +143,9 @@ function cardFor(preview, canonicalUrl) {
       title: `${name} — ${gymName}`,
       description: [when, c.instructor_name && `con ${c.instructor_name}`, c.description_es || c.description]
         .filter(Boolean).join(' · '),
-      // The class photo is a photo — crop it properly.
-      image: cardImage('class-images', c.image_path) || publicStorage('gym-logos', gym.logo_url),
+      // The class photo is a photo — crop it properly. The gym mark is the
+      // fallback for a class with no image, or one whose image_path is stale.
+      images: [cardImage('class-images', c.image_path), publicStorage('gym-logos', gym.logo_url)],
     };
   }
 
@@ -112,7 +158,53 @@ function cardFor(preview, canonicalUrl) {
       description: (offer.enabled && offer.headline)
         ? offer.headline
         : `Entrena en ${gymName}${gym.address ? ` · ${gym.address}` : ''}`,
-      image: publicStorage('gym-logos', gym.logo_url),
+      images: [publicStorage('gym-logos', gym.logo_url)],
+    };
+  }
+
+  if (preview.kind === 'challenge') {
+    const c = preview.challenge || {};
+    const ends = c.end_date ? fmtDate(c.end_date) : '';
+    return {
+      title: `${c.name || 'Reto'} — ${gymName}`,
+      description: [c.description, ends && `Hasta el ${ends}`, c.reward && `Premio: ${c.reward}`]
+        .filter(Boolean).join(' · '),
+      images: [publicStorage('gym-logos', gym.logo_url)],
+    };
+  }
+
+  if (preview.kind === 'invite') {
+    return {
+      title: `Te invitaron a ${gymName}`,
+      description: gym.address
+        ? `Crea tu cuenta y entrena en ${gymName} · ${gym.address}`
+        : `Crea tu cuenta y entrena en ${gymName}`,
+      images: [publicStorage('gym-logos', gym.logo_url)],
+    };
+  }
+
+  if (preview.kind === 'trainer') {
+    const tr = preview.trainer || {};
+    const name = tr.full_name || 'Entrenador';
+    return {
+      // The trainer leads, the gym is the context — this link is their business
+      // card, not the gym's.
+      title: `${name} — ${gymName}`,
+      description: tr.tagline || `Entrena con ${name} en ${gymName}`,
+      // avatar_url is already an absolute URL on profiles (rendered straight
+      // into <img src>), so it is used as-is. Falls back to the gym mark when
+      // the trainer hid their photo (0655 returns null) OR when the avatar
+      // itself no longer resolves.
+      images: [tr.avatar_url, publicStorage('gym-logos', gym.logo_url)],
+    };
+  }
+
+  if (preview.kind === 'friend') {
+    const who = preview.friend_first_name;
+    return {
+      title: who ? `${who} te quiere agregar en ${gymName}` : `Te quieren agregar en ${gymName}`,
+      description: `Entrenen juntos en ${gymName}`,
+      images: [publicStorage('gym-logos', gym.logo_url)],
     };
   }
 
@@ -120,7 +212,7 @@ function cardFor(preview, canonicalUrl) {
   return {
     title: gymName,
     description: gym.address ? `${gym.address}` : `Entrena en ${gymName}`,
-    image: publicStorage('gym-logos', gym.logo_url),
+    images: [publicStorage('gym-logos', gym.logo_url)],
   };
 }
 
@@ -164,10 +256,20 @@ export default async function middleware(request) {
 
     let kind = null;
     let id = null;
-    if (path.startsWith('/referral/'))      { kind = 'referral';  id = path.slice('/referral/'.length); }
-    else if (path.startsWith('/class/'))    { kind = 'class';     id = path.slice('/class/'.length); }
-    else if (path.startsWith('/challenge/')){ kind = 'challenge'; id = path.slice('/challenge/'.length); }
-    else if (path.startsWith('/g/'))        { kind = 'gym';       id = path.slice('/g/'.length); }
+    // ORDER MATTERS. `/invite/t/:id` (a trainer profile) and `/invite/:code`
+    // (a gym's member invite) share a prefix, so the two-segment shape has to
+    // be tested first or every trainer link would be read as an invite with
+    // the code "t". Same reason `/invite/go/` is checked and skipped: it is a
+    // marketing deep link to an app screen, not an entity to preview.
+    if (path.startsWith('/invite/go/'))       { return undefined; }
+    else if (path.startsWith('/invite/t/'))   { kind = 'trainer';   id = path.slice('/invite/t/'.length); }
+    else if (path.startsWith('/t/'))          { kind = 'trainer';   id = path.slice('/t/'.length); }
+    else if (path.startsWith('/invite/'))     { kind = 'invite';    id = path.slice('/invite/'.length); }
+    else if (path.startsWith('/referral/'))   { kind = 'referral';  id = path.slice('/referral/'.length); }
+    else if (path.startsWith('/class/'))      { kind = 'class';     id = path.slice('/class/'.length); }
+    else if (path.startsWith('/challenge/'))  { kind = 'challenge'; id = path.slice('/challenge/'.length); }
+    else if (path.startsWith('/add-friend/')) { kind = 'friend';    id = path.slice('/add-friend/'.length); }
+    else if (path.startsWith('/g/'))          { kind = 'gym';       id = path.slice('/g/'.length); }
 
     id = decodeURIComponent((id || '').split('/')[0].split('?')[0]);
     if (!kind || !id) return undefined;
@@ -186,18 +288,15 @@ export default async function middleware(request) {
     // Everyone else who isn't a crawler gets the real app, untouched.
     if (!isBot) return undefined;
 
-    // `challenge` has no branch in get_share_preview yet (0653 covers referral /
-    // class / gym). Falling through leaves it on the generic card — the same
-    // thing it shows today, so nothing regresses.
-    if (kind === 'challenge') return undefined;
-
     const preview = await getPreview(kind, id);
     if (!preview) return undefined;
 
     const canonical = `${url.origin}${path}`;
     const card = cardFor(preview, canonical);
+    const image = await firstLiveImage(card.images || []);
     const html = cardHtml({
       ...card,
+      image,
       url: canonical,
       siteName: preview.gym?.name || 'TuGymPR',
     });

@@ -418,7 +418,7 @@ function SheetFact({ icon, label, value, accent }) {
 }
 
 function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingCounts, todayStr,
-  actionLoading, onBook, onCancel, onCheckIn, onRate, navigate, gymName }) {
+  actionLoading, onBook, onCancel, onCheckIn, onRate, navigate, gymName, setToast }) {
   const { sched, cls, booking, dateStr } = data;
   const [vis, setVis] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -478,10 +478,36 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
     // White-label: name the GYM, not the app.
     const gym = gymName || 'TuGymPR';
     const text = t('classes.inviteText', { name: cls.name, when: `${dateLabel} · ${fmt(sched.start_time)}`, gym, defaultValue: `Join me at ${cls.name} (${dateLabel} · ${fmt(sched.start_time)}) on ${gym}` });
-    try {
-      if (navigator.share) await navigator.share({ title: cls.name, text, url });
-      else await navigator.clipboard?.writeText(`${text} ${url}`);
-    } catch { /* user cancelled */ }
+
+    // On a phone this is the native share sheet and everything is obvious. On
+    // desktop it was silently broken in two different ways, both of which
+    // looked identical to "the button does nothing":
+    //   • no navigator.share (Chrome/Firefox desktop) → it copied to the
+    //     clipboard and said NOTHING, so you never knew it worked.
+    //   • navigator.share present but throwing (desktop Safari with no share
+    //     target) → the bare catch swallowed it and nothing was copied at all.
+    // Now: try the sheet, treat a real failure as "fall back to copying", and
+    // always say what happened. AbortError is the user closing the sheet on
+    // purpose — that one stays silent.
+    const copyToClipboard = async () => {
+      try {
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        setToast({ msg: t('classes.linkCopied', 'Link copiado'), type: 'success' });
+      } catch {
+        setToast({ msg: t('classes.shareFailed', 'No se pudo compartir el enlace.'), type: 'error' });
+      }
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: cls.name, text, url });
+        return;
+      } catch (err) {
+        if (err?.name === 'AbortError') return; // user closed the sheet
+        // Anything else means the share never happened — copy instead.
+      }
+    }
+    await copyToClipboard();
   };
 
   return (
@@ -1919,6 +1945,7 @@ export default function Classes() {
           onRate={(bookingId, name) => setRatingModal({ bookingId, className: name })}
           navigate={navigate}
           gymName={profile?.gym_name}
+          setToast={setToast}
         />
       )}
 

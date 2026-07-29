@@ -10360,7 +10360,9 @@
     "friendsGoing_other": "{{count}} amigos van",
     "pastClasses": "Pasadas",
     "inviteText": "Acompáñame en {{name}} ({{when}}) en {{gym}}",
-    "inviteCopied": "Enlace de invitación copiado"
+    "inviteCopied": "Enlace de invitación copiado",
+    "linkCopied": "Enlace copiado",
+    "shareFailed": "No se pudo compartir el enlace."
   },
   "trainerClasses": {
     "title": "Clases",
