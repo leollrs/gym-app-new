@@ -508,5 +508,6 @@
   "clear": "Limpiar",
   "prev": "Anterior",
   "increase": "Aumentar",
-  "decrease": "Disminuir"
+  "decrease": "Disminuir",
+  "updateReady": "Nueva versión lista — toca para actualizar"
 }

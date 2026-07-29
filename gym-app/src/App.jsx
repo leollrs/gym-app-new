@@ -6,6 +6,7 @@ import QRCodeModal from './components/QRCodeModal';
 import UpdateRequiredModal from './components/UpdateRequiredModal';
 import MaintenanceGate from './components/MaintenanceGate';
 import { startVersionCheck } from './lib/appVersionCheck';
+import { initSWUpdate, subscribeSWUpdate, applySWUpdate } from './lib/swUpdate';
 import { resolveAppSection, resolveSiriRoute } from './lib/appUrls';
 import './App.css';
 
@@ -17,7 +18,7 @@ import Skeleton from './components/Skeleton';
 import { initPushNotifications } from './lib/pushNotifications';
 import { supabase } from './lib/supabase';
 import { useTranslation } from 'react-i18next';
-import { WifiOff } from 'lucide-react';
+import { WifiOff, ArrowUpCircle } from 'lucide-react';
 import { getQueue } from './lib/offlineQueue';
 import { setNavigateFn, safeReload, setCurrentPath, noteNavigation } from './lib/navigationRef';
 import useResumeEpoch from './hooks/useResumeEpoch';
@@ -1170,6 +1171,18 @@ function App() {
     startVersionCheck();
   }, []);
 
+  // ── Service-worker update (web only) ────────────────────────
+  // The SW is registerType:'prompt' (vite.config.js), so a new build installs
+  // and waits rather than seizing this tab and purging the chunks it is still
+  // using. This surfaces the wait so a long-lived tab isn't stranded on an old
+  // build — which is exactly how a shipped feature ends up looking "not
+  // deployed".
+  const [swUpdateReady, setSwUpdateReady] = useState(false);
+  useEffect(() => {
+    initSWUpdate();
+    return subscribeSWUpdate(setSwUpdateReady);
+  }, []);
+
   // ── Online / Offline awareness ──────────────────────────────
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   useEffect(() => {
@@ -1652,6 +1665,17 @@ function App() {
     {/* Maintenance lock — full-screen overlay for all non-super-admins while
         maintenance mode is on (toggled in platform Operations). */}
     <MaintenanceGate />
+    {swUpdateReady && (
+      <button
+        type="button"
+        onClick={applySWUpdate}
+        className="fixed top-0 left-0 right-0 z-[999] flex items-center justify-center gap-2 py-2 px-4 animate-slide-down"
+        style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)', border: 'none', cursor: 'pointer' }}
+      >
+        <ArrowUpCircle size={14} />
+        <span className="text-[12px] font-semibold">{t('updateReady', 'Nueva versión lista — toca para actualizar')}</span>
+      </button>
+    )}
     {!isOnline && !offlineDismissed && (
       <div className="fixed top-0 left-0 right-0 z-[999] flex items-center justify-center gap-2 py-2 px-4 animate-slide-down"
         style={{ background: 'var(--color-warning, #F59E0B)', color: '#000' }}>

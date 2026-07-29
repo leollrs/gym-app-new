@@ -98,7 +98,23 @@ export default defineConfig({
       // real SW. React Query's localStorage persistence + the offline queue
       // already cover offline on native, so nothing is lost.
       selfDestroying: isCapacitor,
-      registerType: 'autoUpdate',
+      // 'prompt', NOT 'autoUpdate'.
+      //
+      // autoUpdate generates a service worker with skipWaiting + clientsClaim:
+      // the moment a deploy lands, the new SW activates and CLAIMS the tab
+      // that is already open — then cleans up the old precache. But that tab is
+      // still running the OLD index.html and still asks for old chunk hashes.
+      // They are gone, the SPA rewrite answers those requests with index.html,
+      // and the browser gets HTML where it wanted JavaScript. White screen, no
+      // warning, mid-session. It cost the founder two debugging sessions in two
+      // days — once as a crash, once as "this feature didn't deploy" when he was
+      // in fact looking at a stale bundle.
+      //
+      // With 'prompt' the new SW installs and WAITS. The running tab keeps the
+      // service worker it booted with, so its chunks keep resolving. The update
+      // applies when the user taps the banner (swUpdate.js → App.jsx) or on the
+      // next cold open. Nothing is ever pulled out from under a live page.
+      registerType: 'prompt',
       includeAssets: isCapacitor ? [] : ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: isCapacitor ? false : {
         name: 'IronForge',

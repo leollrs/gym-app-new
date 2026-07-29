@@ -479,25 +479,64 @@ export default function MyPlanModal({
                             border: '1px solid var(--color-border-subtle, rgba(15,20,25,0.08))',
                           }}
                         >
+                          {/* The day's actual work. This used to be one flat
+                              grey line per exercise — "1. Bench Press ... 3
+                              sets" — same size, same colour, no reps, nothing
+                              to scan. It is the only place a member can see
+                              what their program actually asks of them, so it
+                              gets real hierarchy: the movement reads as the
+                              content, the prescription reads as a value. */}
                           {(day.exercises || []).map((ex, ei) => (
                             <div
                               key={ei}
                               style={{
                                 display: 'flex',
-                                justifyContent: 'space-between',
-                                padding: '4px 0',
-                                fontSize: 12,
-                                color: 'var(--color-text-muted)',
+                                alignItems: 'center',
+                                gap: 10,
+                                padding: '7px 0',
+                                borderTop: ei === 0
+                                  ? 'none'
+                                  : '1px solid var(--color-border-subtle, rgba(15,20,25,0.06))',
                               }}
                             >
-                              <span>
-                                <span style={{ marginRight: 6, color: 'var(--color-text-subtle)' }}>
-                                  {ei + 1}.
-                                </span>
+                              <span
+                                style={{
+                                  width: 20, height: 20, borderRadius: 7, flexShrink: 0,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  background: 'var(--color-surface-hover, rgba(15,20,25,0.05))',
+                                  color: 'var(--color-text-subtle)',
+                                  fontSize: 10, fontWeight: 800,
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {ei + 1}
+                              </span>
+                              <span
+                                style={{
+                                  flex: 1, minWidth: 0,
+                                  fontSize: 13, fontWeight: 600,
+                                  color: 'var(--color-text-primary)',
+                                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                }}
+                              >
                                 {exerciseNameMap?.[ex.id] || ex.id}
                               </span>
-                              <span style={{ fontWeight: 700 }}>
-                                {ex.sets} {t('dashboard.sets', 'sets')}
+                              <span
+                                style={{
+                                  flexShrink: 0,
+                                  padding: '3px 8px', borderRadius: 999,
+                                  background: 'color-mix(in srgb, var(--color-accent, #2EC4C4) 12%, transparent)',
+                                  color: accent,
+                                  fontSize: 11, fontWeight: 800,
+                                  fontVariantNumeric: 'tabular-nums',
+                                  letterSpacing: 0.2,
+                                }}
+                              >
+                                {/* Template programs carry no reps — say
+                                    "3 series" rather than fake a rep range. */}
+                                {ex.reps
+                                  ? `${ex.sets} × ${ex.reps}`
+                                  : `${ex.sets} ${t('dashboard.sets', 'sets')}`}
                               </span>
                             </div>
                           ))}

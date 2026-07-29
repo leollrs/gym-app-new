@@ -508,5 +508,6 @@
   "clear": "Clear",
   "prev": "Previous",
   "increase": "Increase",
-  "decrease": "Decrease"
+  "decrease": "Decrease",
+  "updateReady": "New version ready — tap to update"
 }

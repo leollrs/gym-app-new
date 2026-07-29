@@ -2705,6 +2705,12 @@ const Dashboard = () => {
                 .map(re => ({
                   id: re.exercise_id,
                   sets: re.target_sets,
+                  // Reps were being dropped here, so My Plan could only ever
+                  // say "3 sets". Template programs genuinely have no reps
+                  // (programTemplates entries are {id, sets, rest_seconds}),
+                  // so the modal renders reps when present and sets alone when
+                  // not — rather than inventing a number.
+                  reps: re.target_reps,
                 }));
               return { label, name: routineName, exercises, isRest: false, isClosed: false, completed };
             }
