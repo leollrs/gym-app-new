@@ -15,7 +15,7 @@ import { Share } from '@capacitor/share';
 import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
 import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
-import { appShareUrl } from '../../lib/appUrls';
+import { gymShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { gymAccent } from './brandAccent';
@@ -227,7 +227,7 @@ function buildCardioCaption(d, t) {
 // defined, so nothing downstream has to know where the colour came from.
 export default function ShareCardioSheet({ open, onClose, data: rawData, accent = gymAccent() }) {
   const { t } = useTranslation('pages');
-  const { user, profile, gymName: authGymName, gymLogoUrl: authGymLogoUrl } = useAuth();
+  const { user, profile, gymName: authGymName, gymLogoUrl: authGymLogoUrl, gymSlug } = useAuth();
   // The REAL toast. This used to call `window.__tugymToast`, which does not
   // exist anywhere in the app — so every message fell through to `alert()`,
   // and alert() is silently dropped by the Capacitor iOS WebView. Posting to
@@ -469,10 +469,10 @@ export default function ShareCardioSheet({ open, onClose, data: rawData, accent 
         // Fall through — some destinations (link, tu, native share text-only)
         // don't require the blob, so we keep going instead of aborting.
       }
-      // Smart share link — opens the native app when installed, otherwise the
-      // app-download landing (never the bare webapp). appShareUrl owns the URL
-      // shape (rides the CDN-propagated /invite/* applink).
-      const link = appShareUrl('cardio', data?.sessionId || 'run');
+      // Expressive share: nobody 'joins' a finished run, so the link is
+      // attribution, not a door. /g/:slug hands the crawler a gym-branded card
+      // and forwards a human to the gym's own site (middleware.js).
+      const link = gymShareUrl(gymSlug, 'cardio');
       // Falling back to the bare gym name meant a cleared caption sent a message
       // whose entire content was the gym's name plus a link — the recipient saw
       // only the landing page's generic OG title. Rebuild the real caption.

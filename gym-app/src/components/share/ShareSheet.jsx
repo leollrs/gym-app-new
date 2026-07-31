@@ -10,7 +10,7 @@ import { Share } from '@capacitor/share';
 import { saveBlob } from '../../lib/saveBlob';
 import posthogClient from 'posthog-js';
 import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
-import { appShareUrl } from '../../lib/appUrls';
+import { gymShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { shareBlob } from '../ShareCardRenderer';
@@ -416,7 +416,7 @@ export async function rasterizeNode(node, targetW, targetH, { transparent = fals
 // only 'workout' is supported today; the other kinds default to sticker.
 export default function ShareSheet({ open, onClose, data, accent, kind = 'workout' }) {
   const { t } = useTranslation('pages');
-  const { user, profile } = useAuth();
+  const { user, profile, gymSlug } = useAuth();
   // Real toast, not console.error: posting to the gym feed used to succeed or
   // fail in total silence, which reads as a dead button either way.
   const { showToast } = useToast();
@@ -659,7 +659,10 @@ export default function ShareSheet({ open, onClose, data, accent, kind = 'workou
       const blob = await buildCard();
       // Download-oriented link: a non-user who taps it lands on the app's
       // "Get the app" page (/get), not the bare web app.
-      const link = appShareUrl('workout', data?.sessionId);
+      // Expressive share: nobody 'joins' a finished workout, so the link is
+      // attribution, not a door. /g/:slug hands the crawler a gym-branded card
+      // and forwards a human to the gym's own site (middleware.js).
+      const link = gymShareUrl(gymSlug, 'workout');
       const text = caption?.trim() || data?.name || profile?.gym_name || 'TuGymPR';
       const full = `${text}\n${link}`;
 

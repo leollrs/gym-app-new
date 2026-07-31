@@ -33,7 +33,7 @@ import { Share } from '@capacitor/share';
 import posthogClient from 'posthog-js';
 import { saveBlob } from '../../lib/saveBlob';
 import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
-import { appShareUrl } from '../../lib/appUrls';
+import { gymShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { shareBlob } from '../ShareCardRenderer';
@@ -335,7 +335,7 @@ function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl, t, lang }) 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function ShareAchievementSheet({ open = true, onClose, achievement }) {
   const { t, i18n } = useTranslation('pages');
-  const { user, profile, gymName, gymLogoUrl } = useAuth();
+  const { user, profile, gymName, gymLogoUrl, gymSlug } = useAuth();
   // Real toast, not console.error: posting to the gym feed used to succeed or
   // fail in total silence, which reads as a dead button either way.
   const { showToast } = useToast();
@@ -440,7 +440,10 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
         try { blob = await buildCard(); } catch (e) { console.error('[ShareAchievementSheet] buildCard failed', e); }
         // Download-oriented link so a non-user lands on the app's "Get the
         // app" page (/get) instead of the bare web app.
-        const link = appShareUrl('achievement', achievement.key);
+      // Expressive share: nobody 'joins' a finished workout, so the link is
+      // attribution, not a door. /g/:slug hands the crawler a gym-branded card
+      // and forwards a human to the gym's own site (middleware.js).
+        const link = gymShareUrl(gymSlug, 'achievement');
         const text = `${achievement.label}${gym?.name ? ` — ${gym.name}` : ''}`;
         const full = `${text}\n${link}`;
 
