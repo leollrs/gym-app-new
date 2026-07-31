@@ -28,6 +28,7 @@ import ShareTplBoldSport from './ShareTplBoldSport';
 import ShareTplPoster from './ShareTplPoster';
 import ShareTplPhoto from './ShareTplPhoto';
 import ShareTplSticker from './ShareTplSticker';
+import { gymAccent } from './brandAccent';
 import { ShareFormats, ShareExportSizes, TuFont } from './ShareFormats';
 // Moved to lib/ so the card components can inline their own images without
 // importing this module (which imports them). Re-exported because three sheets
@@ -413,7 +414,7 @@ export async function rasterizeNode(node, targetW, targetH, { transparent = fals
 //   - 'body'    → body progress (data.beforeUrl, data.afterUrl, data.weeks)
 // The sticker template reads `kind` directly. For the 4 full-bleed templates
 // only 'workout' is supported today; the other kinds default to sticker.
-export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', kind = 'workout' }) {
+export default function ShareSheet({ open, onClose, data, accent, kind = 'workout' }) {
   const { t } = useTranslation('pages');
   const { user, profile } = useAuth();
   // Real toast, not console.error: posting to the gym feed used to succeed or
@@ -573,7 +574,10 @@ export default function ShareSheet({ open, onClose, data, accent = '#2EC4C4', ki
   // The user's accent override (from the customize picker) wins over the
   // gym accent. Poster historically forces orange, but a user-picked accent
   // should win there too so the picker isn't a no-op on that template.
-  const renderedAccent = customAccent || (template === 'poster' ? '#FF5A2E' : accent);
+  // Falls back to the GYM's brand colour, not TuGymPR's teal/orange. The
+  // poster layout keeps its own hue only if a caller explicitly asks for one —
+  // a white-label card should not be orange because of a template choice.
+  const renderedAccent = customAccent || accent || gymAccent();
 
   // Transparency is requested either by the user-facing "Sticker" toggle OR by
   // picking the dedicated Sticker template (its canvas is already transparent;

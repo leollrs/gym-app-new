@@ -18,6 +18,7 @@ import { postShareCardToFeed, isModerationBlock } from '../../lib/shareToFeed';
 import { appShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { gymAccent } from './brandAccent';
 import { shareBlob } from '../ShareCardRenderer';
 import ShareTplCardio from './ShareTplCardio';
 import PreviewOverlay from './PreviewOverlay';
@@ -221,7 +222,10 @@ function buildCardioCaption(d, t) {
   return bits.length ? `${title} · ${bits.join(' · ')}\n${line}` : `${title}\n${line}`;
 }
 
-export default function ShareCardioSheet({ open, onClose, data: rawData, accent = '#2EC4C4' }) {
+// `accent` defaults to the GYM's brand colour, resolved at call time. A default
+// parameter is the right place for it: every use of `accent` in the body stays
+// defined, so nothing downstream has to know where the colour came from.
+export default function ShareCardioSheet({ open, onClose, data: rawData, accent = gymAccent() }) {
   const { t } = useTranslation('pages');
   const { user, profile, gymName: authGymName, gymLogoUrl: authGymLogoUrl } = useAuth();
   // The REAL toast. This used to call `window.__tugymToast`, which does not

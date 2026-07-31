@@ -49,6 +49,7 @@ import {
   isInstagramInstalled,
 } from '../../lib/socialShare';
 import GymLockup from './GymLockup';
+import { gymAccent } from './brandAccent';
 import ShareCtaButton from './ShareCtaButton';
 import { TuFont, ShareFormats, ShareExportSizes } from './ShareFormats';
 
@@ -153,7 +154,11 @@ function Dest({ children, label, color, active, onClick, light }) {
 // ── Achievement card template (1080x1350 portrait) ─────────────────────────
 function AchievementCard({ w, h, achievement, user, gym, gymLogoUrl, t, lang }) {
   const pad = Math.round(w * 0.08);
-  const color = achievement.color || '#D4AF37';
+  // The badge keeps its own colour on purpose — the palette is a designed
+  // progression (gold at first workout, then orange, purple, red as you climb),
+  // so it is identity, not brand leakage. Only the FALLBACK changes: a gym's
+  // custom achievement with no colour set should take the GYM's, not TuGymPR's.
+  const color = achievement.color || gymAccent();
   const iconSize = Math.round(w * 0.22);
   const dateStr = achievement.unlockedAt
     ? new Date(achievement.unlockedAt).toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', {
@@ -352,7 +357,10 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
   // profile doesn't carry, so the logo + gym name were always missing.
   const displayName = profile?.username || profile?.full_name || user?.email?.split('@')[0] || '';
   const gym = gymName ? { name: gymName, location: '' } : null;
-  const accent = achievement?.color || '#D4AF37';
+  const accent = achievement?.color || gymAccent();
+  // What sits AROUND the badge is the gym's. Sharing the medallion as an IG
+  // sticker paints a gradient behind it — that surface is brand, not badge.
+  const brand = gymAccent();
 
   useEffect(() => {
     if (open) {
@@ -459,7 +467,7 @@ export default function ShareAchievementSheet({ open = true, onClose, achievemen
             const ig = await shareToInstagramStory(
               format === 'story'
                 ? { backgroundBlob: blob, contentURL: link }
-                : { stickerBlob: blob, contentURL: link, backgroundTopColor: accent, backgroundBottomColor: '#0A0D10' }
+                : { stickerBlob: blob, contentURL: link, backgroundTopColor: brand, backgroundBottomColor: '#0A0D10' }
             );
             landed = ig.ok;
           }

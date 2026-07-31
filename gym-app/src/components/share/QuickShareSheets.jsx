@@ -5,6 +5,7 @@ import ShareTplBodyComp from './ShareTplBodyComp';
 import { useTranslation } from 'react-i18next';
 import { gymShareUrl } from '../../lib/appUrls';
 import { useAuth } from '../../contexts/AuthContext';
+import { gymAccent } from './brandAccent';
 
 // Thin wrappers around SimpleShareSheet + ShareTplSticker for the share
 // surfaces that aren't full workout sessions. Each one assembles its own
@@ -43,7 +44,7 @@ export function SharePRSheet({ open, onClose, pr, user, gym, gymLogo }) {
       title={t('share.titlePR', 'Share PR')}
       shareLink={gymShareUrl(gymSlug, 'pr')}
       shareText={caption}
-      accent="#D4AF37"
+      accent={gymAccent()}
       renderCard={({ w, h, transparent, accent }) => (
         <ShareTplSticker w={w} h={h} data={data} accent={accent} kind="pr" showGym={!!gym} />
       )}
@@ -81,7 +82,7 @@ export function ShareStreakSheet({ open, onClose, streakDays, milestone, user, g
       title={t('share.titleStreak', 'Share streak')}
       shareLink={gymShareUrl(gymSlug, 'streak')}
       shareText={caption}
-      accent="#FF5A2E"
+      accent={gymAccent()}
       renderCard={({ w, h, transparent, accent }) => (
         <ShareTplSticker w={w} h={h} data={data} accent={accent} kind="streak" showGym={!!gym} />
       )}
@@ -130,7 +131,7 @@ export function ShareBodyCompSheet({ open, onClose, comp, user, gym, gymLogo }) 
       title={t('share.titleBodyComp', 'Share progress')}
       shareLink={gymShareUrl(gymSlug, 'progress')}
       shareText={caption}
-      accent="#2EC4C4"
+      accent={gymAccent()}
       allowSticker={false}
       renderCard={({ w, h, transparent, accent }) => (
         <ShareTplBodyComp w={w} h={h} data={data} accent={accent} transparent={transparent} />
@@ -170,7 +171,7 @@ export function ShareMonthlySheet({ open, onClose, recap, user, gym, gymLogo }) 
       title={t('share.titleMonthly', 'Share month')}
       shareLink={gymShareUrl(gymSlug, 'recap')}
       shareText={caption}
-      accent="#2EC4C4"
+      accent={gymAccent()}
       renderCard={({ w, h, transparent, accent }) => (
         <ShareTplSticker w={w} h={h} data={data} accent={accent} kind="monthly" showGym={!!gym} />
       )}
