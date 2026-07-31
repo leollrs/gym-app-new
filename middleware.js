@@ -140,7 +140,9 @@ function cardFor(preview, canonicalUrl) {
       ? `${DAYS_ES[c.day_of_week] || ''} ${c.start_time}`.trim()
       : '';
     return {
-      title: `${name} — ${gymName}`,
+      // Lead with the invitation, not the noun. "Prueba — TuGymPR" told the
+      // reader the class is CALLED Prueba and nothing about what to do with it.
+      title: `Únete a ${name} en ${gymName}`,
       description: [when, c.instructor_name && `con ${c.instructor_name}`, c.description_es || c.description]
         .filter(Boolean).join(' · '),
       // The class photo is a photo — crop it properly. The gym mark is the
@@ -166,7 +168,7 @@ function cardFor(preview, canonicalUrl) {
     const c = preview.challenge || {};
     const ends = c.end_date ? fmtDate(c.end_date) : '';
     return {
-      title: `${c.name || 'Reto'} — ${gymName}`,
+      title: `Únete al reto ${c.name || ''} en ${gymName}`.replace('  ', ' '),
       description: [c.description, ends && `Hasta el ${ends}`, c.reward && `Premio: ${c.reward}`]
         .filter(Boolean).join(' · '),
       images: [publicStorage('gym-logos', gym.logo_url)],
@@ -189,8 +191,8 @@ function cardFor(preview, canonicalUrl) {
     return {
       // The trainer leads, the gym is the context — this link is their business
       // card, not the gym's.
-      title: `${name} — ${gymName}`,
-      description: tr.tagline || `Entrena con ${name} en ${gymName}`,
+      title: `Entrena con ${name} en ${gymName}`,
+      description: tr.tagline || `Entrenador en ${gymName}`,
       // avatar_url is already an absolute URL on profiles (rendered straight
       // into <img src>), so it is used as-is. Falls back to the gym mark when
       // the trainer hid their photo (0655 returns null) OR when the avatar

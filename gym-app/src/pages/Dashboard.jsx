@@ -2725,7 +2725,10 @@ const Dashboard = () => {
           return { label, name: label, exercises: [], isRest: true, isClosed: false, completed };
         });
 
-        return showPlanInfo ? (
+        // Same keep-alive + portal trap as the wellness modal below: this one
+        // is user-triggered so it can't pop up on its own, but leaving home
+        // with it open would leave it portaled over whatever page you land on.
+        return (showPlanInfo && location.pathname === '/') ? (
           <Suspense fallback={null}>
             <MyPlanModal
               open={showPlanInfo}
@@ -3009,7 +3012,18 @@ const Dashboard = () => {
       {/* Daily wellness check-in prompt (one-tap soreness slider). Auto-
           shown on Dashboard mount when no entry exists for today and the
           user hasn't already skipped today's prompt. */}
-      {showWellnessCheckin && (
+      {/* `location.pathname === '/'` is load-bearing, not defensive.
+          Dashboard is a KEEP-ALIVE route (App.jsx KEEP_ALIVE_MAP): once you
+          visit home it stays mounted forever, merely `display:none` when you
+          are elsewhere. This modal renders through createPortal to
+          document.body — and a portal ESCAPES that display:none by definition.
+          So the 800ms timer above would fire while the user was on another
+          page entirely and slam a home-screen prompt over it. Tapping a shared
+          class link was the reported case: the class opened, then the wellness
+          modal covered it, and it read as "the link dumped me back on home".
+          The timer may still fire off-route; gating the RENDER means the
+          prompt simply waits until they are actually looking at home. */}
+      {showWellnessCheckin && location.pathname === '/' && (
         <Suspense fallback={null}>
           <WellnessCheckinModal
             open={showWellnessCheckin}
