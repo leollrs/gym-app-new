@@ -1502,7 +1502,7 @@ function conversationBucket(state) {
 // ── Conversation List View (iMessage style) ─────────────────────
 const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, headerExtra }) => {
   const { t, i18n } = useTranslation('pages');
-  const { user, profile } = useAuth();
+  const { user, profile , gymName } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1776,7 +1776,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
         <FriendsPanel
           userId={user.id}
           gymId={profile?.gym_id}
-          gymName={profile?.gym_name}
+          gymName={gymName}
           friendships={friendships}
           loadFriendships={loadFriendships}
           onClose={() => setShowFriends(false)}

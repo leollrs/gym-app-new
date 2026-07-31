@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import SafeImg from './SafeImg';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
@@ -33,7 +34,7 @@ const TrainingAvatar = ({ friend, index, onTap }) => (
       <span className="absolute inset-0 rounded-full border-2 border-emerald-400 animate-ping opacity-30" />
       <div className="relative w-11 h-11 rounded-full border-2 border-emerald-400 flex items-center justify-center overflow-hidden bg-white/[0.06]">
         {friend.avatar_url ? (
-          <img
+          <SafeImg
             src={friend.avatar_url}
             alt={friend.full_name}
             className="w-full h-full object-cover rounded-full"

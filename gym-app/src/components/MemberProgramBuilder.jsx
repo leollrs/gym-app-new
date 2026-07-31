@@ -796,7 +796,9 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
           pick a different day, drop the day entirely (a shorter week), or keep
           it because they train somewhere else that day. Never a hard block. */}
       {closedDayPrompt && (() => {
-        const dowName = t(`days.${DOW_KEYS[closedDayPrompt.dow]}`, { ns: 'common' });
+        // daysPlural, not days: the ES copy reads "cierra los {{day}}", and the
+        // singular gave "cierra los Sábado".
+        const dowName = t(`daysPlural.${DOW_KEYS[closedDayPrompt.dow]}`, { ns: 'common' });
         const close = () => setClosedDayPrompt(null);
         return (
           <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('cancel', { ns: 'common' })} onClick={close} onKeyDown={(e) => { if (e.key === 'Escape') close(); }}>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { classHasEnded } from '../lib/classTime';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Clock, Users, CalendarCheck, Dumbbell, Star, X, ListChecks, Share2, Check, Hourglass, Calendar } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
@@ -453,11 +454,11 @@ function ClassDetailSheet({ data, onClose, t, isEs, fmt, dateFnsLocale, bookingC
   const isToday = dateStr === todayStr;
   const isFuture = dateStr > todayStr;
   let isPastClass = dateStr < todayStr;
-  if (!isPastClass && isToday && sched.end_time) {
-    const [hh, mm] = String(sched.end_time).split(':');
-    const endDt = new Date();
-    endDt.setHours(parseInt(hh, 10) || 0, parseInt(mm, 10) || 0, 0, 0);
-    if (endDt.getTime() < Date.now()) isPastClass = true;
+  if (!isPastClass && isToday) {
+    // classHasEnded, not `end_time` applied to today: a 23:00→00:30 class stores
+    // end_time "00:30", which read as already-past all day and hid Cancel on a
+    // booking the member could still cancel.
+    isPastClass = classHasEnded(dateStr, sched.start_time, sched.end_time);
   }
   const isFull = count >= capacity;
   const stateKey = status === 'confirmed' ? 'booked'
@@ -821,11 +822,8 @@ function WeekListView({ weekDays, allSchedules, bookingsByDate, countsByKey, tod
                   // class is over and must read as over, the way the trainer
                   // calendar greys out sessions whose end time has passed.
                   let isOver = isPastDay && !isToday;
-                  if (!isOver && isToday && s.end_time) {
-                    const [eh, em] = String(s.end_time).split(':').map(Number);
-                    const endDt = new Date(date);
-                    endDt.setHours(eh || 0, em || 0, 0, 0);
-                    isOver = endDt.getTime() < nowMs;
+                  if (!isOver && isToday) {
+                    isOver = classHasEnded(dateStr, s.start_time, s.end_time, nowMs);
                   }
                   return (
                     <button
@@ -886,7 +884,7 @@ export default function Classes() {
   const dateFnsLocale = isEs ? { locale: esLocale } : undefined;
   const dayLabels = isEs ? DAY_LABELS_ES : DAY_LABELS_EN;
   const fmt = (timeStr) => fmtTime(timeStr, use24h);
-  const { user, profile, gymConfig } = useAuth();
+  const { user, profile, gymConfig, gymName } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const pendingFocusRef = useRef(null); // invite deep-link: { sid, d } awaiting schedule load
@@ -1542,7 +1540,7 @@ export default function Classes() {
               // "who" is more useful to a member than "60 min", which the fact
               // strip in the detail sheet already states.
               const teacher = cls.trainer?.full_name || cls.instructor || '';
-              const accentColor = cls.color || 'var(--color-accent)';
+              const accentColor = cls.color || cls.accent_color || 'var(--color-accent)';
               const isActing = actionLoading === sched.id || actionLoading === bookingId;
 
               // Determine button state
@@ -1944,7 +1942,7 @@ export default function Classes() {
           onCheckIn={(bookingId, name) => handleCheckIn(bookingId, name)}
           onRate={(bookingId, name) => setRatingModal({ bookingId, className: name })}
           navigate={navigate}
-          gymName={profile?.gym_name}
+          gymName={gymName}
           setToast={setToast}
         />
       )}

@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
+import SafeImg from '../../../components/SafeImg';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarDays, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { adminKeys } from '../../../lib/adminQueryKeys';
-import { classImageUrl } from '../../../lib/classImageUrl';
 import CoverPreview from './CoverPreview';
+import ClassImage from '../../../components/ClassImage';
 
 const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
 const MONO_FONT = '"JetBrains Mono", ui-monospace, monospace';
@@ -352,8 +353,13 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                   onClick={() => setExpandedClassId(isExpanded ? null : cls.id)}>
                   {cls.cover_preset ? (
                     <CoverPreview preset={cls.cover_preset} size="sm" className="flex-shrink-0" />
-                  ) : classImageUrl(cls.image_path) ? (
-                    <img src={classImageUrl(cls.image_path)} alt={cls.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  ) : cls.image_path ? (
+                    <ClassImage
+                      path={cls.image_path}
+                      alt={cls.name}
+                      accent={cls.accent_color || 'var(--color-accent)'}
+                      className="w-10 h-10 rounded-lg flex-shrink-0"
+                    />
                   ) : (
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                       style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}>
@@ -393,7 +399,7 @@ export default function BookingsTabView({ classes, t, tc, locale = 'es' }) {
                       return (
                         <div key={b.id} className="flex items-center gap-2.5 py-1.5">
                           {b.profiles?.avatar_url ? (
-                            <img src={b.profiles.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                            <SafeImg src={b.profiles.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                           ) : (
                             <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                               style={{ background: 'var(--color-admin-panel)' }}>

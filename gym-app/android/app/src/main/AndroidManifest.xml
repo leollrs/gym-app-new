@@ -50,18 +50,37 @@
                 the caller in MainActivity.onCreate() before acting on the intent.
             -->
 
-            <!-- Android App Links (verified): https deep links.
-                 app.tugympr.com is the web-app host that serves invite links
-                 (/challenge/:id, /class/:id, /invite, /referral, /add-friend).
-                 Each host needs /.well-known/assetlinks.json with the app's
-                 signing-cert SHA-256 (app.tugympr.com's lives in this repo's
-                 public/.well-known/). -->
+            <!-- Android App Links (verified): https deep links on app.tugympr.com.
+                 Its /.well-known/assetlinks.json lives in this repo's public/.
+
+                 tugympr.com was ALSO declared here and that broke verification for
+                 BOTH hosts. Android evaluates an intent-filter as a unit: tugympr.com
+                 serves the marketing site and returns 404 for assetlinks.json, so the
+                 whole filter failed and app.tugympr.com never got auto-approved either
+                 — links opened in Chrome, app installed or not. It is removed rather
+                 than split off, because intercepting the marketing site is not wanted:
+                 someone tapping tugympr.com is a prospect who should land on the sales
+                 page, not get bounced into a members-only app.
+
+                 Paths are enumerated instead of claiming the whole host, mirroring the
+                 iOS AASA. assetlinks.json grants handle_all_urls, so without these the
+                 app would swallow every app.tugympr.com URL — including /g/:slug, whose
+                 entire job is a server-side 302 out to the GYM's own website, and /get,
+                 the download landing for people who don't have the app.
+
+                 NOTE: existing installs re-verify only on install/update, so this takes
+                 effect for current users when the next build reaches Play. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="tugympr.com" />
                 <data android:scheme="https" android:host="app.tugympr.com" />
+                <data android:pathPrefix="/challenge/" />
+                <data android:pathPrefix="/class/" />
+                <data android:pathPrefix="/invite/" />
+                <data android:pathPrefix="/referral/" />
+                <data android:pathPrefix="/add-friend/" />
+                <data android:pathPrefix="/t/" />
             </intent-filter>
 
         </activity>

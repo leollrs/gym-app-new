@@ -7,6 +7,7 @@
 // not a link — app.tugympr.com is auth-gated so a URL would be useless.
 
 import { useState, useCallback, useMemo } from 'react';
+import SafeImg from '../../../components/SafeImg';
 import { createPortal } from 'react-dom';
 import { Plus, X, Trash2, Send, Check, RotateCcw, Ban, Pencil, Eye } from 'lucide-react';
 import { format } from 'date-fns';
@@ -204,7 +205,7 @@ export function InvoicePaper({ invoice, ctx = {} }) {
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           {ctx.gymLogoUrl ? (
             <>
-              <img src={ctx.gymLogoUrl} alt="" style={{ maxHeight: 40, maxWidth: '100%', objectFit: 'contain', display: 'block' }} />
+              <SafeImg src={ctx.gymLogoUrl} alt="" style={{ maxHeight: 40, maxWidth: '100%', objectFit: 'contain', display: 'block' }} />
               {ctx.gymName && <div style={{ fontSize: 11, fontWeight: 700, color: PAPER.sub, marginTop: 6, ...clampName }}>{ctx.gymName}</div>}
             </>
           ) : (

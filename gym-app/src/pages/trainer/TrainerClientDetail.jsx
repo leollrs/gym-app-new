@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useCallback, useMemo, useRef, useState } from 'react';
+import SafeImg from '../../components/SafeImg';
 import { flushSync, createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -2747,7 +2748,7 @@ export default function TrainerClientNotes() {
                         position: 'relative', cursor: 'pointer', padding: 0,
                       }}
                     >
-                      <img
+                      <SafeImg
                         src={p.signedUrl}
                         alt={p.view_angle || t('trainerClientDetail.photos.alt', 'Progress photo')}
                         loading="lazy"
@@ -3949,7 +3950,7 @@ export default function TrainerClientNotes() {
             </button>
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <img
+            <SafeImg
               src={viewingPhoto.signedUrl}
               alt={viewingPhoto.view_angle || t('trainerClientDetail.photos.alt', 'Progress photo')}
               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 16 }}

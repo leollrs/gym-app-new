@@ -48,7 +48,7 @@ function previewDims(maxW, maxH) {
 
 export default function ShareMonthSheet({ open, onClose, recap, monthSessions = [], monthPRs = [], user, gym, gymLogoUrl, shareLink }) {
   // gym_id for the feed post, and a real toast so the outcome is visible.
-  const { profile, gymSlug } = useAuth();
+  const { profile, gymSlug, gymName } = useAuth();
   const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   // A monthly recap is an EXPRESSIVE share: nobody taps it to "join" anything,
@@ -120,9 +120,9 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
 
   const caption = data
     ? t('shareMonth.caption', '{{month}} {{year}} on {{gym}} — {{n}} workouts 💪', {
-        month: data.monthLabel, year: data.year, n: data.workouts, gym: gym || 'TuGymPR',
+        month: data.monthLabel, year: data.year, n: data.workouts, gym: gym || gymName || 'TuGymPR',
       })
-    : (gym || 'TuGymPR');
+    : (gym || gymName || 'TuGymPR');
   const fullText = link ? `${caption}\n${link}` : caption;
 
   // ── share to the chosen destination (not IG-only — everyone can share) ──
@@ -183,7 +183,7 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         // No `url` field: the link lives in fullText so targets can't prefer it
         // over the image.
         if (blob) await shareBlob(blob, 'tugympr-month.png', fullText);
-        else await Share.share({ title: gym || 'TuGymPR', text: fullText });
+        else await Share.share({ title: gym || gymName || 'TuGymPR', text: fullText });
       }
       // Reached only when the destination dispatch above didn't throw.
       try { posthogClient?.capture('content_shared', { type: 'month', dest }); } catch { /* noop */ }
@@ -308,7 +308,7 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
             <SMDest active={activeDest === 'fb'} onClick={() => setActiveDest('fb')} label="Facebook" color="#1877F2"><FBGlyph/></SMDest>
             <SMDest active={activeDest === 'wa'} onClick={() => setActiveDest('wa')} label="WhatsApp" color="#25D366"><WAGlyph/></SMDest>
             <SMDest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label={t('shareMonth.messages', 'Messages')} color="#34C759"><MsgGlyph/></SMDest>
-            <SMDest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('feed'); }} label={gym || 'TuGymPR'} color="var(--color-accent)"><GymDestIcon logoUrl={gymLogoUrl} /></SMDest>
+            <SMDest active={activeDest === 'tu'} onClick={() => { setActiveDest('tu'); setFormat('feed'); }} label={gym || gymName || 'TuGymPR'} color="var(--color-accent)"><GymDestIcon logoUrl={gymLogoUrl} /></SMDest>
             <SMDest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('shareMonth.saveShort', 'Save')} color="#5A6570"><Download size={19} color="#fff"/></SMDest>
           </div>
         </div>

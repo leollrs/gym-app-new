@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Calendar, BarChart3, Users, CalendarDays, Clock, UserCheck, Repeat } from 'lucide-react';
 import { AdminModal } from '../../../components/admin';
-import { classImageUrl } from '../../../lib/classImageUrl';
 import { slotDayLabel, format12h } from '../../../lib/admin/classScheduleHelpers';
 import CoverPreview from './CoverPreview';
+import ClassImage from '../../../components/ClassImage';
 import ClassAnalytics from './ClassAnalytics';
 import BookingsView from './BookingsView';
 
@@ -55,11 +55,13 @@ export default function ClassDetailModal({ classItem, onClose, dayLabel, gymId, 
             className="rounded-xl p-3 flex items-start gap-3"
             style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
           >
-            {classImageUrl(classItem.image_path) ? (
-              <img
-                src={classImageUrl(classItem.image_path)}
+            {classItem.image_path ? (
+              <ClassImage
+                path={classItem.image_path}
                 alt={classItem.name}
-                className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                accent={classItem.accent_color || 'var(--color-accent)'}
+                fallback={classItem.cover_preset ? <CoverPreview preset={classItem.cover_preset} size="md" className="!rounded-none" /> : null}
+                className="w-14 h-14 rounded-lg flex-shrink-0"
                 style={{ border: '1px solid var(--color-border-subtle)' }}
               />
             ) : classItem.cover_preset ? (

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import SafeImg from '../components/SafeImg';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { Home, Users, CalendarDays, ClipboardList, MessageSquare, Bell, LogOut, BookOpen, DollarSign } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -134,7 +135,7 @@ export default function TrainerLayout({ children }) {
           <p className="text-[11px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#1E9C8E' }}>{t('trainerNav.trainer')}</p>
           <div className="flex items-center gap-2.5">
             {gymLogoUrl && (
-              <img src={gymLogoUrl} alt={gymName || 'Gym'} className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
+              <SafeImg src={gymLogoUrl} alt={gymName || 'Gym'} className="w-7 h-7 rounded-lg object-contain flex-shrink-0"
                 style={{ background: 'var(--tt-bg-elev)', border: '1px solid var(--tt-border-solid)' }} />
             )}
             <p className="text-[16px] font-bold truncate" style={{ color: 'var(--tt-text)' }}>{gymName || 'My Gym'}</p>
@@ -220,7 +221,7 @@ export default function TrainerLayout({ children }) {
           {/* Left: Gym branding → trainer home (members' /my-gym bounces trainers) */}
           <Link to="/trainer" className="flex items-center gap-2.5 min-w-0 no-underline">
             {gymLogoUrl && (
-              <img src={gymLogoUrl} alt={gymName || 'Gym'} className="h-8 w-8 rounded-lg object-contain flex-shrink-0"
+              <SafeImg src={gymLogoUrl} alt={gymName || 'Gym'} className="h-8 w-8 rounded-lg object-contain flex-shrink-0"
                 style={{ border: '1px solid var(--tt-border-solid)', background: 'var(--tt-surface-2)' }} />
             )}
             <span className="text-[22px] font-black tracking-tight truncate"

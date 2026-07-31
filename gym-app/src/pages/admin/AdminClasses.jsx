@@ -204,7 +204,12 @@ export default function AdminClasses() {
   const handleSaveClass = async (formData) => {
     setSaving(true);
     try {
-      let imagePath = formModal?.image_path || null;
+      // The FORM is the authority on the cover, not the row being edited.
+      // Seeding from `formModal.image_path` here is what made the modal's ✕
+      // "remove image" button a silent no-op: it cleared the preview, the save
+      // re-sent the old path, and the photo reappeared on reload.
+      const previousPath = formModal?.image_path || null;
+      let imagePath = formData.imagePath ?? null;
       if (formData.imageFile) {
         const validation = await validateImageFile(formData.imageFile);
         if (!validation.valid) {
@@ -295,6 +300,23 @@ export default function AdminClasses() {
           const { error: slotErr } = await supabase.from('gym_class_schedules').insert(slots);
           if (slotErr) throw slotErr;
         }
+      }
+
+      // The row no longer points at the old object, so nothing can reach it —
+      // drop it rather than leave every replaced or removed cover in the bucket
+      // forever. Deliberately AFTER the write succeeded: deleting first would
+      // destroy a live image whenever the update itself failed. Best-effort —
+      // a storage error must not fail a save that already committed.
+      if (previousPath && previousPath !== imagePath) {
+        // Legacy rows can carry the bucket prefix. classImageUrl() strips it when
+        // READING, so a prefixed path renders fine — but remove() takes a raw key,
+        // and passing the prefixed form silently deletes nothing.
+        const key = previousPath.replace(/^class-images\//, '');
+        const { data: removed, error: rmErr } = await supabase.storage.from('class-images').remove([key]);
+        // storage-api answers 200 with the list of objects it ACTUALLY deleted, so
+        // an RLS refusal or a missing key comes back as [] with error === null.
+        // Checking only `rmErr` would report success on every silent no-op.
+        if (rmErr || !removed?.length) console.warn('[AdminClasses] orphaned cover not removed:', key, rmErr);
       }
 
       await queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });

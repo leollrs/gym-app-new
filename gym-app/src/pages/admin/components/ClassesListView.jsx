@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
+import SafeImg from '../../../components/SafeImg';
 import { CalendarDays, Clock, Zap, Users, Search, Edit3, Trash2, UserCheck, Check } from 'lucide-react';
 import { FadeIn } from '../../../components/admin';
 import { ToneIconChip } from '../../../lib/admin/adminTones';
-import { classImageUrl } from '../../../lib/classImageUrl';
 import CoverPreview from './CoverPreview';
+import ClassImage from '../../../components/ClassImage';
 import usePagedVisible from '../../../hooks/usePagedVisible';
 import PaginationFooter from '../../../components/admin/PaginationFooter';
 
@@ -158,8 +159,18 @@ export default function ClassesListView({ classes, onEdit, onDelete, onToggleAct
                 {/* accent edge bar */}
                 <span className="absolute left-0 top-0 bottom-0" style={{ width: 4, background: cls.is_active ? 'var(--color-accent)' : 'var(--color-admin-border)' }} />
 
-                {classImageUrl(cls.image_path) ? (
-                  <img src={classImageUrl(cls.image_path)} alt={cls.name} className="w-14 h-14 rounded-[14px] object-cover flex-shrink-0" style={{ border: '1px solid var(--color-admin-border)' }} />
+                {/* ClassImage, not a bare <img>: an image_path whose object is
+                    gone renders the browser's broken-image glyph. Degrade to the
+                    class's own preset when it has one. */}
+                {cls.image_path ? (
+                  <ClassImage
+                    path={cls.image_path}
+                    alt={cls.name}
+                    accent={cls.accent_color || 'var(--color-accent)'}
+                    fallback={cls.cover_preset ? <CoverPreview preset={cls.cover_preset} size="md" className="!rounded-none" /> : <ClassThumbFallback />}
+                    className="w-14 h-14 flex-shrink-0"
+                    style={{ borderRadius: 14, border: '1px solid var(--color-admin-border)' }}
+                  />
                 ) : cls.cover_preset ? (
                   <CoverPreview preset={cls.cover_preset} size="md" className="flex-shrink-0 !rounded-[14px]" />
                 ) : (
@@ -184,7 +195,7 @@ export default function ClassesListView({ classes, onEdit, onDelete, onToggleAct
                     {trainerName && (
                       <span className="inline-flex items-center gap-1.5 min-w-0">
                         {cls.trainer?.avatar_url ? (
-                          <img src={cls.trainer.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                          <SafeImg src={cls.trainer.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
                         ) : (
                           <span className="w-5 h-5 rounded-full grid place-items-center flex-shrink-0" style={{ background: 'color-mix(in srgb, var(--color-accent) 16%, transparent)' }}>
                             <UserCheck size={11} style={{ color: 'var(--color-accent)' }} />

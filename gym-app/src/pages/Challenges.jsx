@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import SafeImg from '../components/SafeImg';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
@@ -280,7 +281,7 @@ const PastChallengeParticipants = ({ challenge, t }) => {
               style={{ width: 28, height: 28, background: 'var(--color-accent-soft, rgba(46,196,196,0.1))' }}
             >
               {!r.isTeam && r.avatar ? (
-                <img src={r.avatar} alt={`${r.name} avatar`} className="w-full h-full object-cover" />
+                <SafeImg src={r.avatar} alt={`${r.name} avatar`} className="w-full h-full object-cover" />
               ) : r.isTeam ? (
                 <Users size={12} className="text-[var(--color-text-muted)]" />
               ) : (
@@ -488,7 +489,14 @@ const Leaderboard = ({ challenge, myId, t, refreshKey }) => {
   const hasCustomRewards = challenge.reward_description != null;
   // Cached per challenge so the leaderboard paints instantly on re-open (the
   // modal felt slow re-fetching every time); revalidates in the background.
-  const lbCacheKey = `challenge-lb-${challenge.id}`;
+  // The `-final` suffix is what makes the ended-challenge cache SAFE to trust.
+  // These keys are also written by the LIVE render path, so a member who opened
+  // the challenge mid-run left a partial snapshot behind — and the skip below
+  // then served that snapshot as the final standings, forever, wrong winner and
+  // all (useCachedState is localStorage-backed with no TTL). A separate key can
+  // only ever be populated while status === 'ended', so a hit on it really is
+  // frozen data.
+  const lbCacheKey = `challenge-lb-${challenge.id}${statusOf(challenge) === 'ended' ? '-final' : ''}`;
   const [entries, setEntries] = useCachedState(lbCacheKey, []);
   const [loading, setLoading] = useState(!hasCachedState(lbCacheKey));
   const status = statusOf(challenge);
@@ -684,7 +692,14 @@ const Leaderboard = ({ challenge, myId, t, refreshKey }) => {
 
 // ── Team Leaderboard ──────────────────────────────────────
 const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
-  const tlCacheKey = `challenge-teams-${challenge.id}`;
+  // The `-final` suffix is what makes the ended-challenge cache SAFE to trust.
+  // These keys are also written by the LIVE render path, so a member who opened
+  // the challenge mid-run left a partial snapshot behind — and the skip below
+  // then served that snapshot as the final standings, forever, wrong winner and
+  // all (useCachedState is localStorage-backed with no TTL). A separate key can
+  // only ever be populated while status === 'ended', so a hit on it really is
+  // frozen data.
+  const tlCacheKey = `challenge-teams-${challenge.id}${statusOf(challenge) === 'ended' ? '-final' : ''}`;
   const [teams, setTeams] = useCachedState(tlCacheKey, []);
   const [loading, setLoading] = useState(!hasCachedState(tlCacheKey));
   const [expandedTeam, setExpandedTeam] = useState(null);
@@ -785,7 +800,7 @@ const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
                     {team.members.map(m => (
                       <div key={m.profile_id} className="flex items-center gap-3 px-3 py-2">
                         <div className="w-7 h-7 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
-                          {m.avatar_url ? <img src={m.avatar_url} alt={`${m.display_name || t('challenges.team.member', 'Team member')} avatar`} className="w-7 h-7 rounded-full object-cover" /> : <span className="text-[10px] font-bold text-[var(--color-accent,#2EC4C4)]">{(m.display_name || '?')[0]}</span>}
+                          {m.avatar_url ? <SafeImg src={m.avatar_url} alt={`${m.display_name || t('challenges.team.member', 'Team member')} avatar`} className="w-7 h-7 rounded-full object-cover" /> : <span className="text-[10px] font-bold text-[var(--color-accent,#2EC4C4)]">{(m.display_name || '?')[0]}</span>}
                         </div>
                         <p className={`flex-1 text-[13px] font-medium truncate ${m.profile_id === myId ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>{m.display_name || '—'}</p>
                         <p className="text-[12px] text-[var(--color-text-muted)]">{Math.round(m.score || 0).toLocaleString()}</p>
@@ -806,7 +821,14 @@ const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
 const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
   const rewards = parseRewards(challenge);
   const hasCustomRewards = challenge.reward_description != null;
-  const clCacheKey = `challenge-club-${challenge.id}`;
+  // The `-final` suffix is what makes the ended-challenge cache SAFE to trust.
+  // These keys are also written by the LIVE render path, so a member who opened
+  // the challenge mid-run left a partial snapshot behind — and the skip below
+  // then served that snapshot as the final standings, forever, wrong winner and
+  // all (useCachedState is localStorage-backed with no TTL). A separate key can
+  // only ever be populated while status === 'ended', so a hit on it really is
+  // frozen data.
+  const clCacheKey = `challenge-club-${challenge.id}${statusOf(challenge) === 'ended' ? '-final' : ''}`;
   const [entries, setEntries] = useCachedState(clCacheKey, []);
   const [loading, setLoading] = useState(!hasCachedState(clCacheKey));
   const status = statusOf(challenge);
@@ -1151,7 +1173,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                         isSelected ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]'
                       } ${isFull ? 'opacity-40' : ''}`}>
                       <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
-                        {f.avatar_url ? <img src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[var(--color-accent,#2EC4C4)]">{(f.full_name || '?')[0]}</span>}
+                        {f.avatar_url ? <SafeImg src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[var(--color-accent,#2EC4C4)]">{(f.full_name || '?')[0]}</span>}
                       </div>
                       <p className="flex-1 text-[13px] font-medium text-[var(--color-text-primary)] truncate">{shortName(f)}</p>
                       {isSelected && <Check size={16} className="text-[var(--color-accent,#2EC4C4)]" />}
@@ -2068,7 +2090,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-9 h-9 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {duel.challenger?.avatar_url ? (
-                    <img src={duel.challenger.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
+                    <SafeImg src={duel.challenger.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-[12px] font-bold text-[var(--color-accent,#2EC4C4)]">{opponentName.charAt(0)}</span>
                   )}
@@ -2113,7 +2135,7 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-[var(--color-bg-secondary)] flex items-center justify-center overflow-hidden flex-shrink-0">
                   {duel.challenged?.avatar_url ? (
-                    <img src={duel.challenged.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
+                    <SafeImg src={duel.challenged.avatar_url} alt={`${opponentName} avatar`} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-[12px] font-bold text-[var(--color-text-muted)]">{opponentName.charAt(0)}</span>
                   )}
@@ -2223,7 +2245,7 @@ const chalFetchedAt = new Map(); // `${gymId}:${userId}` → last full-load time
 export default function Challenges({ embedded = false }) {
   const { t, i18n } = useTranslation('pages');
   const dfLocale = i18n.language?.startsWith('es') ? esLocale : enUS;
-  const { profile, user } = useAuth();
+  const { profile, user, gymName } = useAuth();
   const { showToast } = useToast();
   const posthog = usePostHog();
   const challengesEnabled = useFeatureEnabled('challenges');
@@ -2383,7 +2405,7 @@ export default function Challenges({ embedded = false }) {
     const url = `${PROD_WEB_URL}/challenge/${challenge.id}`;
     // White-label: the invite names the GYM, not the app — to the member it's
     // their gym, even though it's our platform.
-    const gym = profile?.gym_name || 'TuGymPR';
+    const gym = gymName || 'TuGymPR';
     const text = t('challenges.inviteText', { name: sanitize(challenge.name), gym, defaultValue: `Join me in "${sanitize(challenge.name)}" on ${gym}` });
     try {
       if (navigator.share) {

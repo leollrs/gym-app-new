@@ -29,6 +29,7 @@ const TYPE_META = {
   friend_activity:  { icon: UserPlus, color: 'text-pink-400',    bg: 'bg-pink-500/10'    },
   class_booking:    { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
   session_reminder: { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
+  class_reminder:   { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
   reward:           { icon: Gift,     color: 'text-amber-400',   bg: 'bg-amber-500/10'   },
   goal:             { icon: Target,   color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
   weekly_summary:   { icon: TrendingUp, color: 'text-[var(--color-accent)]', bg: 'bg-[var(--color-accent)]/10' },

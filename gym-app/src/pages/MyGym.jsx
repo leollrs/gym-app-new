@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import SafeImg from '../components/SafeImg';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, Clock, MapPin, Calendar, Megaphone, Info, CalendarCheck, ChevronRight, Tag, Users } from 'lucide-react';
@@ -223,7 +224,7 @@ export default function MyGym() {
             <ChevronLeft size={24} strokeWidth={2} />
           </button>
           {gymLogoUrl && (
-            <img src={gymLogoUrl} alt={gym?.name} className="h-9 w-9 rounded-xl object-contain flex-shrink-0" style={{ border: '1px solid var(--color-border-default)', backgroundColor: 'var(--color-bg-secondary)' }} />
+            <SafeImg src={gymLogoUrl} alt={gym?.name} className="h-9 w-9 rounded-xl object-contain flex-shrink-0" style={{ border: '1px solid var(--color-border-default)', backgroundColor: 'var(--color-bg-secondary)' }} />
           )}
           <div className="min-w-0 flex-1">
             <h1 className="text-[28px] truncate" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.4px' }}>{gym?.name || gymName}</h1>

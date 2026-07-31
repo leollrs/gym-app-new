@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import SafeImg from '../../../components/SafeImg';
 import {
   Settings, Palette, QrCode, CalendarDays, Smartphone, Link2,
   ShieldOff, AlertTriangle, Crown, ToggleRight, CreditCard, Upload,
@@ -411,7 +412,7 @@ export default function GymSettingsTab({
           <label className="block text-[11px] text-[#6B7280] font-medium mb-1">{t('platform.gymDetail.settings.logo')}</label>
           <div className="flex items-center gap-3">
             {(localLogoUrl || logoUrl) ? (
-              <img
+              <SafeImg
                 src={localLogoUrl || logoUrl}
                 alt={t('platform.gymDetail.settings.logoAlt', { name: gym.name })}
                 className="h-12 w-12 rounded-lg border border-white/6 bg-white/[0.03] object-contain p-1 flex-shrink-0"

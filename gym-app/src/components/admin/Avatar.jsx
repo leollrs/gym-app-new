@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 /**
  * Shared avatar component for admin pages.
  * Shows initials with optional photo and ring color.
@@ -31,13 +33,21 @@ export default function Avatar({ name, size = 'md', src, ring, variant = 'neutra
 
   const toneStyle = tone ? TONE_STYLES[tone] : null;
 
-  if (src) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const [triedSrc, setTriedSrc] = useState(src);
+  if (src !== triedSrc) { setTriedSrc(src); setImgFailed(false); }
+
+  // Same reason as UserAvatar: a signed URL that expired or an object that was
+  // deleted otherwise paints the broken-image glyph. Falling through gives the
+  // initials badge the component already knows how to draw.
+  if (src && !imgFailed) {
     return (
       <img
         src={src}
         alt={name || 'Avatar'}
         className={`${sizeClass} rounded-full object-cover flex-shrink-0`}
         style={ring ? { boxShadow: `0 0 0 2px ${ring}` } : undefined}
+        onError={() => setImgFailed(true)}
       />
     );
   }

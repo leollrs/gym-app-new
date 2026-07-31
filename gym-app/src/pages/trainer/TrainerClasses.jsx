@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import SafeImg from '../../components/SafeImg';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -17,6 +18,7 @@ import { format, addDays, addMonths, startOfDay, startOfMonth, startOfWeek, endO
 import { es, enUS } from 'date-fns/locale';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import Skeleton from '../../components/Skeleton';
+import ClassImage from '../../components/ClassImage';
 import TrainerEmptyState from './components/TrainerEmptyState';
 import { TT, TFont } from './components/designTokens';
 import {
@@ -195,8 +197,13 @@ function ClassDetailDrawer({ cls, gymId, onClose, t, tc, dateLocale }) {
         <div style={{ flex: 1, overflow: 'auto', padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Class info */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {cls.image_url ? (
-              <img src={cls.image_url} alt={cls.name} style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flexShrink: 0, border: `1px solid ${TT.border}` }} />
+            {(cls.image_path || cls.image_url) ? (
+              <ClassImage
+                path={cls.image_path || cls.image_url}
+                alt={cls.name}
+                accent={accentColor}
+                style={{ width: 56, height: 56, borderRadius: 14, flexShrink: 0, border: `1px solid ${TT.border}` }}
+              />
             ) : (
               <div style={{ width: 56, height: 56, borderRadius: 14, display: 'grid', placeItems: 'center', flexShrink: 0, background: accentColor + '20' }}>
                 <CalendarDays size={22} style={{ color: accentColor }} />
@@ -669,7 +676,7 @@ function BookingsTab({ classes, t, dateLocale }) {
   const BookingRow = ({ b, isFuture, waitlisted }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: TT.surface, borderRadius: 12, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, overflow: 'hidden' }}>
       {b.profiles?.avatar_url ? (
-        <img src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
+        <SafeImg src={b.profiles.avatar_url} alt={b.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
       ) : (
         <div style={{ width: 32, height: 32, borderRadius: 999, display: 'grid', placeItems: 'center', flexShrink: 0, background: TT.accentSoft }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: TT.accentInk }}>{b.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>
@@ -1041,7 +1048,7 @@ function AnalyticsTab({ classes, t, dateLocale }) {
                     style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: 12, background: TT.surface, borderRadius: 12, border: `1px solid ${TT.border}`, boxShadow: TT.shadow, overflow: 'hidden' }}
                   >
                     {r.profiles?.avatar_url ? (
-                      <img src={r.profiles.avatar_url} alt={r.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
+                      <SafeImg src={r.profiles.avatar_url} alt={r.profiles?.full_name || t('trainerClasses.members')} style={{ width: 32, height: 32, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
                     ) : (
                       <div style={{ width: 32, height: 32, borderRadius: 999, display: 'grid', placeItems: 'center', flexShrink: 0, background: TT.accentSoft }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: TT.accentInk }}>
@@ -1296,8 +1303,13 @@ function TemplatesTab({ classes, gymId, t }) {
               onClick={() => setExpandedClass(isExpanded ? null : cls.id)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 16, textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
-              {cls.image_url ? (
-                <img src={cls.image_url} alt={cls.name} style={{ width: 40, height: 40, borderRadius: 12, objectFit: 'cover', flexShrink: 0, border: `1px solid ${TT.border}` }} />
+              {(cls.image_path || cls.image_url) ? (
+                <ClassImage
+                  path={cls.image_path || cls.image_url}
+                  alt={cls.name}
+                  accent={accentColor}
+                  style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, border: `1px solid ${TT.border}` }}
+                />
               ) : (
                 <div style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', flexShrink: 0, background: accentColor + '20' }}>
                   <CalendarDays size={16} style={{ color: accentColor }} />
@@ -1575,16 +1587,9 @@ export default function TrainerClasses() {
       const data = [...(owned || []), ...viaJunction]
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-      // Resolve signed image URLs in parallel — a serial per-class loop added
-      // one storage round-trip of latency per class to the page load.
-      await Promise.all(data.map(async (cls) => {
-        if (cls.image_url && cls.image_url.startsWith('class-images/')) {
-          const { data: signedData } = await supabase.storage
-            .from('class-images')
-            .createSignedUrl(cls.image_url.replace('class-images/', ''), 3600);
-          if (signedData?.signedUrl) cls.image_url = signedData.signedUrl;
-        }
-      }));
+      // No signed-URL pass: `class-images` is public (0375), so classImageUrl()
+      // resolves covers directly and this page stops paying one storage
+      // round-trip per class on every load.
 
       cacheSet(CK_classes, data); // write-through for instant load next visit
       return data;

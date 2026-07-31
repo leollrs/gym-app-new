@@ -509,5 +509,15 @@
   "prev": "Previous",
   "increase": "Increase",
   "decrease": "Decrease",
-  "updateReady": "New version ready — tap to update"
+  "updateReady": "New version ready — tap to update",
+  "daysPlural": {
+    "sunday": "Sundays",
+    "monday": "Mondays",
+    "tuesday": "Tuesdays",
+    "wednesday": "Wednesdays",
+    "thursday": "Thursdays",
+    "friday": "Fridays",
+    "saturday": "Saturdays"
+  },
+  "offline": "Offline"
 }

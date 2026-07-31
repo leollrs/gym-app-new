@@ -416,7 +416,7 @@ export async function rasterizeNode(node, targetW, targetH, { transparent = fals
 // only 'workout' is supported today; the other kinds default to sticker.
 export default function ShareSheet({ open, onClose, data, accent, kind = 'workout' }) {
   const { t } = useTranslation('pages');
-  const { user, profile, gymSlug } = useAuth();
+  const { user, profile, gymSlug, gymName } = useAuth();
   // Real toast, not console.error: posting to the gym feed used to succeed or
   // fail in total silence, which reads as a dead button either way.
   const { showToast } = useToast();
@@ -663,7 +663,7 @@ export default function ShareSheet({ open, onClose, data, accent, kind = 'workou
       // attribution, not a door. /g/:slug hands the crawler a gym-branded card
       // and forwards a human to the gym's own site (middleware.js).
       const link = gymShareUrl(gymSlug, 'workout');
-      const text = caption?.trim() || data?.name || profile?.gym_name || 'TuGymPR';
+      const text = caption?.trim() || data?.name || gymName || 'TuGymPR';
       const full = `${text}\n${link}`;
 
       if (dest === 'save') {
@@ -1356,7 +1356,7 @@ export default function ShareSheet({ open, onClose, data, accent, kind = 'workou
             <Dest active={activeDest === 'im'} onClick={() => setActiveDest('im')} label={t('share.destMessages', { defaultValue: 'Messages' })} color="#34C759" disabled={!!composedBlob}>
               <MsgIcon />
             </Dest>
-            <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label={profile?.gym_name || 'TuGymPR'} color="var(--color-accent)" disabled={!!composedBlob}>
+            <Dest active={activeDest === 'tu'} onClick={() => setActiveDest('tu')} label={gymName || 'TuGymPR'} color="var(--color-accent)" disabled={!!composedBlob}>
               <GymDestIcon logoUrl={data?.gymLogoUrl} />
             </Dest>
             <Dest active={activeDest === 'save'} onClick={() => setActiveDest('save')} label={t('sessionSummary.share.save', 'Save')} color="#5A6570" light disabled={!!composedBlob}>
@@ -1371,7 +1371,7 @@ export default function ShareSheet({ open, onClose, data, accent, kind = 'workou
             dest={activeDest}
             busy={busy}
             accent={renderedAccent}
-            gymLabel={renderedData?.gym?.name || profile?.gym_name}
+            gymLabel={renderedData?.gym?.name || gymName}
             onClick={handleCta}
             t={t}
           />

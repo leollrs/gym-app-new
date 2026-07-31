@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import SafeImg from '../../../components/SafeImg';
 import {
   Users, Activity, Dumbbell, Building2, Trophy,
   Settings as SettingsIcon, Crown, Mail, Phone, MessageCircle,
@@ -43,7 +44,7 @@ export default function GymOverviewTab({
       <div className="bg-[#0F172A] border border-white/6 rounded-xl p-4">
         <div className="flex items-start gap-4">
           {logoUrl ? (
-            <img src={logoUrl} alt={`${gym.name} logo`} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
+            <SafeImg src={logoUrl} alt={`${gym.name} logo`} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-white/6" />
           ) : (
             <div className="w-14 h-14 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 border border-[#D4AF37]/20">
               <Building2 size={24} className="text-[#D4AF37]" />

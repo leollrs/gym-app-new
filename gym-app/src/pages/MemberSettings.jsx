@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import SafeImg from '../components/SafeImg';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Settings, Heart, ChevronRight, Trash2, AlertTriangle, Bell, Shield, FileText, Globe, Check, Eye, EyeOff, Download, Loader2, Trophy, Ban, UserX, User, Repeat, HelpCircle, Sparkles, Camera as CameraIcon, MapPin,
@@ -497,7 +498,7 @@ export default function MemberSettings() {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-8 h-8 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0">
                         {block.profiles?.avatar_url ? (
-                          <img src={block.profiles.avatar_url} alt={block.profiles?.full_name ? t('profile.userAvatarName', { name: block.profiles.full_name, defaultValue: '{{name}} avatar' }) : t('profile.userAvatar', 'User avatar')} className="w-8 h-8 rounded-full object-cover" />
+                          <SafeImg src={block.profiles.avatar_url} alt={block.profiles?.full_name ? t('profile.userAvatarName', { name: block.profiles.full_name, defaultValue: '{{name}} avatar' }) : t('profile.userAvatar', 'User avatar')} className="w-8 h-8 rounded-full object-cover" />
                         ) : (
                           <UserX size={14} style={{ color: 'var(--color-text-subtle)' }} />
                         )}

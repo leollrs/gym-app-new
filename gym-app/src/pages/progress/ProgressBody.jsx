@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useReducer, useMemo } from 'react';
+import SafeImg from '../../components/SafeImg';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -309,7 +310,7 @@ const ProgressPhotoTimeline = ({ byDate, byMonth, latestDate, onDeletePhoto, onP
                                 className="block w-full h-full p-0 border-0 bg-transparent cursor-pointer"
                                 aria-label={t('progressBody.zoomPhoto', 'View larger')}
                               >
-                                <img src={photo.url} alt={`${angle.charAt(0).toUpperCase() + angle.slice(1)} body progress photo`} className="w-full h-full object-cover" loading="lazy" />
+                                <SafeImg src={photo.url} alt={`${angle.charAt(0).toUpperCase() + angle.slice(1)} body progress photo`} className="w-full h-full object-cover" loading="lazy" />
                               </button>
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDelete(photo); }}
@@ -707,7 +708,7 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
             style={{ background: 'var(--color-surface-hover)', border: '2px dashed var(--color-border-subtle)' }}>
             {scanStep === 1 && frontPhoto ? (
               <div className="relative w-full h-full">
-                <img src={frontPhoto.preview} alt={t('progressBody.frontBodyPhotoAlt', 'Front body progress photo')} className="w-full h-full object-cover opacity-30" loading="lazy" />
+                <SafeImg src={frontPhoto.preview} alt={t('progressBody.frontBodyPhotoAlt', 'Front body progress photo')} className="w-full h-full object-cover opacity-30" loading="lazy" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <Check size={32} className="text-[#10B981] mb-2" />
                   <p className="text-[12px] font-semibold text-[#10B981]">{t('progressBody.frontCaptured')}</p>
@@ -794,8 +795,8 @@ const MeasurementsModal = ({ existing, gymId, profileId, onSaved, onClose }) => 
               <div className="rounded-[16px] overflow-hidden" style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)' }}>
                 <div className="px-4 py-3.5 flex items-center gap-3">
                   <div className="flex gap-2">
-                    {frontPhoto && <img src={frontPhoto.preview} alt={t('progressBody.frontBodyPhotoAlt', 'Front body progress photo')} className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
-                    {sidePhoto && <img src={sidePhoto.preview} alt={t('progressBody.sideBodyPhotoAlt', 'Side body progress photo')} className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
+                    {frontPhoto && <SafeImg src={frontPhoto.preview} alt={t('progressBody.frontBodyPhotoAlt', 'Front body progress photo')} className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
+                    {sidePhoto && <SafeImg src={sidePhoto.preview} alt={t('progressBody.sideBodyPhotoAlt', 'Side body progress photo')} className="w-10 h-14 rounded-lg object-cover" width={40} height={56} loading="lazy" style={{ border: '1px solid var(--color-border-subtle)' }} />}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">
@@ -1312,7 +1313,7 @@ export default function ProgressBody() {
                 style={{ background: 'var(--color-bg-card)', border: 'none', cursor: photo?.url ? 'pointer' : 'default' }}
               >
                 {photo?.url ? (
-                  <img src={photo.url} alt={slot} className="w-20 h-20 rounded-[14px] object-cover mb-2" loading="lazy" />
+                  <SafeImg src={photo.url} alt={slot} className="w-20 h-20 rounded-[14px] object-cover mb-2" loading="lazy" />
                 ) : (
                   <div className="w-16 h-16 rounded-[14px] flex items-center justify-center mb-2" style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
                     <Camera size={22} style={{ color: 'var(--color-text-muted)' }} />
@@ -1701,7 +1702,7 @@ export default function ProgressBody() {
             className="flex flex-col items-center gap-4 max-w-full max-h-full"
             onClick={e => e.stopPropagation()}
           >
-            <img
+            <SafeImg
               src={zoomPhoto.url}
               alt={t('progressBody.progressPhotoFullAlt', 'Progress photo')}
               className="rounded-[18px] object-contain"

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import SafeImg from './SafeImg';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
@@ -824,7 +825,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
                             <div>
                               <div className="aspect-[3/4] bg-[var(--color-bg-deep)] rounded-lg overflow-hidden">
                                 {before.url ? (
-                                  <img src={before.url} alt={`${angle} before`} className="w-full h-full object-cover" />
+                                  <SafeImg src={before.url} alt={`${angle} before`} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-[var(--color-text-subtle)]">
                                     <Camera size={20} />
@@ -838,7 +839,7 @@ const MonthlyProgressReport = ({ isOpen, onClose, profileId: profileIdProp }) =>
                             <div>
                               <div className="aspect-[3/4] bg-[var(--color-bg-deep)] rounded-lg overflow-hidden">
                                 {after.url ? (
-                                  <img src={after.url} alt={`${angle} after`} className="w-full h-full object-cover" />
+                                  <SafeImg src={after.url} alt={`${angle} after`} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-[var(--color-text-subtle)]">
                                     <Camera size={20} />

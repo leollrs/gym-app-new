@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import SafeImg from '../SafeImg';
 import { useTranslation } from 'react-i18next';
 import {
   MessageCircle, Trophy, Dumbbell, Clock, Send, MoreHorizontal,
@@ -169,7 +170,7 @@ function PhotoWindow({ src, alt, height = 220 }) {
           background: 'var(--color-bg-secondary)',
         }}
       >
-        <img
+        <SafeImg
           src={src}
           alt={alt || ''}
           loading="lazy"

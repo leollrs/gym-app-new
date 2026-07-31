@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import SafeImg from '../../components/SafeImg';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Activity, Settings, Crown, ChevronDown,
@@ -1058,7 +1059,7 @@ export default function GymDetail() {
           <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {logoUrl ? (
-                <img src={logoUrl} alt={gym.name} className="w-12 h-12 rounded-xl object-contain flex-shrink-0 border border-white/6" style={{ background: '#111827' }} />
+                <SafeImg src={logoUrl} alt={gym.name} className="w-12 h-12 rounded-xl object-contain flex-shrink-0 border border-white/6" style={{ background: '#111827' }} />
               ) : (
                 <div className="w-12 h-12 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center flex-shrink-0 border border-[#D4AF37]/20">
                   <span className="text-[18px] font-bold text-[#D4AF37]">{(gym.name || 'G')[0]}</span>

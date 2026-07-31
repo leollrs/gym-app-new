@@ -1,4 +1,5 @@
 import React from 'react';
+import { readableOn } from './brandAccent';
 import GymLockup from './GymLockup';
 
 // `s` is the canvas-to-preview scale (w / 270). Multiply every literal
@@ -53,6 +54,12 @@ export default function ShareTplPoster({
   showPRs = true,
   accent = '#FF5A2E',
 }) {
+  // This template hardcoded #FF5A2E precisely because it uses the accent two
+  // ways with opposite contrast needs: as TEXT on the near-black stat card, and
+  // as a big SPLASH on the cream page. One gym colour can't satisfy both, so
+  // each gets its own legible derivative of it.
+  const ink = readableOn(accent, '#0A0D10');
+  const splash = readableOn(accent, '#EEEBE3', 2.2);
   // Aspect-aware layout tweaks — square/portrait need a smaller headline
   // and tighter stat-card placement so the bottom-right card doesn't
   // collide with the centred giant title.
@@ -114,7 +121,7 @@ export default function ShareTplPoster({
           width: w * 1.3,
           height: w * (mode === 'square' ? 0.5 : 0.7),
           borderRadius: '50%',
-          background: accent,
+          background: splash,
           transform: 'rotate(-8deg)',
         }}
       />
@@ -231,7 +238,7 @@ export default function ShareTplPoster({
           maxWidth: w * 0.62,
         }}
       >
-        <div style={{ fontSize: 8 * s, fontWeight: 800, letterSpacing: 1.6 * s, color: accent, textTransform: 'uppercase' }}>
+        <div style={{ fontSize: 8 * s, fontWeight: 800, letterSpacing: 1.6 * s, color: ink, textTransform: 'uppercase' }}>
           The Numbers
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 8 * s, marginTop: 6 * s }}>
@@ -272,11 +279,11 @@ export default function ShareTplPoster({
                 textOverflow: 'ellipsis',
               }}
             >
-              <span style={{ color: accent }}>🏆 PR · </span>
+              <span style={{ color: ink }}>🏆 PR · </span>
               {data.prs[0].lift}
             </span>
             {showExactWeights && data.prs[0].weight ? (
-              <span style={{ flexShrink: 0, whiteSpace: 'nowrap', color: accent }}>
+              <span style={{ flexShrink: 0, whiteSpace: 'nowrap', color: ink }}>
                 {data.prs[0].weight} lbs
               </span>
             ) : null}

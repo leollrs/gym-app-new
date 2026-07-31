@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import SafeImg from '../SafeImg';
 import { ScanLine, CheckCircle, XCircle, LogIn, ShoppingBag, Gift, Users, Ticket, X, Mail, Trophy, Printer, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -396,7 +397,7 @@ export default function ScanFeedback() {
               {pending.parsed.type === 'checkin' && pending.member._checkinPhotoUrl ? (
                 <div className="flex flex-col items-center text-center mb-5">
                   <div className="relative">
-                    <img
+                    <SafeImg
                       src={pending.member._checkinPhotoUrl}
                       alt=""
                       className="w-40 h-40 rounded-2xl object-cover"
@@ -421,7 +422,7 @@ export default function ScanFeedback() {
                 <div className="flex items-center gap-4 mb-5">
                   <div className="relative">
                     {(pending.member._checkinPhotoUrl || pending.member.avatar_url) ? (
-                      <img src={pending.member._checkinPhotoUrl || pending.member.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover" />
+                      <SafeImg src={pending.member._checkinPhotoUrl || pending.member.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover" />
                     ) : (
                       <div className="w-14 h-14 rounded-full flex items-center justify-center"
                         style={{ background: `color-mix(in srgb, ${pendingCfg?.color || 'var(--color-accent)'} 15%, transparent)` }}>
@@ -508,7 +509,7 @@ export default function ScanFeedback() {
               <div className="flex items-start gap-3.5">
                 <div className="relative flex-shrink-0">
                   {toast.avatarUrl ? (
-                    <img src={toast.avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
+                    <SafeImg src={toast.avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
                   ) : toast.memberName ? (
                     <div className="w-12 h-12 rounded-full flex items-center justify-center"
                       style={{ background: `color-mix(in srgb, ${toastCfg?.color || 'var(--color-accent)'} 15%, transparent)` }}>

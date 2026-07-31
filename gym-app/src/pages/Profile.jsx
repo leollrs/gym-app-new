@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useCachedState, hasCachedState } from '../hooks/useCachedState';
 import { tg } from '../lib/genderText';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Trophy, Dumbbell, Calendar,
@@ -367,6 +367,12 @@ const Profile = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
+  // /profile is kept alive with display:none, and a createPortal child renders
+  // OUTSIDE that subtree — so it ignores display:none and paints over whatever
+  // page you navigate to. The goals editor below is opaque and full-bleed, so it
+  // hid the destination completely. Reachable from the notification toast (z-9999,
+  // above the modal), Android hardware back, browser back, and deep links.
+  const location = useLocation();
   const posthog = usePostHog();
   const [activeTab, setActiveTab] = useState('activity');
 
@@ -1616,7 +1622,7 @@ const Profile = () => {
           the whole screen: the nav is covered, the footer sits on the real
           bottom edge with the safe-area inset, and closing it returns you to
           the tab you were already on instead of re-rendering it. */}
-      {editingGoals && goalsDraft && createPortal(
+      {editingGoals && goalsDraft && location.pathname === '/profile' && createPortal(
         <div className="fixed inset-0 z-[120] flex flex-col" style={{ background: 'var(--color-bg-primary)' }} role="dialog" aria-modal="true">
           <div
             className="flex items-center gap-2 px-4 flex-shrink-0 border-b"
@@ -1744,8 +1750,8 @@ const Profile = () => {
                     >
                       <span className="flex-1">
                         {t('profile.gymClosedOnDay', {
-                          day: t(`profile.dayShort.${closedDayNotice}`),
-                          defaultValue: `Heads up — the gym is closed on ${t(`profile.dayShort.${closedDayNotice}`)}. We'll still plan a workout for that day, you just won't be able to check in.`,
+                          day: t(`daysPlural.${String(closedDayNotice).toLowerCase()}`, { ns: 'common', defaultValue: closedDayNotice }),
+                          defaultValue: `Heads up — the gym is closed on ${closedDayNotice}. We'll still plan a workout for that day, you just won't be able to check in.`,
                         })}
                       </span>
                       <button
@@ -1993,7 +1999,7 @@ const Profile = () => {
             monthSessions={monthSessions}
             monthPRs={monthPRList}
             user={profile}
-            gym={profile?.gym_name}
+            gym={gymName}
             gymLogoUrl={gymLogoUrl}
             shareLink={`${PROD_WEB_URL}/recap`}
           />

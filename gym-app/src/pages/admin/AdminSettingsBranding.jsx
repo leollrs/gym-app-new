@@ -4,6 +4,7 @@
  * save mutation + live preview. Restyled onto settingsKit.
  */
 import { useEffect, useState } from 'react';
+import SafeImg from '../../components/SafeImg';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import posthog from 'posthog-js';
@@ -375,7 +376,7 @@ export default function AdminSettingsBranding() {
               <Fld>{t('admin.settings.gymLogo', 'Gym Logo')}</Fld>
               <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
                 {logoUrl ? (
-                  <img src={logoUrl} alt={t('admin.settings.gymLogo', 'Gym Logo')} style={{ width: 54, height: 54, borderRadius: 13, objectFit: 'contain', padding: 4, flexShrink: 0, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }} />
+                  <SafeImg src={logoUrl} alt={t('admin.settings.gymLogo', 'Gym Logo')} style={{ width: 54, height: 54, borderRadius: 13, objectFit: 'contain', padding: 4, flexShrink: 0, background: TK.surface2, border: `1px solid ${TK.borderSolid}` }} />
                 ) : (
                   <span style={{ width: 54, height: 54, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', background: TK.surface2, border: `1px solid ${TK.borderSolid}` }}><Ico ch={BIC.img} size={20} color={TK.textMute} stroke={1.9} /></span>
                 )}
@@ -393,7 +394,7 @@ export default function AdminSettingsBranding() {
                 {/* Preview on the real splash backdrop (#05070B) so a transparent logo reads true. */}
                 <span style={{ width: 54, height: 54, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', background: '#05070B', border: `1px solid ${TK.borderSolid}` }}>
                   {splashLogoUrl
-                    ? <img src={splashLogoUrl} alt="" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+                    ? <SafeImg src={splashLogoUrl} alt="" style={{ width: 42, height: 42, objectFit: 'contain' }} />
                     : <Ico ch={BIC.img} size={20} color={TK.textMute} stroke={1.9} />}
                 </span>
                 <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 12, border: `1.5px dashed ${TK.borderSolid}`, background: TK.surface2, fontFamily: FK.body, fontSize: 14, fontWeight: 600, color: TK.textMute, cursor: uploadingSplashLogo ? 'default' : 'pointer' }}>

@@ -334,7 +334,14 @@ export const AuthProvider = ({ children }) => {
             .single(),
           supabase
             .from('gyms')
-            .select('name, is_active, qr_enabled, qr_display_format, classes_enabled, setup_completed, qr_payload_type, qr_payload_template, multi_admin_enabled')
+            // `slug` MUST be here. get_auth_context returns it, this fallback did
+            // not, and the query still SUCCEEDED — so gymSlug was overwritten with
+            // '' and that empty value was written into the offline_gym cache, where
+            // it survived a restart. Every expressive share then silently reverted
+            // to the generic /get download link and the platform's OG card, which is
+            // the exact behaviour /g/:slug exists to replace. One RPC hiccup was
+            // enough. Keep this select in sync with 0528's payload.
+            .select('name, slug, is_active, qr_enabled, qr_display_format, classes_enabled, setup_completed, qr_payload_type, qr_payload_template, multi_admin_enabled')
             .eq('id', data.gym_id)
             .maybeSingle(),
         ]);

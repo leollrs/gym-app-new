@@ -1399,7 +1399,7 @@ const PurchasesList = ({ purchases, t }) => {
 };
 
 // ── Punch Cards Tab ──────────────────────────────────────────────────────────
-const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
+const PurchasesTab = ({ punchCards, purchases, loading, profile, gymName, t }) => {
   const [walletLoadingId, setWalletLoadingId] = useState(null);
   const [walletError, setWalletError] = useState('');
   const [qrProduct, setQrProduct] = useState(null);
@@ -1453,7 +1453,7 @@ const PurchasesTab = ({ punchCards, purchases, loading, profile, t }) => {
       const fnName = platform === 'ios' ? 'generate-punch-card-pass' : 'generate-google-pass';
       const reqBody = {
         memberName: profile?.full_name || 'Member',
-        gymName: profile?.gym_name || 'TuGymPR',
+        gymName: gymName || 'TuGymPR',
         punchCards: [thisCard, ...otherCards],
         cardName: thisCard.name,
         ...(platform === 'ios' ? {} : { kind: 'punchcard' }),
@@ -1647,7 +1647,7 @@ const TAB_KEYS = ['rewards', 'purchases', 'history'];
 
 export default function Rewards() {
   const { t, i18n } = useTranslation('pages');
-  const { user, profile, lifetimePoints: ctxLifetimePoints } = useAuth();
+  const { user, profile, lifetimePoints: ctxLifetimePoints, gymName } = useAuth();
   const posthog = usePostHog();
   const { showToast } = useToast();
   const rewardsCacheKey = `rewards-${user?.id}`;
@@ -2148,6 +2148,7 @@ export default function Rewards() {
             purchases={purchases}
             loading={loading}
             profile={profile}
+            gymName={gymName}
             t={t}
           />
         )}

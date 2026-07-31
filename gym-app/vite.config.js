@@ -117,8 +117,8 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: isCapacitor ? [] : ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: isCapacitor ? false : {
-        name: 'IronForge',
-        short_name: 'IronForge',
+        name: 'TuGymPR',
+        short_name: 'TuGymPR',
         description: 'Track workouts, compete, and stay accountable.',
         theme_color: '#05070B',
         background_color: '#05070B',

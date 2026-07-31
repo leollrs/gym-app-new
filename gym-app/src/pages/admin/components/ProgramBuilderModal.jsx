@@ -23,6 +23,7 @@ import {
 import ExercisePicker from './ExercisePicker';
 import { CLASS_COVERS } from './CoverPreview';
 import { classImageUrl } from '../../../lib/classImageUrl';
+import ClassImage from '../../../components/ClassImage';
 
 const genGroupId = () => 'g' + Math.random().toString(36).slice(2, 10);
 
@@ -358,7 +359,10 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
 
             {imagePreview && (
               <div className="relative mb-2 rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-admin-border)', height: 100 }}>
-                <img src={imagePreview} alt="" className="w-full h-full object-cover" />
+                {/* Same reason as the class cover: this preview src is either a
+                    blob: URL or the stored object's public URL, and the stored
+                    one can be dead — on the very screen an admin opens to fix it. */}
+                <ClassImage path={imagePreview} alt="" loading="eager" style={{ position: 'absolute', inset: 0 }} />
                 <button type="button" onClick={() => { setImageFile(null); setImagePreview(''); setImagePath(null); }}
                   aria-label={t('admin.programs.builder.removeCover', 'Remove')}
                   className="absolute top-2 right-2 p-1.5 rounded-full transition-colors" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>

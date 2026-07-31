@@ -47,6 +47,10 @@ export const config = {
 // on many iOS versions, which is why that one matters most.
 const BOT_UA = /facebookexternalhit|facebookcatalog|Twitterbot|Slackbot|Slack-ImgProxy|WhatsApp|Discordbot|LinkedInBot|TelegramBot|Applebot|redditbot|Pinterest|SkypeUriPreview|vkShare|embedly|Iframely|quora link preview|nuzzel|outbrain|bitlybot|Google-InspectionTool|Googlebot|bingbot|DuckDuckBot|Bluesky|Mastodon|opengraph|Snapchat|Viber|Line-Podcast/i;
 
+// Appended to the card's escape-hatch link so a human who bounces off this
+// middleware is recognised on the way back in. See cardHtml.
+const ESCAPE_PARAM = '_p';
+
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 
@@ -101,18 +105,42 @@ async function firstLiveImage(candidates) {
 
 async function getPreview(kind, id) {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_share_preview`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-    },
-    body: JSON.stringify({ p_kind: kind, p_id: id }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data?.found ? data : null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_share_preview`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({ p_kind: kind, p_id: id }),
+      // Unbounded, this sat on the HUMAN path for /g/:slug — the link behind every
+      // expressive share. One Supabase latency spike and those links hang until the
+      // edge kills the invocation, which surfaces as a platform 500 the catch below
+      // can never turn back into a fail-open.
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.found ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A gym's website_url is free text an admin typed. Response.redirect THROWS on
+ *  anything it can't parse ("casa-hierro.com", "//evil.com"), and that throw
+ *  escapes to the outer catch → the SPA → ProtectedRoute → the login screen, for
+ *  a visitor who may not even have an account. Anything not plainly http(s) is
+ *  dropped rather than trusted: this host is shared by every gym, so an
+ *  unvalidated hop would make app.tugympr.com an open redirect. */
+function safeSiteUrl(raw) {
+  try {
+    const u = new URL(String(raw || ''));
+    return (u.protocol === 'https:' || u.protocol === 'http:') ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 const DAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -218,7 +246,7 @@ function cardFor(preview, canonicalUrl) {
   };
 }
 
-function cardHtml({ title, description, image, url, siteName }) {
+function cardHtml({ title, description, image, url, escapeUrl, siteName }) {
   const img = image
     ? `<meta property="og:image" content="${esc(image)}">
     <meta property="og:image:alt" content="${esc(title)}">
@@ -240,12 +268,15 @@ ${img}
 <meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}">
 <meta name="twitter:title" content="${esc(title)}">
 <meta name="twitter:description" content="${esc(description)}">
-<!-- A crawler stops here. A human who somehow lands on this document (a bot UA
-     in a real browser, a debugger) gets bounced into the real app instead of
-     staring at a blank page. -->
-<meta http-equiv="refresh" content="0; url=${esc(url)}">
+<!-- A crawler stops here. A human who somehow lands on this document gets
+     bounced onward. This is NOT og:url: pointing the refresh at the canonical
+     sent the visitor straight back into the same UA check, which produced the
+     same document — an infinite reload, not a rescue. Several apps (Snapchat,
+     Pinterest, Viber) put their name in their in-app BROWSER's user-agent, not
+     just their crawler's, so real people did land here. -->
+<meta http-equiv="refresh" content="0; url=${esc(escapeUrl || url)}">
 </head>
-<body><p><a href="${esc(url)}">${esc(title)}</a></p></body>
+<body><p><a href="${esc(escapeUrl || url)}">${esc(title)}</a></p></body>
 </html>`;
 }
 
@@ -253,6 +284,12 @@ export default async function middleware(request) {
   try {
     const url = new URL(request.url);
     const path = url.pathname;
+    // The marker the card's own escape hatch adds. Its presence means a human
+    // already bounced off this middleware once, so classification is skipped
+    // entirely and they go straight to the app. Without it the UA test would
+    // reach the same verdict forever.
+    if (url.searchParams.has(ESCAPE_PARAM)) return undefined;
+
     const ua = request.headers.get('user-agent') || '';
     const isBot = BOT_UA.test(ua);
 
@@ -273,7 +310,10 @@ export default async function middleware(request) {
     else if (path.startsWith('/add-friend/')) { kind = 'friend';    id = path.slice('/add-friend/'.length); }
     else if (path.startsWith('/g/'))          { kind = 'gym';       id = path.slice('/g/'.length); }
 
-    id = decodeURIComponent((id || '').split('/')[0].split('?')[0]);
+    const rawId = (id || '').split('/')[0].split('?')[0];
+    // decodeURIComponent throws on a malformed % sequence; an id is not worth
+    // costing someone their page.
+    try { id = decodeURIComponent(rawId); } catch { id = rawId; }
     if (!kind || !id) return undefined;
 
     // /g/:slug is a pass-through by design: the card is ours, the visit is the
@@ -282,8 +322,9 @@ export default async function middleware(request) {
     // gym's own members send them.
     if (kind === 'gym' && !isBot) {
       const preview = await getPreview('gym', id);
-      const site = preview?.gym?.website_url;
-      // No website configured yet → the download landing, never a dead end.
+      // No website configured, or one that doesn't parse → the download landing,
+      // never a dead end and never an unvalidated hop off our own domain.
+      const site = safeSiteUrl(preview?.gym?.website_url);
       return Response.redirect(site || `${url.origin}/get?c=gym`, 302);
     }
 
@@ -293,13 +334,23 @@ export default async function middleware(request) {
     const preview = await getPreview(kind, id);
     if (!preview) return undefined;
 
-    const canonical = `${url.origin}${path}`;
+    // Keep the query string: /class/:id?d=YYYY-MM-DD carries which OCCURRENCE
+    // was shared, and dropping it sent everyone to the next one instead.
+    const canonical = `${url.origin}${path}${url.search}`;
     const card = cardFor(preview, canonical);
     const image = await firstLiveImage(card.images || []);
+    // Where a HUMAN goes if this document ever renders. For a gym card that is
+    // the gym's own site — the same destination the 302 above would have given
+    // them. For everything else it's this URL with the marker appended, which
+    // this middleware now waves straight through to the app.
+    const escapeUrl = kind === 'gym'
+      ? (safeSiteUrl(preview.gym?.website_url) || `${url.origin}/get?c=gym`)
+      : `${canonical}${url.search ? '&' : '?'}${ESCAPE_PARAM}=1`;
     const html = cardHtml({
       ...card,
       image,
       url: canonical,
+      escapeUrl,
       siteName: preview.gym?.name || 'TuGymPR',
     });
 
@@ -311,6 +362,10 @@ export default async function middleware(request) {
         // shared cache keeps a viral link from hammering the RPC, while
         // stale-while-revalidate means an offer edit shows up quickly.
         'cache-control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600',
+        // This response is chosen by user-agent. Vercel's CDN doesn't cache
+        // middleware output, but any shared proxy in between could — and would
+        // otherwise serve a human the crawler's near-blank meta document.
+        vary: 'User-Agent',
         'x-robots-tag': 'noindex',
       },
     });

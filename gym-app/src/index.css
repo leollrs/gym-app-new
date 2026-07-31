@@ -1164,6 +1164,15 @@ button {
 
 .animate-slide-up { animation: slideUp 0.35s ease-out forwards; }
 
+/* Used by the top banners in App.jsx (offline, update-ready). Both referenced
+   `animate-slide-down` while nothing defined it, so both just appeared. */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-down { animation: slideDown 0.28s ease-out forwards; }
+
 /* ── Streak flame flicker ────────────────────────────────────── */
 @keyframes flameFlicker {
   0%, 100% { transform: scale(1) rotate(0deg); }

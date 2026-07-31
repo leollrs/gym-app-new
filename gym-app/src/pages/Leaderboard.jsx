@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import SafeImg from '../components/SafeImg';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { List as VirtualList } from 'react-window';
@@ -116,7 +117,7 @@ const ChallengeModal = ({ entry, metric, metricLabel, gymId, userId, userName, i
         <div className="px-5 pt-5 pb-3 text-center">
           <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 overflow-hidden" style={{ background: 'var(--color-bg-elevated, var(--color-bg-card))' }}>
             {entry.avatar ? (
-              <img src={entry.avatar} alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })} className="w-full h-full object-cover" width={56} height={56} loading="lazy" />
+              <SafeImg src={entry.avatar} alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })} className="w-full h-full object-cover" width={56} height={56} loading="lazy" />
             ) : (
               <span className="text-[18px] font-bold text-[var(--color-text-muted)]">{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
             )}
@@ -219,7 +220,7 @@ const MiniEntry = ({ entry, rank, userId, unit, isImproved, isConsistency, t }) 
       </div>
       <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: 'var(--color-bg-elevated, var(--color-bg-card))' }}>
         {entry.avatar ? (
-          <img src={entry.avatar} alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })} loading="lazy" className="w-full h-full object-cover" />
+          <SafeImg src={entry.avatar} alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })} loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <span className="text-[10px] font-bold text-[var(--color-text-muted)]">{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
         )}
@@ -312,7 +313,7 @@ const ExpandedListRow = React.memo(function ExpandedListRow({ index, style, entr
       {/* Avatar */}
       <div style={{ width: 36, height: 36, borderRadius: 999, marginLeft: 10, marginRight: 10, flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: rank <= 3 ? ['#FFD166','var(--color-border-strong, #888)','#CD7F32'][rank-1] : 'var(--color-bg-elevated, var(--color-bg-card))' }}>
         {entry.avatar ? (
-          <img src={entry.avatar} alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <SafeImg src={entry.avatar} alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           <span style={{ fontSize: 13, fontWeight: 700, color: rank === 1 ? '#1D1D1F' : rank <= 3 ? '#fff' : 'var(--color-text-muted)' }}>{entry.name?.charAt(0)?.toUpperCase() ?? '?'}</span>
         )}
@@ -1109,7 +1110,7 @@ const PodiumCarousel = ({ slides, shadow, displayFont, t }) => {
                 ...(isFirst ? { border: '3px solid #FFD166' } : {}),
               }}>
                 {entry.avatar ? (
-                  <img
+                  <SafeImg
                     src={entry.avatar}
                     alt={entry.name || t('leaderboard.userAvatar', { defaultValue: 'User avatar' })}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}

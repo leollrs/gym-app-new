@@ -509,5 +509,15 @@
   "prev": "Anterior",
   "increase": "Aumentar",
   "decrease": "Disminuir",
-  "updateReady": "Nueva versión lista — toca para actualizar"
+  "updateReady": "Nueva versión lista — toca para actualizar",
+  "daysPlural": {
+    "sunday": "domingos",
+    "monday": "lunes",
+    "tuesday": "martes",
+    "wednesday": "miércoles",
+    "thursday": "jueves",
+    "friday": "viernes",
+    "saturday": "sábados"
+  },
+  "offline": "Sin conexión"
 }

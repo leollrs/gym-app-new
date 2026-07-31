@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import SafeImg from './SafeImg';
 import useKeyboardOpen from '../hooks/useKeyboardOpen';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import { Home, Dumbbell, PlayCircle, BarChart2, Users, Bell, Trophy, Flame, X, Snowflake, CheckCircle2, MessageCircle, ChevronLeft, ChevronRight, QrCode, Gift, Apple, Settings, User, BookOpen, LogOut, Shield, Calendar as CalendarIcon } from 'lucide-react';
@@ -346,7 +347,7 @@ const Navigation = () => {
       <div className="px-5 pt-5 pb-4">
         <Link to="/my-gym" className="flex items-center gap-2.5 min-w-0 no-underline">
           {gymLogoUrl && (
-            <img
+            <SafeImg
               src={gymLogoUrl}
               alt={gymName || 'Gym logo'}
               className="h-8 w-8 rounded-xl object-contain border border-white/10 bg-black/10 flex-shrink-0"
@@ -469,7 +470,7 @@ const Navigation = () => {
         {/* Brand */}
         <Link to="/my-gym" className="flex items-center gap-2.5 min-w-0 no-underline">
           {gymLogoUrl && (
-            <img
+            <SafeImg
               src={gymLogoUrl}
               alt={gymName || 'Gym logo'}
               className="h-8 w-8 rounded-xl object-contain border border-white/10 bg-black/10 flex-shrink-0"
@@ -579,7 +580,7 @@ const Navigation = () => {
       {/* Brand on the left */}
       <Link to="/my-gym" className="flex items-center gap-2.5 min-w-0 no-underline">
         {gymLogoUrl && (
-          <img
+          <SafeImg
             src={gymLogoUrl}
             alt={gymName || 'Gym logo'}
             className="h-8 w-8 rounded-lg object-contain border border-white/10 bg-white/5 flex-shrink-0"

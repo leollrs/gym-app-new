@@ -81,6 +81,7 @@ const CYCLE_MS = 3500;
    page. It's a modal now: it opens over everything, it has its own scroll, and
    it can be searched. */
 function RoutinePickerModal({ routines, onClose, onStart, onEdit, t }) {
+  const pickerLocation = useLocation();
   useScrollLock(true);
   const [query, setQuery] = useState('');
   const [expandedId, setExpandedId] = useState(null);
@@ -94,6 +95,12 @@ function RoutinePickerModal({ routines, onClose, onStart, onEdit, t }) {
   const exercisesFor = (r) => [...(r.routine_exercises || [])]
     .sort((a, b) => (a.position || 0) - (b.position || 0))
     .map(ex => ({ name: ex.exercises?.name || 'Exercise', sets: ex.target_sets, reps: ex.target_reps }));
+
+  // /record is kept alive with display:none; a portal escapes that and would
+  // paint over whatever page you land on. Nothing here can open on its own, but
+  // the notification toast, Android back and deep links all navigate out from
+  // under an open modal.
+  if (pickerLocation.pathname !== '/record') return null;
 
   return createPortal(
     <div
@@ -391,7 +398,7 @@ const QuickStart = () => {
       })();
       // Clamped like My Programs' `currentWeekNum` so all three surfaces agree
       // on the A/B parity even in the tail week of a program.
-      const totalProgramWeeks = sMap?.total_calendar_weeks ?? Infinity;
+      const totalProgramWeeks = sMap?.total_calendar_weeks ?? fetchedProgram?.duration_weeks ?? 6;
       const variantWeekNum = Math.min(programWeekNum, totalProgramWeeks);
       const useVariantB = variantA.length > 0 && variantB.length > 0 && variantWeekNum % 2 === 0;
       const scheduleMap = {};

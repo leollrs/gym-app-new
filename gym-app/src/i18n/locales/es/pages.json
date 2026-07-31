@@ -73,7 +73,7 @@
       "pausedToast": "Membresía pausada. Regresa cuando quieras.",
       "ctaPauseShort": "Pausar",
       "pauseConfirmTitle": "¿Pausar tu membresía?",
-      "pauseConfirmBody": "Tu cuenta queda en espera: no vas a poder usar la app, reservar clases ni hacer check-in. No se borra nada — tus entrenos, PRs, racha y puntos quedan tal cual, y puedes reactivarla tú mismo cuando quieras.",
+      "pauseConfirmBody": "Tu cuenta queda en espera: no vas a poder usar la app, reservar clases ni hacer check-in. No se borra nada — tus entrenos, PRs y puntos siguen ahí, y puedes reactivarla cuando quieras.",
       "pauseConfirmCta": "Sí, pausar",
       "pauseBack": "Mejor no"
     }
@@ -198,7 +198,8 @@
     "birthdayFallbackName": "amigo",
     "birthdayBody": "Dale con todo hoy — es tu día. 🎉",
     "discardDraft": "Descartar entrenamiento",
-    "discardDraftConfirm": "¿Descartar este entrenamiento sin terminar? Las series registradas se perderán."
+    "discardDraftConfirm": "¿Descartar este entrenamiento sin terminar? Las series registradas se perderán.",
+    "classEnded": "terminó"
   },
   "workoutHeroCard": {
     "startWorkout": "Empezar Entrenamiento",
@@ -768,7 +769,8 @@
     "friendsJoined_other": "{{count}} amigos participan",
     "invite": "Invitar",
     "inviteText": "Únete a mí en «{{name}}» en {{gym}}",
-    "inviteCopied": "Enlace de invitación copiado"
+    "inviteCopied": "Enlace de invitación copiado",
+    "joinedCount": "{{count}} apuntados"
   },
   "community": {
     "title": "Comunidad",
@@ -14306,19 +14308,19 @@
       "morning": "mañana",
       "afternoon": "tarde",
       "evening": "noche",
-      "night": "madrugada"
+      "night": "noche"
     },
     "cardioType": {
       "run": "Carrera",
       "walk": "Caminata",
-      "ride": "Ruta",
+      "ride": "Bici",
       "swim": "Natación",
       "row": "Remo",
       "hike": "Senderismo",
       "session": "Sesión"
     },
-    "cardioLine1": "Una más en el banco.",
-    "cardioLine2": "Aparecí. Esa era la parte difícil.",
+    "cardioLine1": "Una más que cuenta.",
+    "cardioLine2": "Llegué. Esa era la parte difícil.",
     "cardioLine3": "Ya voy por la próxima.",
     "cardioLine4": "Aquí no hubo atajos.",
     "cardioLine5": "Gánale a ayer. De eso se trata.",
@@ -14473,7 +14475,7 @@
   "legal": {
     "loadFailed": "No se pudo cargar desde la web. Revisa tu conexión.",
     "openInBrowser": "Abrir en el navegador",
-    "opensInBrowser": "Esto abre en un navegador seguro dentro de la app."
+    "opensInBrowser": "Se abre en un navegador seguro dentro de la app."
   },
   "legalViewer": {
     "title": "Legal",
@@ -15174,7 +15176,7 @@
   },
   "referralLanding": {
     "genericTitle": "Te invitaron a entrenar",
-    "genericBody": "Crea tu cuenta y únete al gimnasio de tu amigo.",
+    "genericBody": "Crea tu cuenta y únete al gimnasio de quien te invitó.",
     "invitedBy": "{{name}} te invita a entrenar aquí.",
     "invitedGeneric": "Te invitaron a entrenar aquí.",
     "offerEyebrow": "Tu oferta de bienvenida",

@@ -10,6 +10,7 @@ import InstructorSelector from './InstructorSelector';
 import RoutineSelector from './RoutineSelector';
 import ScheduleSlotForm from './ScheduleSlotForm';
 import CoverPreview, { CLASS_COVERS } from './CoverPreview';
+import ClassImage from '../../../components/ClassImage';
 
 const DEFAULT_COLOR = '#D4AF37';
 const NAME_MAX = 100;
@@ -69,6 +70,12 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
   const [pendingSlots, setPendingSlots] = useState([]);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(classImageUrl(classData?.image_path) || classData?.image_url || '');
+  // The stored path, tracked separately from the preview URL. Without this the
+  // ✕ "remove image" button only cleared local state: onSave never carried a
+  // "cleared" signal, so handleSaveClass fell back to the row's existing
+  // image_path and the photo came straight back on reload. It also meant an
+  // admin had no way to clear a path whose object no longer exists.
+  const [imagePath, setImagePath] = useState(classData?.image_path ?? null);
   const [coverPreset, setCoverPreset] = useState(classData?.cover_preset || '');
   const [preview, setPreview] = useState(null);
   const [errors, setErrors] = useState({});
@@ -132,6 +139,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
         name_es: classData?.name_es || '',
         description_es: classData?.description_es || '',
         imageFile,
+        imagePath,
         pendingSlots,
         cover_preset: coverPreset || null,
       });
@@ -147,7 +155,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
 
     if (!result) {
       // Translation failed — save without translation
-      onSave({ ...form, name_es: classData?.name_es || '', description_es: classData?.description_es || '', imageFile, pendingSlots, cover_preset: coverPreset || null });
+      onSave({ ...form, name_es: classData?.name_es || '', description_es: classData?.description_es || '', imageFile, imagePath, pendingSlots, cover_preset: coverPreset || null });
       return;
     }
 
@@ -157,7 +165,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
       // Admin typed in Spanish → we need EN translation, not ES
       const toEn = await translate(texts, 'EN');
       if (!toEn) {
-        onSave({ ...form, name_es: form.name, description_es: form.description || '', imageFile, pendingSlots, cover_preset: coverPreset || null });
+        onSave({ ...form, name_es: form.name, description_es: form.description || '', imageFile, imagePath, pendingSlots, cover_preset: coverPreset || null });
         return;
       }
       setPreview({
@@ -187,6 +195,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
       description: preview.desc_en,
       description_es: preview.desc_es,
       imageFile,
+      imagePath,
       pendingSlots,
       cover_preset: coverPreset || null,
     });
@@ -370,8 +379,33 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
           {/* Custom image preview */}
           {imagePreview ? (
             <div className="relative mx-auto mb-3 aspect-square w-full max-w-[240px] rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-admin-border)', background: 'var(--color-admin-panel)' }}>
-              <img src={imagePreview} alt={t('admin.classes.imagePreviewAlt', 'Class image preview')} className="w-full h-full object-cover" />
-              <button onClick={() => { setImageFile(null); setImagePreview(''); setCoverPreset(''); }}
+              {/* The preview src is either a blob: URL (file just picked) or the
+                  stored object's public URL. The stored one can be dead — this is
+                  the exact screen an admin opens to fix that, so it must not show
+                  a broken-image glyph. */}
+              <ClassImage
+                path={imagePreview}
+                alt={t('admin.classes.imagePreviewAlt', 'Class image preview')}
+                accent={form.accent_color || 'var(--color-accent)'}
+                loading="eager"
+                style={{ position: 'absolute', inset: 0 }}
+              />
+              {/* Two jobs, one button — because while a pick is staged the preset
+                  grid and the upload control are both hidden, so this ✕ is the
+                  ONLY way out. With a file staged it UNDOES the pick and restores
+                  what is actually stored; only then does a second press remove the
+                  cover. Clearing unconditionally meant "I picked the wrong photo"
+                  ended in the original being deleted from the bucket on save. */}
+              <button onClick={() => {
+                if (imageFile) {
+                  if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+                  setImageFile(null);
+                  setImagePath(classData?.image_path ?? null);
+                  setImagePreview(classImageUrl(classData?.image_path) || classData?.image_url || '');
+                  return;
+                }
+                setImagePreview(''); setImagePath(null); setCoverPreset('');
+              }}
                 aria-label={t('admin.classes.removeImage', 'Remove image')}
                 className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
                 <X size={14} />
@@ -397,7 +431,7 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
                   const selected = coverPreset === c.key;
                   return (
                     <button key={c.key} type="button"
-                      onClick={() => { setCoverPreset(c.key); setImageFile(null); setImagePreview(''); }}
+                      onClick={() => { setCoverPreset(c.key); setImageFile(null); setImagePreview(''); setImagePath(null); }}
                       className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg-card)] scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
                       style={{ background: c.gradient }}>
                       <Icon size={18} className="text-white/90" />

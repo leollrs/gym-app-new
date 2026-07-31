@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 /**
  * Shared avatar renderer — use everywhere an avatar appears.
  *
@@ -76,6 +78,16 @@ function getInitials(user) {
 export { AVATAR_DESIGNS, getInitials };
 
 export default function UserAvatar({ user, size = 40, className = '', rounded = 'full' }) {
+  // Avatars are signed URLs and public-bucket objects: they expire, and objects
+  // get deleted. Without this the photo branch returned early with a bare <img>,
+  // so a dead URL painted the browser's broken-image glyph — on the ONE
+  // component 24 files render, in feeds, leaderboards, DMs and comment threads.
+  // Falling through to the initials/colour branch makes a missing photo look
+  // exactly like never having set one.
+  const [imgFailed, setImgFailed] = useState(false);
+  const [triedUrl, setTriedUrl] = useState(user?.avatar_url);
+  if (user?.avatar_url !== triedUrl) { setTriedUrl(user?.avatar_url); setImgFailed(false); }
+
   const initials = getInitials(user);
   const fontSize = size < 30 ? 10 : size < 50 ? 14 : 18;
   const borderRadius = rounded === '2xl' ? 16 : size / 2;
@@ -84,13 +96,14 @@ export default function UserAvatar({ user, size = 40, className = '', rounded = 
   const value = user?.avatar_value || '#6366F1';
 
   // Photo
-  if (type === 'photo' && user?.avatar_url) {
+  if (type === 'photo' && user?.avatar_url && !imgFailed) {
     return (
       <img
         src={user.avatar_url}
         alt={user.full_name || user.display_name || 'Avatar'}
         className={`object-cover flex-shrink-0 ${className}`}
         style={{ width: size, height: size, borderRadius }}
+        onError={() => setImgFailed(true)}
       />
     );
   }

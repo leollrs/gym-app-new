@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SafeImg from '../../../components/SafeImg';
 import { useQuery } from '@tanstack/react-query';
 import { Star, UserX, XCircle, Dumbbell, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
@@ -430,7 +431,7 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
                 {data.recentResults.map((r, i) => (
                   <div key={`${r.profile_id}-${i}`} className="flex items-center gap-2.5 p-2.5 rounded-lg" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
                     {r.profiles?.avatar_url ? (
-                      <img src={r.profiles.avatar_url} alt={r.profiles?.full_name || ''} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                      <SafeImg src={r.profiles.avatar_url} alt={r.profiles?.full_name || ''} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                     ) : (
                       <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, transparent)' }}>
                         <span className="text-[10px] font-bold" style={{ color: 'var(--color-accent)' }}>{r.profiles?.full_name?.[0]?.toUpperCase() || '?'}</span>

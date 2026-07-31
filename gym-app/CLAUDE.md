@@ -548,7 +548,7 @@ A complete native watchOS companion app:
 - Covers: all UI text, exercise names, meal names, achievement labels/descriptions, navigation, notifications, error messages
 - date-fns locale-aware formatting (timestamps, relative dates)
 - AI responses language-aware (food scanning returns Spanish when app is in Spanish)
-- i18next with `compatibilityJSON: 'v3'` for plural support (`_plural` key suffix)
+- i18next v25. **Plural keys use the `_other` suffix, NOT `_plural`** — v25 ignores `compatibilityJSON: 'v3'`, so a `_plural` key silently never resolves (see `src/i18n/i18n.js`)
 
 ---
 

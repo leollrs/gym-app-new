@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import SafeImg from '../../../components/SafeImg';
 import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Mail, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
@@ -418,7 +419,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
                 }}
               >
                 {referrerInfo.avatarUrl ? (
-                  <img src={referrerInfo.avatarUrl} alt={referrerInfo.name || 'Referrer avatar'} className="w-8 h-8 rounded-full object-cover" />
+                  <SafeImg src={referrerInfo.avatarUrl} alt={referrerInfo.name || 'Referrer avatar'} className="w-8 h-8 rounded-full object-cover" />
                 ) : (
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center"

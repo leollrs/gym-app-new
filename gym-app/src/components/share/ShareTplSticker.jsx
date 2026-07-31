@@ -1,4 +1,5 @@
 import React from 'react';
+import { readableOn } from './brandAccent';
 import GymLockup from './GymLockup';
 import { TuFont } from './ShareFormats';
 
@@ -26,6 +27,10 @@ export default function ShareTplSticker({
   // 'workout' | 'pr' | 'streak' | 'monthly' — drives the card's headline.
   kind = 'workout',
 }) {
+  // These labels are drawn ON the dark panel below. The template was designed
+  // around a fixed #D4AF37 gold; a gym whose brand is navy or near-black used to
+  // render them invisible. Keeps the gym's hue, lifts it just enough to read.
+  const ink = readableOn(accent, '#0A0D10');
   // Typography scales off width so the same template renders correctly at
   // 270 (preview) and 1080 (export) without re-tuning per-format.
   const s = w / 270;
@@ -141,7 +146,7 @@ export default function ShareTplSticker({
               fontSize: 10 * s,
               fontWeight: 800,
               letterSpacing: 2 * s,
-              color: accent,
+              color: ink,
               textTransform: 'uppercase',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -300,7 +305,7 @@ export default function ShareTplSticker({
                 fontSize: 8.5 * s,
                 fontWeight: 800,
                 letterSpacing: 1.4 * s,
-                color: accent,
+                color: ink,
                 textTransform: 'uppercase',
               }}
             >
@@ -335,7 +340,7 @@ export default function ShareTplSticker({
                     flexShrink: 0,
                     fontSize: 11 * s,
                     fontWeight: 800,
-                    color: accent,
+                    color: ink,
                     whiteSpace: 'nowrap',
                   }}
                 >

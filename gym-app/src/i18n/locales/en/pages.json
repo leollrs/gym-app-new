@@ -198,7 +198,8 @@
     "birthdayFallbackName": "friend",
     "birthdayBody": "Have a great workout — today is your day. 🎉",
     "discardDraft": "Discard workout",
-    "discardDraftConfirm": "Discard this unfinished workout? Logged sets will be lost."
+    "discardDraftConfirm": "Discard this unfinished workout? Logged sets will be lost.",
+    "classEnded": "ended"
   },
   "workoutHeroCard": {
     "startWorkout": "Start Workout",
@@ -768,7 +769,8 @@
     "friendsJoined_other": "{{count}} friends joined",
     "invite": "Invite",
     "inviteText": "Join me in \"{{name}}\" on {{gym}}",
-    "inviteCopied": "Invite link copied"
+    "inviteCopied": "Invite link copied",
+    "joinedCount": "{{count}} joined"
   },
   "community": {
     "title": "Community",

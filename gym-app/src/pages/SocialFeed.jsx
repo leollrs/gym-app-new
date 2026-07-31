@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import SafeImg from '../components/SafeImg';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import {
   MessageCircle, Trophy, Dumbbell, Zap, Send, Clock,
   Search, UserPlus, Check, X, Users, Flag,
@@ -555,6 +556,10 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
   const lastCommentTime = useRef(0);
   const menuRef = useRef(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Router location, NOT window.location: native runs MemoryRouter, where
+  // window.location never leaves the static base — the gate below would then be
+  // false forever and this confirmation would never render on iOS or Android.
+  const feedLocation = useLocation();
 
   // Close menu on outside click
   useEffect(() => {
@@ -865,7 +870,7 @@ const FeedCard = React.memo(({ item, currentUserId, onToggleLike, onReact, onRep
           Delete looked like it did nothing at all — the menu closed and the
           post stayed. A destructive confirmation has to appear where the eye
           already is. */}
-      {confirmDelete && createPortal(
+      {confirmDelete && feedLocation.pathname.startsWith('/social') && createPortal(
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center px-6"
           style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
@@ -1800,7 +1805,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
         <header className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             {gymLogoUrl ? (
-              <img src={gymLogoUrl} alt={`${gymName || 'Gym'} logo`} className="w-12 h-12 rounded-2xl object-cover" width={48} height={48} loading="lazy" />
+              <SafeImg src={gymLogoUrl} alt={`${gymName || 'Gym'} logo`} className="w-12 h-12 rounded-2xl object-cover" width={48} height={48} loading="lazy" />
             ) : (
               <div className="w-12 h-12 rounded-2xl bg-white/[0.06] flex items-center justify-center">
                 <Users size={24} className="text-[#D4AF37]" strokeWidth={2} />
@@ -1875,7 +1880,7 @@ const SocialFeed = ({ embedded = false, hideComposer = false }) => {
           <FriendsPanel
             userId={user.id}
             gymId={profile?.gym_id}
-            gymName={profile?.gym_name}
+            gymName={gymName}
             friendships={friendships}
             loadFriendships={loadFriendships}
             onClose={() => setShowFriends(false)}
@@ -2138,7 +2143,7 @@ const CreatePostModal = ({ onClose, onSubmit, userId, t }) => {
           {/* Photo preview */}
           {photoPreview && (
             <div className="relative">
-              <img src={photoPreview} alt={t('social.photoPreview', 'Photo preview for post')} className="w-full max-h-[200px] object-cover rounded-xl" loading="lazy" />
+              <SafeImg src={photoPreview} alt={t('social.photoPreview', 'Photo preview for post')} className="w-full max-h-[200px] object-cover rounded-xl" loading="lazy" />
               <button
                 type="button"
                 onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}

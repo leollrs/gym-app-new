@@ -22,12 +22,16 @@ import { classImageUrl } from '../lib/classImageUrl';
 /**
  * @param path      raw `image_path` from the row (bucket-relative or absolute)
  * @param accent    gym/class accent colour used to tint the fallback
+ * @param fallback  node painted underneath instead of the gradient — pass the
+ *                  cover preset here so a class with BOTH a dead photo and a
+ *                  chosen preset degrades to its preset, not to a generic wash
  * @param className applied to the wrapper
  * @param imgClassName applied to the <img> (defaults to a cover fill)
  */
 export default function ClassImage({
   path,
   accent = 'var(--color-accent)',
+  fallback = null,
   alt = '',
   className = '',
   style,
@@ -47,15 +51,24 @@ export default function ClassImage({
     <div className={className} style={{ position: 'relative', overflow: 'hidden', ...style }}>
       {/* Always-present base. Identical gradient to what the call sites used as
           their no-image branch, so nothing changes visually for classes that
-          never had a photo. */}
+          never had a photo. A caller-supplied `fallback` replaces it. */}
+      {/* The gradient always paints. `fallback` layers ON TOP of it rather than
+          replacing it, because a fallback node can legitimately render nothing —
+          CoverPreview returns null for a preset key it doesn't recognise — and
+          swapping the gradient out for the PROP rather than for what the prop
+          actually renders left a blank box, strictly worse than no fallback. */}
       <div
         aria-hidden
         style={{
           position: 'absolute',
           inset: 0,
+          display: 'grid',
+          placeItems: 'center',
           background: `linear-gradient(150deg, color-mix(in srgb, ${accent} 42%, #12161a) 0%, #12161a 55%, #0c0f12 100%)`,
         }}
-      />
+      >
+        {fallback}
+      </div>
       {showImg && (
         <img
           src={url}

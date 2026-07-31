@@ -1,4 +1,5 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import SafeImg from '../components/SafeImg';
 import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, Users, CalendarCheck, Trophy, Dumbbell,
@@ -345,7 +346,7 @@ export default function AdminLayout({ children }) {
         <div className="px-4 pt-5 pb-4">
           <div className="flex items-center gap-2.5">
             {gymLogoUrl ? (
-              <img
+              <SafeImg
                 src={gymLogoUrl}
                 alt={gymName || 'Gym logo'}
                 className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
@@ -516,7 +517,7 @@ export default function AdminLayout({ children }) {
           {/* Left: gym logo or name */}
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             {gymLogoUrl ? (
-              <img
+              <SafeImg
                 src={gymLogoUrl}
                 alt={gymName || 'Gym logo'}
                 className="w-9 h-9 rounded-lg object-contain flex-shrink-0"

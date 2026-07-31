@@ -18,6 +18,7 @@ import CreateRoutineModal from '../components/CreateRoutineModal';
 import MemberProgramBuilder from '../components/MemberProgramBuilder';
 import TrainerPlanSection from '../components/TrainerPlanSection';
 import Skeleton from '../components/Skeleton';
+import ClassImage from '../components/ClassImage';
 import EmptyState from '../components/EmptyState';
 import { timeAgo } from '../lib/dateUtils';
 // programTemplates + PROGRAM_CATEGORIES loaded dynamically to avoid 396KB eager bundle cost
@@ -33,7 +34,6 @@ import { loadAdaptationSuggestions, dismissAdaptationSuggestions } from '../lib/
 import { usePostHog } from '@posthog/react';
 import { programImageUrl } from '../lib/imageUrl';
 import { CLASS_COVERS } from './admin/components/CoverPreview';
-import { classImageUrl } from '../lib/classImageUrl';
 import { getExerciseReasoning } from '../lib/exerciseReasoning';
 import { selectInBatches } from '../lib/churn/batchedSelect';
 
@@ -3364,7 +3364,6 @@ const Workouts = () => {
                 const presetKey = prog.cover_preset || (() => { const id = String(prog.id || ''); let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return CLASS_COVERS[h % CLASS_COVERS.length]?.key; })();
                 const cover = CLASS_COVERS.find(c => c.key === presetKey) || CLASS_COVERS[0];
                 const CoverIcon = cover.icon;
-                const imgUrl = prog.image_path ? classImageUrl(prog.image_path) : null;
                 return (
                   <button
                     key={prog.id}
@@ -3373,8 +3372,13 @@ const Workouts = () => {
                     style={{ aspectRatio: '3 / 4', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
                     aria-label={`${progName(prog)} - Gym Exclusive program`}
                   >
-                    {imgUrl ? (
-                      <img src={imgUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                    {prog.image_path ? (
+                      <ClassImage
+                        path={prog.image_path}
+                        alt=""
+                        fallback={<div className="w-full h-full grid place-items-center" style={{ background: cover.gradient }}><CoverIcon size={62} className="text-white/15" /></div>}
+                        style={{ position: 'absolute', inset: 0 }}
+                      />
                     ) : (
                       <>
                         <div className="absolute inset-0" style={{ background: cover.gradient }} />

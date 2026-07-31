@@ -19,6 +19,10 @@
 
 import { Capacitor } from '@capacitor/core';
 
+// How often to ask the server whether sw.js changed. One conditional request an
+// hour per open tab — a 304 in the common case.
+const UPDATE_CHECK_MS = 60 * 60 * 1000;
+
 const listeners = new Set();
 let needsRefresh = false;
 let updateSW = null;
@@ -55,6 +59,24 @@ export async function initSWUpdate() {
       onNeedRefresh() {
         needsRefresh = true;
         listeners.forEach((fn) => { try { fn(true); } catch { /* one bad listener */ } });
+      },
+      onRegisteredSW(_swUrl, registration) {
+        // WITHOUT THIS THE BANNER CAN NEVER APPEAR. A browser only re-fetches
+        // sw.js on an in-scope NAVIGATION or an explicit registration.update().
+        // This is a SPA: client-side routing performs neither, so `waiting` never
+        // fires, onNeedRefresh never runs, and a tab open since before the deploy
+        // sits on the old build forever — exactly the front-desk-iPad case this
+        // file was written for. Registration alone only covers cold opens.
+        if (!registration) return;
+        const check = () => {
+          // Pointless while offline, and a hidden tab doesn't need to know yet —
+          // it gets checked the moment it comes back to the foreground.
+          if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
+          registration.update().catch(() => { /* transient — the next tick retries */ });
+        };
+        setInterval(check, UPDATE_CHECK_MS);
+        document.addEventListener('visibilitychange', check);
+        window.addEventListener('online', check);
       },
     });
   } catch {

@@ -1440,7 +1440,7 @@ function App() {
 
           // Don't toast while the user is already on the notifications page —
           // the list updates inline.
-          if (window.location?.pathname?.startsWith('/notifications')) return;
+          if (location.pathname?.startsWith('/notifications')) return;
 
           const toastTitle = row.title || t('notifications.newTitle', { defaultValue: 'New notification' });
           const toastBody = row.body ? `${toastTitle} — ${row.body}` : toastTitle;
@@ -1453,7 +1453,12 @@ function App() {
           // standing on /classes when you book. Tapping View then navigated to
           // the route you were already on, the toast dismissed, and nothing
           // happened. It read as a dead button; it was a no-op navigation.
-          const here = window.location?.pathname || '';
+          // useLocation(), NOT window.location: Capacitor runs MemoryRouter, where
+          // window.location is pinned to the static base forever. Reading it made
+          // `here` always '/', so this check passed for exactly one route and the
+          // View button stayed dead on iOS and Android — the thing it was added to
+          // fix. `location` comes from useLocation() at the top of App().
+          const here = location.pathname || '';
           const alreadyThere = here === route || here.startsWith(`${route}/`);
           showToast(toastBody, 'info', {
             durationMs: 6000,
@@ -1665,7 +1670,7 @@ function App() {
     {/* Maintenance lock — full-screen overlay for all non-super-admins while
         maintenance mode is on (toggled in platform Operations). */}
     <MaintenanceGate />
-    {swUpdateReady && (
+    {swUpdateReady && isOnline && (
       <button
         type="button"
         onClick={applySWUpdate}
@@ -1673,7 +1678,7 @@ function App() {
         style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)', border: 'none', cursor: 'pointer' }}
       >
         <ArrowUpCircle size={14} />
-        <span className="text-[12px] font-semibold">{t('updateReady', 'Nueva versión lista — toca para actualizar')}</span>
+        <span className="text-[12px] font-semibold">{t('updateReady', 'New version ready — tap to update')}</span>
       </button>
     )}
     {!isOnline && !offlineDismissed && (

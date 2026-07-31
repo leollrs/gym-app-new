@@ -1,4 +1,5 @@
 import { useState, useEffect, useReducer, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
+import { classHasEnded } from '../lib/classTime';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -192,7 +193,7 @@ const LiveCardioHeroCard = ({ liveCardioSession: lc, t }) => {
 
 /* ── Main ────────────────────────────────────────────────── */
 const Dashboard = () => {
-  const { user, profile, lifetimePoints: ctxLifetimePoints, refreshProfile, gymConfig } = useAuth();
+  const { user, profile, lifetimePoints: ctxLifetimePoints, refreshProfile, gymConfig , gymName } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('pages');
   const { showToast } = useToast();
@@ -444,13 +445,17 @@ const Dashboard = () => {
 
   useEffect(() => { document.title = `${t('dashboard.title')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
-  // Scroll locking for modals
-  useEffect(() => {
-    if (showPlanInfo) {
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
-    }
-  }, [showPlanInfo]);
+  // NO scroll lock for My Plan here — MyPlanModal owns its own (MyPlanModal.jsx:94).
+  //
+  // Two locks on one body only stayed harmless while their lifetimes matched.
+  // Route-gating the modal broke that: MyPlanModal is lazy(), so on a cold chunk
+  // Suspense renders null, THIS effect locks first, and the modal then captures
+  // prev='hidden'. Leaving home unmounts the modal, it restores 'hidden', and this
+  // effect never cleans up because showPlanInfo never changed — the page you land
+  // on can't scroll, with no modal on screen to explain why. Second open, warm
+  // chunk, correct order, no bug: the worst kind to chase.
+  //
+  // One owner. The modal is the one that knows when it's on screen.
   useEffect(() => {
     if (showQR) {
       document.body.style.overflow = 'hidden';
@@ -1575,12 +1580,11 @@ const Dashboard = () => {
                 const now = Date.now();
                 const hasPassed = (b) => {
                   const sched = b.gym_class_schedules;
-                  const endStr = sched?.end_time || sched?.start_time;
-                  if (!endStr) return false;
-                  const [h, m] = String(endStr).split(':').map(Number);
-                  const endAt = new Date();
-                  endAt.setHours(h || 0, m || 0, 0, 0);
-                  return endAt.getTime() < now;
+                  // Anchored to the booking's OWN date, and midnight-aware: an
+                  // end_time earlier than the start means the class runs into the
+                  // next day, which "apply end_time to today" read as long past.
+                  return classHasEnded(b.booking_date, sched?.start_time,
+                                       sched?.end_time || sched?.start_time, now);
                 };
                 // Per-booking, and the header keyed on whether anything is still
                 // AHEAD. `.every()` meant one odd row kept the whole banner
@@ -2941,7 +2945,7 @@ const Dashboard = () => {
             payload={profile?.qr_code_payload || user?.id || ''}
             memberName={profile?.full_name || 'Member'}
             displayFormat={profile?.display_format || 'qr_code'}
-            gymName={profile?.gym_name || ''}
+            gymName={gymName || ''}
             onClose={() => setShowQR(false)}
           />
         </Suspense>
