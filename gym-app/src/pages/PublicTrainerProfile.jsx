@@ -6,6 +6,7 @@ import {
   Dumbbell, BadgeCheck, Star, X, Loader2, Send, MapPin,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import logger from '../lib/logger';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import { trainerShareUrl } from '../lib/appUrls';
@@ -473,6 +474,31 @@ export default function PublicTrainerProfile() {
   // than showing a misleading 0 on an upsell page.
   const [statsAvailable, setStatsAvailable] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  // The consent notification deep-links HERE ("tap to decide"), so the decision
+  // has to be answerable here — otherwise the push lands the member on a page
+  // with nothing to press. Seeing who is asking before answering is also the
+  // better order than deciding from a card on their own profile.
+  const [requestPending, setRequestPending] = useState(false);
+  const [answering, setAnswering] = useState(false);
+
+  const answerRequest = async (accept) => {
+    if (answering) return;
+    setAnswering(true);
+    try {
+      const { error } = await supabase.rpc('respond_to_trainer_request', {
+        p_trainer_id: trainerId, p_accept: accept,
+      });
+      if (error) throw error;
+      setRequestPending(false);
+      setIsClient(accept);
+      showToast(accept
+        ? t('publicTrainerProfile.requestAccepted', 'Accepted — they can now see your training data')
+        : t('publicTrainerProfile.requestDeclined', 'Request declined'), accept ? 'success' : 'info');
+    } catch (err) {
+      logger.error('PublicTrainerProfile: respond failed:', err);
+      showToast(t('common.somethingWentWrong', 'Something went wrong'), 'error');
+    } finally { setAnswering(false); }
+  };
   const [hasEverBeenClient, setHasEverBeenClient] = useState(false);
   // Full next-session row (id/status/details/client_id) — drives the sticky
   // "Next:" line plus the viewer's Confirmar / No puedo card.
@@ -539,7 +565,7 @@ export default function PublicTrainerProfile() {
       supabase.rpc('get_trainer_public_stats', { p_trainer_id: trainerId }),
       supabase
         .from('trainer_clients')
-        .select('id, is_active')
+        .select('id, is_active, status')
         .eq('trainer_id', trainerId)
         .eq('client_id', profile.id)
         .eq('is_active', true)
@@ -602,7 +628,10 @@ export default function PublicTrainerProfile() {
       // RPC missing (migration not applied yet) or failed — hide the tiles.
       setStatsAvailable(false);
     }
-    setIsClient(!!relRes.data);
+    // A pending row is NOT yet a client relationship — the trainer can read
+    // nothing until it's accepted, so the page must not treat them as a client.
+    setIsClient(relRes.data?.status ? relRes.data.status === 'active' : !!relRes.data);
+    setRequestPending(relRes.data?.status === 'pending');
     setHasEverBeenClient(!!anyRelRes.data);
     setNextSession(nextSessionRes.data || null);
     // 42P01 / PGRST205 = session_packs not deployed → just hide the line.
@@ -885,6 +914,35 @@ export default function PublicTrainerProfile() {
       paddingBottom: `calc(120px + env(safe-area-inset-bottom, 0px))`,
       fontFamily: TFont.body,
     }}>
+      {requestPending && (
+        <div style={{
+          padding: '14px 16px',
+          background: 'color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-card))',
+          borderBottom: '1px solid color-mix(in srgb, var(--color-accent) 26%, transparent)',
+        }}>
+          <p style={{ fontSize: 14, fontWeight: 800, color: TT.text, marginBottom: 2 }}>
+            {t('publicTrainerProfile.requestTitle', 'They want to be your trainer')}
+          </p>
+          <p style={{ fontSize: 12.5, color: TT.textSub, marginBottom: 12, lineHeight: 1.4 }}>
+            {t('publicTrainerProfile.requestBody', "They can't see any of your training data unless you accept.")}
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" disabled={answering} onClick={() => answerRequest(true)}
+              style={{ flex: 1, minHeight: 44, borderRadius: 12, border: 'none', fontSize: 13.5, fontWeight: 800,
+                       cursor: 'pointer', opacity: answering ? 0.5 : 1,
+                       background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #001512)' }}>
+              {t('publicTrainerProfile.requestAccept', 'Accept')}
+            </button>
+            <button type="button" disabled={answering} onClick={() => answerRequest(false)}
+              style={{ padding: '0 18px', minHeight: 44, borderRadius: 12, fontSize: 13.5, fontWeight: 800,
+                       cursor: 'pointer', opacity: answering ? 0.5 : 1,
+                       background: 'transparent', color: TT.textSub, border: `1px solid ${TT.border}` }}>
+              {t('publicTrainerProfile.requestDecline', 'Decline')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Cover ─────────────────────────────────── */}
       <div style={{ position: 'relative', height: 180 }}>
         <div style={{

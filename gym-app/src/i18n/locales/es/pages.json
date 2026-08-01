@@ -474,7 +474,19 @@
     "trainerNext": "Próxima: {{when}}",
     "messageTrainer": "Mensaje",
     "openChatFailed": "No se pudo abrir el chat. Inténtalo de nuevo.",
-    "gymClosedOnDay": "Ojo — el gym cierra los {{day}}. Igual te planificamos entreno ese día, solo que no vas a poder hacer check-in."
+    "gymClosedOnDay": "Ojo — el gym cierra los {{day}}. Igual te planificamos entreno ese día, solo que no vas a poder hacer check-in.",
+    "aTrainer": "Un entrenador",
+    "trainerRequestTitle": "{{name}} quiere ser tu entrenador",
+    "trainerRequestBody": "No puede ver ninguno de tus datos si no aceptas.",
+    "trainerAccept": "Aceptar",
+    "trainerDecline": "Rechazar",
+    "trainerAccepted": "Aceptado — {{name}} ya es tu entrenador",
+    "trainerDeclined": "Solicitud rechazada",
+    "trainerRemove": "Quitar entrenador",
+    "trainerRemoveConfirm": "¿Quitar a {{name}} como tu entrenador?",
+    "trainerRemoveBody": "Pierde el acceso a tus datos de entrenamiento al instante. Tu historial se queda contigo.",
+    "trainerRemoveYes": "Quitar",
+    "trainerRemoved": "Ya no tiene acceso a tus datos"
   },
   "rewards": {
     "title": "Recompensas",
@@ -11324,7 +11336,8 @@
     "programAssignedSuccess_one": "Programa asignado a {{count}} cliente",
     "assignProgramDesc_one": "Selecciona un programa para asignar a {{count}} cliente seleccionado",
     "messageAllDesc_one": "Enviar un mensaje directo a {{count}} cliente seleccionado",
-    "selectedCount_one": "{{count}} seleccionado"
+    "selectedCount_one": "{{count}} seleccionado",
+    "consentPending": "Esperando aprobación"
   },
   "nps": {
     "survey": {
@@ -14633,7 +14646,13 @@
     "packsRemaining": "Te quedan {{left}} de {{total}} sesiones",
     "about": "Sobre mí",
     "textSmsShort": "SMS",
-    "messageSelf": "Ese es tu propio perfil."
+    "messageSelf": "Ese es tu propio perfil.",
+    "requestTitle": "Quiere ser tu entrenador",
+    "requestBody": "No puede ver ninguno de tus datos de entrenamiento si no aceptas.",
+    "requestAccept": "Aceptar",
+    "requestDecline": "Rechazar",
+    "requestAccepted": "Aceptado — ya puede ver tus datos de entrenamiento",
+    "requestDeclined": "Solicitud rechazada"
   },
   "trainerLive": {
     "watchLive": "Ver en vivo",

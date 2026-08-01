@@ -987,6 +987,7 @@ export default function TrainerClients() {
         .from('trainer_clients')
         .select(`
           client_id,
+          status,
           profiles!trainer_clients_client_id_fkey (
             id, full_name, username, avatar_url, last_active_at, created_at, assigned_program_id, phone_number, membership_status
           )
@@ -994,6 +995,13 @@ export default function TrainerClients() {
         .eq('trainer_id', profile.id)
         .eq('is_active', true);
       if (tcError) logger.error('TrainerClients: failed to load clients:', tcError);
+
+      // Consent status rides along (0657). A pending client still appears in the
+      // list — the trainer added them and should see the request is out — but
+      // every data gate returns nothing for them until the member accepts, so
+      // the row has to SAY so or the empty stats read as a bug.
+      const consentByClient = {};
+      (tcRows || []).forEach(tc => { if (tc.client_id) consentByClient[tc.client_id] = tc.status; });
 
       const assignedClients = (tcRows || [])
         .map(tc => tc.profiles)
@@ -1068,6 +1076,7 @@ export default function TrainerClients() {
 
       setClients(assignedClients.map(m => ({
         ...m,
+        consentStatus: consentByClient[m.id] || 'active',
         recentWorkouts: recentCounts[m.id] ?? 0,
         weekSessions: weekCounts[m.id] ?? 0,
         planDaysPerWeek: planDaysMap[m.id] ?? null,
@@ -1521,6 +1530,11 @@ export default function TrainerClients() {
                       {c.full_name}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, minWidth: 0 }}>
+                      {c.consentStatus === 'pending' && (
+                        <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>
+                          {t('trainerClients.consentPending', 'Awaiting approval')}
+                        </TPill>
+                      )}
                       {membershipFlag && (
                         <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>{membershipFlag}</TPill>
                       )}

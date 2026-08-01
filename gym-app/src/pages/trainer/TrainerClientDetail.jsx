@@ -586,13 +586,34 @@ export default function TrainerClientNotes() {
         .eq('is_active', true)
         .maybeSingle();
 
+      // Notes moved to their own trainer-only table (0658) because the policy
+      // on trainer_clients is row-level and let the CLIENT read them. Read the
+      // new table first and fall back to the legacy column, so this bundle is
+      // correct whether or not the migration has been applied yet — and keeps
+      // working through the window where 0658 has run but 0659 hasn't.
+      let privateNotes = null;
+      if (assignment) {
+        const { data: noteRow, error: noteErr } = await supabase
+          .from('trainer_client_notes')
+          .select('notes')
+          .eq('trainer_id', profile.id)
+          .eq('client_id', clientId)
+          .maybeSingle();
+        // Table missing entirely (migration not applied) → stay on the legacy
+        // column instead of blanking the trainer's notebook.
+        if (noteErr && !/does not exist|schema cache/i.test(noteErr.message || '')) {
+          logger.error('TrainerClientDetail: notes lookup failed:', noteErr);
+        }
+        privateNotes = noteRow?.notes ?? null;
+      }
+
       if (!assignment) {
         dispatch({ type: 'SET', payload: { accessDenied: true, loading: false, isAssigned: false } });
         return;
       }
 
       // Assignment confirmed — store notes and set flag so data queries can proceed.
-      assignmentNotesRef.current = assignment.notes;
+      assignmentNotesRef.current = privateNotes ?? assignment.notes;
       dispatch({ type: 'SET', payload: { isAssigned: true } });
     } catch (err) {
       logger.error('Error checking assignment:', err);
@@ -1127,11 +1148,15 @@ export default function TrainerClientNotes() {
     dispatch({ type: 'SET', payload: { savingNotes: true } });
     try {
       const serialized = JSON.stringify(notesData);
-      const { error } = await supabase.from('trainer_clients').upsert({
+      // Writes go to the trainer-only table. Never back to trainer_clients.notes:
+      // that column is readable by the CLIENT (row-level policy, no column
+      // filtering) and 0659 blanks it for good.
+      const { error } = await supabase.from('trainer_client_notes').upsert({
         gym_id: profile.gym_id,
         trainer_id: profile.id,
         client_id: clientId,
         notes: serialized,
+        updated_at: new Date().toISOString(),
       }, { onConflict: 'trainer_id,client_id' });
       if (error) throw error; // don't flash "Saved ✓" on a failed write
       posthogClient?.capture('trainer_client_notes_saved');

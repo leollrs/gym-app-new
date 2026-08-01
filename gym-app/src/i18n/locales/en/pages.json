@@ -474,7 +474,19 @@
     "trainerNext": "Next: {{when}}",
     "messageTrainer": "Message",
     "openChatFailed": "Could not open the chat. Try again.",
-    "gymClosedOnDay": "Heads up — the gym is closed on {{day}}. We'll still plan a workout for that day, you just won't be able to check in."
+    "gymClosedOnDay": "Heads up — the gym is closed on {{day}}. We'll still plan a workout for that day, you just won't be able to check in.",
+    "aTrainer": "A trainer",
+    "trainerRequestTitle": "{{name}} wants to be your trainer",
+    "trainerRequestBody": "They can't see any of your data unless you accept.",
+    "trainerAccept": "Accept",
+    "trainerDecline": "Decline",
+    "trainerAccepted": "Accepted — {{name}} is now your trainer",
+    "trainerDeclined": "Request declined",
+    "trainerRemove": "Remove trainer",
+    "trainerRemoveConfirm": "Remove {{name}} as your trainer?",
+    "trainerRemoveBody": "They lose access to your training data right away. Your own history stays.",
+    "trainerRemoveYes": "Remove",
+    "trainerRemoved": "They no longer have access to your data"
   },
   "rewards": {
     "title": "Rewards",
@@ -11076,7 +11088,8 @@
     "programAssignedSuccess_one": "Program assigned to {{count}} client",
     "assignProgramDesc_one": "Select a program to assign to {{count}} selected client",
     "messageAllDesc_one": "Send a direct message to {{count}} selected client",
-    "selectedCount_one": "{{count}} selected"
+    "selectedCount_one": "{{count}} selected",
+    "consentPending": "Awaiting approval"
   },
   "nps": {
     "survey": {
@@ -14236,7 +14249,13 @@
     "packsRemaining": "You have {{left}} of {{total}} sessions left",
     "about": "About",
     "textSmsShort": "Text",
-    "messageSelf": "That's your own profile."
+    "messageSelf": "That's your own profile.",
+    "requestTitle": "They want to be your trainer",
+    "requestBody": "They can't see any of your training data unless you accept.",
+    "requestAccept": "Accept",
+    "requestDecline": "Decline",
+    "requestAccepted": "Accepted — they can now see your training data",
+    "requestDeclined": "Request declined"
   },
   "trainerLive": {
     "watchLive": "Watch live",
