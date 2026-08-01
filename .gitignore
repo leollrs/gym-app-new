@@ -8,6 +8,9 @@ node_modules/
 ._*
 .DS_Store
 
+# Downloaded installers / disk images — tooling, not source
+*.dmg
+
 # Source video files (compressed versions live in public/videos)
 gym-app/videos/
 *.mov

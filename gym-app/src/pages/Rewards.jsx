@@ -855,13 +855,29 @@ const RewardsTab = ({ points, gymRewards, gymRewardsLoading, onRedeem, challenge
         </div>
       ) : (
         <>
-          {/* Featured reward (Rewards A style) */}
+          {/* Available rewards grid */}
+          <div className="flex items-baseline justify-between px-1 mb-3">
+            <h3
+              className="text-[17px] font-extrabold text-[var(--color-text-primary)]"
+              style={{ fontFamily: FONT_DISPLAY, letterSpacing: '-0.3px' }}
+            >
+              {t('rewards.availableRewards', 'Available rewards')}
+            </h3>
+            <span className="text-[12px] font-bold text-[var(--color-text-muted)]">
+              {gymRewards.length} {t('rewards.total', 'total')}
+            </span>
+          </div>
+
+          {/* Featured tile lives UNDER the "Available rewards" heading, not above
+              it. The grid below renders `rest` (everything EXCEPT the featured
+              one), so a gym with a single, featured reward showed a heading that
+              said "1 total" with nothing beneath it. */}
           {featured && (() => {
             const name = lang === 'es' && featured.name_es ? featured.name_es : featured.name;
             const desc = lang === 'es' && featured.description_es ? featured.description_es : (featured.description || '');
             const canAfford = points >= featured.cost;
             return (
-              <div className="mb-4">
+              <div className="mb-3">
                 <div
                   className="relative rounded-[18px] overflow-hidden p-5 text-[var(--color-text-on-accent)]"
                   style={{
@@ -912,19 +928,6 @@ const RewardsTab = ({ points, gymRewards, gymRewardsLoading, onRedeem, challenge
               </div>
             );
           })()}
-
-          {/* Available rewards grid */}
-          <div className="flex items-baseline justify-between px-1 mb-3">
-            <h3
-              className="text-[17px] font-extrabold text-[var(--color-text-primary)]"
-              style={{ fontFamily: FONT_DISPLAY, letterSpacing: '-0.3px' }}
-            >
-              {t('rewards.availableRewards', 'Available rewards')}
-            </h3>
-            <span className="text-[12px] font-bold text-[var(--color-text-muted)]">
-              {gymRewards.length} {t('rewards.total', 'total')}
-            </span>
-          </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {rest.map((reward) => {

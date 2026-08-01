@@ -214,17 +214,20 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
       {/* sheet */}
       <div role="dialog" aria-modal="true" aria-label={t('shareMonth.title', 'Share month')}
         style={{ position: 'relative', background: C.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28,
-          maxHeight: '94dvh', overflowY: 'auto', boxShadow: '0 -16px 50px rgba(0,0,0,0.5)',
+          // Column, not a scroller: the top bar and the preview are pinned and
+          // the CONTROLS scroll inside their own region below. Scrolling the
+          // whole sheet is what cropped the card's top edge.
+          maxHeight: '94dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: '0 -16px 50px rgba(0,0,0,0.5)',
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 360ms cubic-bezier(.32,.72,0,1)',
-          paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 18px)' }}>
+          transition: 'transform 360ms cubic-bezier(.32,.72,0,1)' }}>
 
         {/* faint app-behind glow */}
         <div style={{ position: 'absolute', top: -40, left: -30, width: 200, height: 200, borderRadius: '50%',
           background: 'radial-gradient(circle, rgba(46,196,196,0.10), transparent 70%)', pointerEvents: 'none' }}/>
 
         {/* top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 4px' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 4px' }}>
           <button type="button" onClick={onClose} aria-label={t('shareMonth.close', 'Close')}
             style={{ width: 38, height: 38, borderRadius: 19, border: 'none', cursor: 'pointer',
               background: 'rgba(255,255,255,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -235,13 +238,19 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
         </div>
 
         {/* preview */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0 14px' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0 14px' }}>
           <div style={{ width: prev.w, height: prev.h, borderRadius: sticker ? 18 : 22, overflow: 'hidden',
             boxShadow: '0 18px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
             background: sticker ? 'repeating-linear-gradient(135deg,#262b33 0 16px,#1d2229 16px 32px)' : 'transparent' }}>
             <ShareMonthCard id={styleId} data={data} w={prev.w} h={prev.h} sticker={sticker}/>
           </div>
         </div>
+
+        {/* Controls — the only scrolling region, so the preview above always
+            stays whole and fully visible. */}
+        <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+          paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 18px)' }}>
 
         {/* format — Story 9:16 / Feed 1:1 (cards scale to fit either) */}
         <div style={{ padding: '0 18px 6px' }}>
@@ -332,6 +341,7 @@ export default function ShareMonthSheet({ open, onClose, recap, monthSessions = 
               : activeDest === 'save' ? t('shareMonth.save', 'Save image')
               : t('shareMonth.shareNow', 'Share')}
           </button>
+        </div>
         </div>
       </div>
 
