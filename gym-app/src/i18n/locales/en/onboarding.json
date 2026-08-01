@@ -281,7 +281,8 @@
     "weekN": "Week {{n}}",
     "programNameLabel": "Program name",
     "programNamePlaceholder": "Name your program",
-    "resetName": "Reset"
+    "resetName": "Reset",
+    "noPlan": "I don't want a plan"
   },
   "onboardingTargets": {
     "title": "Your Targets",

@@ -281,7 +281,8 @@
     "weekN": "Semana {{n}}",
     "programNameLabel": "Nombre del programa",
     "programNamePlaceholder": "Nombra tu programa",
-    "resetName": "Restablecer"
+    "resetName": "Restablecer",
+    "noPlan": "No quiero un plan"
   },
   "onboardingTargets": {
     "title": "Tus Metas",

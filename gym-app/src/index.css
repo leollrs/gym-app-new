@@ -182,7 +182,12 @@
   --tt-bg:            #F4F2ED;            /* warm cream shell */
   --tt-bg-elev:       #FBFAF6;
   --tt-surface:       #ffffff;
+  /* Skeletons need CONTRAST, not subtlety. --tt-surface-2 sits at 1.03:1
+     against --tt-bg in light mode, so placeholder blocks painted with it were
+     mathematically invisible and every trainer page read as blank while it
+     loaded. Dark mode was fine, which is why it went unnoticed. */
   --tt-surface-2:     #F7F5F0;
+  --tt-skeleton:      #E4E0D6;      /* loading placeholders — see note */
   --tt-text:          #15110C;            /* warm near-black ink */
   --tt-text-sub:      #5C564C;            /* warm taupe */
   --tt-on-inverse:    #ffffff;            /* text/icons sitting on a TT.text-colored (dark) button */

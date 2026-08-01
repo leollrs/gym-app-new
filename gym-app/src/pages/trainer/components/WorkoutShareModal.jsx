@@ -212,7 +212,7 @@ export default function WorkoutShareModal({ open, onClose, trainerId, onShare, t
           {loading && (
             <div className="space-y-2">
               {[0, 1, 2].map(i => (
-                <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.surface2 }} />
+                <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.skeleton }} />
               ))}
             </div>
           )}

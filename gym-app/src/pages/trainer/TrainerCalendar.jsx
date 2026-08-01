@@ -1476,7 +1476,7 @@ export default function TrainerSchedule() {
             {loading ? (
               <div className="space-y-3">
                 {[0,1,2,3,4].map(i => (
-                  <div key={i} className="h-24 rounded-2xl animate-pulse" style={{ background: TT.surface2 }} />
+                  <div key={i} className="h-24 rounded-2xl animate-pulse" style={{ background: TT.skeleton }} />
                 ))}
               </div>
             ) : (
@@ -1646,7 +1646,7 @@ export default function TrainerSchedule() {
             {loading ? (
               <div className="space-y-2.5">
                 {[0,1,2,3].map(i => (
-                  <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: TT.surface2 }} />
+                  <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: TT.skeleton }} />
                 ))}
               </div>
             ) : dayViewSessions.length === 0 ? (
@@ -1997,7 +1997,7 @@ export default function TrainerSchedule() {
                     {loading ? (
                       <div className="p-4 space-y-3">
                         {[0,1,2,3,4].map(i => (
-                          <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.surface2 }} />
+                          <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.skeleton }} />
                         ))}
                       </div>
                     ) : (

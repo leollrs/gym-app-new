@@ -361,7 +361,7 @@ export default function ConversationList({
         {loading && (
           <div className="px-3 py-3 space-y-2">
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.surface2 }} />
+              <div key={i} className="h-16 rounded-xl animate-pulse" style={{ background: TT.skeleton }} />
             ))}
           </div>
         )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { OB } from '../lib/onboardingTokens';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, ArrowRight, Check, Heart, Flame, Dumbbell, Zap,
@@ -39,29 +40,6 @@ import RewardPicker from '../components/RewardPicker';
 // ── DESIGN TOKENS ──────────────────────────────────────────
 // Warm-paper onboarding system. Onboarding runs BEFORE gym branding applies,
 // so we use literal hex values — NOT CSS variables.
-const OB = {
-  bg:          '#f0eee9',
-  surface:     '#ffffff',
-  surface2:    '#e8e5de',
-  ink:         '#0B0F12',
-  sub:         '#6B6A63',
-  mute:        '#9A988E',
-  line:        'rgba(11,15,18,0.08)',
-  lineStrong:  'rgba(11,15,18,0.14)',
-  teal:        '#2EC4C4',
-  tealDeep:    '#0FA5A5',
-  tealSoft:    '#D7F1F1',
-  orange:      '#FF5A2E',
-  orangeSoft:  '#FBE0D3',
-  purple:      '#6D5FDB',
-  purpleSoft:  '#E0DCF5',
-  gold:        '#E8C547',
-  goldSoft:    '#F6ECB6',
-  green:       '#5EAA5E',
-  greenSoft:   '#DDEBD6',
-  shadow:      '0 1px 2px rgba(11,15,18,0.04), 0 6px 18px rgba(11,15,18,0.05)',
-  shadowLg:    '0 2px 4px rgba(11,15,18,0.05), 0 16px 40px rgba(11,15,18,0.08)',
-};
 
 const OB_FONT = {
   display: '"Archivo", "Familjen Grotesk", system-ui, sans-serif',
@@ -884,6 +862,7 @@ const Onboarding = () => {
   // A ref (not state) tracks "user edited it" so a background regeneration
   // never clobbers a hand-typed name, and closures in async handlers stay fresh.
   const [programName, setProgramName] = useState('');
+  const [skippingPlan, setSkippingPlan] = useState(false);
   const [generatedName, setGeneratedName] = useState('');
   const [programId, setProgramId] = useState(null);
   // `nameEdited` drives the reset button (reactive); `nameEditedRef` mirrors it
@@ -1043,6 +1022,12 @@ const Onboarding = () => {
       setGeneratedRoutinesB(r.routinesB);
       setPreviewRoutineIdx(0);
       setPreviewWeekIdx(0);
+      // The other two paths to 'done' call this; this one didn't. Result: on the
+      // COMMON path (plan pre-warmed while the member answered the earlier
+      // steps) the name field rendered empty with a generic placeholder, so
+      // there was nothing to just approve — and programId stayed null, so
+      // persistProgramName() no-op'd and a typed name was silently dropped too.
+      applyGeneratedMeta(r);
       setShowGeneratePlan('done');
     } else if (planCacheRef.current.promise) {
       // Pending path: await in handler (shows subtle shimmer for max ~2s)
@@ -1883,6 +1868,35 @@ const Onboarding = () => {
   };
 
   const handlePlanDone = () => {
+    setShowGeneratePlan(false);
+    setStep(12);
+  };
+
+  // "I don't want a plan". The program is ALREADY in the database by the time
+  // the preview renders — runGeneratePlanCore inserts generated_programs and
+  // seeds workout_schedule before returning — so skipping has to undo that or
+  // the member starts with the very plan they just declined.
+  //
+  // Scoped to this member's own rows, and safe here specifically: they are mid-
+  // onboarding, so the only generated program and the only schedule that can
+  // exist are the ones we just made. The generated ROUTINES stay in their
+  // library — they cost nothing, nothing surfaces them on its own, and deleting
+  // content the member can see is the riskier half of this.
+  //
+  // Onward to the meal-plan step either way: declining a workout plan says
+  // nothing about wanting a meal plan. Skip both and they start with neither.
+  const handleSkipPlan = async () => {
+    setSkippingPlan(true);
+    try {
+      const delProg = supabase.from('generated_programs').delete().eq('profile_id', user.id);
+      await (programId ? delProg.eq('id', programId) : delProg);
+      await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
+    } catch (e) {
+      // Non-fatal: never trap someone in onboarding over cleanup.
+      console.warn('skip plan cleanup failed (non-fatal)', e);
+    }
+    posthog?.capture('onboarding_plan_skipped');
+    setSkippingPlan(false);
     setShowGeneratePlan(false);
     setStep(12);
   };
@@ -4233,6 +4247,18 @@ const Onboarding = () => {
               <OBButton full tone="teal" icon={<ArrowRight size={16}/>} onClick={handlePlanDone}>
                 {t('generatePlan.looksGood', 'Looks good')}
               </OBButton>
+              <button
+                type="button"
+                onClick={handleSkipPlan}
+                disabled={skippingPlan}
+                style={{
+                  width: '100%', marginTop: 10, minHeight: 44, background: 'none',
+                  border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                  color: OB.sub, opacity: skippingPlan ? 0.5 : 1,
+                }}
+              >
+                {t('generatePlan.noPlan', "I don't want a plan")}
+              </button>
             </div>
           </div>
           );

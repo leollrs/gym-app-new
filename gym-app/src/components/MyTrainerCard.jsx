@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isSchemaMiss } from '../lib/schemaMiss';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { MessageSquare, ChevronRight, CalendarClock, UserMinus, Check } from 'lucide-react';
@@ -49,7 +50,7 @@ export default function MyTrainerCard() {
     (async () => {
       // Most-recent active trainer assignment for this member. Use limit(1) +
       // [0] (not maybeSingle) so a member with >1 active trainer never 406s.
-      const { data: tcRows, error } = await supabase
+      let { data: tcRows, error } = await supabase
         .from('trainer_clients')
         .select('trainer_id, assigned_at, status')
         .eq('client_id', memberId)
@@ -57,10 +58,26 @@ export default function MyTrainerCard() {
         .in('status', ['pending', 'active'])
         .order('assigned_at', { ascending: false })
         .limit(10);
+
+      // 0657 not applied yet → `status` doesn't exist and PostgREST fails the
+      // WHOLE query, which would make the trainer card vanish rather than just
+      // skip the consent bit. Retry without it and treat every row as accepted,
+      // which is exactly the pre-consent behaviour.
+      let hasConsentColumn = true;
+      if (isSchemaMiss(error)) {
+        hasConsentColumn = false;
+        ({ data: tcRows, error } = await supabase
+          .from('trainer_clients')
+          .select('trainer_id, assigned_at')
+          .eq('client_id', memberId)
+          .eq('is_active', true)
+          .order('assigned_at', { ascending: false })
+          .limit(10));
+      }
       if (error) { logger.error('MyTrainerCard: trainer lookup failed:', error); return; }
       if (!alive) return;
 
-      const rows = tcRows || [];
+      const rows = (tcRows || []).map(r => ({ ...r, status: hasConsentColumn ? r.status : 'active' }));
       const tc = rows.find(r => r.status === 'active') || null;
       const req = rows.find(r => r.status === 'pending') || null;
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { isSchemaMiss } from '../../lib/schemaMiss';
 import { selectInBatches, selectAllInBatches } from '../../lib/churn/batchedSelect';
 import { readTrainerCache, writeTrainerCache } from '../../lib/trainerCache';
 import { useNavigate } from 'react-router-dom';
@@ -244,7 +245,60 @@ const ClientPreview = ({ client, churnScore, onClose, onOpen, onMessage, onRemov
 };
 
 // ── Add Client from Gym modal ──────────────────────────────────────────────
-const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded }) => {
+const ClientListSheet = ({ open, title, subtitle, rows, emptyText, actionLabel, onAction, busyId, onClose, t }) => {
+  useScrollLock(open);
+  if (!open) return null;
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 85, background: 'rgba(11,15,18,0.55)',
+               backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center',
+               justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: TT.surface, borderRadius: 20,
+                 width: '100%', maxWidth: 460, maxHeight: '76dvh',
+                 display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: TT.shadowLg }}>
+        <div style={{ flexShrink: 0, padding: '18px 18px 10px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 800, color: TT.text, letterSpacing: -0.3 }}>{title}</h2>
+            {subtitle && <p style={{ fontSize: 12.5, color: TT.textSub, marginTop: 3, lineHeight: 1.45 }}>{subtitle}</p>}
+          </div>
+          <button type="button" onClick={onClose} aria-label={t('common.close', 'Close')}
+            style={{ width: 36, height: 36, borderRadius: 18, border: 'none', cursor: 'pointer', flexShrink: 0,
+                     background: TT.surface2, display: 'grid', placeItems: 'center' }}>
+            <X size={16} color={TT.textSub} />
+          </button>
+        </div>
+        <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto',
+                      padding: '4px 14px 16px',
+                      display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rows.length === 0 ? (
+            <p style={{ fontSize: 13, color: TT.textMute, textAlign: 'center', padding: '28px 12px' }}>{emptyText}</p>
+          ) : rows.map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
+                                     background: TT.surface2, border: `1px solid ${TT.border}`, borderRadius: 12 }}>
+              <TAvatar name={c.full_name || '?'} size={38} idx={avatarIdx(c.id)} src={c.avatar_url} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13.5, fontWeight: 700, color: TT.text, overflow: 'hidden',
+                            textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {c.full_name || t('trainerClients.formerClient', 'Former client')}
+                </p>
+                {c.username && <p style={{ fontSize: 11, color: TT.textMute }}>@{c.username}</p>}
+              </div>
+              <button type="button" onClick={() => onAction(c)} disabled={busyId === c.id} className="tt-tap"
+                style={{ flexShrink: 0, minHeight: 38, padding: '0 14px', borderRadius: 11, cursor: 'pointer',
+                         fontSize: 12.5, fontWeight: 800, border: `1px solid ${TT.border}`,
+                         background: TT.surface, color: TT.text, opacity: busyId === c.id ? 0.5 : 1 }}>
+                {actionLabel}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AddClientModal = ({ trainerId, gymId, clientStateById = {}, onClose, onAdded }) => {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
   const [memberSearch, setMemberSearch] = useState('');
@@ -311,12 +365,17 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
 
-  const filtered = useMemo(() => {
-    const excluded = new Set(existingClientIds);
-    // Keep just-added members visible (marked "Added") even after the parent
-    // roster refresh folds them into existingClientIds.
-    return members.filter(m => addedIds.has(m.id) || !excluded.has(m.id));
-  }, [members, existingClientIds, addedIds]);
+  // Everyone who matches the search stays visible. Their relationship to THIS
+  // trainer is shown as a state on the row instead of being used to hide them:
+  // disappearing is indistinguishable from "the search is broken", which is
+  // exactly how it read — `addedIds` only lives while the modal is open, so
+  // reopening it made an already-added member vanish with no explanation.
+  const stateFor = useCallback((id) => {
+    if (addedIds.has(id)) return clientStateById?.[id] === 'active' ? 'active' : 'pending';
+    return clientStateById?.[id] || null;   // 'active' | 'pending' | null
+  }, [addedIds, clientStateById]);
+
+  const filtered = members;
 
   const handleAdd = async (member) => {
     setAddingId(member.id);
@@ -424,7 +483,8 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
             </div>
           ) : (
             filtered.map(m => {
-              const isAdded = addedIds.has(m.id);
+              const linkState = stateFor(m.id);
+              const isAdded = !!linkState;
               const hasCoach = coachedIds.has(m.id);
               return (
                 <div
@@ -456,10 +516,14 @@ const AddClientModal = ({ trainerId, gymId, existingClientIds, onClose, onAdded 
                     <span style={{
                       display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
                       borderRadius: 12, padding: '8px 12px', minHeight: 36,
-                      background: TT.goodSoft, color: TT.goodInk, fontSize: 12, fontWeight: 700,
+                      background: linkState === 'pending' ? TT.warnSoft : TT.goodSoft,
+                      color: linkState === 'pending' ? TT.warnInk : TT.goodInk,
+                      fontSize: 12, fontWeight: 700,
                     }}>
                       <Check size={14} strokeWidth={2.6} />
-                      {t('trainerClients.added', 'Added')}
+                      {linkState === 'pending'
+                        ? t('trainerClients.addedPending', 'Requested')
+                        : t('trainerClients.added', 'Added')}
                     </span>
                   ) : (
                     <button
@@ -883,6 +947,12 @@ export default function TrainerClients() {
   const [removedClients, setRemovedClients] = useState(null); // null = not loaded yet
   const [removedLoading, setRemovedLoading] = useState(false);
   const [restoringId, setRestoringId] = useState(null);
+  // Restoring pulls someone who LEFT back into the roster — that deserves a
+  // deliberate second tap, not a stray one on a list you were scrolling.
+  const [confirmRestore, setConfirmRestore] = useState(null);
+  const [showRequests, setShowRequests] = useState(false);
+  const [pendingClients, setPendingClients] = useState([]);
+  const [showRemoved, setShowRemoved] = useState(false);
   // Bulk selection
   const [selectMode, setSelectMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState(new Set());
@@ -983,17 +1053,27 @@ export default function TrainerClients() {
       const fourteenDaysAgo = subDays(new Date(), 14).toISOString();
 
       // Fetch only assigned clients via trainer_clients join
-      const { data: tcRows, error: tcError } = await supabase
-        .from('trainer_clients')
-        .select(`
+      const CLIENT_COLS = `
           client_id,
-          status,
           profiles!trainer_clients_client_id_fkey (
             id, full_name, username, avatar_url, last_active_at, created_at, assigned_program_id, phone_number, membership_status
           )
-        `)
+        `;
+      let { data: tcRows, error: tcError } = await supabase
+        .from('trainer_clients')
+        .select(`client_id, status, ${CLIENT_COLS}`)
         .eq('trainer_id', profile.id)
         .eq('is_active', true);
+
+      // Without this, a not-yet-applied 0657 fails the query on the missing
+      // `status` column and the trainer opens their page to ZERO clients.
+      if (isSchemaMiss(tcError)) {
+        ({ data: tcRows, error: tcError } = await supabase
+          .from('trainer_clients')
+          .select(CLIENT_COLS)
+          .eq('trainer_id', profile.id)
+          .eq('is_active', true));
+      }
       if (tcError) logger.error('TrainerClients: failed to load clients:', tcError);
 
       // Consent status rides along (0657). A pending client still appears in the
@@ -1003,9 +1083,34 @@ export default function TrainerClients() {
       const consentByClient = {};
       (tcRows || []).forEach(tc => { if (tc.client_id) consentByClient[tc.client_id] = tc.status; });
 
-      const assignedClients = (tcRows || [])
-        .map(tc => tc.profiles)
-        .filter(Boolean);
+      // THE EMBED COMES BACK NULL FOR PENDING CLIENTS. profiles_select (0296)
+      // gives a trainer full-column access only where is_trainer_of() is true,
+      // and 0657 made that require status='active' — so PostgREST returns the
+      // trainer_clients row with `profiles: null`. Filtering on that dropped the
+      // person from the roster entirely: the request WAS saved, but Requests
+      // showed 0 and the search offered to add them again.
+      //
+      // Resolve those from gym_member_profiles_safe — the same gym-scoped view
+      // the Add-client search already reads. Identity only: you are allowed to
+      // know WHO you asked. Nothing else about them loads until they accept,
+      // which is the entire point.
+      const pendingIds = (tcRows || [])
+        .filter(tc => !tc.profiles && tc.client_id)
+        .map(tc => tc.client_id);
+      let pendingProfiles = [];
+      if (pendingIds.length > 0) {
+        const { data: safeRows, error: safeErr } = await supabase
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url')
+          .in('id', pendingIds);
+        if (safeErr) logger.error('TrainerClients: pending identity lookup failed:', safeErr);
+        pendingProfiles = safeRows || [];
+      }
+
+      const assignedClients = [
+        ...(tcRows || []).map(tc => tc.profiles).filter(Boolean),
+        ...pendingProfiles,
+      ];
 
       if (assignedClients.length === 0) {
         setClients([]);
@@ -1074,13 +1179,19 @@ export default function TrainerClients() {
       (churnRows || []).forEach(row => { if (!churnMap[row.profile_id]) churnMap[row.profile_id] = row; });
       setChurnScores(churnMap);
 
-      setClients(assignedClients.map(m => ({
+      // The main roster is ACCEPTED clients only. A pending one has no stats,
+      // no messaging and no detail page to open — leaving it in the list meant
+      // a row that looked broken next to real clients. It lives in Requests
+      // instead, which is the only thing you can actually DO with it.
+      const withConsent = assignedClients.map(m => ({
         ...m,
         consentStatus: consentByClient[m.id] || 'active',
         recentWorkouts: recentCounts[m.id] ?? 0,
         weekSessions: weekCounts[m.id] ?? 0,
         planDaysPerWeek: planDaysMap[m.id] ?? null,
-      })));
+      }));
+      setClients(withConsent.filter(c => c.consentStatus !== 'pending'));
+      setPendingClients(withConsent.filter(c => c.consentStatus === 'pending'));
       setLoading(false);
     };
     load();
@@ -1094,7 +1205,7 @@ export default function TrainerClients() {
 
   // ── Removed clients (is_active = false) — fetched when the chip is opened ──
   useEffect(() => {
-    if (filter !== 'removed' || !profile?.id) return undefined;
+    if ((filter !== 'removed' && !showRemoved) || !profile?.id) return undefined;
     let cancelled = false;
     const loadRemoved = async () => {
       setRemovedLoading(true);
@@ -1131,24 +1242,39 @@ export default function TrainerClients() {
     };
     loadRemoved();
     return () => { cancelled = true; };
-  }, [filter, profile?.id, reloadKey]);
+  }, [filter, showRemoved, profile?.id, reloadKey]);
 
   const handleRestoreClient = async (client) => {
     setRestoringId(client.id);
-    const { error } = await supabase
+    // Restoring re-opens the REQUEST; it does not restore access. Someone who
+    // left this trainer has to agree again — otherwise "restore" would be a
+    // one-tap way back into the data of a client who walked away, which is the
+    // whole thing consent exists to stop. The 0657 guard permits this because
+    // moving a row to 'pending' grants nothing.
+    let { error } = await supabase
       .from('trainer_clients')
-      .update({ is_active: true })
+      .update({ is_active: true, status: 'pending', responded_at: null })
       .eq('trainer_id', profile.id)
       .eq('client_id', client.id);
+    // 0657 not applied yet → no status column; fall back to the old behaviour
+    // rather than failing the restore outright.
+    if (isSchemaMiss(error)) {
+      ({ error } = await supabase
+        .from('trainer_clients')
+        .update({ is_active: true })
+        .eq('trainer_id', profile.id)
+        .eq('client_id', client.id));
+    }
     if (error) {
       logger.error('RestoreClient: error', error);
       showToast(t('trainerClients.restoreFailed', 'Could not restore the client. Try again.'), 'error');
     } else {
       setRemovedClients(prev => (prev || []).filter(c => c.id !== client.id));
       setReloadKey(k => k + 1);
-      showToast(t('trainerClients.restored', '{{name}} is back on your roster', { name: client.full_name || '' }), 'success');
+      showToast(t('trainerClients.restoreRequested', 'Request sent to {{name}} — they have to approve it again', { name: client.full_name || '' }), 'success');
     }
     setRestoringId(null);
+    setConfirmRestore(null);
   };
 
   // ── Canonical status per client (single model: lib/clientStatus) ──────────
@@ -1207,6 +1333,8 @@ export default function TrainerClients() {
   // Chip counts derive from statusById — by construction they always equal
   // what the chip's filter lists.
   const statusCount = (key) => clients.reduce((n, c) => n + (statusById[c.id] === key ? 1 : 0), 0);
+  const pendingCount = pendingClients.length;
+
   const STATUS_CHIPS = [
     { id: 'all',         label: t('trainerClients.tabAll', 'All'),               count: clients.length },
     { id: 'on_track',    label: t('trainerClients.tabOnTrack', 'On track'),      count: statusCount('on_track') },
@@ -1309,7 +1437,7 @@ export default function TrainerClients() {
 
         {/* Filter chips */}
         {!loading && (clients.length > 0 || filter === 'removed') && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto' }} className="scrollbar-hide">
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto', overflowY: 'hidden', touchAction: 'pan-x' }} className="scrollbar-hide">
             {STATUS_CHIPS.map((chip) => {
               const isOn = filter === chip.id;
               return (
@@ -1335,10 +1463,22 @@ export default function TrainerClients() {
         )}
 
         {/* Removed clients live behind a persistent link (kept out of the chip row) */}
-        {!loading && clients.length > 0 && filter !== 'removed' && (
-          <div style={{ marginTop: -4, marginBottom: 14 }}>
-            <button type="button" onClick={() => setFilter('removed')} className="tt-tap"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: TT.textMute, padding: 0, textDecoration: 'underline' }}>
+        {!loading && (
+          <div style={{ marginTop: -4, marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setShowRequests(true)} className="tt-tap"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 34, padding: '0 12px',
+                       borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 800,
+                       border: `1px solid ${pendingCount > 0 ? TT.warn : TT.border}`,
+                       background: pendingCount > 0 ? TT.warnSoft : TT.surface,
+                       color: pendingCount > 0 ? TT.warnInk : TT.textSub }}>
+              <Send size={12} />
+              {t('trainerClients.viewRequests', 'Requests')} ({pendingCount})
+            </button>
+            <button type="button" onClick={() => setShowRemoved(true)} className="tt-tap"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 34, padding: '0 12px',
+                       borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 800,
+                       border: `1px solid ${TT.border}`, background: TT.surface, color: TT.textSub }}>
+              <RotateCcw size={12} />
               {t('trainerClients.viewRemoved', 'View removed clients')}
             </button>
           </div>
@@ -1392,7 +1532,7 @@ export default function TrainerClients() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleRestoreClient(c)}
+                    onClick={() => setConfirmRestore(c)}
                     disabled={restoringId === c.id}
                     className="tt-tap"
                     style={{
@@ -1417,14 +1557,28 @@ export default function TrainerClients() {
           )
         ) : clients.length === 0 ? (
           <>
-            <TrainerEmptyState
-              icon={Users}
-              title={t('trainerClients.noClients', 'No clients assigned yet')}
-              description={t('trainerClients.emptyDesc', 'Add a client from your gym roster to start tracking their journey.')}
-              actionLabel={t('trainerClients.addFirstClient', 'Add your first client')}
-              actionIcon={UserPlus}
-              onAction={() => setShowAddClient(true)}
-            />
+            {pendingCount > 0 ? (
+              <TrainerEmptyState
+                icon={Send}
+                title={t('trainerClients.onlyPendingTitle', 'Waiting on approvals')}
+                description={t('trainerClients.onlyPendingDesc', {
+                  count: pendingCount,
+                  defaultValue: "You've asked {{count}} member(s) and none have answered yet. They appear here once they accept.",
+                })}
+                actionLabel={t('trainerClients.viewRequests', 'Requests')}
+                actionIcon={Send}
+                onAction={() => setShowRequests(true)}
+              />
+            ) : (
+              <TrainerEmptyState
+                icon={Users}
+                title={t('trainerClients.noClients', 'No clients assigned yet')}
+                description={t('trainerClients.emptyDesc', 'Add a client from your gym roster to start tracking their journey.')}
+                actionLabel={t('trainerClients.addFirstClient', 'Add your first client')}
+                actionIcon={UserPlus}
+                onAction={() => setShowAddClient(true)}
+              />
+            )}
             <button
               type="button"
               onClick={() => setFilter('removed')}
@@ -1530,11 +1684,6 @@ export default function TrainerClients() {
                       {c.full_name}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, minWidth: 0 }}>
-                      {c.consentStatus === 'pending' && (
-                        <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>
-                          {t('trainerClients.consentPending', 'Awaiting approval')}
-                        </TPill>
-                      )}
                       {membershipFlag && (
                         <TPill tone="warn" size="s" style={{ flexShrink: 0 }}>{membershipFlag}</TPill>
                       )}
@@ -1619,7 +1768,11 @@ export default function TrainerClients() {
         <AddClientModal
           trainerId={profile.id}
           gymId={profile.gym_id}
-          existingClientIds={clients.map(c => c.id)}
+          // BOTH lists: the search must still say "Requested" for someone
+          // pending, otherwise it would offer to add them all over again.
+          clientStateById={Object.fromEntries(
+            [...clients, ...pendingClients].map(c => [c.id, c.consentStatus || 'active'])
+          )}
           onClose={() => setShowAddClient(false)}
           // Stays open for multi-add — each add just refreshes the roster
           onAdded={() => setReloadKey(k => k + 1)}
@@ -1629,7 +1782,7 @@ export default function TrainerClients() {
       {/* Bulk action bar */}
       {bulkSelected.size > 0 && (
         <div
-          className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-2rem)]"
+          className="fixed bottom-[calc(88px+env(safe-area-inset-bottom))] md:bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-2rem)]"
           style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
             background: TT.surface, border: `1px solid ${TT.borderSolid}`,
@@ -1702,6 +1855,71 @@ export default function TrainerClients() {
       )}
 
       {/* Remove Client Confirmation */}
+      <ClientListSheet
+        open={showRequests}
+        title={t('trainerClients.requestsTitle', 'Pending requests')}
+        subtitle={t('trainerClients.requestsSubtitle', "They've been asked and haven't answered yet. You can't see their data until they accept.")}
+        rows={pendingClients}
+        emptyText={t('trainerClients.requestsEmpty', 'No requests waiting.')}
+        actionLabel={t('trainerClients.cancelRequestTitle', 'Cancel request')}
+        onAction={(c) => { setShowRequests(false); setRemoveTarget(c); }}
+        busyId={null}
+        onClose={() => setShowRequests(false)}
+        t={t}
+      />
+
+      <ClientListSheet
+        open={showRemoved}
+        title={t('trainerClients.removedTitle', 'Removed clients')}
+        subtitle={t('trainerClients.removedSubtitle', 'They left your roster. Restoring only sends a new request — you get their data back if they approve.')}
+        rows={removedClients || []}
+        emptyText={t('trainerClients.removedEmpty', "You haven't removed anyone.")}
+        actionLabel={t('trainerClients.restoreConfirmCta', 'Send request')}
+        onAction={(c) => { setShowRemoved(false); setConfirmRestore(c); }}
+        busyId={restoringId}
+        onClose={() => setShowRemoved(false)}
+        t={t}
+      />
+
+      {confirmRestore && (
+        <div
+          role="dialog" aria-modal="true"
+          onClick={() => setConfirmRestore(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 80,
+            background: 'rgba(11,15,18,0.55)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: TT.surface, borderRadius: 18, width: '100%', maxWidth: 380,
+                     overflow: 'hidden', boxShadow: TT.shadowLg, padding: '24px 20px 20px' }}>
+            <h2 style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text,
+                         textAlign: 'center', letterSpacing: -0.3, marginBottom: 8 }}>
+              {t('trainerClients.restoreConfirmTitle', 'Ask {{name}} again?', { name: confirmRestore.full_name || '' })}
+            </h2>
+            <p style={{ fontSize: 13, color: TT.textSub, textAlign: 'center', lineHeight: 1.5, marginBottom: 18 }}>
+              {t('trainerClients.restoreConfirmBody', "They left your roster, so restoring only sends a new request. You won't see their data again unless they approve it.")}
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => handleRestoreClient(confirmRestore)}
+                disabled={restoringId === confirmRestore.id}
+                style={{ flex: 1, minHeight: 46, borderRadius: 12, border: 'none', cursor: 'pointer',
+                         fontSize: 13.5, fontWeight: 800, background: TT.accent, color: '#fff',
+                         opacity: restoringId === confirmRestore.id ? 0.5 : 1 }}>
+                {t('trainerClients.restoreConfirmCta', 'Send request')}
+              </button>
+              <button type="button" onClick={() => setConfirmRestore(null)}
+                style={{ padding: '0 18px', minHeight: 46, borderRadius: 12, cursor: 'pointer',
+                         fontSize: 13.5, fontWeight: 800, background: 'transparent',
+                         color: TT.textSub, border: `1px solid ${TT.border}` }}>
+                {t('common.cancel', 'Cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {removeTarget && (
         <div
           role="dialog" aria-modal="true"
@@ -1728,10 +1946,14 @@ export default function TrainerClients() {
                 <AlertTriangle size={24} color={TT.warn} />
               </div>
               <h2 style={{ fontFamily: TFont.display, fontSize: 16, fontWeight: 800, color: TT.text, textAlign: 'center', letterSpacing: -0.3 }}>
-                {t('trainerClients.removeConfirmTitle', 'Remove Client')}
+                {removeTarget.consentStatus === 'pending'
+                  ? t('trainerClients.cancelRequestTitle', 'Cancel request')
+                  : t('trainerClients.removeConfirmTitle', 'Remove Client')}
               </h2>
               <p style={{ fontSize: 13, color: TT.textMute, textAlign: 'center', marginTop: 8 }}>
-                {t('trainerClients.removeConfirmDesc', 'Are you sure you want to remove {{name}} from your client list? This will not delete their account.', { name: removeTarget.full_name })}
+                {removeTarget.consentStatus === 'pending'
+                  ? t('trainerClients.cancelRequestDesc', "{{name}} hasn't answered yet. Cancelling withdraws the request — you can send it again later.", { name: removeTarget.full_name })
+                  : t('trainerClients.removeConfirmDesc', 'Are you sure you want to remove {{name}} from your client list? This will not delete their account.', { name: removeTarget.full_name })}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, padding: '0 20px 20px' }}>

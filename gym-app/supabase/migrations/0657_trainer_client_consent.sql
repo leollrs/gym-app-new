@@ -85,14 +85,23 @@ BEGIN
   END IF;
 
   IF NEW.status IS DISTINCT FROM OLD.status THEN
-    -- Only the member moves their own consent. Without this a trainer could
-    -- simply UPDATE a 'declined' row back to 'active' (the UPDATE policy is
-    -- `trainer_id = auth.uid()`), or re-upsert to reset a refusal — turning
-    -- "no" into a speed bump.
-    IF auth.uid() IS NOT NULL
+    -- THE RULE: nobody but the member can GRANT access. Anyone may revoke it or
+    -- ask again.
+    --
+    -- Only 'active' is a grant. A trainer moving their own row to 'pending'
+    -- (re-asking — e.g. restoring a client who had left) or to 'ended'
+    -- (giving up) takes nothing and must stay possible: without it, restoring a
+    -- removed client would either fail outright or, worse, silently hand back
+    -- access the member never re-approved.
+    --
+    -- Blocking the grant is what stops a trainer flipping a 'declined' row back
+    -- to 'active' — the UPDATE policy is only `trainer_id = auth.uid()`, so
+    -- without this a refusal would be a speed bump, not an answer.
+    IF NEW.status = 'active'
+       AND auth.uid() IS NOT NULL
        AND auth.uid() IS DISTINCT FROM OLD.client_id
        AND NOT public.is_admin() THEN
-      RAISE EXCEPTION 'Only the member can change trainer consent status'
+      RAISE EXCEPTION 'Only the member can accept a trainer'
         USING ERRCODE = 'insufficient_privilege';
     END IF;
   END IF;

@@ -565,7 +565,7 @@ export default function PublicTrainerProfile() {
       supabase.rpc('get_trainer_public_stats', { p_trainer_id: trainerId }),
       supabase
         .from('trainer_clients')
-        .select('id, is_active, status')
+        .select('id, is_active')
         .eq('trainer_id', trainerId)
         .eq('client_id', profile.id)
         .eq('is_active', true)
@@ -628,10 +628,23 @@ export default function PublicTrainerProfile() {
       // RPC missing (migration not applied yet) or failed — hide the tiles.
       setStatsAvailable(false);
     }
+    // Consent is asked for on its own, AFTER the main probe, so 0657 not being
+    // applied yet can only cost the banner — never the "am I their client"
+    // answer the rest of the page is built on.
+    let consent = null;
+    if (relRes.data) {
+      const { data: cRow } = await supabase
+        .from('trainer_clients')
+        .select('status')
+        .eq('trainer_id', trainerId)
+        .eq('client_id', profile.id)
+        .maybeSingle();
+      consent = cRow?.status ?? null;
+    }
     // A pending row is NOT yet a client relationship — the trainer can read
     // nothing until it's accepted, so the page must not treat them as a client.
-    setIsClient(relRes.data?.status ? relRes.data.status === 'active' : !!relRes.data);
-    setRequestPending(relRes.data?.status === 'pending');
+    setIsClient(consent ? consent === 'active' : !!relRes.data);
+    setRequestPending(consent === 'pending');
     setHasEverBeenClient(!!anyRelRes.data);
     setNextSession(nextSessionRes.data || null);
     // 42P01 / PGRST205 = session_packs not deployed → just hide the line.

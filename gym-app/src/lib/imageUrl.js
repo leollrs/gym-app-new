@@ -60,11 +60,23 @@ export function handleMealImgError(e) {
 function transformFor(opts) {
   if (!opts || typeof opts !== 'object') return undefined;
   const width = Number(opts.width) || 0;
+  const height = Number(opts.height) || 0;
   const quality = Number(opts.quality) || 0;
-  if (!width && !quality) return undefined;   // nothing asked for → original object URL
+  if (!width && !height && !quality) return undefined;   // nothing asked for → original object URL
   const t = {};
   if (width) t.width = Math.round(width);
+  if (height) t.height = Math.round(height);
   if (quality) t.quality = Math.round(quality);
+  // WIDTH ALONE DOES NOT PRESERVE ASPECT. Measured against this project:
+  //   width=192                → 192x1024   ← from a 1024x1024 source
+  //   width=192&resize=contain → 192x192
+  // Without this every thumbnail was a stretched 1:5.3 image, and the
+  // `object-cover` boxes they render into then cropped a narrow vertical
+  // strip — which read as "the food photos are zoomed in and I can't tell
+  // what they are". `contain` fits inside the box instead of distorting, so
+  // it is right for non-square sources too. Only defaulted when the caller
+  // didn't ask for a specific fit.
+  if ((width || height) && !opts.resize) t.resize = 'contain';
   return t;
 }
 
@@ -101,7 +113,7 @@ const THUMB_TRANSFORM = { width: 144, quality: 70 };
  * Handles .png → .jpg extension correction (all images were re-exported as JPG).
  *
  * @param {string} path
- * @param {{width?:number, quality?:number}} [opts] - request a resized copy via
+ * @param {{width?:number, height?:number, resize?:'cover'|'contain'|'fill', quality?:number}} [opts] - request a resized copy via
  *   the Storage render endpoint. Omit for the original bytes (default).
  *   Pass an explicit width at any site that renders a thumbnail.
  */

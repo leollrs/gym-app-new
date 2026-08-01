@@ -371,7 +371,7 @@ export default function TrainerPayments() {
             {/* List */}
             <div style={{ padding: '4px 16px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {loading ? (
-                [0, 1, 2].map(i => <div key={i} className="animate-pulse" style={{ height: 92, borderRadius: 18, background: TT.surface2 }} />)
+                [0, 1, 2].map(i => <div key={i} className="animate-pulse" style={{ height: 92, borderRadius: 18, background: TT.skeleton }} />)
               ) : filtered.length === 0 ? (
                 <div style={{ paddingTop: 24 }}>
                   <EmptyState
@@ -536,7 +536,7 @@ export default function TrainerPayments() {
             />
             {loading ? (
               <div style={{ padding: '16px' }}>
-                <div className="animate-pulse" style={{ height: 200, borderRadius: 18, background: TT.surface2 }} />
+                <div className="animate-pulse" style={{ height: 200, borderRadius: 18, background: TT.skeleton }} />
               </div>
             ) : (
               <>

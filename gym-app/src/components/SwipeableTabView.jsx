@@ -10,7 +10,13 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
  *   children     – one element per tab panel
  *   tabKeys      – optional array of tab keys for aria-labelledby linkage
  */
-export default function SwipeableTabView({ activeIndex, onChangeIndex, children, tabKeys }) {
+/**
+ * @param swipeDisabled  Render the panels and keep the tab switching, but drop
+ *   the horizontal drag gesture. Some pages carry enough horizontally-scrolling
+ *   content of their own (template carousels, filter rails) that a page-level
+ *   swipe fights them — the trainer Plans page is the case this was added for.
+ */
+export default function SwipeableTabView({ activeIndex, onChangeIndex, children, tabKeys, swipeDisabled = false }) {
   const containerRef = useRef(null);
   const trackRef = useRef(null);
   const touchRef = useRef({ startX: 0, startY: 0, currentX: 0, startTime: 0, dragging: false, locked: null });
@@ -206,9 +212,9 @@ export default function SwipeableTabView({ activeIndex, onChangeIndex, children,
       ref={containerRef}
       className="overflow-hidden"
       style={{ touchAction: 'pan-y' }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
+      onTouchStart={swipeDisabled ? undefined : onTouchStart}
+      onTouchMove={swipeDisabled ? undefined : onTouchMove}
+      onTouchEnd={swipeDisabled ? undefined : onTouchEnd}
       onTouchCancel={onTouchCancel}
     >
       <div

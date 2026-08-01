@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { isSchemaMiss } from '../../lib/schemaMiss';
 import { createPortal } from 'react-dom';
 import {
   Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell,
@@ -2563,7 +2564,7 @@ export default function TrainerPlans() {
     // hydrated list on screen and revalidate silently, so navigating back is
     // instant instead of flashing a spinner over good data.
     if (!readTrainerCache(`tplans:workout:${profile.id}`)) setLoading(true);
-    const [plansRes, clientsRes] = await Promise.all([
+    let [plansRes, clientsRes] = await Promise.all([
       supabase
         .from('trainer_workout_plans')
         // Explicit columns — `weeks` is deliberately absent. It's the whole
@@ -2584,9 +2585,22 @@ export default function TrainerPlans() {
         .from('trainer_clients')
         .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name)')
         .eq('trainer_id', profile.id)
-        .eq('is_active', true),
+        .eq('is_active', true)
+        // Accepted clients only (0657/0660). A pending client must not be
+        // offered here: the trainer would build a whole plan and only find out
+        // at save time, when RLS rejects the write. Better to not offer it.
+        .eq('status', 'active'),
     ]);
     if (plansRes.error) logger.error('TrainerPlans: failed to load plans:', plansRes.error);
+    // 0657 not applied yet → no `status` column, and PostgREST fails the whole
+    // query. Retry without it so the picker isn't empty on an older schema.
+    if (isSchemaMiss(clientsRes.error)) {
+      clientsRes = await supabase
+        .from('trainer_clients')
+        .select('client_id, profiles!trainer_clients_client_id_fkey(id, full_name)')
+        .eq('trainer_id', profile.id)
+        .eq('is_active', true);
+    }
     if (clientsRes.error) logger.error('TrainerPlans: failed to load clients:', clientsRes.error);
     if (plansRes.error || clientsRes.error) {
       showToast(t('trainerPlans.loadFailed', 'Could not load your plans. Try again.'), 'error');
@@ -3353,7 +3367,10 @@ export default function TrainerPlans() {
           })}
         </div>
 
-        <SwipeableTabView activeIndex={sectionIndex} onChangeIndex={setSectionIndex} tabKeys={['training', 'nutrition']}>
+        {/* No swipe here: this page is full of horizontally-scrolling rails
+            (template cards, status chips, the client filter) and a page-level
+            drag competed with every one of them. Tabs still switch on tap. */}
+        <SwipeableTabView activeIndex={sectionIndex} onChangeIndex={setSectionIndex} tabKeys={['training', 'nutrition']} swipeDisabled>
           {/* ═══════════ TRAINING SECTION ═══════════ */}
           <div>
             {/* Start from a template — horizontal-scroll template cards */}

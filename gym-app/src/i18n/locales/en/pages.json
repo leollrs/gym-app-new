@@ -10357,7 +10357,8 @@
       "showExercises": "See exercises",
       "hideExercises": "Hide exercises",
       "exerciseFallback": "Exercise {{n}}"
-    }
+    },
+    "accountDeleted": "This account no longer exists. You can still read the conversation, but new messages won’t be delivered."
   },
   "dm": {
     "encryptionBannerTitle": "Encrypted at rest",
@@ -11089,7 +11090,22 @@
     "assignProgramDesc_one": "Select a program to assign to {{count}} selected client",
     "messageAllDesc_one": "Send a direct message to {{count}} selected client",
     "selectedCount_one": "{{count}} selected",
-    "consentPending": "Awaiting approval"
+    "addedPending": "Requested",
+    "restoreRequested": "Request sent to {{name}} — they have to approve it again",
+    "restoreConfirmTitle": "Ask {{name}} again?",
+    "restoreConfirmBody": "They left your roster, so restoring only sends a new request. You won't see their data again unless they approve it.",
+    "restoreConfirmCta": "Send request",
+    "cancelRequestTitle": "Cancel request",
+    "cancelRequestDesc": "{{name}} hasn't answered yet. Cancelling withdraws the request — you can send it again later.",
+    "viewRequests": "Requests",
+    "requestsTitle": "Pending requests",
+    "requestsSubtitle": "They've been asked and haven't answered yet. You can't see their data until they accept.",
+    "requestsEmpty": "No requests waiting.",
+    "removedTitle": "Removed clients",
+    "removedSubtitle": "They left your roster. Restoring only sends a new request — you get their data back if they approve.",
+    "removedEmpty": "You haven't removed anyone.",
+    "onlyPendingTitle": "Waiting on approvals",
+    "onlyPendingDesc": "You've asked {{count}} member(s) and none have answered yet. They appear here once they accept."
   },
   "nps": {
     "survey": {
@@ -11612,7 +11628,9 @@
     "mealEditor": {
       "noRecipeDetail": "No recipe details saved for this meal — macros only.",
       "viewMeal": "View meal details"
-    }
+    },
+    "awaitingConsentTitle": "Waiting for approval",
+    "awaitingConsentBody": "You've sent the request. Their training data stays private until they accept — nothing here is broken."
   },
   "trainerProfile": {
     "title": "Profile",

@@ -639,13 +639,13 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
             const ingredientsPanel = (
               <div className="px-4 pt-4 pb-2" style={{ minHeight: panelMin }}>
                 <div className="rounded-[22px] overflow-hidden" style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)' }}>
-                  {recipe.ingredients.map((ing, i) => {
+                  {(recipe.ingredients || []).map((ing, i) => {
                     const allIngredients = Object.values(INGREDIENT_CATEGORIES || {}).flat();
                     const match = allIngredients.find(item => item.id === ing);
                     const ingLabel = t(`nutrition_ingredients.items.${ing}`, match?.label || ing.replace(/_/g, ' '));
                     return (
                       <div key={ing} className="flex items-center px-4 py-3" style={{
-                        borderBottom: i < recipe.ingredients.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
+                        borderBottom: i < (recipe.ingredients?.length || 0) - 1 ? '1px solid var(--color-border-subtle)' : 'none',
                       }}>
                         <span className="flex-1 text-[15px] font-medium" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{ingLabel}</span>
                         {recipe.ingredientAmounts?.[i] && (
@@ -8189,10 +8189,30 @@ export default function Nutrition({ embedded = false }) {
     );
   }
 
+  // A meal stored in the weekly plan is NOT a full recipe: serializeMeal
+  // (lib/mealPlanWeeks.js) keeps id, title, macros and category and drops
+  // everything else — including `ingredients`. RecipeDetailModal then did
+  // `recipe.ingredients.map(...)` and threw, which is why tapping a planned
+  // meal hit the error screen instead of opening.
+  //
+  // Guarding the map alone would only turn the crash into an empty sheet. Look
+  // the real recipe up by id so the member actually SEES the ingredients and
+  // steps; fall back to the stored shell if the catalog doesn't have it.
+  // A PLAIN FUNCTION, not useCallback: this sits below the `!nutritionEnabled`
+  // and `loading` early returns, so a hook here would run in a different order
+  // depending on which branch rendered — the exact thing that makes React blow
+  // up. Nothing downstream memoizes on its identity, so there is nothing to win.
+  const openRecipeHydrated = (m) => {
+    if (!m) return setOpenRecipe(null);
+    if (m.ingredients) return setOpenRecipe(m);
+    const full = m.id != null ? getMeals().find(x => x.id === m.id) : null;
+    setOpenRecipe(full ? { ...full, ...m, ingredients: full.ingredients } : m);
+  };
+
   const sharedProps = {
     savedIds: savedRecipeIds,
     onSave: toggleSaveRecipe,
-    onOpenRecipe: setOpenRecipe,
+    onOpenRecipe: openRecipeHydrated,
     onOpenCollection: setOpenCollection,
     scannedFavorites,
     onOpenFavorite: openScannedFavorite,

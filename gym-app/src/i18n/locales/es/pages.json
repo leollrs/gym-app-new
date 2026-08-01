@@ -10546,7 +10546,8 @@
       "showExercises": "Ver ejercicios",
       "hideExercises": "Ocultar ejercicios",
       "exerciseFallback": "Ejercicio {{n}}"
-    }
+    },
+    "accountDeleted": "Esta cuenta ya no existe. Puedes seguir leyendo la conversación, pero los mensajes nuevos no se van a entregar."
   },
   "dm": {
     "encryptionBannerTitle": "Cifrado en reposo",
@@ -11337,7 +11338,22 @@
     "assignProgramDesc_one": "Selecciona un programa para asignar a {{count}} cliente seleccionado",
     "messageAllDesc_one": "Enviar un mensaje directo a {{count}} cliente seleccionado",
     "selectedCount_one": "{{count}} seleccionado",
-    "consentPending": "Esperando aprobación"
+    "addedPending": "Solicitado",
+    "restoreRequested": "Solicitud enviada a {{name}} — tiene que aprobarla otra vez",
+    "restoreConfirmTitle": "¿Volver a pedírselo a {{name}}?",
+    "restoreConfirmBody": "Se fue de tu lista, así que restaurar solo envía una solicitud nueva. No vuelves a ver sus datos si no la aprueba.",
+    "restoreConfirmCta": "Enviar solicitud",
+    "cancelRequestTitle": "Cancelar solicitud",
+    "cancelRequestDesc": "{{name}} todavía no ha contestado. Al cancelar retiras la solicitud — puedes volver a enviarla más adelante.",
+    "viewRequests": "Solicitudes",
+    "requestsTitle": "Solicitudes pendientes",
+    "requestsSubtitle": "Ya se lo pediste y todavía no han contestado. No ves sus datos hasta que acepten.",
+    "requestsEmpty": "No hay solicitudes esperando.",
+    "removedTitle": "Clientes retirados",
+    "removedSubtitle": "Se fueron de tu lista. Restaurar solo envía una solicitud nueva — recuperas sus datos si la aprueban.",
+    "removedEmpty": "No has retirado a nadie.",
+    "onlyPendingTitle": "Esperando aprobaciones",
+    "onlyPendingDesc": "Se lo pediste a {{count}} y todavía no ha contestado nadie. Aparecen aquí en cuanto acepten."
   },
   "nps": {
     "survey": {
@@ -12023,7 +12039,9 @@
       },
       "avoidLabel": "Alimentos a evitar",
       "avoidPlaceholder": "p. ej. cilantro, champiñones"
-    }
+    },
+    "awaitingConsentTitle": "Esperando aprobación",
+    "awaitingConsentBody": "Ya enviaste la solicitud. Sus datos de entrenamiento siguen privados hasta que acepte — aquí no hay nada roto."
   },
   "trainerProfile": {
     "title": "Perfil",

@@ -12,6 +12,7 @@ export const TT = {
   bgElev:       'var(--tt-bg-elev)',
   surface:      'var(--tt-surface)',
   surface2:     'var(--tt-surface-2)',
+  skeleton:     'var(--tt-skeleton)',
   border:       'var(--tt-border)',
   borderSolid:  'var(--tt-border-solid)',
   borderStrong: 'var(--tt-border-strong)',

@@ -276,7 +276,7 @@ function ClientPicker({ open, onClose, trainerId, onPick, t }) {
           {loading && (
             <div className="space-y-2 px-2">
               {[0, 1, 2].map(i => (
-                <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: TT.surface2 }} />
+                <div key={i} className="h-12 rounded-lg animate-pulse" style={{ background: TT.skeleton }} />
               ))}
             </div>
           )}

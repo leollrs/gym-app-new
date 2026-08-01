@@ -561,6 +561,8 @@ const ChatView = ({ conversationId, onBack }) => {
   const posthog = usePostHog();
   const [messages, setMessages] = useState([]);
   const [otherUser, setOtherUser] = useState(null);
+  // The other participant's account no longer exists (resolved, not just loading).
+  const [otherUserGone, setOtherUserGone] = useState(false);
   // Tapping the header avatar opens the shared profile preview sheet.
   const [previewUserId, setPreviewUserId] = useState(null);
   const [input, setInput] = useState('');
@@ -700,8 +702,15 @@ const ChatView = ({ conversationId, onBack }) => {
           .from('gym_member_profiles_safe')
           .select('id, full_name, username, avatar_url, avatar_type, avatar_value, role')
           .eq('id', otherId)
-          .single()
-          .then(({ data: profile }) => { if (!cancelled) setOtherUser(profile); });
+          // maybeSingle, not single: a DELETED account makes single() throw, and
+          // the thread then just sat there with an empty header and no
+          // explanation. A missing row is a real, expected answer here.
+          .maybeSingle()
+          .then(({ data: profile }) => {
+            if (cancelled) return;
+            setOtherUser(profile || null);
+            setOtherUserGone(!profile);
+          });
 
         if (!cancelled) {
           const page = (msgs || []).slice().reverse(); // → oldest-first, the order the bubble list renders in
@@ -1254,6 +1263,17 @@ const ChatView = ({ conversationId, onBack }) => {
               </div>
             );
           })
+        )}
+        {/* At the END of the thread, where the last message is — the history stays
+            readable and this explains why nothing more will come. */}
+        {otherUserGone && (
+          <div style={{
+            margin: '14px 8px 4px', padding: '10px 14px', borderRadius: 12,
+            background: 'var(--color-bg-card)', border: '1px solid var(--color-border-subtle)',
+            fontSize: 12.5, lineHeight: 1.45, color: 'var(--color-text-muted)', textAlign: 'center',
+          }}>
+            {t('messages.accountDeleted', 'This account no longer exists. You can still read the conversation, but new messages won\u2019t be delivered.')}
+          </div>
         )}
         <div ref={bottomRef} />
       </div>

@@ -631,13 +631,13 @@ export default function TrainerHome() {
     return (
       <div style={{ background: TT.bg, minHeight: '100%' }}>
         <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-6xl mx-auto space-y-4">
-          <div className="h-32 rounded-3xl animate-pulse" style={{ background: TT.surface2 }} />
+          <div className="h-32 rounded-3xl animate-pulse" style={{ background: TT.skeleton }} />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[0, 1, 2, 3].map(i => (
-              <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: TT.surface2 }} />
+              <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: TT.skeleton }} />
             ))}
           </div>
-          <div className="h-72 rounded-2xl animate-pulse" style={{ background: TT.surface2 }} />
+          <div className="h-72 rounded-2xl animate-pulse" style={{ background: TT.skeleton }} />
         </div>
       </div>
     );

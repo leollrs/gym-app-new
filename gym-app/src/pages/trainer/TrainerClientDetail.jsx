@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useCallback, useMemo, useRef, useState } from 'react';
+import { isSchemaMiss } from '../../lib/schemaMiss';
 import SafeImg from '../../components/SafeImg';
 import { flushSync, createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -8,7 +9,7 @@ import {
   AlertTriangle, BookOpen, ChevronDown, ChevronLeft, ChevronRight,
   Zap, UtensilsCrossed, ClipboardList, Ruler,
   Loader2, Play, Eye, MessageCircle, Smartphone, Pencil, Trash2, RotateCcw, Ban,
-  Info, Leaf, CreditCard,
+  Info, Leaf, CreditCard, Clock,
 } from 'lucide-react';
 import posthogClient from 'posthog-js';
 import { supabase } from '../../lib/supabase';
@@ -74,6 +75,7 @@ const initialState = {
   // Loading / error
   loading: true,
   accessDenied: false,
+  awaitingConsent: false,
   isAssigned: false,
 
   // Client data
@@ -529,7 +531,7 @@ export default function TrainerClientNotes() {
 
   // Destructure for readability in JSX
   const {
-    loading, accessDenied, isAssigned, client, onboarding, stats, programName, enrollment, streak, nextSession,
+    loading, accessDenied, awaitingConsent, isAssigned, client, onboarding, stats, programName, enrollment, streak, nextSession,
     memberGoals, personalRecords, workoutsThisWeek,
     weights, measurements, measurementsPrev, progressPhotos, checkIns,
     notesData, notesSaved, savingNotes,
@@ -573,18 +575,29 @@ export default function TrainerClientNotes() {
     dispatch({
       type: 'SET',
       payload: cached
-        ? { ...cached, loading: false, accessDenied: false, isAssigned: false, notesDirty: false }
+        ? { ...cached, loading: false, accessDenied: false, awaitingConsent: false, isAssigned: false, notesDirty: false }
         : { loading: true, accessDenied: false, isAssigned: false, notesDirty: false },
     });
     try {
-      const { data: assignment } = await supabase
+      let { data: assignment, error: assignErr } = await supabase
         .from('trainer_clients')
-        .select('id, notes')
+        .select('id, notes, status')
         .eq('trainer_id', profile.id)
         .eq('client_id', clientId)
         .eq('gym_id', profile.gym_id)
         .eq('is_active', true)
         .maybeSingle();
+      // 0657 not applied yet → no `status` column; retry without it.
+      if (isSchemaMiss(assignErr)) {
+        ({ data: assignment } = await supabase
+          .from('trainer_clients')
+          .select('id, notes')
+          .eq('trainer_id', profile.id)
+          .eq('client_id', clientId)
+          .eq('gym_id', profile.gym_id)
+          .eq('is_active', true)
+          .maybeSingle());
+      }
 
       // Notes moved to their own trainer-only table (0658) because the policy
       // on trainer_clients is row-level and let the CLIENT read them. Read the
@@ -614,6 +627,15 @@ export default function TrainerClientNotes() {
 
       // Assignment confirmed — store notes and set flag so data queries can proceed.
       assignmentNotesRef.current = privateNotes ?? assignment.notes;
+
+      // Pending consent is not an error and must not look like one. Every gate
+      // below returns nothing until the member accepts, so the page would fall
+      // through to "client not found" — which reads as a bug and sends the
+      // trainer to support instead of to patience.
+      if (assignment.status === 'pending') {
+        dispatch({ type: 'SET', payload: { awaitingConsent: true, loading: false, isAssigned: false } });
+        return;
+      }
       dispatch({ type: 'SET', payload: { isAssigned: true } });
     } catch (err) {
       logger.error('Error checking assignment:', err);
@@ -1151,13 +1173,26 @@ export default function TrainerClientNotes() {
       // Writes go to the trainer-only table. Never back to trainer_clients.notes:
       // that column is readable by the CLIENT (row-level policy, no column
       // filtering) and 0659 blanks it for good.
-      const { error } = await supabase.from('trainer_client_notes').upsert({
+      let { error } = await supabase.from('trainer_client_notes').upsert({
         gym_id: profile.gym_id,
         trainer_id: profile.id,
         client_id: clientId,
         notes: serialized,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'trainer_id,client_id' });
+
+      // 0658 not applied yet → the private table doesn't exist. Fall back to the
+      // legacy column so a trainer never loses a note they just typed. Once the
+      // migration lands this branch stops being reachable, and 0659 blanks what
+      // it wrote.
+      if (isSchemaMiss(error)) {
+        ({ error } = await supabase.from('trainer_clients').upsert({
+          gym_id: profile.gym_id,
+          trainer_id: profile.id,
+          client_id: clientId,
+          notes: serialized,
+        }, { onConflict: 'trainer_id,client_id' }));
+      }
       if (error) throw error; // don't flash "Saved ✓" on a failed write
       posthogClient?.capture('trainer_client_notes_saved');
       // Refresh the load-time snapshot so a later reload (assign program,
@@ -1654,17 +1689,43 @@ export default function TrainerClientNotes() {
       <div className="min-h-screen bg-[var(--tt-bg)] px-4 py-6 max-w-[480px] mx-auto">
         <div className="animate-pulse space-y-4">
           <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-full" style={{ backgroundColor: TT.surface2 }} />
+            <div className="w-14 h-14 rounded-full" style={{ backgroundColor: TT.skeleton }} />
             <div className="space-y-2 flex-1">
-              <div className="h-5 w-32 rounded-lg" style={{ backgroundColor: TT.surface2 }} />
-              <div className="h-3 w-24 rounded-lg" style={{ backgroundColor: TT.surface2 }} />
+              <div className="h-5 w-32 rounded-lg" style={{ backgroundColor: TT.skeleton }} />
+              <div className="h-3 w-24 rounded-lg" style={{ backgroundColor: TT.skeleton }} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="h-24 rounded-xl" style={{ backgroundColor: TT.surface2 }} />
-            <div className="h-24 rounded-xl" style={{ backgroundColor: TT.surface2 }} />
+            <div className="h-24 rounded-xl" style={{ backgroundColor: TT.skeleton }} />
+            <div className="h-24 rounded-xl" style={{ backgroundColor: TT.skeleton }} />
           </div>
-          <div className="h-48 rounded-xl" style={{ backgroundColor: TT.surface2 }} />
+          <div className="h-48 rounded-xl" style={{ backgroundColor: TT.skeleton }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (awaitingConsent) {
+    return (
+      <div className="min-h-screen bg-[var(--tt-bg)] px-4 md:px-6 py-6 max-w-5xl mx-auto">
+        <button
+          onClick={() => navigate('/trainer/clients')}
+          className="flex items-center gap-2 text-[var(--tt-text-sub)] text-[14px] mb-6 hover:text-[var(--tt-text)] transition-colors whitespace-nowrap"
+        >
+          <ArrowLeft className="w-4 h-4 flex-shrink-0" />
+          {t('trainerNotes.backToClients')}
+        </button>
+        <div className="text-center py-20 px-6">
+          <div style={{ width: 56, height: 56, borderRadius: 999, background: TT.warnSoft,
+                        display: 'grid', placeItems: 'center', margin: '0 auto 14px' }}>
+            <Clock size={24} color={TT.warn} />
+          </div>
+          <p className="text-[16px] font-semibold text-[var(--tt-text)] mb-2">
+            {t('trainerClientDetail.awaitingConsentTitle', 'Waiting for approval')}
+          </p>
+          <p className="text-[14px]" style={{ color: TT.textSub, maxWidth: 340, margin: '0 auto', lineHeight: 1.55 }}>
+            {t('trainerClientDetail.awaitingConsentBody', "You've sent the request. Their training data stays private until they accept — nothing here is broken.")}
+          </p>
         </div>
       </div>
     );
