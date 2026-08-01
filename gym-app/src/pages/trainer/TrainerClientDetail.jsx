@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useCallback, useMemo, useRef, useState } from 'react';
 import { isSchemaMiss } from '../../lib/schemaMiss';
+import { clearOtherAssignments } from '../../lib/trainerAssignment';
 import SafeImg from '../../components/SafeImg';
 import { flushSync, createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -41,8 +42,8 @@ import ClientProgramEditor from './components/ClientProgramEditor';
 import ClientMealPlanEditor, { MealPlanWeekView } from './components/ClientMealPlanEditor';
 import TrainerGoalEditor from './components/TrainerGoalEditor';
 import TrainerMemberPlanView from './components/TrainerMemberPlanView';
+import ProgramDetailModal from '../../components/ProgramDetailModal';
 import { getAssignedProgram, forkClientProgram, getClientProgramCopy, resetClientProgram, pushClientProgram } from '../../lib/clientProgramService';
-import { estimateMinutes, estimateCalories } from '../../lib/workoutEstimate';
 import TrainerClientAttendance from './components/TrainerClientAttendance';
 import { TT, TFont, avatarIdx } from './components/designTokens';
 import { TCard, TPill, TPrimaryButton, TAvatar, TIconButton, TSectionHeader } from './components/designPrimitives';
@@ -64,9 +65,6 @@ const MEMBER_TAB_ORDER = ['today', 'training', 'nutrition', 'progress', 'payment
 
 // Local catalog lookup for resolving exercise ids → localized names without a query.
 const EXERCISE_BY_ID = new Map(EXERCISE_CATALOG.map((e) => [e.id, e]));
-// Per-muscle accent for the program viewer's exercise rows (mockup colour tags).
-const MUSCLE_HUE = { chest: '#F0894C', back: '#4FB6F0', legs: '#38D07E', shoulders: '#E7A93E', arms: '#9A8CF7', core: '#FF6B5E', biceps: '#FF6B5E', triceps: '#9A8CF7' };
-const muscleHue = (m) => MUSCLE_HUE[String(m || '').toLowerCase()] || TT.accent;
 // Truncate a note to a max character count for the coach-notes preview card.
 const clipNote = (s, n) => (s && s.length > n ? `${s.slice(0, n).trimEnd()}…` : s);
 
@@ -114,7 +112,9 @@ const initialState = {
   savingFollowup: false,
 
   // Program state
-  availablePrograms: [],
+  availablePrograms: [],   // the GYM's published catalogue (gym_programs)
+  myPlans: [],             // THIS trainer's own plans (trainer_workout_plans)
+  assignedPlanIds: [],     // which of myPlans this client is on
   assigningProgram: false,
 
   // Nutrition state
@@ -210,171 +210,8 @@ function localizeGoalLabel(g, t) {
 // Week-paged, read-only program viewer. Weeks are a segmented pager (was a
 // stacked accordion); each day is a card with sets × reps × rest and
 // superset/circuit tags. (Phase 2 will make this editable off a per-client copy.)
-function ProgramDetailModal({ program, onClose }) {
-  const { t } = useTranslation(['pages', 'common']);
-  const [exMap, setExMap] = useState({});
-  const [weekIdx, setWeekIdx] = useState(0);
-  const [expandedDay, setExpandedDay] = useState(0);
-  useScrollLock(!!program); // lock page behind when this modal is showing
-
-  useEffect(() => {
-    if (!program) return;
-    setWeekIdx(0); setExpandedDay(0);
-    const src = program.weeks || {};
-    let alive = true;
-    (async () => {
-      const ids = new Set();
-      (Array.isArray(src) ? src : Object.values(src)).forEach(days =>
-        (days || []).forEach(d => (d.exercises || []).forEach(e => {
-          const id = e.id || e.exercise_id;
-          if (id) ids.add(id);
-        })));
-      if (!ids.size) return;
-      const { data } = await supabase.from('exercises').select('id, name, name_es').in('id', [...ids]);
-      if (!alive) return;
-      const map = {};
-      (data || []).forEach(e => { map[e.id] = e; });
-      setExMap(map);
-    })();
-    return () => { alive = false; };
-  }, [program]);
-
-  if (!program) return null;
-  const src = program.weeks || {};
-  const weekEntries = Array.isArray(src)
-    ? src.map((days, i) => [i + 1, days])
-    : Object.entries(src).map(([k, v]) => [Number(k), v]).sort((a, b) => a[0] - b[0]);
-  const total = weekEntries.length;
-  const idx = Math.min(Math.max(weekIdx, 0), Math.max(total - 1, 0));
-  const [weekNum, days] = weekEntries[idx] || [1, []];
-  const canPrev = idx > 0;
-  const canNext = idx < total - 1;
-
-  const groupLabel = (type) => type === 'circuit'
-    ? t('trainerClientDetail.program.circuit', 'Circuit')
-    : t('trainerClientDetail.program.superset', 'Superset');
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()}
-        style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, borderRadius: 18, width: '100%', maxWidth: 540, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '14px 16px', borderBottom: `1px solid ${TT.border}` }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: TFont.display, fontSize: 20, fontWeight: 900, color: TT.text, letterSpacing: -0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{program.name}</div>
-            <div style={{ fontSize: 12, color: TT.textSub, marginTop: 3 }}>
-              {program.duration_weeks ? t('trainerClientDetail.weekProgram', '{{n}}-week program', { n: program.duration_weeks }) : `${weekEntries.length} ${t('trainerNotes.program.weeks', 'weeks')}`}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} aria-label={t('common:close', 'Close')}
-            style={{ width: 36, height: 36, borderRadius: 10, background: TT.surface2, border: 'none', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0, color: TT.textSub }}>
-            <X size={17} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <div style={{ padding: '4px 16px 16px', overflowY: 'auto', flex: 1 }}>
-          {weekEntries.length === 0 ? (
-            <p style={{ fontSize: 13, color: TT.textMute, textAlign: 'center', padding: '24px 0' }}>{t('trainerClientDetail.program.empty', 'This program has no content yet.')}</p>
-          ) : (
-            <>
-              {/* Week navigator — prev/next arrows (matches the member My-Plan modal) */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '12px 0' }}>
-                <button type="button" onClick={() => { if (canPrev) { setWeekIdx(idx - 1); setExpandedDay(0); } }} disabled={!canPrev} aria-label={t('myPlan.previousWeek', 'Previous week')}
-                  style={{ width: 40, height: 40, borderRadius: 13, border: 'none', flexShrink: 0, cursor: canPrev ? 'pointer' : 'default', background: canPrev ? TT.surface2 : 'transparent', color: canPrev ? TT.text : TT.textMute, opacity: canPrev ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ChevronLeft size={18} strokeWidth={2.3} />
-                </button>
-                <div style={{ fontFamily: TFont.display, fontWeight: 800, fontSize: 17, color: TT.text, letterSpacing: -0.3 }}>
-                  {t('trainerClientDetail.weekN', 'Week {{w}}', { w: weekNum })}
-                  <span style={{ color: TT.textMute, fontWeight: 700 }}> {t('trainerClientDetail.ofN', 'of {{n}}', { n: total })}</span>
-                </div>
-                <button type="button" onClick={() => { if (canNext) { setWeekIdx(idx + 1); setExpandedDay(0); } }} disabled={!canNext} aria-label={t('myPlan.nextWeek', 'Next week')}
-                  style={{ width: 40, height: 40, borderRadius: 13, border: 'none', flexShrink: 0, cursor: canNext ? 'pointer' : 'default', background: canNext ? TT.surface2 : 'transparent', color: canNext ? TT.text : TT.textMute, opacity: canNext ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ChevronRight size={18} strokeWidth={2.3} />
-                </button>
-              </div>
-
-              {/* Day tiles — collapsible; expand to the exercise list */}
-              {days.length === 0 ? (
-                <p style={{ fontSize: 13, color: TT.textMute, textAlign: 'center', padding: '20px 0' }}>{t('trainerClientDetail.program.restWeek', 'Rest / no sessions')}</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {days.map((d, di) => {
-                    const exs = d.exercises || [];
-                    const open = expandedDay === di;
-                    return (
-                      <div key={di} style={{ background: open ? TT.bg : TT.surface2, border: `1px solid ${open ? `${TT.accent}55` : TT.border}`, borderRadius: 18, overflow: 'hidden' }}>
-                        <button type="button" onClick={() => setExpandedDay(open ? null : di)} className="tt-tap"
-                          style={{ width: '100%', background: 'transparent', border: 'none', padding: '14px 15px', display: 'flex', alignItems: 'center', gap: 13, textAlign: 'left', cursor: 'pointer' }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 12, background: TT.accentSoft, boxShadow: `inset 0 0 0 1px ${TT.accent}44`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                            <Dumbbell size={20} color={TT.accent} strokeWidth={2.1} />
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontFamily: TFont.display, fontSize: 16.5, fontWeight: 800, color: TT.text, letterSpacing: -0.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {d.name || t('trainerClientDetail.dayN', 'Day {{n}}', { n: di + 1 })}
-                            </div>
-                            <div style={{ fontSize: 12, color: TT.textSub, marginTop: 3 }}>
-                              {exs.length} {t('dashboard.exercises', 'exercises')}{exs.length ? ` · ~${estimateMinutes(exs)}m · ${estimateCalories(exs)} cal` : ''}
-                            </div>
-                          </div>
-                          <ChevronDown size={20} style={{ color: TT.textMute, flexShrink: 0, transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'none' }} />
-                        </button>
-                        {open && exs.length > 0 && (
-                          <div style={{ margin: '0 12px 12px', padding: '2px 14px', borderRadius: 14, background: TT.surface, border: `1px solid ${TT.border}` }}>
-                            {exs.map((e, ei) => {
-                              const exId = e.id || e.exercise_id;
-                              const lib = EXERCISE_BY_ID.get(exId);
-                              const nm = exName(exMap[exId]) || exName(lib) || e.name || t('trainerNotes.overview.unknownExercise', 'Exercise');
-                              const mus = lib?.muscle;
-                              const mc = muscleHue(mus);
-                              const prevGid = ei > 0 ? (exs[ei - 1].group_id || null) : null;
-                              const groupStart = e.group_id && e.group_id !== prevGid;
-                              const last = ei === exs.length - 1;
-                              const stats = [[String(e.sets ?? '—'), t('trainerClientDetail.editor.setsShort', 'sets')], [String(e.reps ?? '—'), t('trainerClientDetail.editor.repsShort', 'reps')], [e.rest_seconds ? `${e.rest_seconds}s` : '—', t('trainerClientDetail.editor.restShort', 'rest')]];
-                              return (
-                                <div key={ei}>
-                                  {groupStart && (
-                                    <div style={{ fontSize: 9.5, fontWeight: 800, color: TT.coach, textTransform: 'uppercase', letterSpacing: 0.5, margin: `${ei ? 10 : 6}px 0 2px` }}>
-                                      {groupLabel(e.group_type)}
-                                    </div>
-                                  )}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: last ? 'none' : `1px solid ${TT.border}`, paddingLeft: e.group_id ? 9 : 0, borderLeft: e.group_id ? `2px solid ${TT.coach}` : 'none' }}>
-                                    <ExerciseVideoThumb exercise={{ videoUrl: lib?.videoUrl, muscle: mus }} size={46} radius={12} />
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <span style={{ flex: 1, minWidth: 0, fontFamily: TFont.display, fontSize: 14.5, fontWeight: 800, color: TT.text, letterSpacing: -0.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nm}</span>
-                                        {mus && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11, fontWeight: 700, color: mc }}><span style={{ width: 6, height: 6, borderRadius: 99, background: mc }} />{t(`muscleGroups.${mus}`, mus)}</span>}
-                                      </div>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 5, whiteSpace: 'nowrap' }}>
-                                        {stats.map(([v, l], k) => (
-                                          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-                                            {k > 0 && <span style={{ width: 3, height: 3, borderRadius: 99, background: TT.textMute }} />}
-                                            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
-                                              <span style={{ fontFamily: TFont.mono, fontSize: 12.5, fontWeight: 700, color: TT.text, letterSpacing: -0.3 }}>{v}</span>
-                                              <span style={{ fontFamily: TFont.display, fontSize: 9.5, fontWeight: 700, color: TT.textMute, letterSpacing: 0.2, textTransform: 'uppercase' }}>{l}</span>
-                                            </span>
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
+// ProgramDetailModal now lives in components/ProgramDetailModal.jsx — the
+// member opens the identical screen for a coach's plan.
 
 export default function TrainerClientNotes() {
   const { clientId } = useParams();
@@ -412,7 +249,10 @@ export default function TrainerClientNotes() {
       // notes ref properly populated) in the background.
       base = { ...init, ...cached, loading: false };
     }
-    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    // searchParams, NOT window.location.search: under MemoryRouter (the native
+  // shell) window.location carries no query at all, so the deep-linked tab was
+  // never restored on device. Same bug already fixed in TrainerPlans.
+  const urlTab = searchParams.get('tab');
     return urlTab && MEMBER_TAB_ORDER.includes(urlTab) ? { ...base, activeTab: urlTab } : base;
   });
   const notesSavedTimerRef = useRef(null);
@@ -487,7 +327,14 @@ export default function TrainerClientNotes() {
     let alive = true;
     getAssignedProgram(clientId).then((p) => { if (alive) setClientProgram(p); }).catch(() => {});
     return () => { alive = false; };
-  }, [clientId, progReload]);
+    // assigned_program_id is a dependency: without it this kept the PREVIOUS
+    // program's per-client fork after assigning a different one, and since the
+    // fork wins in the Current-program card, section 1 went on naming the old
+    // program while the list below correctly showed the new one as ASSIGNED.
+    // `state.client`, NOT `client`: the destructure of state happens further
+    // down the component, so naming `client` here is a temporal-dead-zone
+    // ReferenceError that takes the whole page to the error boundary.
+  }, [clientId, progReload, state.client?.assigned_program_id]);
   const openProgramEditorFor = async (sourceId) => {
     try {
       const copyId = await forkClientProgram(clientId, sourceId);
@@ -536,12 +383,26 @@ export default function TrainerClientNotes() {
     weights, measurements, measurementsPrev, progressPhotos, checkIns,
     notesData, notesSaved, savingNotes,
     followups, showFollowupModal, fuMethod, fuNote, fuOutcome, savingFollowup,
-    availablePrograms, assigningProgram,
+    availablePrograms, myPlans, assignedPlanIds, assigningProgram,
     nutritionTargets, clientNutritionPrefs, foodLogSummary, activeMealPlan, nutritionLoaded,
     activeTab, showReport, showNotes,
     liveDraft, bodyPeriod, viewingPhoto,
     historyLoaded, allSessions, expandedSessionId, sessionDetails,
   } = state;
+
+  // The one of THIS trainer's plans the client is currently on, if any. Drives
+  // section 1 — assigning your own plan has to change what "Current program"
+  // says, or the page keeps reporting a gym program the member never sees.
+  const assignedMyPlan = useMemo(
+    () => myPlans.find(p => assignedPlanIds.includes(p.id)) || null,
+    [myPlans, assignedPlanIds],
+  );
+  // Section 2 lists what can still be assigned. The assigned one is already
+  // the whole of section 1 — listing it twice on one screen was the noise.
+  // Every plan stays listed; the assigned one is MARKED rather than hidden.
+  // (Hiding it was the wrong read of "no duplication" — what must never happen
+  // is two things reading ASSIGNED at once, which exclusivity now prevents.)
+  const unassignedPlans = myPlans;
 
   useEffect(() => { document.title = t('trainerNotes.pageTitle'); }, [t]);
 
@@ -758,7 +619,8 @@ export default function TrainerClientNotes() {
       // Load available programs, progress photos, check-ins, member goals, AND
       // the assigned program name + enrollment all in parallel (program
       // name/enrollment were previously two serial hops between batches).
-      const [progsRes, photosRes, checkInsRes, goalsRes, progNameRes, enrRes] = await Promise.all([
+      const [progsRes, photosRes, checkInsRes, goalsRes, progNameRes, enrRes,
+             myPlansRes, planMembersRes] = await Promise.all([
         supabase
           .from('gym_programs')
           .select('id, name, duration_weeks, weeks')
@@ -802,10 +664,34 @@ export default function TrainerClientNotes() {
               .limit(1)
               .maybeSingle()
           : Promise.resolve({ data: null }),
+        // THIS trainer's own plans. Until now this page could only offer the
+        // gym's catalogue, so "assign a program" from here wrote
+        // profiles.assigned_program_id — a gym_programs id — while the plans
+        // the trainer actually built were only assignable from /plans. Two
+        // entry points, and only the other one reached the member.
+        supabase
+          .from('trainer_workout_plans')
+          .select('id, name, description, duration_weeks, weeks, is_draft')
+          .eq('trainer_id', profile.id)
+          .eq('is_active', true)
+          .order('updated_at', { ascending: false })
+          .limit(100),
+        // …and which of them this client is already on.
+        supabase
+          .from('trainer_plan_members')
+          .select('plan_id')
+          .eq('member_id', clientId),
       ]);
 
       const loadedProgramName = progNameRes.data?.name || null;
       const loadedEnrollment = enrRes.data || null;
+      // Both degrade to empty rather than failing the page — a database that
+      // predates 0644 has no junction table.
+      const loadedMyPlans = (myPlansRes.error ? [] : (myPlansRes.data || []))
+        .filter(p => !p.is_draft);
+      const loadedAssignedPlanIds = planMembersRes.error
+        ? []
+        : (planMembersRes.data || []).map(r => r.plan_id).filter(Boolean);
 
       // Batch all photo signed URLs into ONE request (was one round-trip per
       // photo). 6h expiry so long-open tabs don't go stale mid-review; the
@@ -839,6 +725,8 @@ export default function TrainerClientNotes() {
         workoutsThisWeek: thisWeekRes.data?.length || 0,
         memberGoals: goalsRes.error ? [] : (goalsRes.data || []),
         availablePrograms: progsRes.data || [],
+        myPlans: loadedMyPlans,
+        assignedPlanIds: loadedAssignedPlanIds,
         progressPhotos: photosWithUrls,
         checkIns: checkInsRes.data || [],
         notesData: parsedNotes,
@@ -1352,6 +1240,160 @@ export default function TrainerClientNotes() {
     }
   };
 
+  // Assign / unassign one of THIS trainer's own plans. Writes the same
+  // junction row /plans writes — one code path to the member, not two.
+  //
+  // The result is checked, unlike the /plans version was: a Supabase builder
+  // resolves with { error } rather than throwing, so an RLS refusal (0657
+  // gates _can_manage_client on the client having ACCEPTED this trainer) used
+  // to sail past try/catch and report success while storing nothing.
+  // Editing an ASSIGNED plan is ambiguous — the same plan may be on several
+  // clients. Ask which they mean instead of guessing. "Just this client"
+  // duplicates the plan and moves them onto the copy, so the master (and
+  // everyone else on it) is untouched. Past sessions are unaffected either way:
+  // workout_sessions store what was actually performed, not a plan reference.
+  const [editScopePlan, setEditScopePlan] = useState(null);
+  const [forking, setForking] = useState(false);
+
+  const openPlanEditor = (planId) => navigate(`/trainer/plans?plan=${planId}`);
+
+  const requestEditPlan = (plan) => {
+    if (!assignedPlanIds.includes(plan.id)) { openPlanEditor(plan.id); return; }
+    setEditScopePlan(plan);
+  };
+
+  const forkPlanForClient = async (plan) => {
+    if (forking || !profile?.id) return;
+    setForking(true);
+    try {
+      const { data: src, error: srcErr } = await supabase
+        .from('trainer_workout_plans').select('weeks').eq('id', plan.id).maybeSingle();
+      if (srcErr) throw srcErr;
+      const first = (client?.full_name || '').trim().split(/\s+/)[0] || t('trainerClientDetail.thisClient', 'client');
+      const { data: copy, error: insErr } = await supabase
+        .from('trainer_workout_plans')
+        .insert({
+          gym_id: profile.gym_id,
+          trainer_id: profile.id,
+          client_id: clientId,
+          name: `${plan.name} · ${first}`.slice(0, 120),
+          description: plan.description,
+          duration_weeks: plan.duration_weeks,
+          weeks: src?.weeks || {},
+          is_active: true,
+          is_draft: false,
+        })
+        .select('id')
+        .single();
+      if (insErr) throw insErr;
+
+      const { error: jErr } = await supabase.from('trainer_plan_members').upsert(
+        [{ plan_id: copy.id, member_id: clientId, assigned_by: profile.id }],
+        { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
+      );
+      if (jErr) throw jErr;
+
+      await clearOtherAssignments({
+        memberId: clientId,
+        trainerId: profile.id,
+        keepPlanId: copy.id,
+        currentGymProgramId: state.client?.assigned_program_id || null,
+      });
+      setEditScopePlan(null);
+      openPlanEditor(copy.id);
+    } catch (err) {
+      logger.error('TrainerClientDetail: fork plan failed:', err);
+      showToast(t('trainerClientDetail.forkFailed', "Couldn't make a copy for this client. Try again."), 'error');
+    } finally {
+      setForking(false);
+    }
+  };
+
+  // Assigning REPLACES whatever the client is on, so name it and ask first.
+  // Silently swapping a plan out from under a client is the kind of thing a
+  // trainer only discovers from the client.
+  const [confirmAssignPlan, setConfirmAssignPlan] = useState(null);
+  const currentAssignmentName = () => {
+    if (assignedMyPlan) return assignedMyPlan.name;
+    if (state.client?.assigned_program_id) {
+      return availablePrograms.find(p => p.id === state.client.assigned_program_id)?.name
+        || programName || null;
+    }
+    return null;
+  };
+  const requestAssignPlan = (plan) => {
+    const current = currentAssignmentName();
+    if (!current) { handleAssignPlan(plan.id, true); return; }
+    setConfirmAssignPlan({ plan, current });
+  };
+
+  async function handleAssignPlan(planId, assign) {
+    if (!profile?.id || assigningProgram) return;
+    dispatch({ type: 'SET', payload: { assigningProgram: true } });
+    try {
+      const { error } = assign
+        ? await supabase.from('trainer_plan_members').upsert(
+            [{ plan_id: planId, member_id: clientId, assigned_by: profile.id }],
+            { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
+          )
+        : await supabase.from('trainer_plan_members').delete()
+            .eq('plan_id', planId).eq('member_id', clientId);
+
+      if (error) {
+        logger.error('TrainerClientDetail: plan assign failed:', error);
+        const rls = error.code === '42501' || /row-level security/i.test(error.message || '');
+        showToast(
+          isSchemaMiss(error)
+            ? t('trainerClientDetail.planAssignUnavailable', 'Needs the latest database migration')
+            : rls
+              ? t('trainerClientDetail.planAssignNeedsConsent', "This client hasn't accepted you as their trainer yet.")
+              : t('trainerClientDetail.planAssignFailed', "Couldn't update the assignment. Try again."),
+          'error',
+        );
+        return;
+      }
+
+      // /plans writes BOTH the junction row and trainer_workout_plans.client_id
+      // when it assigns, and RLS reads client_id too — so this page has to keep
+      // them in step or the two disagree about what the member is on.
+      const { error: cidErr } = assign
+        ? await supabase.from('trainer_workout_plans')
+            .update({ client_id: clientId }).eq('id', planId)
+        : await supabase.from('trainer_workout_plans')
+            .update({ client_id: null }).eq('id', planId).eq('client_id', clientId);
+      if (cidErr) logger.error('TrainerClientDetail: client_id sync failed:', cidErr);
+
+      // ONE assignment per member — same function /plans calls, so the two
+      // pages can't drift apart again.
+      if (assign) {
+        await clearOtherAssignments({
+          memberId: clientId,
+          trainerId: profile.id,
+          keepPlanId: planId,
+          currentGymProgramId: client?.assigned_program_id || null,
+        });
+      }
+
+      showToast(
+        assign
+          ? t('trainerClientDetail.planAssigned', 'Plan assigned')
+          : t('trainerClientDetail.planUnassigned', 'Plan removed'),
+        'success',
+      );
+      // Reload rather than patch: assigning touches assignedPlanIds, the gym
+      // assignment and the section-1 header together.
+      await loadClientData();
+    } catch (err) {
+      // try/finally with no catch let a throw from clearOtherAssignments or
+      // loadClientData escape an onClick as an unhandled rejection — after the
+      // success toast had already fired.
+      logger.error('TrainerClientDetail: assign plan failed:', err);
+      showToast(t('trainerClientDetail.planAssignFailed', "Couldn't update the assignment. Try again."), 'error');
+    } finally {
+      dispatch({ type: 'SET', payload: { assigningProgram: false } });
+    }
+  }
+
   async function handleAssignProgram(programId) {
     if (!profile?.id || assigningProgram) return;
     dispatch({ type: 'SET', payload: { assigningProgram: true } });
@@ -1386,6 +1428,13 @@ export default function TrainerClientNotes() {
               gym_id: profile.gym_id,
             }, { onConflict: 'program_id,profile_id', ignoreDuplicates: true });
         }
+        // Exclusive the other way round: the gym program takes over, so every
+        // plan of this trainer's the client was on is dropped.
+        await clearOtherAssignments({
+          memberId: clientId,
+          trainerId: profile.id,
+          keepGymProgram: true,
+        });
         posthogClient?.capture('trainer_program_assigned', { client_count: 1, source: 'client_detail' });
       } else if (client?.assigned_program_id) {
         // "Remove program": never upsert program_id NULL (NOT NULL → 23502).
@@ -2995,14 +3044,22 @@ export default function TrainerClientNotes() {
           </TCard>
 
           {/* Save button */}
+          {/* The BUTTON confirms, rather than a word appearing beside it — the
+              eye is already on the button, so that is where the feedback has
+              to land. Reverts to "Save notes" when the timer clears it. */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginBottom: 22 }} className="md:col-span-2">
-            {notesSaved && (
-              <span style={{ fontSize: 13, color: TT.goodInk, fontWeight: 700 }}>{t('trainerNotes.notes.saved')}</span>
+            {notesSaved ? (
+              <button type="button" disabled
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 42, padding: '0 18px', borderRadius: 12, border: `1px solid ${TT.goodInk}55`, background: `color-mix(in srgb, ${TT.goodInk} 14%, transparent)`, color: TT.goodInk, fontFamily: TFont.display, fontWeight: 800, fontSize: 13.5 }}>
+                <Check size={15} strokeWidth={3} />
+                {t('trainerNotes.notes.saved')}
+              </button>
+            ) : (
+              <TPrimaryButton onClick={handleSaveNotes} disabled={savingNotes}>
+                <Save size={14} strokeWidth={2.4} />
+                {savingNotes ? t('trainerNotes.notes.saving') : t('trainerNotes.notes.saveNotes')}
+              </TPrimaryButton>
             )}
-            <TPrimaryButton onClick={handleSaveNotes} disabled={savingNotes}>
-              <Save size={14} strokeWidth={2.4} />
-              {savingNotes ? t('trainerNotes.notes.saving') : t('trainerNotes.notes.saveNotes')}
-            </TPrimaryButton>
           </div>
             </div>
           </div>
@@ -3017,7 +3074,42 @@ export default function TrainerClientNotes() {
             {/* 1 · Current program */}
             <SBlock n="1" title={t('trainerNotes.program.currentProgram')} span>
             <SCard tint pad={16}>
-            {programName ? (() => {
+            {/* A plan of THIS trainer's, assigned via the junction, outranks
+                whatever gym_programs row assigned_program_id happens to hold —
+                it's the thing the member actually sees in Workouts. Section 1
+                showed the gym program regardless, so assigning your own plan
+                changed nothing here and the two looked doubly assigned. */}
+            {assignedMyPlan ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 52, height: 52, borderRadius: 15, flexShrink: 0, background: `linear-gradient(160deg, ${H.g1}, ${H.g2})`, display: 'grid', placeItems: 'center', boxShadow: `0 4px 10px -4px ${H.c}88, inset 0 1px 0 rgba(255,255,255,.25)` }}>
+                    <ClipboardList size={24} color={H.ink} strokeWidth={2.1} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontFamily: TFont.display, fontSize: 17, fontWeight: 800, color: TT.text, letterSpacing: -0.3, lineHeight: 1.15 }}>
+                      {assignedMyPlan.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: TT.textSub, marginTop: 3 }}>
+                      {t('trainerClientDetail.yourPlanTag', 'Your plan')}
+                      {assignedMyPlan.duration_weeks
+                        ? ` · ${t('trainerClientDetail.nWeek', '{{n}}-week', { n: assignedMyPlan.duration_weeks })}`
+                        : ''}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+                  <button onClick={() => requestEditPlan(assignedMyPlan)} className="tt-tap"
+                    style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 46, borderRadius: 13, background: H.c, border: 'none', color: H.ink, fontFamily: TFont.display, fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>
+                    <Pencil size={15} strokeWidth={2.3} /> {t('trainerClientDetail.editPlan', 'Edit plan')}
+                  </button>
+                  <button onClick={() => handleAssignPlan(assignedMyPlan.id, false)} disabled={assigningProgram} className="tt-tap"
+                    aria-label={t('trainerClientDetail.unassign', 'Remove')}
+                    style={{ display: 'grid', placeItems: 'center', width: 46, height: 46, borderRadius: 13, background: `color-mix(in srgb, ${TT.hot} 12%, transparent)`, border: `1px solid ${TT.hot}55`, color: TT.hot, cursor: 'pointer', flexShrink: 0, opacity: assigningProgram ? 0.5 : 1 }}>
+                    <Trash2 size={16} strokeWidth={2.3} />
+                  </button>
+                </div>
+              </div>
+            ) : programName ? (() => {
               const currentProgramObj = (clientProgram?._isCopy ? clientProgram : null)
                 || availablePrograms.find(p => p.id === client?.assigned_program_id)
                 || (enrollment?.gym_programs?.weeks ? enrollment.gym_programs : null);
@@ -3091,8 +3183,95 @@ export default function TrainerClientNotes() {
             </SCard>
             </SBlock>
 
-            {/* 2 · Available programs */}
-            <SBlock n="2" title={t('trainerNotes.program.availablePrograms')} span>
+            {/* 2 · THIS trainer's own plans — the same list as /plans, and the
+                   same junction write, so there is one way to put work in
+                   front of a client instead of two that disagree. */}
+            <SBlock n="2" title={t('trainerClientDetail.myPlansTitle', 'My plans')} span>
+            {unassignedPlans.length === 0 ? (
+              <SEmpty icon={ClipboardList}>
+                {t('trainerClientDetail.noPlansYet', 'You haven’t published a plan yet. Build one in Plans.')}
+              </SEmpty>
+            ) : (
+              <SCard pad={0} style={{ overflow: 'hidden' }}>
+              {unassignedPlans.map((plan, idx) => {
+                const isOn = assignedPlanIds.includes(plan.id);
+                const totalDays = Object.values(plan.weeks || {})
+                  .reduce((s, d) => s + (Array.isArray(d) ? d.length : 0), 0);
+                return (
+                  <div
+                    key={plan.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '13px 15px', borderTop: idx > 0 ? `1px solid ${TT.border}` : 'none',
+                      background: isOn ? TT.accentSoft : 'transparent',
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                      background: `color-mix(in srgb, ${TT.accent} 14%, transparent)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <ClipboardList size={18} color={TT.accent} strokeWidth={2.1} />
+                    </div>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setViewProgram(plan)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') setViewProgram(plan); }}
+                      className="tt-tap"
+                      style={{ minWidth: 0, flex: 1, cursor: 'pointer' }}
+                    >
+                      <p style={{ fontSize: 14, fontWeight: 700, color: TT.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.name}</p>
+                      <p style={{ fontSize: 11.5, color: TT.textSub, marginTop: 1 }}>
+                        {plan.duration_weeks === 0
+                          ? t('trainerPlans.singleSession', 'Single session')
+                          : `${plan.duration_weeks || Object.keys(plan.weeks || {}).length} ${t('trainerNotes.program.weeks')} · ${totalDays} ${t('trainerClientDetail.daysShort', 'days')}`}
+                      </p>
+                    </div>
+                    <button
+                      // /trainer/plans — the trainer routes are nested under /trainer/*,
+                      // so `/plans` resolved to nothing and fell back to the home page.
+                      onClick={() => requestEditPlan(plan)}
+                      aria-label={t('trainerClientDetail.editPlan', 'Edit plan')}
+                      className="tt-tap"
+                      style={{ width: 34, height: 34, borderRadius: 9, background: TT.surface, border: `1px solid ${TT.border}`, display: 'grid', placeItems: 'center', cursor: 'pointer', color: TT.accentInk, flexShrink: 0, marginRight: 8 }}
+                    >
+                      <Pencil size={14} strokeWidth={2.3} />
+                    </button>
+                    {isOn ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        <TPill tone="teal" size="m">{t('trainerNotes.program.assigned')}</TPill>
+                        <button
+                          onClick={() => handleAssignPlan(plan.id, false)}
+                          disabled={assigningProgram}
+                          aria-label={t('trainerClientDetail.unassign', 'Remove')}
+                          className="tt-tap"
+                          style={{ display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 9, background: `color-mix(in srgb, ${TT.hot} 12%, transparent)`, border: `1px solid ${TT.hot}55`, color: TT.hot, cursor: 'pointer', opacity: assigningProgram ? 0.5 : 1 }}
+                        >
+                          <Trash2 size={14} strokeWidth={2.3} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => requestAssignPlan(plan)}
+                        disabled={assigningProgram}
+                        className="tt-btn tt-btn--secondary"
+                        style={{ padding: '7px 13px', borderRadius: 10, fontSize: 12, flexShrink: 0, opacity: assigningProgram ? 0.5 : 1 }}
+                      >
+                        {t('trainerNotes.program.assign')}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              </SCard>
+            )}
+            </SBlock>
+
+            {/* 3 · The GYM's catalogue. A trainer can assign these, but they
+                   are not the trainer's programs — kept in its own titled
+                   block so the two never read as one list again. */}
+            <SBlock n="3" title={t('trainerClientDetail.gymProgramsTitle', 'Gym programs')} span>
             {availablePrograms.length === 0 ? (
               <SEmpty icon={BookOpen}>{t('trainerNotes.program.noProgramsAvailable')}</SEmpty>
             ) : (
@@ -3153,8 +3332,8 @@ export default function TrainerClientNotes() {
             )}
             </SBlock>
 
-            {/* 3 · Recovery — numbered Spectrum section (readiness tile keeps its own state color) */}
-            <SBlock n="3" title={t('trainerRecovery.title', 'Recovery')} span>
+            {/* 4 · Recovery — numbered Spectrum section (readiness tile keeps its own state color) */}
+            <SBlock n="4" title={t('trainerRecovery.title', 'Recovery')} span>
               <TrainerClientRecovery clientId={clientId} hideHeader />
             </SBlock>
 
@@ -3501,6 +3680,78 @@ export default function TrainerClientNotes() {
 
       {/* Assign / Remove program confirmation — a misclick used to wipe or swap
           the client's program instantly. */}
+      {editScopePlan && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setEditScopePlan(null)}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, borderRadius: 18, width: '100%', maxWidth: 440, padding: 20 }}>
+            <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 900, color: TT.text, letterSpacing: -0.4 }}>
+              {t('trainerClientDetail.editScopeTitle', 'Edit which version?')}
+            </div>
+            <p style={{ fontSize: 13.5, color: TT.textSub, marginTop: 8, lineHeight: 1.5 }}>
+              {t('trainerClientDetail.editScopeBody', 'This plan may be on other clients too. Completed workouts are never changed either way — only what they train from here.')}
+            </p>
+            <button type="button" onClick={() => { const p2 = editScopePlan; setEditScopePlan(null); openPlanEditor(p2.id); }}
+              className="tt-tap"
+              style={{ width: '100%', marginTop: 16, padding: '13px 15px', borderRadius: 13, background: TT.surface2, border: `1px solid ${TT.border}`, textAlign: 'left', cursor: 'pointer' }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: TT.text }}>{t('trainerClientDetail.editScopeAll', 'The plan itself')}</div>
+              <div style={{ fontSize: 12, color: TT.textSub, marginTop: 2 }}>{t('trainerClientDetail.editScopeAllHint', 'Changes reach everyone assigned to it.')}</div>
+            </button>
+            <button type="button" disabled={forking} onClick={() => forkPlanForClient(editScopePlan)}
+              className="tt-tap"
+              style={{ width: '100%', marginTop: 8, padding: '13px 15px', borderRadius: 13, background: TT.accentSoft, border: `1px solid ${TT.accent}55`, textAlign: 'left', cursor: 'pointer', opacity: forking ? 0.5 : 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: TT.accentInk }}>
+                {t('trainerClientDetail.editScopeOne', 'A copy for this client only')}
+              </div>
+              <div style={{ fontSize: 12, color: TT.textSub, marginTop: 2 }}>
+                {forking
+                  ? t('trainerClientDetail.editScopeWorking', 'Making the copy…')
+                  : t('trainerClientDetail.editScopeOneHint', 'They move onto the copy; the original is untouched.')}
+              </div>
+            </button>
+            <button type="button" onClick={() => setEditScopePlan(null)} className="tt-tap"
+              style={{ width: '100%', marginTop: 12, height: 44, borderRadius: 12, background: 'transparent', border: 'none', color: TT.textSub, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              {t('common:cancel', 'Cancel')}
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {confirmAssignPlan && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setConfirmAssignPlan(null)}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: TT.surface, border: `1px solid ${TT.borderSolid}`, borderRadius: 18, width: '100%', maxWidth: 420, padding: 20 }}>
+            <div style={{ fontFamily: TFont.display, fontSize: 18, fontWeight: 900, color: TT.text, letterSpacing: -0.4 }}>
+              {t('trainerClientDetail.replaceAssignTitle', 'Replace their current plan?')}
+            </div>
+            <p style={{ fontSize: 13.5, color: TT.textSub, marginTop: 8, lineHeight: 1.5 }}>
+              {t(
+                'trainerClientDetail.replaceAssignBody',
+                'This client is on “{{current}}”. Assigning “{{next}}” replaces it — their past workouts stay, but what they train from now on changes.',
+                { current: confirmAssignPlan.current, next: confirmAssignPlan.plan.name },
+              )}
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+              <button type="button" onClick={() => setConfirmAssignPlan(null)} className="tt-tap"
+                style={{ flex: 1, height: 46, borderRadius: 12, background: TT.surface2, border: 'none', color: TT.textSub, fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
+                {t('common:cancel', 'Cancel')}
+              </button>
+              <button type="button" disabled={assigningProgram}
+                onClick={() => { const c = confirmAssignPlan; setConfirmAssignPlan(null); handleAssignPlan(c.plan.id, true); }}
+                className="tt-tap"
+                style={{ flex: 1, height: 46, borderRadius: 12, background: TT.accent, border: 'none', color: '#fff', fontSize: 13.5, fontWeight: 800, cursor: 'pointer', opacity: assigningProgram ? 0.5 : 1 }}>
+                {t('trainerClientDetail.replaceAssignCta', 'Replace')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       {confirmProg && createPortal(
         <div className="fixed inset-0 z-[130] flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }} onClick={() => !assigningProgram && setConfirmProg(null)}>
           <div onClick={e => e.stopPropagation()}

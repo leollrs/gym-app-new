@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { isSchemaMiss } from '../../lib/schemaMiss';
+import { clearOtherAssignments, gymProgramAssignments } from '../../lib/trainerAssignment';
 import { createPortal } from 'react-dom';
 import {
   Plus, X, ChevronDown, ChevronRight, Trash2, Copy, Clock, Dumbbell,
@@ -839,7 +841,13 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   // assignedIds is the source of truth; clientId is the "primary" (first)
   // assignee that fills the legacy client_id column and drives the personalized
   // profile + auto-generate (only meaningful when exactly one member).
-  const [assignedIds, setAssignedIds] = useState(init.client_id ? [init.client_id] : []);
+  // Seed from the JUNCTION first. Initialising from client_id alone meant
+  // opening a plan shared with three members and changing one rep count made
+  // syncPlanMembers' "delete everyone not in assignedIds" revoke the other two
+  // — silently, under a success toast.
+  const [assignedIds, setAssignedIds] = useState(
+    init._memberIds?.length ? [...init._memberIds] : (init.client_id ? [init.client_id] : []),
+  );
   const clientId = assignedIds[0] || '';
   const [showAssignPicker, setShowAssignPicker] = useState(false);
   const toggleAssigned = (id) => setAssignedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -1249,21 +1257,50 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
   // no longer assigned, add new ones (ON CONFLICT DO NOTHING → the assign-notify
   // trigger only fires for genuinely new members). Best-effort: a failure here
   // (e.g. junction table not yet migrated) must not fail the whole save.
+  // Returns null on success, or a message to show the trainer.
+  //
+  // These awaits used to discard their result. A Supabase builder RESOLVES with
+  // `{ error }` — it does not throw — so an RLS rejection walked straight past
+  // the try/catch and the trainer got "Plan saved · assigned to 3 members"
+  // while the database had stored nothing at all. The plan then never appeared
+  // for the member and never notified them, with no error anywhere.
+  //
+  // The rejection is real and expected: tpm_trainer_all's WITH CHECK calls
+  // _can_manage_client(member_id), which 0657 gated on the client having
+  // ACCEPTED the trainer. Assigning to someone whose request is still pending
+  // is refused — that has to be said out loud, not swallowed.
   const syncPlanMembers = async (planId) => {
     try {
       const keep = assignedIds.filter(Boolean);
       const NONE = '00000000-0000-0000-0000-000000000000';
-      await supabase.from('trainer_plan_members').delete()
+      const { error: delErr } = await supabase.from('trainer_plan_members').delete()
         .eq('plan_id', planId)
         .not('member_id', 'in', `(${keep.length ? keep.join(',') : NONE})`);
-      if (keep.length) {
-        await supabase.from('trainer_plan_members').upsert(
-          keep.map(mid => ({ plan_id: planId, member_id: mid, assigned_by: trainerId })),
-          { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
-        );
+      // A missing junction table (pre-0644) stays genuinely non-fatal.
+      if (delErr && !isSchemaMiss(delErr)) {
+        logger.error('TrainerPlans: syncPlanMembers delete failed:', delErr);
       }
+      if (!keep.length) return null;
+
+      const { error: upErr } = await supabase.from('trainer_plan_members').upsert(
+        keep.map(mid => ({ plan_id: planId, member_id: mid, assigned_by: trainerId })),
+        { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
+      );
+      if (!upErr) return null;
+      if (isSchemaMiss(upErr)) {
+        logger.error('TrainerPlans: trainer_plan_members not migrated:', upErr);
+        return null;
+      }
+      logger.error('TrainerPlans: syncPlanMembers upsert failed:', upErr);
+      // 42501 = insufficient_privilege; PostgREST also reports an RLS refusal
+      // as a plain "new row violates row-level security policy".
+      const rls = upErr.code === '42501' || /row-level security/i.test(upErr.message || '');
+      return rls
+        ? t('trainerPlans.assignNeedsConsent', "Plan saved, but it couldn't be assigned — those clients haven't accepted you as their trainer yet.")
+        : t('trainerPlans.assignFailed', 'Plan saved, but assigning members failed. Try again.');
     } catch (e) {
-      logger.error('TrainerPlans: syncPlanMembers failed (non-fatal):', e);
+      logger.error('TrainerPlans: syncPlanMembers failed:', e);
+      return t('trainerPlans.assignFailed', 'Plan saved, but assigning members failed. Try again.');
     }
   };
 
@@ -1300,8 +1337,27 @@ const PlanBuilder = ({ plan, clients, onClose, onSaved, trainerId, gymId, t, sho
       }
       // Sync the shared-members junction (0644) to match assignedIds. Never
       // blocks the save — the plan row is already persisted (client_id holds
-      // the primary assignee for backward-compat).
-      if (planId) await syncPlanMembers(planId);
+      // the primary assignee for backward-compat) — but a failure is now
+      // REPORTED rather than swallowed, because a plan that saved without
+      // reaching anyone looks identical to one that worked.
+      const assignMsg = planId ? await syncPlanMembers(planId) : null;
+      // ONE assignment per member — the builder assigns too, and was the only
+      // path that never cleared what the member was already on.
+      if (planId && !assignMsg) {
+        const keep = assignedIds.filter(Boolean);
+        if (keep.length) {
+          const priorGym = await gymProgramAssignments(keep);
+          for (const memberId of keep) {
+            await clearOtherAssignments({
+              memberId,
+              trainerId,
+              keepPlanId: planId,
+              currentGymProgramId: priorGym[memberId] || null,
+            });
+          }
+        }
+      }
+      if (assignMsg) showToast?.(assignMsg, 'error');
       onSaved();
     } catch (err) {
       console.error('[TrainerPlans] handleSave error:', err);
@@ -2963,6 +3019,28 @@ export default function TrainerPlans() {
     setView('builder');
   };
 
+  // Deep link: /plans?plan=<id> opens that plan's builder straight away, so the
+  // pencil on a client's "My plans" row lands on the right plan instead of a
+  // list the trainer has to search. Runs once per id, after plans have loaded.
+  const deepLinkedRef = useRef(null);
+  const [planParams, setPlanParams] = useSearchParams();
+  useEffect(() => {
+    // useSearchParams, not window.location.search: under MemoryRouter (the
+    // native shell) window.location carries no query at all, so the pencil
+    // navigated and nothing opened.
+    const wanted = planParams.get('plan');
+    if (!wanted || deepLinkedRef.current === wanted || !plans.length) return;
+    const target = plans.find(p => p.id === wanted);
+    if (!target) return;
+    deepLinkedRef.current = wanted;
+    openBuilder(target);
+    // Drop the param so closing the builder doesn't immediately reopen it.
+    const next = new URLSearchParams(planParams);
+    next.delete('plan');
+    setPlanParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plans, planParams]);
+
   const closeBuilder = () => {
     setView('list');
     setEditing(null);
@@ -3074,19 +3152,68 @@ export default function TrainerPlans() {
       loadData(); // revert to server truth
       return;
     }
-    // Sync the shared-members junction (0644) — best-effort, matching syncPlanMembers.
+    // Sync the shared-members junction (0644). THE assignment — the plan row's
+    // client_id is only the legacy primary assignee; this junction is what the
+    // member actually reads and what the notify trigger fans out from.
+    //
+    // The result is checked. A Supabase builder resolves with `{ error }`
+    // rather than throwing, so the old try/catch never saw an RLS refusal:
+    // the junction write was rejected, nothing was stored, and the success
+    // toast below still claimed "Shared with N members". The plan then existed
+    // only for the trainer.
+    let junctionMsg = null;
     try {
       const NONE = '00000000-0000-0000-0000-000000000000';
-      await supabase.from('trainer_plan_members').delete()
+      const { error: delErr } = await supabase.from('trainer_plan_members').delete()
         .eq('plan_id', plan.id).not('member_id', 'in', `(${ids.length ? ids.join(',') : NONE})`);
+      if (delErr && !isSchemaMiss(delErr)) {
+        logger.error('TrainerPlans: assign junction delete failed:', delErr);
+      }
       if (ids.length) {
-        await supabase.from('trainer_plan_members').upsert(
+        const { error: upErr } = await supabase.from('trainer_plan_members').upsert(
           ids.map(mid => ({ plan_id: plan.id, member_id: mid, assigned_by: profile.id })),
           { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
         );
+        if (upErr && !isSchemaMiss(upErr)) {
+          logger.error('TrainerPlans: assign junction upsert failed:', upErr);
+          junctionMsg = (upErr.code === '42501' || /row-level security/i.test(upErr.message || ''))
+            ? t('trainerPlans.assignNeedsConsent', "Plan saved, but it couldn't be assigned — those clients haven't accepted you as their trainer yet.")
+            : t('trainerPlans.assignFailed', 'Plan saved, but assigning members failed. Try again.');
+        }
       }
-    } catch (e) { logger.error('TrainerPlans: assign junction sync failed (non-fatal):', e); }
+    } catch (e) {
+      logger.error('TrainerPlans: assign junction sync failed:', e);
+      junctionMsg = t('trainerPlans.assignFailed', 'Plan saved, but assigning members failed. Try again.');
+    }
+    // ONE assignment per member. Assigning here has to clear whatever else the
+    // member was on — this trainer's other plans AND their gym program —
+    // exactly as the client page does, through the same function. Doing it in
+    // only one of the two places is what left a plan and a gym program both
+    // reading ASSIGNED, and a plan the client page had removed still attached
+    // via client_id.
+    // Only if the junction write actually LANDED. The DELETE half of that sync
+    // succeeds even when the INSERT is refused by RLS (tpm_trainer_all gates
+    // WITH CHECK only), and trainer_assign_program checks nothing but the
+    // caller's role — so clearing here after a refusal destroyed the client's
+    // existing assignment and created nothing in its place.
+    if (ids.length && !junctionMsg) {
+      const gymAssigned = await gymProgramAssignments(ids);
+      for (const memberId of ids) {
+        await clearOtherAssignments({
+          memberId,
+          trainerId: profile.id,
+          keepPlanId: plan.id,
+          currentGymProgramId: gymAssigned[memberId] || null,
+        });
+      }
+    }
+
     setAssigning(false);
+    if (junctionMsg) {
+      showToast(junctionMsg, 'error');
+      loadData(); // the optimistic _memberIds above is a lie — go get the truth
+      return;
+    }
     posthog?.capture('trainer_plan_assigned', { count: ids.length, went_live: goLive, unassigned: ids.length === 0 });
     const primaryName = clients.find(c => c.id === newClientId)?.full_name
       || (newClientId === plan.client_id ? plan.profiles?.full_name : '')

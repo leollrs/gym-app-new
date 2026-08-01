@@ -1,8 +1,9 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2, Circle, Lock,
   Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw, Play, Loader2,
+  ClipboardList,
 } from 'lucide-react';
 import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 // Lazy so the heavy ExerciseLibrary module only loads when a routine exercise is
@@ -12,11 +13,15 @@ import { useRoutines } from '../hooks/useRoutines';
 import { useCachedState, hasCachedState, useSyncedCachedState } from '../hooks/useCachedState';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useScrollLock } from '../hooks/useScrollLock';
+import { useToast } from '../contexts/ToastContext';
+import { releaseTrainerPlan, adoptedPlanId, announceProgramChange } from '../lib/trainerPlanAdoption';
 import logger from '../lib/logger';
 import GenerateWorkoutModal from '../components/GenerateWorkoutModal';
 import CreateRoutineModal from '../components/CreateRoutineModal';
 import MemberProgramBuilder from '../components/MemberProgramBuilder';
 import TrainerPlanSection from '../components/TrainerPlanSection';
+import ProgramDetailModal from '../components/ProgramDetailModal';
 import Skeleton from '../components/Skeleton';
 import ClassImage from '../components/ClassImage';
 import EmptyState from '../components/EmptyState';
@@ -100,7 +105,8 @@ const ExerciseWhyTooltip = ({ exercise, onboarding, lang }) => {
 };
 
 const ProgramModal = ({ program, isEnrolled, onClose, onEnroll, onLeave }) => {
-  const { t, i18n } = useTranslation('pages');
+  // 'common' loaded for the release dialog's Cancel.
+  const { t, i18n } = useTranslation(['pages', 'common']);
   const { user } = useAuth();
   const progName = (tmpl) => i18n.language === 'es' && tmpl.name_es ? tmpl.name_es : tmpl.name;
   const progDesc = (tmpl) => i18n.language === 'es' && tmpl.description_es ? tmpl.description_es : tmpl.description;
@@ -608,7 +614,8 @@ const STARTER_ROUTINES = [
 // ── Main page ──────────────────────────────────────────────
 const Workouts = () => {
   const navigate = useNavigate();
-  const { profile, user } = useAuth();
+  const { profile, user, patchProfile } = useAuth();
+  const { showToast } = useToast();
   const { routines, loading, createRoutine, deleteRoutine, refetch } = useRoutines();
   const { t, i18n } = useTranslation('pages');
   const posthog = usePostHog();
@@ -709,7 +716,6 @@ const Workouts = () => {
   const [programLevelFilter, setProgramLevelFilter] = useState('All');
   const [programDurationFilter, setProgramDurationFilter] = useState('all'); // 'all' | 'quick'
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [templateWeek, setTemplateWeek] = useState('1');
   // Switch program confirmation flow: null | 'confirm' | 'final'
   const [switchStep, setSwitchStep] = useState(null);
   const [switchingProgram, setSwitchingProgram] = useState(false);
@@ -964,6 +970,17 @@ const Workouts = () => {
       }
     };
     load();
+    // Adopting a coach's plan writes a new generated_programs row from a
+    // component on THIS page, so without this listener the hero kept showing
+    // the old program until the page remounted. Dashboard already listened.
+    // …and refetch ROUTINES too. getRoutinesForWeek resolves the week against
+    // the routines list, which useRoutines serves from a session cache — so a
+    // freshly materialized program had a hero, a name and a progress bar, and
+    // an empty week under it.
+    const onProgramsChanged = () => { load(); refetch?.(); };
+    window.addEventListener('tugympr:programs-changed', onProgramsChanged);
+    return () => window.removeEventListener('tugympr:programs-changed', onProgramsChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, profile?.gym_id]);
 
   // template_weeks (the heavy multi-week JSONB) is excluded from the programs
@@ -1192,6 +1209,39 @@ const Workouts = () => {
 
   // Program state
   const today = new Date();
+  const [releasingPlan, setReleasingPlan] = useState(false);
+  // Leaving the coach's plan deletes the program it materialized, so it asks
+  // first — same as adopting does on the way in.
+  const [confirmRelease, setConfirmRelease] = useState(false);
+
+  // /workouts is a KEEP-ALIVE route: it stays mounted under display:none after
+  // navigation, and ProgramDetailModal portals to document.body — so it would
+  // hang over the next page still holding useScrollLock's global lock. Close
+  // the overlays when the route leaves. Nutrition.jsx:8377 and MyTrainerCard
+  // guard the same hazard, each in its own way.
+  useScrollLock(confirmRelease);
+  const wLocation = useLocation();
+  useEffect(() => {
+    if (wLocation.pathname === '/workouts') return;
+    setSelectedTemplate(null);
+    setConfirmRelease(false);
+  }, [wLocation.pathname]);
+  const handleReleaseTrainerPlan = async () => {
+    if (releasingPlan || !user?.id) return;
+    setReleasingPlan(true);
+    try {
+      await releaseTrainerPlan({ userId: user.id, gymId: profile?.gym_id });
+      patchProfile({ active_trainer_plan_id: null });
+      announceProgramChange();
+      showToast(t('trainerPlanViewer.released', 'Back on your own program'), 'success');
+    } catch (err) {
+      logger.error('Workouts: release trainer plan failed:', err);
+      showToast(t('trainerPlanViewer.adoptFailed', "Couldn't switch programs. Try again."), 'error');
+    } finally {
+      setReleasingPlan(false);
+    }
+  };
+
   const programActive  = generatedProgram && new Date(generatedProgram.expires_at) > today;
   const programExpired = generatedProgram && new Date(generatedProgram.expires_at) <= today;
   // Routines belonging to the CURRENT active program — these are locked from
@@ -1215,7 +1265,13 @@ const Workouts = () => {
   // can view but not restructure it (program editor + its routines' edit buttons).
   const activeProgSrcId = programActive && generatedProgram?.template_id?.startsWith('gym_')
     ? generatedProgram.template_id.slice(4) : null;
-  const activeEditLocked = activeProgSrcId != null && coachEditLock.has(activeProgSrcId) && !coachEditLock.get(activeProgSrcId);
+  // An ADOPTED coach plan is coach-managed too, and it has no `gym_` template_id
+  // to be caught by the check above. Editing it opened MemberProgramBuilder,
+  // which rewrites schedule_map from scratch — stripping trainer_plan_id, so
+  // the "From <coach>" chip AND the release button vanished while the plan
+  // stayed adopted, with nothing left to release it.
+  const activeEditLocked = (activeProgSrcId != null && coachEditLock.has(activeProgSrcId) && !coachEditLock.get(activeProgSrcId))
+    || (programActive && !!adoptedPlanId(generatedProgram));
   const isActiveRoutine = useCallback((routine) => {
     if (!programActive || !routine) return false;
     if (activeProgramRoutineIds.size > 0) return activeProgramRoutineIds.has(routine.id);
@@ -2310,6 +2366,12 @@ const Workouts = () => {
           </div>
         </section>
       )}
+      {/* Adopting a coach's plan MATERIALIZES it as a generated_programs row
+          (TrainerPlanSection.adoptPlan), so it flows through this hero — and
+          through the Dashboard sheet and day strip — as the current program.
+          An earlier version gated this on active_trainer_plan_id and rendered
+          the plan separately above; that kept it out of every other surface,
+          which is the whole reason the hero exists. */}
       {!programLoading && programActive && (() => {
         const viewWeek = programViewWeek || currentWeekNum;
         const isViewingCurrentWeek = viewWeek === currentWeekNum;
@@ -2332,6 +2394,21 @@ const Workouts = () => {
                   <h2 style={{ fontFamily: TU_DISPLAY, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1.15 }}>
                     {gpName(generatedProgram)}
                   </h2>
+                  {/* This program was materialized from a coach's plan — say
+                      so here, and offer the way back here, because this card
+                      IS the plan. Showing the plan a second time above was the
+                      duplication. */}
+                  {adoptedPlanId(generatedProgram) && (
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-1 rounded-full"
+                        style={{ background: `color-mix(in srgb, ${TU_ACCENT} 14%, transparent)`, color: TU_ACCENT, letterSpacing: '0.08em' }}>
+                        <ClipboardList size={11} strokeWidth={2.4} />
+                        {generatedProgram?.schedule_map?.trainer_plan_coach
+                          ? t('trainerPlanViewer.byCoach', 'From {{name}}', { name: generatedProgram.schedule_map.trainer_plan_coach })
+                          : t('trainerPlanViewer.sectionTitle', "Your coach's plan")}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="w-11 h-11 rounded-[14px] flex items-center justify-center flex-shrink-0"
                   style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)` }}>
@@ -2566,15 +2643,43 @@ const Workouts = () => {
               );
             })()}
             </div>
-            {/* Regenerate this program — small footer link inside the card */}
-            <div className="px-5 pb-4 pt-1 flex justify-end">
+            {/* Footer links. "Back to my own program" sits here, before
+                Regenerate, rather than up in the header where it crowded the
+                coach chip. */}
+            {/* Sentence case, not uppercase. MEASURED: each button gets a
+                163.5px slot on a 375pt screen; uppercase + letter-spacing put
+                the label at 184–216px, which is why it wrapped to two lines and
+                left the pair mismatched. Sentence case at 12px lands at
+                149–155px in both languages. `whitespace-nowrap` + a fixed
+                height keeps them identical if a translation ever grows. */}
+            <div className="px-5 pb-4 pt-1 flex items-stretch gap-2">
+              {adoptedPlanId(generatedProgram) && (
+                <button
+                  type="button"
+                  disabled={releasingPlan}
+                  onClick={() => setConfirmRelease(true)}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-[12px] text-[12px] font-bold whitespace-nowrap active:scale-[0.98] transition-transform disabled:opacity-50"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-danger, #DC2626) 9%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-danger, #DC2626) 30%, transparent)',
+                    color: 'var(--color-danger, #DC2626)',
+                  }}
+                >
+                  <RotateCcw size={13} strokeWidth={2.6} />
+                  {t('trainerPlanViewer.backToMineShort', 'Back to my program')}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setRegenerateConfirm(true)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase active:scale-95 transition-transform focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] rounded-md px-2 py-1"
-                style={{ color: 'var(--color-text-muted)', letterSpacing: 0.4 }}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-[12px] text-[12px] font-bold whitespace-nowrap active:scale-[0.98] transition-transform"
+                style={{
+                  background: 'var(--color-surface-hover, rgba(0,0,0,0.04))',
+                  border: '1px solid var(--color-border-subtle)',
+                  color: 'var(--color-text-muted)',
+                }}
               >
-                <RotateCcw size={12} strokeWidth={2.4} />
+                <RotateCcw size={13} strokeWidth={2.6} />
                 {t('workouts.regenerateProgram', 'Regenerar programa')}
               </button>
             </div>
@@ -3218,7 +3323,7 @@ const Workouts = () => {
             {/* Recommended hero */}
             {recommendedTemplate && (
               <button
-                onClick={() => { loadExerciseNames(); setSelectedTemplate(recommendedTemplate); setTemplateWeek('1'); }}
+                onClick={() => { loadExerciseNames(); setSelectedTemplate(recommendedTemplate); }}
                 className="relative w-full overflow-hidden rounded-[22px] mb-5 text-left active:scale-[0.99] transition-transform"
                 style={{ aspectRatio: '1 / 1', background: 'var(--color-bg-deep, #0e0d0a)' }}
               >
@@ -3271,7 +3376,7 @@ const Workouts = () => {
                 </div>
                 <div className="flex gap-3 overflow-x-auto scrollbar-none pb-1 -mx-1 px-1 mb-7">
                   {scoredTemplates.slice(0, 6).map(tmpl => (
-                    <button key={tmpl.id} onClick={() => { loadExerciseNames(); setSelectedTemplate(tmpl); setTemplateWeek('1'); }} className="flex-shrink-0 text-left active:scale-[0.98] transition-transform" style={{ width: 190 }}>
+                    <button key={tmpl.id} onClick={() => { loadExerciseNames(); setSelectedTemplate(tmpl); }} className="flex-shrink-0 text-left active:scale-[0.98] transition-transform" style={{ width: 190 }}>
                       <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: '3 / 4', background: 'var(--color-bg-deep, #0e0d0a)' }}>
                         {tmpl.image && <img src={programImageUrl(tmpl.image)} alt={progName(tmpl)} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />}
                         <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.1) 60%)' }} />
@@ -3367,7 +3472,7 @@ const Workouts = () => {
                 return (
                   <button
                     key={prog.id}
-                    onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); setTemplateWeek('1'); }}
+                    onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); }}
                     className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
                     style={{ aspectRatio: '3 / 4', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
                     aria-label={`${progName(prog)} - Gym Exclusive program`}
@@ -3427,7 +3532,7 @@ const Workouts = () => {
             return withBadge.map(({ tmpl, isRecommended }) => (
               <button
                 key={tmpl.id}
-                onClick={() => { loadExerciseNames(); setSelectedTemplate(tmpl); setTemplateWeek('1'); }}
+                onClick={() => { loadExerciseNames(); setSelectedTemplate(tmpl); }}
                 className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150 group"
                 style={{ aspectRatio: '3 / 4' }}
                 aria-label={`${progName(tmpl)} - ${tmpl.level} program`}
@@ -3782,6 +3887,36 @@ const Workouts = () => {
     })()}
 
     {/* ── Modals ─────────────────────────────────────────── */}
+    {confirmRelease && (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0}
+          aria-label={t('common:cancel', 'Cancel')}
+          onClick={() => setConfirmRelease(false)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setConfirmRelease(false); }} />
+        <div className="relative w-full max-w-sm rounded-[24px] p-5" style={{ background: 'var(--color-bg-secondary)' }}>
+          <h3 className="text-[17px] font-extrabold" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.3 }}>
+            {t('trainerPlanViewer.releaseTitle', 'Leave your coach’s plan?')}
+          </h3>
+          <p className="text-[13px] mt-2 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+            {t('trainerPlanViewer.releaseBody', 'You’ll go back to your own program. The coach’s plan stays available, so you can pick it up again later.')}
+          </p>
+          <div className="flex gap-2 mt-5">
+            <button type="button" onClick={() => setConfirmRelease(false)}
+              className="flex-1 py-3 rounded-[14px] text-[13.5px] font-bold min-h-[48px]"
+              style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}>
+              {t('common:cancel', 'Cancel')}
+            </button>
+            <button type="button" disabled={releasingPlan}
+              onClick={() => { setConfirmRelease(false); handleReleaseTrainerPlan(); }}
+              className="flex-1 py-3 rounded-[14px] text-[13.5px] font-bold min-h-[48px] disabled:opacity-50"
+              style={{ background: 'var(--color-danger, #DC2626)', color: '#fff' }}>
+              {t('trainerPlanViewer.releaseCta', 'Leave plan')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {selectedProgram && (
       <ProgramModal
         program={selectedProgram}
@@ -3792,156 +3927,36 @@ const Workouts = () => {
       />
     )}
 
-    {/* ── Featured Program Detail Modal ──────────────────── */}
-    {selectedTemplate && (() => {
-      const weekKeys = Object.keys(selectedTemplate.weeks).sort((a, b) => Number(a) - Number(b));
-      const weekIdx = weekKeys.indexOf(templateWeek);
-      const currentWeekDays = selectedTemplate.weeks[templateWeek] || [];
-      const canPrev = weekIdx > 0;
-      const canNext = weekIdx < weekKeys.length - 1;
+    {/* ── Featured Program Detail Modal ────────────────────
+        Same component the coach's plan and the trainer's own view use, so a
+        program looks the same wherever the member opens it.
 
-      return (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseProgramDetails', 'Close program details')} onClick={() => setSelectedTemplate(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedTemplate(null); }} />
-          <div
-            className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-[28px] overflow-hidden"
-            style={{ backgroundColor: 'var(--color-bg-secondary)' }}
-          >
-            {/* Handle + Close */}
-            <div className="relative flex justify-center pt-4 pb-3 shrink-0">
-              <div className="w-8 h-[3px] rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
-              <button
-                onClick={() => setSelectedTemplate(null)}
-                className="absolute right-4 top-3 min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
-                aria-label={t('workouts.ariaClose', 'Close')}
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto px-6 pb-6">
-              {/* Hero */}
-              <div className="mb-6">
-                <span className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t(`workouts.programLevels.${selectedTemplate.level}`, selectedTemplate.level)} · {t(`workouts.programCategories.${selectedTemplate.category}`, selectedTemplate.category)}
-                </span>
-                <h2 className="text-[18px] font-bold tracking-tight leading-tight mt-2 truncate" style={{ color: 'var(--color-text-primary)' }}>
-                  {progName(selectedTemplate)}
-                </h2>
-                <ExpandableText text={progDesc(selectedTemplate)} />
-              </div>
-
-              {/* Meta pills */}
-              <div className="flex flex-wrap items-center gap-2 mb-8">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                  <Activity size={11} style={{ color: 'var(--color-text-subtle)' }} />
-                  <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.xPerWeek', { count: selectedTemplate.daysPerWeek })}</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                  <Calendar size={11} style={{ color: 'var(--color-text-subtle)' }} />
-                  <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.weeksCount', { count: selectedTemplate.durationWeeks })}</span>
-                </div>
-                {selectedTemplate.goal && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                    <Target size={11} style={{ color: 'var(--color-text-subtle)' }} />
-                    <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-subtle)' }}>{t(`workouts.programGoals.${selectedTemplate.goal}`)}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Week navigator */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between mb-2.5">
-                  <button
-                    onClick={() => canPrev && setTemplateWeek(weekKeys[weekIdx - 1])}
-                    disabled={!canPrev}
-                    className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                    style={canPrev ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }}
-                    aria-label={t('workouts.ariaPreviousWeek', 'Previous week')}
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <div className="text-center">
-                    <span className="text-[16px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t('workouts.weekXOfY', { current: templateWeek, total: weekKeys.length })}</span>
-                  </div>
-                  <button
-                    onClick={() => canNext && setTemplateWeek(weekKeys[weekIdx + 1])}
-                    disabled={!canNext}
-                    className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
-                    style={canNext ? { backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' } : { color: 'var(--color-border-subtle)' }}
-                    aria-label={t('workouts.ariaNextWeek', 'Next week')}
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-                <div className="h-[2px] rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }}>
-                  <div
-                    className="h-full rounded-full bg-[#10B981]/60 transition-all duration-300"
-                    style={{ width: `${((weekIdx + 1) / weekKeys.length) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Workout day cards — pad to 7 days with rest days */}
-              <div className="space-y-3">
-                {(() => {
-                  const DAY_LABELS = [t('days.monday', { ns: 'common' }), t('days.tuesday', { ns: 'common' }), t('days.wednesday', { ns: 'common' }), t('days.thursday', { ns: 'common' }), t('days.friday', { ns: 'common' }), t('days.saturday', { ns: 'common' }), t('days.sunday', { ns: 'common' })];
-                  // Build a full 7-day view: workout days first, then rest days fill remaining
-                  const fullWeek = DAY_LABELS.map((dayLabel, i) => {
-                    const workoutDay = currentWeekDays[i];
-                    if (workoutDay) return { ...workoutDay, dayLabel, isRest: false };
-                    return { dayLabel, isRest: true, name: dayLabel, exercises: [] };
-                  });
-
-                  if (currentWeekDays.length === 0) {
-                    return (
-                      <div className="rounded-2xl py-8 text-center" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                        <p className="text-[13px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.restWeek')}</p>
-                      </div>
-                    );
-                  }
-
-                  return fullWeek.map((day, di) => (
-                    <div key={di} className="rounded-2xl p-5" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
-                      <div className="flex items-center gap-2.5 mb-1">
-                        <h4 className="text-[14px] font-semibold" style={{ color: day.isRest ? 'var(--color-text-subtle)' : 'var(--color-text-primary)' }}>
-                          {day.isRest ? day.dayLabel : dayName(day)}
-                        </h4>
-                        {!day.isRest && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ color: 'var(--color-text-subtle)', backgroundColor: 'var(--color-surface-hover)' }}>
-                            {day.exercises.length}
-                          </span>
-                        )}
-                      </div>
-                      {day.isRest ? (
-                        <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{t('workouts.restDay')}</p>
-                      ) : (
-                        <div className="space-y-1 mt-2">
-                          {day.exercises.map((ex, ei) => (
-                            <p key={ei} className="text-[12px]" style={{ color: 'var(--color-text-subtle)' }}>
-                              {exName(exerciseNameMap[ex.id]) || ex.id}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ));
-                })()}
-              </div>
-
-              {/* Equipment */}
-              {selectedTemplate.equipment && (
-                <p className="text-[10px] mt-5" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t('workouts.equipmentLabel', { list: selectedTemplate.equipment.join(' · ') })}
-                </p>
-              )}
-            </div>
-
-            {/* Gym hours warnings */}
+        Z-ORDER: this one PORTALS to document.body at z-[100]. handleStartTemplate
+        deliberately leaves `selectedTemplate` set (switchStep reads its name), so
+        the four dialogs its CTA opens must sit ABOVE it — they are z-[120].
+        They were z-[80] when this modal was inline at z-[70]; the portal moved
+        it over them and the Start button silently did nothing. */}
+    {selectedTemplate && (
+      <ProgramDetailModal
+        program={selectedTemplate}
+        onClose={() => setSelectedTemplate(null)}
+        // TRANSLATED. Passing level/goal raw meant Spanish members read
+        // "Beginner · Strength" here while every other surface said
+        // "Principiante · Fuerza" — the translations existed, they just
+        // stopped being called.
+        eyebrow={[
+          selectedTemplate.level ? t(`workouts.programLevels.${selectedTemplate.level}`, selectedTemplate.level) : null,
+          selectedTemplate.category
+            ? t(`workouts.programCategories.${selectedTemplate.category}`, selectedTemplate.category)
+            : (selectedTemplate.goal || null),
+        ].filter(Boolean).join(' · ') || undefined}
+        meta={Array.isArray(selectedTemplate.equipment) && selectedTemplate.equipment.length
+          ? t('workouts.equipmentLabel', { list: selectedTemplate.equipment.join(' · ') })
+          : undefined}
+        footer={(
+          <>
             {gymHoursWarnings.length > 0 && (
-              <div className="px-6 pt-3 space-y-1">
+              <div className="space-y-1 mb-3">
                 {gymHoursWarnings.map((w, i) => (
                   <p key={i} className="text-[11px] text-amber-400 flex items-start gap-1.5">
                     <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
@@ -3950,21 +3965,18 @@ const Workouts = () => {
                 ))}
               </div>
             )}
-
-            {/* CTA */}
-            <div className="shrink-0 px-6 pt-4 pb-5" style={{ background: 'linear-gradient(to top, var(--color-bg-secondary), var(--color-bg-secondary), transparent)' }}>
-              <button
-                onClick={handleStartTemplate}
-                disabled={switchingProgram}
-                className="w-full py-4 rounded-2xl font-bold text-[15px] active:scale-[0.98] transition-all text-[var(--color-text-on-secondary,#fff)] disabled:opacity-50" style={{ background: '#10B981' }}
-              >
-                {switchingProgram ? t('workouts.settingUp') : t('workouts.startThisProgram')}
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    })()}
+            <button
+              onClick={handleStartTemplate}
+              disabled={switchingProgram}
+              className="w-full py-3.5 rounded-2xl font-bold text-[14.5px] active:scale-[0.98] transition-all disabled:opacity-50"
+              style={{ background: '#10B981', color: 'var(--color-text-on-secondary, #fff)' }}
+            >
+              {switchingProgram ? t('workouts.settingUp') : t('workouts.startThisProgram')}
+            </button>
+          </>
+        )}
+      />
+    )}
 
     {showCreateModal && (
       <CreateRoutineModal
@@ -4018,7 +4030,7 @@ const Workouts = () => {
 
     {/* ── Start Mode Choice Dialog ────────────── */}
     {startModeChoice === 'choosing' && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseStartMode', 'Close start mode dialog')} onClick={() => setStartModeChoice(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setStartModeChoice(null); }}>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseStartMode', 'Close start mode dialog')} onClick={() => setStartModeChoice(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setStartModeChoice(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-[#D4AF37]/10 flex items-center justify-center mx-auto mb-4">
             <Calendar size={24} className="text-[#D4AF37]" />
@@ -4058,7 +4070,7 @@ const Workouts = () => {
 
     {/* ── Switch Program Confirmation Dialog ────────────── */}
     {switchStep && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseSwitch', 'Close switch program dialog')} onClick={() => setSwitchStep(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSwitchStep(null); }}>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseSwitch', 'Close switch program dialog')} onClick={() => setSwitchStep(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSwitchStep(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           {switchStep === 'confirm' ? (
             <>
@@ -4122,7 +4134,7 @@ const Workouts = () => {
 
     {/* ── Day Compression Warning Modal ────────────────── */}
     {dayCompressionWarning && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseDayCompression', 'Close day compression warning')} onClick={() => setDayCompressionWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDayCompressionWarning(null); }}>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseDayCompression', 'Close day compression warning')} onClick={() => setDayCompressionWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDayCompressionWarning(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertTriangle size={22} className="text-amber-400" />
@@ -4152,7 +4164,7 @@ const Workouts = () => {
 
     {/* ── Goal Mismatch Warning Modal ─────────────────── */}
     {goalMismatchWarning && (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseGoalMismatch', 'Close goal mismatch warning')} onClick={() => setGoalMismatchWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setGoalMismatchWarning(null); }}>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6" role="button" tabIndex={0} aria-label={t('workouts.ariaCloseGoalMismatch', 'Close goal mismatch warning')} onClick={() => setGoalMismatchWarning(null)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setGoalMismatchWarning(null); }}>
         <div className="rounded-[20px] w-full max-w-sm p-6 border" role="dialog" aria-modal="true" style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
           <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertTriangle size={22} className="text-amber-400" />

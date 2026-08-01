@@ -1176,6 +1176,7 @@
     "mealTimes": "Meal times",
     "mealTimesHint": "Optional — set a time to see it on your meals and get a reminder.",
     "clearTime": "Clear time",
+    "setMealTime": "Set time",
     "mealNotifyNote": "We remind you on your phone near each meal time — only for meals you've planned.",
     "mealReminderBody": "Time for your {{slot}}",
     "done": "Done",
@@ -10600,6 +10601,8 @@
     "membersSelected": "{{n}} selected",
     "assignN": "Assign {{n}}",
     "planAssignedN": "Shared with {{n}} members",
+    "assignNeedsConsent": "Plan saved, but it couldn't be assigned — those clients haven't accepted you as their trainer yet.",
+    "assignFailed": "Plan saved, but assigning members failed. Try again.",
     "sharedWithN": "Shared with {{n}} members",
     "sharedTemplateHint": "One plan, edited once for everyone.",
     "manage": "Manage",
@@ -10925,7 +10928,8 @@
       "halal": "Halal"
     },
     "clientWord": "client",
-    "clientsWord": "clients"
+    "clientsWord": "clients",
+    "singleSession": "Single session"
   },
   "trainerPrograms": {
     "title": "Program Library",
@@ -11630,7 +11634,31 @@
       "viewMeal": "View meal details"
     },
     "awaitingConsentTitle": "Waiting for approval",
-    "awaitingConsentBody": "You've sent the request. Their training data stays private until they accept — nothing here is broken."
+    "awaitingConsentBody": "You've sent the request. Their training data stays private until they accept — nothing here is broken.",
+    "myPlansTitle": "My plans",
+    "noPlansYet": "You haven't published a plan yet. Build one in Plans.",
+    "gymProgramsTitle": "Gym programs",
+    "daysShort": "days",
+    "unassign": "Remove",
+    "planAssigned": "Plan assigned",
+    "planUnassigned": "Plan removed",
+    "planAssignFailed": "Couldn't update the assignment. Try again.",
+    "planAssignNeedsConsent": "This client hasn't accepted you as their trainer yet.",
+    "planAssignUnavailable": "Needs the latest database migration",
+    "editPlan": "Edit plan",
+    "yourPlanTag": "Your plan",
+    "replaceAssignTitle": "Replace their current plan?",
+    "replaceAssignBody": "This client is on “{{current}}”. Assigning “{{next}}” replaces it — their past workouts stay, but what they train from now on changes.",
+    "replaceAssignCta": "Replace",
+    "editScopeTitle": "Edit which version?",
+    "editScopeBody": "This plan may be on other clients too. Completed workouts are never changed either way — only what they train from here.",
+    "editScopeAll": "The plan itself",
+    "editScopeAllHint": "Changes reach everyone assigned to it.",
+    "editScopeOne": "A copy for this client only",
+    "editScopeOneHint": "They move onto the copy; the original is untouched.",
+    "editScopeWorking": "Making the copy…",
+    "forkFailed": "Couldn't make a copy for this client. Try again.",
+    "thisClient": "client"
   },
   "trainerProfile": {
     "title": "Profile",
@@ -11686,7 +11714,12 @@
       "payInstrPlaceholder": "e.g. ATH Móvil @coachluis · Zelle 787-000-0000",
       "payInstrHint": "Shown on every invoice you send. Payment happens off-app.",
       "usernameTaken": "That username is taken",
-      "phonePublicHint": "Visible to gym members as a Call button on your public profile.",
+      "phonePublicHint": "Visible to gym members as Call and WhatsApp buttons on your public profile.",
+      "instagram": "Instagram",
+      "facebook": "Facebook",
+      "socialHint": "Paste your profile link or just the handle. Shown as buttons on your public profile.",
+      "socialUnreadable": "That link doesn't point to a profile — paste the link from your profile page.",
+      "socialUnavailable": "Saved, but social links need the latest app update",
       "firstName": "First name",
       "middleName": "Middle name",
       "lastName1": "First last name",
@@ -14273,7 +14306,8 @@
     "requestAccept": "Accept",
     "requestDecline": "Decline",
     "requestAccepted": "Accepted — they can now see your training data",
-    "requestDeclined": "Request declined"
+    "requestDeclined": "Request declined",
+    "experience": "Experience"
   },
   "trainerLive": {
     "watchLive": "Watch live",
@@ -14684,7 +14718,32 @@
     "starting": "Setting up...",
     "startFailed": "Couldn't start the workout. Try again.",
     "noKnownExercises": "This day's exercises aren't available right now.",
-    "planMeta": "{{weeks}} wk · {{days}} days"
+    "planMeta": "{{weeks}} wk · {{days}} days",
+    "useAsProgram": "Use as my program",
+    "backToMine": "Back to my own program",
+    "adopted": "This is now your program",
+    "released": "Back on your own program",
+    "adoptFailed": "Couldn't switch programs. Try again.",
+    "adoptUnavailable": "Needs the latest app update",
+    "confirmTitle": "Switch to this plan?",
+    "confirmBody": "“{{plan}}” becomes your current program. Your own program is kept — you can switch back any time.",
+    "confirmCta": "Use this plan",
+    "planEmpty": "This plan has no exercises yet.",
+    "releaseTitle": "Leave your coach's plan?",
+    "releaseBody": "You'll go back to your own program. The coach's plan stays available, so you can pick it up again later.",
+    "releaseCta": "Leave plan",
+    "readMore": "Read more",
+    "readLess": "Read less",
+    "perWeek": "{{n}}x/week",
+    "nWeeks": "{{n}} weeks",
+    "nExercises": "{{n}} exercises",
+    "weekXOfY": "Week {{current}} of {{total}}",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "startToday": "Start today",
+    "startMonday": "Start Monday instead — keep week 1 whole",
+    "backToMineShort": "Back to my program",
+    "autoUpdated": "Your coach updated this plan — your program is up to date"
   },
   "trainerMealPlan": {
     "prepMin": "{{n}} min",
@@ -14703,7 +14762,9 @@
     "addToGroceries": "Add to grocery list",
     "addedToGroceries": "In your grocery list",
     "weekOf": "Week {{w}} of {{n}}",
-    "weekPlan": "{{n}}-week plan"
+    "weekPlan": "{{n}}-week plan",
+    "preview": "Preview",
+    "replacePlanConfirmAll": "This replaces {{n}} week(s) of My Plan with your coach’s plan, starting this week. Continue?"
   },
   "shareMonth": {
     "title": "Share month",

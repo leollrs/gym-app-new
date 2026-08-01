@@ -28,6 +28,8 @@ import {
 import {
   COVER_PRESETS, coverBackground, isPhotoCover, presetId, presetValue,
 } from '../../lib/trainerCovers';
+import { normalizeHandle, instagramUrl, facebookUrl } from '../../lib/socialHandles';
+import { isSchemaMiss } from '../../lib/schemaMiss';
 
 const DOW_LETTERS_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DOW_INDEX_TO_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 0: 'sun' };
@@ -35,6 +37,8 @@ const DOW_INDEX_TO_KEY = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 
 // The 13 trainer_* profile columns this page owns (mirrors migration 0528).
 // Fetched directly on mount as a belt-and-suspenders against a context
 // profile that predates 0528 (get_auth_context didn't return them).
+// (+ the two social columns from 0663 — see SOCIAL_COLS below, kept separate so
+// a database that predates 0663 still returns the other 13.)
 const TRAINER_PROFILE_COLS = [
   'trainer_tagline', 'trainer_cover_url', 'trainer_years_exp',
   'trainer_location', 'trainer_specialties',
@@ -42,6 +46,11 @@ const TRAINER_PROFILE_COLS = [
   'trainer_verified', 'trainer_directory_visible',
   'trainer_default_rate', 'trainer_rate_unit', 'trainer_payment_instructions',
 ].join(', ');
+
+// Migration 0663. PostgREST fails the WHOLE query on one unknown column, so
+// naming these in the select above would blank the entire profile on a database
+// that hasn't run 0663 yet. They're fetched (and written) separately instead.
+const SOCIAL_COLS = ['trainer_instagram', 'trainer_facebook'];
 
 // ────────────────────────────────────────────────────────────────────
 // Helpers
@@ -275,6 +284,8 @@ const makeIdentityDraft = (profile, currentEmail) => ({
   trainer_default_rate: profile?.trainer_default_rate != null ? String(profile.trainer_default_rate) : '',
   trainer_rate_unit: profile?.trainer_rate_unit || 'month',
   trainer_payment_instructions: profile?.trainer_payment_instructions || '',
+  trainer_instagram: profile?.trainer_instagram || '',
+  trainer_facebook: profile?.trainer_facebook || '',
 });
 
 // Normalize a draft into DB-shaped values — used for the UPDATE payload AND
@@ -297,7 +308,29 @@ const normalizeIdentityDraft = (d) => ({
   trainer_default_rate: d.trainer_default_rate.trim() ? Math.max(0, Number(d.trainer_default_rate) || 0) : null,
   trainer_rate_unit: d.trainer_default_rate.trim() ? (d.trainer_rate_unit || 'month') : null,
   trainer_payment_instructions: d.trainer_payment_instructions.trim() || null,
+  // Stored as a bare handle even if the trainer pasted a full profile URL —
+  // and the whitelist is what keeps the value safe to interpolate into an
+  // href on the member-facing page.
+  trainer_instagram: normalizeHandle(d.trainer_instagram, 'instagram'),
+  trainer_facebook: normalizeHandle(d.trainer_facebook, 'facebook'),
 });
+
+// Shows the link that will actually be published. A trainer can paste any of
+// Facebook's several profile shapes (/p/, /pages/, /people/, profile.php?id=)
+// and they resolve differently — seeing the result beats finding out later
+// that the button on their public profile goes nowhere.
+function SocialPreview({ value, url }) {
+  const { t } = useTranslation(['pages']);
+  if (!String(value || '').trim()) return null;
+  return (
+    <div style={{
+      fontSize: 10.5, marginTop: 4, lineHeight: 1.4, wordBreak: 'break-all',
+      color: url ? TT.textSub : TT.warn, fontWeight: url ? 400 : 700,
+    }}>
+      {url || t('pages:trainerProfile.editIdentity.socialUnreadable', "That link doesn't point to a profile — paste the link from your profile page.")}
+    </div>
+  );
+}
 
 function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, saving }) {
   const { t } = useTranslation(['pages', 'common']);
@@ -480,6 +513,45 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
           />
           <div style={{ fontSize: 11, color: TT.textMute, marginTop: 5 }}>
             {t('pages:trainerProfile.editIdentity.payInstrHint', 'Shown on every invoice you send. Payment happens off-app.')}
+          </div>
+        </div>
+        <div>
+          <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.instagram', 'Instagram')}</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '0 13px', borderRadius: 10, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.textSub, fontSize: 14, fontWeight: 800, flexShrink: 0 }}>@</div>
+            <input
+              type="text"
+              value={draft.trainer_instagram}
+              onChange={(e) => setDraft(d => ({ ...d, trainer_instagram: e.target.value }))}
+              placeholder="coachluis"
+              maxLength={120}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </div>
+          <SocialPreview value={draft.trainer_instagram} url={instagramUrl(draft.trainer_instagram)} />
+        </div>
+        <div>
+          <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.facebook', 'Facebook')}</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '0 13px', borderRadius: 10, border: `1px solid ${TT.borderSolid}`, background: TT.surface2, color: TT.textSub, fontSize: 13, fontWeight: 800, flexShrink: 0 }}>fb.com/</div>
+            <input
+              type="text"
+              value={draft.trainer_facebook}
+              onChange={(e) => setDraft(d => ({ ...d, trainer_facebook: e.target.value }))}
+              placeholder="coachluispr"
+              maxLength={120}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </div>
+          <SocialPreview value={draft.trainer_facebook} url={facebookUrl(draft.trainer_facebook)} />
+          <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 4, lineHeight: 1.4 }}>
+            {t('pages:trainerProfile.editIdentity.socialHint', 'Paste your profile link or just the handle. Shown as buttons on your public profile.')}
           </div>
         </div>
         <div>
@@ -1111,6 +1183,22 @@ export default function TrainerProfile() {
         setTrainerRow(data);
         writeTrainerCache(rowCK, data);
       }
+
+      // Second, separate read for the 0663 columns. On a database that hasn't
+      // run 0663 the request 400s and we simply carry on without them —
+      // folding them into the select above would have taken the other 13
+      // columns down with them.
+      const { data: social, error: socialErr } = await supabase
+        .from('profiles')
+        .select(SOCIAL_COLS.join(', '))
+        .eq('id', profile.id)
+        .maybeSingle();
+      if (cancelled || socialErr || !social) return;
+      setTrainerRow(prev => {
+        const next = { ...(prev || data || {}), ...social };
+        writeTrainerCache(rowCK, next);
+        return next;
+      });
     })();
     return () => { cancelled = true; };
   }, [profile?.id]);
@@ -1383,7 +1471,25 @@ export default function TrainerProfile() {
       // Only changed fields arrive here (the modal diffs against its seeds),
       // so an untouched field can never be nulled. Nothing changed → no write.
       if (Object.keys(normalizedUpdates).length > 0) {
-        const { error } = await supabase.from('profiles').update(normalizedUpdates).eq('id', profile.id);
+        let { error } = await supabase.from('profiles').update(normalizedUpdates).eq('id', profile.id);
+
+        // 0663 not applied yet → the update names columns the database doesn't
+        // have and PostgREST rejects ALL of it, so a trainer editing their bio
+        // would lose the bio too. Drop the social columns and save the rest.
+        if (error && isSchemaMiss(error) && SOCIAL_COLS.some(c => c in normalizedUpdates)) {
+          SOCIAL_COLS.forEach(c => { delete normalizedUpdates[c]; });
+          if (Object.keys(normalizedUpdates).length > 0) {
+            ({ error } = await supabase.from('profiles').update(normalizedUpdates).eq('id', profile.id));
+          } else {
+            error = null;
+          }
+          if (!error) {
+            showToast(
+              t('pages:trainerProfile.editIdentity.socialUnavailable', 'Saved, but social links need the latest app update'),
+              'info',
+            );
+          }
+        }
         if (error) throw error;
         Object.entries(normalizedUpdates).forEach(([k, v]) => patchProfile({ [k]: v }));
         setTrainerRow(prev => {

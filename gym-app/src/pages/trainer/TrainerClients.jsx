@@ -13,6 +13,7 @@ import { encryptMessage } from '../../lib/messageEncryption';
 import { openWhatsApp, hasWhatsApp } from '../../lib/whatsapp';
 import posthog from 'posthog-js';
 import logger from '../../lib/logger';
+import { clearOtherAssignments, gymProgramAssignments } from '../../lib/trainerAssignment';
 import { formatDistanceToNow, subDays, startOfWeek } from 'date-fns';
 import { es, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
@@ -554,7 +555,7 @@ const AddClientModal = ({ trainerId, gymId, clientStateById = {}, onClose, onAdd
 };
 
 // ── Assign Program Modal ──────────────────────────────────────────────────
-const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
+const AssignProgramModal = ({ selectedClients, gymId, trainerId, onClose, onDone }) => {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
   const [programs, setPrograms] = useState([]);
@@ -581,6 +582,12 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
     let successCount = 0;
     let failCount = 0;
     try {
+      // What each client is on right now, so the old assignment can be cleared
+      // and the previous enrollment removed. This bulk path bypassed the
+      // exclusivity helper entirely: assigning a gym program to a selection
+      // left every one of them holding a trainer plan AND a gym program.
+      const priorGym = await gymProgramAssignments(selectedClients.map(c => c.id));
+
       for (const c of selectedClients) {
         // Update the profile's assigned_program_id via secure RPC — the roster
         // labels/filters read assigned_program_id, so this is what makes the
@@ -614,6 +621,19 @@ const AssignProgramModal = ({ selectedClients, gymId, onClose, onDone }) => {
             failCount += 1;
             continue;
           }
+        }
+        // Only NOW that the gym program actually landed: drop this trainer's
+        // plans for the client, and the enrollment they were on before.
+        await clearOtherAssignments({
+          memberId: c.id,
+          trainerId,
+          keepGymProgram: true,
+        });
+        const prev = priorGym[c.id];
+        if (prev && prev !== selectedProgram) {
+          await supabase.from('gym_program_enrollments')
+            .delete().eq('profile_id', c.id).eq('program_id', prev)
+            .then(() => {}, () => {});
         }
         successCount += 1;
       }
@@ -1831,6 +1851,7 @@ export default function TrainerClients() {
         <AssignProgramModal
           selectedClients={bulkSelectedClients}
           gymId={profile.gym_id}
+          trainerId={profile.id}
           onClose={() => setShowAssignProgram(false)}
           onDone={() => {
             setShowAssignProgram(false);

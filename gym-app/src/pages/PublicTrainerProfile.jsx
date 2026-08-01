@@ -3,13 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft, Heart, Share2, Calendar, MessageSquare, MessageCircle, Phone,
-  Dumbbell, BadgeCheck, Star, X, Loader2, Send, MapPin,
+  Dumbbell, BadgeCheck, Star, X, Loader2, Send, MapPin, Instagram, Facebook,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../lib/logger';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import { trainerShareUrl } from '../lib/appUrls';
+import { instagramUrl, facebookUrl, whatsappUrl } from '../lib/socialHandles';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import UserAvatar from '../components/UserAvatar';
@@ -496,7 +497,7 @@ export default function PublicTrainerProfile() {
         : t('publicTrainerProfile.requestDeclined', 'Request declined'), accept ? 'success' : 'info');
     } catch (err) {
       logger.error('PublicTrainerProfile: respond failed:', err);
-      showToast(t('common.somethingWentWrong', 'Something went wrong'), 'error');
+      showToast(t('common:somethingWentWrong', 'Something went wrong'), 'error');
     } finally { setAnswering(false); }
   };
   const [hasEverBeenClient, setHasEverBeenClient] = useState(false);
@@ -775,19 +776,24 @@ export default function PublicTrainerProfile() {
 
   // ── WhatsApp when the trainer has shared their phone ──
   const handleWhatsAppTap = useCallback(() => {
-    const phone = trainer?.phone_number;
-    if (!phone) return;
-    setContactOpen(false);
-    // wa.me wants full international digits, no '+'. A bare 10-digit local
-    // number is treated as US/PR (+1) — the gym market. Opened via _blank so
-    // Capacitor hands it to the system (→ WhatsApp), not the in-app webview.
-    let digits = phone.replace(/\D/g, '');
-    if (digits.length === 10) digits = `1${digits}`;
-    const text = encodeURIComponent(
+    // Opened via _blank so Capacitor hands it to the system (→ WhatsApp),
+    // not the in-app webview.
+    const url = whatsappUrl(
+      trainer?.phone_number,
       t('publicTrainerProfile.waText', 'Hi {{name}}, I found you on TuGymPR.', { name: trainer?.full_name || '' }),
     );
-    window.open(`https://wa.me/${digits}?text=${text}`, '_blank');
+    if (!url) return;
+    setContactOpen(false);
+    window.open(url, '_blank');
   }, [trainer?.phone_number, trainer?.full_name, t]);
+
+  // ── Social profiles the trainer chose to publish (0663) ──
+  // Both go through the handle whitelist again on the way out, so a value
+  // written before 0663's CHECK existed still can't produce a hostile href.
+  const socialLinks = useMemo(() => ([
+    { key: 'instagram', url: instagramUrl(trainer?.trainer_instagram), Icon: Instagram, color: '#E1306C', label: 'Instagram' },
+    { key: 'facebook', url: facebookUrl(trainer?.trainer_facebook), Icon: Facebook, color: '#1877F2', label: 'Facebook' },
+  ].filter(s => s.url)), [trainer?.trainer_instagram, trainer?.trainer_facebook]);
 
   // ── Submit review ──────────────────────────────────────
   const handleSubmitReview = useCallback(async ({ rating, body }) => {
@@ -929,7 +935,7 @@ export default function PublicTrainerProfile() {
     }}>
       {requestPending && (
         <div style={{
-          padding: '14px 16px',
+          padding: 'calc(14px + env(safe-area-inset-top, 0px)) 16px 14px',
           background: 'color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-card))',
           borderBottom: '1px solid color-mix(in srgb, var(--color-accent) 26%, transparent)',
         }}>
@@ -1160,15 +1166,33 @@ export default function PublicTrainerProfile() {
             <MessageSquare size={14} strokeWidth={2.2} />
             {t('publicTrainerProfile.message', 'Message')}
           </button>
-          {/* Show Call when the trainer has published a phone number. The
-              `tel:` link triggers the native dialer; on desktop it opens
+          {/* WhatsApp and Call both need a published number. WhatsApp is up
+              here rather than buried in the booking sheet because it's how
+              trainers and clients actually talk in this market. */}
+          {trainer?.phone_number && (
+            <button
+              type="button"
+              onClick={handleWhatsAppTap}
+              style={{
+                flex: 1, padding: '10px 8px', borderRadius: 12,
+                border: `1px solid ${TT.borderSolid}`, background: TT.surface,
+                fontSize: 12.5, fontWeight: 700, color: TT.text,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                cursor: 'pointer', minHeight: 44,
+              }}
+            >
+              <MessageCircle size={14} strokeWidth={2.2} color="#25D366" />
+              {t('publicTrainerProfile.whatsapp', 'WhatsApp')}
+            </button>
+          )}
+          {/* The `tel:` link triggers the native dialer; on desktop it opens
               FaceTime / a default handler if one is registered. */}
           {trainer?.phone_number && (
             <button
               type="button"
               onClick={handleCallTap}
               style={{
-                flex: 1, padding: '10px', borderRadius: 12,
+                flex: 1, padding: '10px 8px', borderRadius: 12,
                 border: `1px solid ${TT.borderSolid}`, background: TT.surface,
                 fontSize: 12.5, fontWeight: 700, color: TT.text,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
@@ -1180,6 +1204,35 @@ export default function PublicTrainerProfile() {
             </button>
           )}
         </div>
+        {/* Social profiles — only rendered for the networks the trainer filled
+            in, so this row disappears entirely for most. `noopener noreferrer`
+            because these are outbound links to a site we don't control. */}
+        {socialLinks.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            {/* `s.Icon` rather than a destructured `Icon`: this repo's ESLint
+                has no react plugin, so it can't see JSX usage — a destructured
+                component param reads as an unused arg and errors. */}
+            {socialLinks.map((s) => (
+              <a
+                key={s.key}
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={s.label}
+                style={{
+                  flex: 1, padding: '10px 8px', borderRadius: 12,
+                  border: `1px solid ${TT.borderSolid}`, background: TT.surface,
+                  fontSize: 12.5, fontWeight: 700, color: TT.text,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  cursor: 'pointer', minHeight: 44, textDecoration: 'none',
+                }}
+              >
+                <s.Icon size={15} strokeWidth={2.2} color={s.color} />
+                {s.label}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Viewer's next session — confirm / can't make it ── */}
@@ -1276,18 +1329,22 @@ export default function PublicTrainerProfile() {
       {/* Client/session tiles only render when get_trainer_public_stats
           resolved — a hidden tile beats a misleading "0" on an upsell page. */}
       <div style={{ padding: '0 16px 14px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statsAvailable ? 3 : 1}, 1fr)`, gap: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${(statsAvailable ? 2 : 0) + (yearsExp != null ? 1 : 0) || 1}, 1fr)`, gap: 6 }}>
           {[
             ...(statsAvailable
               ? [{ v: String(clientCount), l: t('publicTrainerProfile.activeClients', 'Active clients'), tone: TT.accent }]
               : []),
-            {
-              v: yearsExp != null
-                ? t('publicTrainerProfile.yrsExp', '{{n}} yrs', { n: yearsExp })
-                : '—',
-              l: t('publicTrainerProfile.coaching', 'Coaching'),
-              tone: TT.coach,
-            },
+            // Years of experience. Labelled "Coaching" it read as a metric
+            // nobody could name, and when the trainer hasn't filled it in the
+            // tile was a bare em-dash taking a third of the row — so it only
+            // appears when there is something to show.
+            ...(yearsExp != null
+              ? [{
+                  v: t('publicTrainerProfile.yrsExp', '{{n}} yrs', { n: yearsExp }),
+                  l: t('publicTrainerProfile.experience', 'Experience'),
+                  tone: TT.coach,
+                }]
+              : []),
             ...(statsAvailable
               ? [{ v: String(sessionCount), l: t('publicTrainerProfile.sessionsLabel', 'Sessions'), tone: TT.hot }]
               : []),

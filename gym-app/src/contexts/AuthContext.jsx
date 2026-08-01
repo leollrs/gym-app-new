@@ -1254,7 +1254,12 @@ export const AuthProvider = ({ children }) => {
 
   // Optimistic patch — merges safelisted fields into the local profile
   // immediately without a DB round-trip.  Follow up with refreshProfile() to confirm.
-  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible', 'accent_color', 'trainer_icon', 'phone_number', 'specialties', 'years_of_experience', 'date_of_birth', 'age_verified_at', 'metric_units', 'trainer_tagline', 'trainer_cover_url', 'trainer_years_exp', 'trainer_location', 'trainer_pronouns', 'trainer_specialties', 'trainer_credentials', 'trainer_services', 'trainer_availability', 'trainer_verified', 'trainer_directory_visible', 'trainer_default_rate', 'trainer_rate_unit'];
+  const PATCHABLE_FIELDS = ['avatar_url', 'avatar_type', 'avatar_value', 'full_name', 'username', 'bio', 'privacy_public', 'leaderboard_visible', 'accent_color', 'trainer_icon', 'phone_number', 'specialties', 'years_of_experience', 'date_of_birth', 'age_verified_at', 'metric_units', 'trainer_tagline', 'trainer_cover_url', 'trainer_years_exp', 'trainer_location', 'trainer_pronouns', 'trainer_specialties', 'trainer_credentials', 'trainer_services', 'trainer_availability', 'trainer_verified', 'trainer_directory_visible', 'trainer_default_rate', 'trainer_rate_unit',
+    // A field missing from this list is dropped SILENTLY — patchProfile filters
+    // and returns, the caller sees success, and the UI never updates. That is
+    // what made "Use as my program" toast and change nothing.
+    'trainer_payment_instructions', 'trainer_instagram', 'trainer_facebook',
+    'active_trainer_plan_id'];
   const patchProfile = useCallback((fields) => {
     const safe = Object.fromEntries(
       Object.entries(fields).filter(([k]) => PATCHABLE_FIELDS.includes(k))

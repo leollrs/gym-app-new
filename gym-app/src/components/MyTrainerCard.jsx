@@ -43,6 +43,17 @@ export default function MyTrainerCard() {
   const [busy, setBusy] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
 
+  // Bumped by the `tugympr:trainer-changed` event so accepting a request
+  // re-reads. That event had NO listener anywhere: accepting cleared `pending`,
+  // `trainer` was still null, and `if (!trainer && !pending) return null`
+  // unmounted the whole card until the user navigated away and back.
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const bump = () => setReload(k => k + 1);
+    window.addEventListener('tugympr:trainer-changed', bump);
+    return () => window.removeEventListener('tugympr:trainer-changed', bump);
+  }, []);
+
   useEffect(() => {
     const memberId = profile?.id;
     if (!memberId) return;
@@ -85,8 +96,8 @@ export default function MyTrainerCard() {
       // member can be coached by one trainer while another is asking.
       if (req) {
         const { data: rp } = await supabase
-          .from('profiles')
-          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, trainer_tagline')
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, bio')
           .eq('id', req.trainer_id)
           .maybeSingle();
         if (alive) setPending(rp || { id: req.trainer_id });
@@ -95,9 +106,13 @@ export default function MyTrainerCard() {
       if (!tc?.trainer_id) return;
 
       const [profRes, sessRes] = await Promise.all([
+        // Same reason as the pending lookup above: profiles_select has no
+        // member-reads-their-trainer branch, so this came back empty and the
+        // card rendered "?" with no name. trainer_tagline isn't on the view;
+        // the subtitle already falls back to bio, which is.
         supabase
-          .from('profiles')
-          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, bio, trainer_tagline')
+          .from('gym_member_profiles_safe')
+          .select('id, full_name, username, avatar_url, avatar_type, avatar_value, bio')
           .eq('id', tc.trainer_id)
           .maybeSingle(),
         supabase
@@ -117,7 +132,7 @@ export default function MyTrainerCard() {
       if (sessRes.data?.[0]) setNextSession(sessRes.data[0]);
     })();
     return () => { alive = false; };
-  }, [profile?.id]);
+  }, [profile?.id, reload]);
 
   if (!trainer && !pending) return null;
 
@@ -141,7 +156,7 @@ export default function MyTrainerCard() {
       if (accept) setTimeout(() => window.dispatchEvent(new Event('tugympr:trainer-changed')), 0);
     } catch (err) {
       logger.error('MyTrainerCard: respond failed:', err);
-      showToast(t('common.somethingWentWrong', 'Something went wrong'), 'error');
+      showToast(t('common:somethingWentWrong', 'Something went wrong'), 'error');
     } finally { setBusy(false); }
   };
 
@@ -155,7 +170,7 @@ export default function MyTrainerCard() {
       setTrainer(null); setConfirmEnd(false);
     } catch (err) {
       logger.error('MyTrainerCard: end failed:', err);
-      showToast(t('common.somethingWentWrong', 'Something went wrong'), 'error');
+      showToast(t('common:somethingWentWrong', 'Something went wrong'), 'error');
     } finally { setBusy(false); }
   };
 
@@ -211,32 +226,47 @@ export default function MyTrainerCard() {
       </div>
     )}
 
-    {trainer && (confirmEnd ? (
-      /* Inline confirm rather than a portal — a portal here would need route
-         gating, and this is a two-tap decision that fits in the card. */
-      <div className="w-full p-4 mb-4 rounded-2xl"
-        style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-card)' }}>
-        <p className="text-[13.5px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>
-          {t('profile.trainerRemoveConfirm', 'Remove {{name}} as your trainer?', { name: trainerName })}
-        </p>
-        <p className="text-[12px] mb-3" style={{ color: 'var(--color-text-muted)' }}>
-          {t('profile.trainerRemoveBody', 'They lose access to your training data right away. Your own history stays.')}
-        </p>
-        <div className="flex gap-2">
-          <button type="button" disabled={busy} onClick={endRelationship}
-            className="flex-1 py-2.5 rounded-xl text-[13px] font-bold min-h-[44px] active:scale-[0.98] transition-all disabled:opacity-50"
-            style={{ background: 'var(--color-danger, #EF4444)', color: '#fff' }}>
-            {t('profile.trainerRemoveYes', 'Remove')}
-          </button>
-          <button type="button" disabled={busy} onClick={() => setConfirmEnd(false)}
-            className="px-4 py-2.5 rounded-xl text-[13px] font-bold min-h-[44px] active:scale-[0.98] transition-all"
-            style={{ background: 'transparent', color: 'var(--color-text-muted)',
-                     border: '1px solid var(--color-border-subtle)' }}>
-            {t('common.cancel', 'Cancel')}
-          </button>
+    {/* A centred dialog, not an in-card swap. Revoking someone's access to your
+        training data deserves to interrupt you, and the inline version replaced
+        the card you were looking at, which read as the card breaking. Fixed
+        position, no portal — this component renders inside keep-alive routes
+        (/profile, /sessions) and a portal would escape their display:none. */}
+    {trainer && confirmEnd && (
+      <div
+        role="dialog" aria-modal="true"
+        onClick={() => setConfirmEnd(false)}
+        style={{ position: 'fixed', inset: 0, zIndex: 140, background: 'rgba(11,15,18,0.55)',
+                 backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center',
+                 justifyContent: 'center', padding: 16 }}
+      >
+        <div onClick={(e) => e.stopPropagation()}
+          style={{ background: 'var(--color-bg-card)', borderRadius: 20, width: '100%',
+                   maxWidth: 380, padding: '22px 20px 20px',
+                   boxShadow: '0 24px 70px rgba(0,0,0,0.35)' }}>
+          <p className="text-[16px] font-extrabold mb-2 text-center" style={{ color: 'var(--color-text-primary)' }}>
+            {t('profile.trainerRemoveConfirm', 'Remove {{name}} as your trainer?', { name: trainerName })}
+          </p>
+          <p className="text-[13px] mb-5 text-center leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+            {t('profile.trainerRemoveBody', 'They lose access to your training data right away. Your own history stays.')}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={endRelationship}
+              className="flex-1 py-3 rounded-xl text-[13.5px] font-bold min-h-[46px] active:scale-[0.98] transition-all disabled:opacity-50"
+              style={{ background: 'var(--color-danger, #EF4444)', color: '#fff' }}>
+              {t('profile.trainerRemoveYes', 'Remove')}
+            </button>
+            <button type="button" disabled={busy} onClick={() => setConfirmEnd(false)}
+              className="px-5 py-3 rounded-xl text-[13.5px] font-bold min-h-[46px] active:scale-[0.98] transition-all"
+              style={{ background: 'transparent', color: 'var(--color-text-muted)',
+                       border: '1px solid var(--color-border-subtle)' }}>
+              {t('common:cancel', 'Cancel')}
+            </button>
+          </div>
         </div>
       </div>
-    ) : (
+    )}
+
+    {trainer && (
     <div
       role="button"
       tabIndex={0}
@@ -284,7 +314,7 @@ export default function MyTrainerCard() {
       </button>
       <ChevronRight size={18} className="flex-shrink-0" style={{ color: 'color-mix(in srgb, var(--color-accent) 55%, transparent)' }} />
     </div>
-    ))}
+    )}
     </>
   );
 }

@@ -2068,7 +2068,16 @@ const Messages = ({ embedded = false, hideBackButton = false, headerExtra = null
     } else if (location.state?.from) {
       // Opened from a specific page (e.g. a trainer profile passed
       // state.from) → go back THERE, not to the conversation list.
-      navigate(location.state.from);
+      //
+      // POP, don't push. `navigate(from)` appended a SECOND copy of the
+      // trainer profile on top of this chat, so the profile's own back button
+      // (navigate(-1)) landed right back on the chat — profile → chat →
+      // profile → chat forever, with no way out. Popping unwinds to the
+      // profile entry that pushed us, leaving the stack the length it was.
+      //
+      // Safe against underflow: `state.from` only exists because that page
+      // pushed this entry, so there is always something beneath us.
+      navigate(-1);
     } else {
       navigate(basePath);
     }

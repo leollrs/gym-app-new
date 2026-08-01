@@ -3222,6 +3222,25 @@ const PLAN_FORMAT = 'planner_v1';
 function planToPlanData(days, savedAt) {
   return { format: PLAN_FORMAT, days: days || {}, savedAt: savedAt || Date.now() };
 }
+// Bumped whenever the stored meal schedule changes, so components that read it
+// through useMemo re-read. /nutrition is a KEEP-ALIVE route: these components
+// never remount, so a memo keyed on [userId] alone kept serving the meals/day
+// count from before the member adopted their coach's plan — for the rest of the
+// app session.
+function useMealScheduleVersion() {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const bump = () => setV(k => k + 1);
+    window.addEventListener('tugympr:meal-plan-changed', bump);
+    window.addEventListener('tugympr:meal-schedule-changed', bump);
+    return () => {
+      window.removeEventListener('tugympr:meal-plan-changed', bump);
+      window.removeEventListener('tugympr:meal-schedule-changed', bump);
+    };
+  }, []);
+  return v;
+}
+
 function planDataToPlan(planData, weekDates, slotKeys) {
   if (!planData) return {};
   if (planData.format === PLAN_FORMAT && planData.days && typeof planData.days === 'object') return planData.days;
@@ -3234,7 +3253,14 @@ function planDataToPlan(planData, weekDates, slotKeys) {
       if (!meals.length) return;
       out[date] = {};
       meals.forEach((m, j) => {
-        const slot = slotKeys[j] || slotKeys[slotKeys.length - 1] || 'meal';
+        // Prefer the slot the WRITER recorded. Positional mapping is only a
+        // fallback for legacy rows: it silently mis-assigns whenever the two
+        // sides disagree on order — the coach's plan is written against the
+        // canonical order while this reads through the member's dragged one,
+        // and any meal dropped from the array shifts every later meal a slot.
+        const slot = m.slot && slotKeys.includes(m.slot)
+          ? m.slot
+          : (slotKeys[j] || slotKeys[slotKeys.length - 1] || 'meal');
         out[date][slot] = {
           id: m.id ?? null, title: m.title || m.name || '', title_es: m.title_es || m.name_es || null,
           calories: m.calories || 0, protein: m.protein || 0, carbs: m.carbs || 0, fat: m.fat || 0,
@@ -3473,6 +3499,29 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   // The member's own order — what the planner and the plan setup DISPLAY.
   const [slotOrder, setSlotOrder] = useState(() => loadSlotOrder(userId));
   const slotKeys = useMemo(() => applySlotOrder(canonicalSlotKeys, slotOrder), [canonicalSlotKeys, slotOrder]);
+
+  // Render order for a day: chronological once times are set. A 3:30 PM snack
+  // belongs between a 12:00 lunch and a 7:00 dinner, not after dinner because
+  // "snack" sorts there in the canonical slot list.
+  //
+  // This is display ONLY — slotKeys itself must never be reordered, because
+  // planDataToPlan maps the stored plan array onto slots POSITIONALLY. Shuffle
+  // it and every meal lands in the wrong slot on the next hydrate.
+  const displaySlotKeys = useMemo(() => {
+    const times = mealSchedule.times || {};
+    if (!slotKeys.some(k => times[k])) return slotKeys;
+    const minutes = (hhmm) => {
+      const [h, m] = String(hhmm).split(':').map(Number);
+      return Number.isFinite(h) ? h * 60 + (m || 0) : Number.POSITIVE_INFINITY;
+    };
+    // Untimed slots sort to the end, keeping their canonical order among
+    // themselves (Array.sort is stable).
+    return [...slotKeys].sort((a, b) => {
+      const ta = times[a] ? minutes(times[a]) : Number.POSITIVE_INFINITY;
+      const tb = times[b] ? minutes(times[b]) : Number.POSITIVE_INFINITY;
+      return ta - tb;
+    });
+  }, [slotKeys, mealSchedule.times]);
   useEffect(() => { saveSlotOrder(userId, slotKeys); }, [userId, slotKeys]);
   useEffect(() => { saveMealSchedule(userId, mealSchedule); }, [userId, mealSchedule]);
   // Drag-to-reorder for the slot list in Plan setup.
@@ -3559,15 +3608,47 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
   // Re-read when another surface (e.g. a collection's "Add to week") mutates the
   // same localStorage key while this planner is already mounted.
   useEffect(() => {
-    const reload = () => {
+    let cancelled = false;
+    const reload = async () => {
+      // Adopting a coach's plan can CHANGE meals/day (TrainerMealPlanSection
+      // writes the schedule before firing this). Re-read it and convert with
+      // the new keys — converting with the stale closure's slotKeys would drop
+      // the very meals the wider count was meant to make room for.
+      const fresh = loadMealSchedule(userId);
+      setMealSchedule(fresh);
+      const freshKeys = applySlotOrder(plannerSlotKeys(fresh.count), slotOrder);
+
+      let local = null;
       try {
         const raw = localStorage.getItem(storageKey);
-        setPlan(raw ? (JSON.parse(raw).days || {}) : {});
+        if (raw) local = JSON.parse(raw).days || {};
+      } catch { /* ignore */ }
+      if (local && Object.keys(local).length) { setPlan(local); return; }
+
+      // No local copy. That's not an empty week — it's how "adopt my coach's
+      // plan" hands off: TrainerMealPlanSection writes generated_meal_plans and
+      // drops the cache so this planner re-hydrates from the server. Blanking
+      // here instead would wipe the week the member just accepted.
+      if (!userId) { setPlan(local || {}); return; }
+      const { data, error } = await supabase.from('generated_meal_plans')
+        .select('plan_data').eq('profile_id', userId).eq('week_start', weekStart).maybeSingle();
+      if (cancelled) return;
+      if (error || !data?.plan_data) { setPlan(local || {}); return; }
+      const serverDays = planDataToPlan(data.plan_data, weekDates, freshKeys);
+      if (!serverDays || !Object.keys(serverDays).length) { setPlan(local || {}); return; }
+      setPlan(serverDays);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({
+          weekStart, days: serverDays, savedAt: data.plan_data.savedAt || 0,
+        }));
       } catch { /* ignore */ }
     };
     window.addEventListener('tugympr:meal-plan-changed', reload);
-    return () => window.removeEventListener('tugympr:meal-plan-changed', reload);
-  }, [storageKey]);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('tugympr:meal-plan-changed', reload);
+    };
+  }, [storageKey, userId, weekStart, weekDates, slotOrder]);
 
   // Hydrate the week from the server (generated_meal_plans) so the plan survives a
   // reinstall / new device and reflects edits made elsewhere. Local-first: only
@@ -4069,9 +4150,9 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
           </div>
         )}
 
-        {/* Meal rows for active day */}
+        {/* Meal rows for active day — chronological when times are set */}
         <div className="px-4 flex flex-col gap-2.5 pb-4">
-          {slotKeys.map((slot, si) => {
+          {displaySlotKeys.map((slot, si) => {
             const meal = activeDayData[slot];
             const slotLabel = slotLabelFor(slot, mealSchedule.count, t);
             const slotTime = mealSchedule.times[slot];
@@ -4218,9 +4299,39 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
                       </button>
                       <span className="flex-1 min-w-0 truncate text-[13.5px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{slotLabelFor(k, mealSchedule.count, t)}</span>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <input type="time" value={mealSchedule.times[k] || ''} onChange={(e) => setSlotTime(k, e.target.value)}
-                          className="text-[13.5px] font-semibold px-2 py-1 rounded-[9px] focus:outline-none"
-                          style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)', colorScheme: 'light dark' }} />
+                        {/* An empty <input type="time"> paints NOTHING in WebKit —
+                            no placeholder, no caret, just a blank pill. The
+                            control was invisible: nothing on screen said a time
+                            could be set here. The overlay below labels it until
+                            a time exists; pointer-events:none keeps the tap
+                            going through to the real input. */}
+                        <div className="relative flex items-center">
+                          <input type="time" value={mealSchedule.times[k] || ''} onChange={(e) => setSlotTime(k, e.target.value)}
+                            aria-label={t('nutrition.setMealTime', 'Set time')}
+                            className="text-[13.5px] font-semibold px-2 py-1 rounded-[9px] focus:outline-none"
+                            style={{
+                              background: 'var(--color-surface-hover)',
+                              border: '1px solid var(--color-border-subtle)',
+                              color: 'var(--color-text-primary)',
+                              colorScheme: 'light dark',
+                              minWidth: 92,
+                              opacity: mealSchedule.times[k] ? 1 : 0.01,
+                            }} />
+                          {!mealSchedule.times[k] && (
+                            <span
+                              className="absolute inset-0 flex items-center justify-center gap-1 rounded-[9px] text-[12.5px] font-bold"
+                              style={{
+                                background: 'var(--color-surface-hover)',
+                                border: '1px solid var(--color-border-subtle)',
+                                color: 'var(--color-text-muted)',
+                                pointerEvents: 'none',
+                              }}
+                            >
+                              <Clock size={12} strokeWidth={2.4} />
+                              {t('nutrition.setMealTime', 'Set time')}
+                            </span>
+                          )}
+                        </div>
                         {mealSchedule.times[k] && (
                           <button onClick={() => setSlotTime(k, '')} className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90" style={{ background: 'var(--color-surface-hover)' }} aria-label={t('nutrition.clearTime', 'Clear time')}>
                             <X size={13} style={{ color: 'var(--color-text-muted)' }} />
@@ -4757,7 +4868,7 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
       </div>
 
       {/* ── Trainer-assigned meal plan (renders nothing without one) ── */}
-      <TrainerMealPlanSection userId={userId} groceryList={groceryList} onAddGroceryItems={onAddGroceryItems} />
+      <TrainerMealPlanSection userId={userId} groceryList={groceryList} onAddGroceryItems={onAddGroceryItems} onOpenRecipe={onOpenRecipe} />
 
       {/* ── Weekly Summary Modal ── */}
       {showSummary && createPortal(
@@ -6019,7 +6130,8 @@ const GroceryView = ({ setView, groceryList, onToggleItem, onClearChecked, onRem
   // NOTE: named slotCount, NOT mealCount — a different `mealCount` already
   // exists further down this same scope (the number of distinct recipes feeding
   // the grocery list). This one is how many meal SLOTS a day has.
-  const slotCount = useMemo(() => loadMealSchedule(userId).count, [userId]);
+  const schedVer = useMealScheduleVersion();
+  const slotCount = useMemo(() => loadMealSchedule(userId).count, [userId, schedVer]);
   const planSlotKeys = useMemo(() => orderedSlotKeys(userId, slotCount), [userId, slotCount]);
   const slotLabel = useCallback((slot) => (slot ? slotLabelFor(slot, slotCount, t) : null), [slotCount, t]);
   const slotRank = useCallback((slot) => {
@@ -7849,7 +7961,8 @@ export default function Nutrition({ embedded = false }) {
 
   // Ordered slot list for the "Add to plan" picker — the member's own schedule
   // (Breakfast · Snack 1 · Lunch …), not a hardcoded four.
-  const planSlotCount = useMemo(() => loadMealSchedule(user?.id).count, [user?.id]);
+  const planSchedVer = useMealScheduleVersion();
+  const planSlotCount = useMemo(() => loadMealSchedule(user?.id).count, [user?.id, planSchedVer]);
   const planSlotList = useMemo(() => orderedSlotKeys(user?.id, planSlotCount), [user?.id, planSlotCount]);
 
   // ADD TO PLAN — the sibling of handleLogFood. Logging records what you ATE;
