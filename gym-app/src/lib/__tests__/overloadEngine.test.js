@@ -4,6 +4,8 @@ import {
   shouldDeload,
   computeDeload,
   estimateStartingWeight,
+  parseRepTarget,
+  computeSuggestion,
 } from '../overloadEngine';
 
 // The progressive-overload engine is the core differentiator. These lock in the
@@ -96,5 +98,76 @@ describe('estimateStartingWeight', () => {
     });
     // tiny bodyweight still floors at 5 (or null if the pattern table is absent)
     if (w !== null) expect(w).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// routine_exercises.target_reps is TEXT, and '8-12' is what almost every row
+// actually holds — so a scalar-only read of it discarded every prescription in
+// the app. These lock the parse and the one behaviour that depends on it.
+describe('parseRepTarget', () => {
+  it('reads a plain number', () => {
+    expect(parseRepTarget(10)).toEqual({ min: 10, max: 10 });
+    expect(parseRepTarget('12')).toEqual({ min: 12, max: 12 });
+  });
+
+  it('reads a range however it was written', () => {
+    expect(parseRepTarget('8-12')).toEqual({ min: 8, max: 12 });
+    expect(parseRepTarget('8–12')).toEqual({ min: 8, max: 12 });   // en dash
+    expect(parseRepTarget('8 to 12')).toEqual({ min: 8, max: 12 });
+    expect(parseRepTarget(' 8 - 12 reps ')).toEqual({ min: 8, max: 12 });
+  });
+
+  it('normalises a backwards range', () => {
+    expect(parseRepTarget('12-8')).toEqual({ min: 8, max: 12 });
+  });
+
+  it('refuses time and distance — cardio finishers share this column', () => {
+    expect(parseRepTarget('10min')).toBeNull();
+    expect(parseRepTarget('30s')).toBeNull();
+    expect(parseRepTarget('5 km')).toBeNull();
+  });
+
+  it('refuses effort words and empties', () => {
+    expect(parseRepTarget('AMRAP')).toBeNull();
+    expect(parseRepTarget('Max')).toBeNull();
+    expect(parseRepTarget('')).toBeNull();
+    expect(parseRepTarget(null)).toBeNull();
+    expect(parseRepTarget(undefined)).toBeNull();
+    expect(parseRepTarget(0)).toBeNull();
+  });
+});
+
+describe('computeSuggestion honours the routine prescription', () => {
+  const hypertrophy = { primary_goal: 'muscle_gain', fitness_level: 'intermediate' }; // band 8-12
+  const strength    = { primary_goal: 'strength',    fitness_level: 'intermediate' }; // band 3-6
+  const at = (reps) => [{ weight: 100, reps }, { weight: 100, reps }];
+
+  it("keeps a coach's 5x5 at 5 instead of rewriting it into the goal's 8-12", () => {
+    // 5 reps done against a prescribed 5 = top of the band → add weight, back to 5.
+    // Ignoring the prescription would read 5 as "below 12" and ask for 6 reps.
+    const s = computeSuggestion(at(5), hypertrophy, '5');
+    expect(s.note).toBe('increase_weight');
+    expect(s.suggestedReps).toBe(5);
+  });
+
+  it('reads a written range that Number.isFinite could never see', () => {
+    // Goal says 3-6, the routine says 8-12: 10 reps is mid-window, so keep the
+    // weight and add a rep. Against the goal band, 10 ≥ 6 would have added
+    // weight and dropped the member to 3 reps.
+    const s = computeSuggestion(at(10), strength, '8-12');
+    expect(s.note).toBe('increase_reps');
+    expect(s.suggestedReps).toBe(11);
+  });
+
+  it('falls back to the goal range when the column holds a duration', () => {
+    const s = computeSuggestion(at(12), hypertrophy, '10min');
+    expect(s.note).toBe('increase_weight');
+    expect(s.suggestedReps).toBe(8);
+  });
+
+  it('leaves a beginner the whole window instead of bumping at its bottom', () => {
+    const beginner = { primary_goal: 'muscle_gain', fitness_level: 'beginner' };
+    const s = computeSuggestion(at(8), beginner, '8-12');
+    expect(s.note).toBe('increase_reps');
   });
 });

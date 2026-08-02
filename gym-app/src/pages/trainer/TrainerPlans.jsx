@@ -2925,17 +2925,27 @@ export default function TrainerPlans() {
     // Sync the shared-members junction (0645) to primary ∪ extra share ids. Best-effort.
     if (mealPlanId) {
       const memberSet = [...new Set([fields.client_id, ...mealShareIds].filter(Boolean))];
-      try {
-        const NONE = '00000000-0000-0000-0000-000000000000';
-        await supabase.from('trainer_meal_plan_members').delete()
-          .eq('plan_id', mealPlanId).not('member_id', 'in', `(${memberSet.length ? memberSet.join(',') : NONE})`);
-        if (memberSet.length) {
-          await supabase.from('trainer_meal_plan_members').upsert(
-            memberSet.map(mid => ({ plan_id: mealPlanId, member_id: mid, assigned_by: profile.id })),
-            { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
-          );
-        }
-      } catch (e) { logger.error('TrainerPlans: meal junction sync failed (non-fatal):', e); }
+      // The try/catch here caught nothing: a Supabase builder RESOLVES with
+      // { error }, it does not throw. So an RLS refusal on the INSERT half —
+      // which is exactly what a member who has not accepted this trainer now
+      // produces — went straight past, and the DELETE half had already
+      // succeeded. The trainer saw "saved", the member the plan was shared with
+      // lost it, and nothing was logged.
+      const NONE = '00000000-0000-0000-0000-000000000000';
+      const { error: delErr } = await supabase.from('trainer_meal_plan_members').delete()
+        .eq('plan_id', mealPlanId).not('member_id', 'in', `(${memberSet.length ? memberSet.join(',') : NONE})`);
+      let shareErr = delErr || null;
+      if (!shareErr && memberSet.length) {
+        const { error: upErr } = await supabase.from('trainer_meal_plan_members').upsert(
+          memberSet.map(mid => ({ plan_id: mealPlanId, member_id: mid, assigned_by: profile.id })),
+          { onConflict: 'plan_id,member_id', ignoreDuplicates: true },
+        );
+        shareErr = upErr || null;
+      }
+      if (shareErr) {
+        logger.error('TrainerPlans: meal junction sync failed:', shareErr);
+        showToast(t('trainerPlans.mealShareFailed', 'Meal plan saved, but sharing it with those members failed. Open it and try again.'), 'error');
+      }
     }
     posthog?.capture(editingMealPlanId ? 'trainer_meal_plan_edited' : 'trainer_meal_plan_created');
     setMealSaving(false);
@@ -3196,15 +3206,23 @@ export default function TrainerPlans() {
     // WITH CHECK only), and trainer_assign_program checks nothing but the
     // caller's role — so clearing here after a refusal destroyed the client's
     // existing assignment and created nothing in its place.
+    // Wrapped: clearOtherAssignments THROWS on a failed read by design, and
+    // this block sits OUTSIDE the try above — the throw escaped as an
+    // unhandled rejection with the modal left open and no toast.
     if (ids.length && !junctionMsg) {
-      const gymAssigned = await gymProgramAssignments(ids);
-      for (const memberId of ids) {
-        await clearOtherAssignments({
-          memberId,
-          trainerId: profile.id,
-          keepPlanId: plan.id,
-          currentGymProgramId: gymAssigned[memberId] || null,
-        });
+      try {
+        const gymAssigned = await gymProgramAssignments(ids);
+        for (const memberId of ids) {
+          await clearOtherAssignments({
+            memberId,
+            trainerId: profile.id,
+            keepPlanId: plan.id,
+            currentGymProgramId: gymAssigned[memberId] || null,
+          });
+        }
+      } catch (err) {
+        logger.error('TrainerPlans: exclusivity cleanup failed:', err);
+        junctionMsg = t('trainerPlans.assignFailed', 'Plan saved, but assigning members failed. Try again.');
       }
     }
 

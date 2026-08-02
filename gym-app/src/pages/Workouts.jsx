@@ -1647,7 +1647,24 @@ const Workouts = () => {
   const handleConfirmLeaveProgram = async () => {
     if (!leaveProgramConfirm) return;
     const { id, isActive } = leaveProgramConfirm;
-    if (isActive) {
+    // An ADOPTED coach program has an exit of its own: releaseTrainerPlan
+    // restores the member's previous program and its schedule, and clears the
+    // marker. Expiring it here instead left the coach's routines seeded in
+    // workout_schedule (Home renders those raw when no program is active),
+    // the member's own program still expired, and the marker still set.
+    const target = allPrograms.find(p => p.id === id) || (id === generatedProgram?.id ? generatedProgram : null);
+    if (isActive && adoptedPlanId(target)) {
+      try {
+        await releaseTrainerPlan({ userId: user.id, gymId: profile?.gym_id });
+        patchProfile({ active_trainer_plan_id: null });
+        announceProgramChange();
+      } catch (err) {
+        logger.error('Workouts: release on remove-program failed:', err);
+        showToast(t('trainerPlanViewer.adoptFailed', "Couldn't switch programs. Try again."), 'error');
+        setLeaveProgramConfirm(null);
+        return;
+      }
+    } else if (isActive) {
       await supabase.from('generated_programs').update({ expires_at: new Date().toISOString() }).eq('id', id);
     } else {
       await supabase.from('generated_programs').delete().eq('id', id);
@@ -1933,13 +1950,18 @@ const Workouts = () => {
     setSwitchingProgram(true);
     setGymHoursWarnings([]);
 
+    // Rolled back by the catch if anything below fails. Nothing the member
+    // already has is touched until every new routine exists.
+    const createdRoutineIds = [];
+    let switchCommitted = false;
     try {
-      // 1. Deactivate current program (don't delete — just expire it)
-      if (generatedProgram && new Date(generatedProgram.expires_at) > new Date()) {
-        await supabase.from('generated_programs')
-          .update({ expires_at: new Date().toISOString() })
-          .eq('id', generatedProgram.id);
-      }
+      // 1. The program being replaced. It is EXPIRED at the very end, not here:
+      //    expiring first, then failing to build the replacement, left the
+      //    member with no active program at all and no way back to the one they
+      //    were on. Same for the schedule wipe that used to sit below.
+      const outgoingProgram = (generatedProgram && new Date(generatedProgram.expires_at) > new Date())
+        ? generatedProgram
+        : null;
 
       // Fetch gym hours to know which days are closed
       const { data: gymHours } = await supabase
@@ -1972,13 +1994,6 @@ const Workouts = () => {
         .like('name', 'Auto:%');
       const oldAutoRoutineIds = (oldAutoRoutines || []).map(r => r.id);
 
-      // Clear the weekly schedule before re-seeding it, matching every other
-      // program-creation path. The deferred cleanup below only removes rows
-      // pointing at old `Auto:` routines, so a weekday the user had swapped to
-      // one of their OWN routines survived into the new program and kept
-      // showing a workout on a day this program doesn't train.
-      await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
-
       // 3. Create a generated_programs entry (inserted after scheduleDays is computed below)
       const startDate = new Date();
 
@@ -1989,7 +2004,6 @@ const Workouts = () => {
       const firstWeek = (userTrainingDays > 0 && userTrainingDays < fullFirstWeek.length)
         ? fullFirstWeek.slice(0, userTrainingDays)
         : fullFirstWeek;
-      const createdRoutineIds = [];
 
       // Smart day alignment: use user's preferred training days, skip closed gym days
       // DB day_of_week: Sunday=0, Monday=1, ..., Saturday=6
@@ -2108,23 +2122,6 @@ const Workouts = () => {
         schedule_map: scheduleMapData,
       };
 
-      let insertRes = await supabase.from('generated_programs').insert({
-        ...insertData,
-        template_id: selectedTemplate.id,
-        template_weeks: selectedTemplate.weeks,
-      }).select().single();
-
-      if (insertRes.error) {
-        logger.warn('Template columns not available, inserting without them:', insertRes.error.message);
-        insertRes = await supabase.from('generated_programs').insert(insertData).select().single();
-      }
-
-      if (insertRes.error) {
-        throw new Error('Failed to create program entry: ' + insertRes.error.message);
-      }
-
-      logger.log('Created program:', insertRes.data?.id);
-
       // Check if workouts might extend past closing time (soft warning)
       const warnings = [];
       for (const dayNum of scheduleDays) {
@@ -2154,23 +2151,21 @@ const Workouts = () => {
         setGymHoursWarnings(warnings);
       }
 
+      // ── Build phase. Nothing the member already has is touched here. ─────
+      // Every failure below used to `continue` or log-and-carry-on, so a
+      // program that half-built still went live: days with no routine, or
+      // routines with no exercises — a session that opens empty. And it was
+      // built AFTER the old program had already been expired and the week
+      // wiped, so there was nothing to go back to. Fail the whole switch
+      // instead; the catch undoes the partial build.
+      const pendingSchedule = [];
       for (let i = 0; i < firstWeek.length; i++) {
         const day = firstWeek[i];
         const localizedDayName = i18n.language === 'es' && day.name_es ? day.name_es : day.name;
         const routineName = `Auto: ${localizedDayName}`;
 
-        let routine;
-        try {
-          routine = await createRoutine(routineName);
-        } catch (err) {
-          logger.error('Failed to create routine:', routineName, err);
-          continue;
-        }
-
-        if (!routine?.id) {
-          logger.error('No routine ID returned for:', routineName);
-          continue;
-        }
+        const routine = await createRoutine(routineName);
+        if (!routine?.id) throw new Error(`No routine ID returned for: ${routineName}`);
 
         createdRoutineIds.push(routine.id);
         logger.log(`Created routine ${i + 1}/${firstWeek.length}: ${routineName} (${routine.id})`);
@@ -2194,16 +2189,55 @@ const Workouts = () => {
           if (exErr && /is_drop_set|does not exist/i.test(exErr.message || '')) {
             ({ error: exErr } = await supabase.from('routine_exercises').insert(baseRows));
           }
-          if (exErr) logger.error('Failed to insert exercises for routine:', routineName, exErr);
+          if (exErr) throw exErr;
         }
 
-        // Assign to workout_schedule using preferred day mapping
-        const dayOfWeek = scheduleDays[i] !== undefined ? scheduleDays[i] : (i + 1) % 7;
+        pendingSchedule.push({
+          routineId: routine.id,
+          dayOfWeek: scheduleDays[i] !== undefined ? scheduleDays[i] : (i + 1) % 7,
+        });
+      }
+
+      // ── Commit phase. From here the switch actually happens. ─────────────
+      let insertRes = await supabase.from('generated_programs').insert({
+        ...insertData,
+        template_id: selectedTemplate.id,
+        template_weeks: selectedTemplate.weeks,
+      }).select().single();
+
+      if (insertRes.error) {
+        logger.warn('Template columns not available, inserting without them:', insertRes.error.message);
+        insertRes = await supabase.from('generated_programs').insert(insertData).select().single();
+      }
+
+      if (insertRes.error) {
+        throw new Error('Failed to create program entry: ' + insertRes.error.message);
+      }
+      switchCommitted = true;
+      logger.log('Created program:', insertRes.data?.id);
+
+      // The outgoing program ends only now that its replacement exists.
+      if (outgoingProgram) {
+        const { error: expErr } = await supabase.from('generated_programs')
+          .update({ expires_at: new Date().toISOString() })
+          .eq('id', outgoingProgram.id);
+        if (expErr) logger.error('Workouts: could not expire the outgoing program:', expErr);
+      }
+
+      // Clear the weekly schedule before re-seeding it, matching every other
+      // program-creation path. The deferred cleanup below only removes rows
+      // pointing at old `Auto:` routines, so a weekday the user had swapped to
+      // one of their OWN routines survived into the new program and kept
+      // showing a workout on a day this program doesn't train.
+      const { error: wipeErr } = await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
+      if (wipeErr) logger.error('Workouts: schedule wipe failed:', wipeErr);
+
+      for (const s of pendingSchedule) {
         const { error: schedErr } = await supabase.from('workout_schedule').upsert({
           profile_id: user.id,
           gym_id: profile.gym_id,
-          day_of_week: dayOfWeek,
-          routine_id: routine.id,
+          day_of_week: s.dayOfWeek,
+          routine_id: s.routineId,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'profile_id,day_of_week' });
         if (schedErr) logger.warn('Schedule upsert failed (table may not exist):', schedErr.message);
@@ -2260,6 +2294,14 @@ const Workouts = () => {
       setSelectedTemplate(null);
     } catch (err) {
       logger.error('Failed to enroll in template:', err);
+      // Undo the build. If we never reached the commit phase the member is
+      // still on their old program, so these routines belong to nothing —
+      // leaving them behind would litter My Routines with `Auto:` rows for a
+      // program that was never created.
+      if (!switchCommitted && createdRoutineIds.length) {
+        const { error: rbErr } = await supabase.from('routines').delete().in('id', createdRoutineIds);
+        if (rbErr) logger.warn('Workouts: rollback of new routines failed:', rbErr);
+      }
       alert(t('workouts.actionFailed', "That didn't go through. Check your connection and try again."));
     } finally {
       setSwitchingProgram(false);

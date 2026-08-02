@@ -78,6 +78,16 @@ export function loadMealSchedule(userId) {
 export function saveMealSchedule(userId, schedule) {
   try { localStorage.setItem(scheduleKey(userId), JSON.stringify(schedule)); }
   catch { /* quota */ }
+  // ANNOUNCE. /nutrition is keep-alive, so components that read the schedule
+  // through useMemo never remount and would serve the old meals/day count for
+  // the rest of the session. The versioning hook listens for this; before, only
+  // the coach-adoption path dispatched it, so the member changing their OWN
+  // meals/day in Plan setup changed nothing downstream.
+  try {
+    window.dispatchEvent(new CustomEvent('tugympr:meal-schedule-changed'));
+  } catch {
+    // No window (SSR / worker) — the localStorage write above still stands.
+  }
 }
 
 // ── Native plumbing ──────────────────────────────────────────────────────────

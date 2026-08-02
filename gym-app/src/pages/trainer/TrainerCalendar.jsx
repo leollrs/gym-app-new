@@ -1114,6 +1114,7 @@ export default function TrainerSchedule() {
         const BUFFER = 45 * 60000; // ±45 min around the session window (tightened to cut false positives)
         const nowMs = Date.now();
         const autoComplete = [];
+        const prevStatus = new Map(sessions.map(s => [s.id, s.status]));
         sessions = sessions.map(s => {
           if (!s.client_id) return s;
           const st = new Date(s.scheduled_at).getTime();
@@ -1128,11 +1129,22 @@ export default function TrainerSchedule() {
           return { ...s, _trained: true };
         });
         if (autoComplete.length) {
-          // Fire-and-forget; the local state already reflects the change.
-          supabase.from('trainer_sessions')
+          // Awaited, and reverted on failure. This was fire-and-forget while the
+          // local array below is both rendered AND written to the session cache,
+          // so a rejected update left the trainer looking at "completed" — from
+          // cache, across reloads — for sessions the database still had as
+          // scheduled. Attendance is the record the packs bill against; it must
+          // not be a screen-only truth.
+          const { error: upErr } = await supabase.from('trainer_sessions')
             .update({ status: 'completed', auto_marked: true, updated_at: new Date().toISOString() })
-            .in('id', autoComplete)
-            .then(({ error: upErr }) => { if (upErr) logger.error('TrainerCalendar: auto-mark attended failed:', upErr); });
+            .in('id', autoComplete);
+          if (upErr) {
+            logger.error('TrainerCalendar: auto-mark attended failed:', upErr);
+            const failed = new Set(autoComplete);
+            sessions = sessions.map(s => (failed.has(s.id)
+              ? { ...s, status: prevStatus.get(s.id), auto_marked: false }
+              : s));
+          }
         }
       }
     } catch (e) {

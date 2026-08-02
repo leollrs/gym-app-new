@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, MapPin, CheckCircle, QrCode } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
@@ -44,8 +44,23 @@ export default function CheckIn() {
 
   const qrPayload = profile?.qr_code_payload || null;
 
+  // /checkin is a keep-alive route: leaving it hides this page with
+  // display:none but never unmounts it. The QR overlay is portaled to
+  // document.body, which display:none cannot reach — so a notification tap,
+  // Android back or a deep link while it was open left the QR sheet painted
+  // over the next page, with the body scroll lock still held. Close on leave.
+  // Reset during render rather than in an effect: an effect here would set
+  // state synchronously on every route change and cascade a second render.
+  const onCheckInRoute = useLocation().pathname === '/checkin';
+  const [wasOnRoute, setWasOnRoute] = useState(onCheckInRoute);
+  if (wasOnRoute !== onCheckInRoute) {
+    setWasOnRoute(onCheckInRoute);
+    if (showQR) setShowQR(false);
+  }
+  const qrOpen = showQR && qrEnabled && onCheckInRoute;
+
   // Lock background scroll while the full-screen QR overlay is open.
-  useScrollLock(showQR && qrEnabled);
+  useScrollLock(qrOpen);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -238,7 +253,7 @@ export default function CheckIn() {
 
       {/* QR Code Modal — portaled to body so fixed positioning isn't broken by parent transforms.
           qrEnabled guard auto-closes it if the kill switch flips while open. */}
-      {showQR && qrEnabled && createPortal(
+      {qrOpen && createPortal(
         <QRCodeModal
           payload={qrPayload}
           memberName={profile?.full_name}

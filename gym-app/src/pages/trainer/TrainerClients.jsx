@@ -650,6 +650,12 @@ const AssignProgramModal = ({ selectedClients, gymId, trainerId, onClose, onDone
       } else {
         showToast(t('trainerClients.programAssignFailed', 'Could not assign the program. Try again.'), 'error');
       }
+    } catch (err) {
+      // clearOtherAssignments THROWS on a failed read by design, and this had
+      // only try/finally — the throw escaped as an unhandled rejection, the
+      // loop aborted mid-selection and no toast fired at all.
+      logger.error('AssignProgram: bulk assign failed:', err);
+      showToast(t('trainerClients.programAssignFailed', 'Could not assign the program. Try again.'), 'error');
     } finally {
       setAssigning(false);
     }

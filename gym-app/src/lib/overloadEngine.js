@@ -189,6 +189,47 @@ export const computeDeload = (currentWeight, currentReps) => {
 };
 
 /**
+ * Read a routine's prescribed reps into a { min, max } window.
+ *
+ * `routine_exercises.target_reps` is TEXT and holds whatever the author wrote:
+ * a number (12), a range ('8-12', '8–12', '8 to 12'), or something that is not
+ * a rep count at all ('10min', '30s', 'AMRAP', 'Max') — cardio finishers and
+ * timed holds go in the same column. Only the first two are a target; the rest
+ * return null so the caller falls back to the goal range instead of inventing
+ * a prescription out of "10min".
+ *
+ * @param {number|string|null|undefined} raw
+ * @returns {{min: number, max: number}|null}
+ */
+export const parseRepTarget = (raw) => {
+  if (raw === null || raw === undefined) return null;
+
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) && raw > 0 ? { min: raw, max: raw } : null;
+  }
+  if (typeof raw !== 'string') return null;
+
+  const s = raw.trim();
+  if (!s) return null;
+  // A unit right after the number means it is time or distance, not reps.
+  if (/^\d+\s*(min|m|s|sec|hr|h|km|mi)\b/i.test(s)) return null;
+
+  // 8-12 / 8–12 / 8 to 12  (hyphen, en/em dash, or the word)
+  const range = s.match(/^(\d+)\s*(?:[-–—]|to)\s*(\d+)/i);
+  if (range) {
+    const a = parseInt(range[1], 10);
+    const b = parseInt(range[2], 10);
+    if (!(a > 0) || !(b > 0)) return null;
+    return { min: Math.min(a, b), max: Math.max(a, b) };
+  }
+
+  const single = s.match(/^(\d+)/);
+  if (!single) return null;   // 'AMRAP', 'Max', 'Failure' — no number to honour
+  const n = parseInt(single[1], 10);
+  return n > 0 ? { min: n, max: n } : null;
+};
+
+/**
  * Compute intra-session suggestion for the NEXT set based on completed sets
  * within the current workout. If the user hit the top of the rep range on the
  * last completed set, suggest bumping weight for the next set.
@@ -216,12 +257,22 @@ export const computeIntraSessionSuggestion = (completedSetsThisSession, onboardi
   const compound = movementPattern ? isCompoundMovement(movementPattern) : false;
   const incr = compound ? increments.compound : increments.isolation;
 
-  // If last set reps >= top of goal range at current weight → bump weight for next set
-  if (lastSet.reps >= config.max) {
+  // Same band rule as computeSuggestion, for the same reason: `targetReps` was
+  // accepted as a parameter here and then never read, so a 5×5 kept being told
+  // to bump only after 12 reps.
+  const band = parseRepTarget(targetReps);
+  const isRange = band !== null && band.max > band.min;
+  const singleInGoalRange = band !== null && !isRange
+    && band.min >= config.min && band.min <= config.max;
+  const bandMin = (band === null || singleInGoalRange) ? config.min : band.min;
+  const bandMax = (band === null || singleInGoalRange) ? config.max : band.max;
+
+  // If last set reps >= top of the rep band at current weight → bump weight for next set
+  if (lastSet.reps >= bandMax) {
     const bumpedWeight = roundToPlate(lastSet.weight + incr);
     return {
       suggestedWeight: bumpedWeight,
-      suggestedReps:   config.min,
+      suggestedReps:   bandMin,
       note: 'intra_session_bump',
       label: `+${incr} lbs — you maxed reps on last set`,
     };
@@ -270,21 +321,43 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
   //    whose goal is hypertrophy). Honour it as fixed linear progression on the
   //    prescribed reps instead of silently rewriting it into the goal range
   //    (the old code clamped it, hiding the prescription).
-  const hasTarget = Number.isFinite(targetReps) && targetReps > 0;
-  const targetInGoalRange = hasTarget && targetReps >= config.min && targetReps <= config.max;
+  //
+  // `targetReps` arrives as whatever routine_exercises.target_reps holds, and
+  // that column is TEXT — '8-12' is the normal value, written by the generator,
+  // the gym templates and every trainer-authored plan. `Number.isFinite('8-12')`
+  // is false, so until this parse existed EVERY routine's prescription was
+  // discarded and every member got the goal-range default: a coach's 5×5 block
+  // silently became 8–12 hypertrophy work.
+  const band = parseRepTarget(targetReps);
+  const hasTarget = band !== null;
+  const isRange = hasTarget && band.max > band.min;
+  // A single number inside the goal range keeps the original behaviour (progress
+  // across the goal range, display the routine's number). An explicit RANGE is
+  // itself a double-progression window and is more specific than the goal
+  // default, so it wins outright.
+  const singleInGoalRange = hasTarget && !isRange
+    && band.min >= config.min && band.min <= config.max;
 
   let bandMin, bandMax;
-  if (!hasTarget || targetInGoalRange) {
+  if (!hasTarget || singleInGoalRange) {
     bandMin = config.min;
     bandMax = config.max;
   } else {
-    bandMin = targetReps;   // fixed-target linear progression
-    bandMax = targetReps;
+    bandMin = band.min;   // prescribed window, or fixed-target linear progression
+    bandMax = band.max;
   }
 
-  // Rep number shown as "aim for X" on fresh/maintenance suggestions.
-  const repTarget = hasTarget ? targetReps : Math.round((config.min + config.max) / 2);
+  // Rep number shown as "aim for X" on fresh/maintenance suggestions. Bottom of
+  // the prescribed window: double progression starts there and works up.
+  const repTarget = hasTarget ? band.min : Math.round((config.min + config.max) / 2);
   const repRangeLabel = bandMin === bandMax ? `${bandMin}` : `${bandMin}–${bandMax}`;
+
+  // Beginners bump weight on reaching the MIDDLE of the band rather than the
+  // top (the clause further down). That has to stay keyed to the middle:
+  // repTarget is now the BOTTOM of a prescribed window, so reusing it there
+  // would make a beginner add weight the instant they hit 8 of an 8–12 —
+  // skipping the whole double-progression window the coach wrote.
+  const beginnerTarget = isRange ? Math.round((bandMin + bandMax) / 2) : repTarget;
 
   // No usable history → try body-weight-based estimate, else generic first_time
   const completedSets = (history ?? []).filter(s => s.weight > 0 && s.reps > 0);
@@ -387,7 +460,7 @@ export const computeSuggestion = (history, onboarding, targetReps, consecutiveSe
 
   // Hit top of the working band (or beginner who hit their target) → add weight,
   // reset reps to the bottom of the band (classic double progression).
-  if (decisionReps >= bandMax || (level === 'beginner' && decisionReps >= repTarget)) {
+  if (decisionReps >= bandMax || (level === 'beginner' && decisionReps >= beginnerTarget)) {
     // Reps to spare last time (low RPE) → take a double jump; else single incr.
     const effIncr = rpeBand === 'easy' ? incr * 2 : incr;
     const suggestedWeight = roundToPlate(best.weight + effIncr);

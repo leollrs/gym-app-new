@@ -211,7 +211,10 @@ export default function TrainerPlanSection() {
           dayLabel: dayFallbackLabel,
           replacesAdopted: adoptedProgram,
         });
-        if (!res.ok) return;
+        // Re-check after the await: the effect can be torn down mid-rebuild
+        // (route change, or sign-out and back in as someone else), and firing
+        // the announce + toast then belongs to nobody.
+        if (cancelled || !res.ok) return;
         announceProgramChange();
         showToast(t('trainerPlanViewer.autoUpdated', 'Your coach updated this plan — your program is up to date'), 'info');
       } catch (err) {

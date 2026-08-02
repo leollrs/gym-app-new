@@ -108,7 +108,7 @@ function SectionCard({ icon: Icon, title, sub, children }) {
   );
 }
 
-export default function OnboardingTargets({ initial, context = {}, onSave, onClose, t }) {
+export default function OnboardingTargets({ initial, context = {}, onSave, onClose, t, inline = false }) {
   const tt = t || ((k, d) => d || k);
   const { fitnessLevel = 'intermediate', onboardingWeightLbs, primaryGoal, liftBaselines = {} } = context;
 
@@ -139,45 +139,38 @@ export default function OnboardingTargets({ initial, context = {}, onSave, onClo
 
   const hasAnything = muscles.length > 0 || selections.bodyWeight || selections.bodyFat || selections.lifts.length > 0;
 
-  return (
-    // A CENTRED DIALOG, not a full-screen page. It used to be `inset: 0` with no
-    // safe-area inset, so on any notched iPhone the header — and its close button
-    // — sat underneath the status bar and could not be tapped. Being full-bleed
-    // and styled from the generic app tokens also made it read as a different
-    // product mid-flow; it now uses the onboarding's own palette and floats over
-    // the step you came from, so it's obvious you never left.
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 130,
-        background: 'rgba(11,15,18,0.45)', backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px))',
-      }}
-      role="dialog" aria-modal="true"
-    >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        background: OB.bg, borderRadius: 22, width: '100%', maxWidth: 460,
-        maxHeight: '100%', display: 'flex', flexDirection: 'column',
-        overflow: 'hidden', boxShadow: '0 24px 70px rgba(11,15,18,0.35)',
-      }}
-    >
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${OB.line}`, flexShrink: 0 }}>
-        <button type="button" onClick={onClose} aria-label={tt('common:close', 'Close')}
-          style={{ background: 'none', border: 'none', color: OB.sub, cursor: 'pointer', padding: 4 }}>
-          <X size={22} />
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: OB.ink }}>{tt('onboardingTargets.title', 'Your Targets')}</div>
-          <div style={{ fontSize: 12, color: OB.sub }}>{tt('onboardingTargets.subtitle', 'Pick what matters — we tailor your plan to it. Optional.')}</div>
+  // Two presentations, one component.
+  //
+  // `inline` is the onboarding's own step: no scrim, no card, no header — the
+  // step chrome above it already says where you are, and a dialog-inside-a-step
+  // reads as a detour rather than part of the flow. The dialog form is kept for
+  // the trigger card, which re-opens targets without leaving the goal grid.
+  //
+  // The dialog is a CENTRED one, not full-screen. It used to be `inset: 0` with
+  // no safe-area inset, so on any notched iPhone the header — and its close
+  // button — sat underneath the status bar and could not be tapped. Being
+  // full-bleed and styled from the generic app tokens also made it read as a
+  // different product mid-flow; it now uses the onboarding's own palette and
+  // floats over the step you came from, so it's obvious you never left.
+  const body = (
+    <>
+      {!inline && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${OB.line}`, flexShrink: 0 }}>
+          <button type="button" onClick={onClose} aria-label={tt('common:close', 'Close')}
+            style={{ background: 'none', border: 'none', color: OB.sub, cursor: 'pointer', padding: 4 }}>
+            <X size={22} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: OB.ink }}>{tt('onboardingTargets.title', 'Your Targets')}</div>
+            <div style={{ fontSize: 12, color: OB.sub }}>{tt('onboardingTargets.subtitle', 'Pick what matters — we tailor your plan to it. Optional.')}</div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Body */}
-      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: 16 }}>
+      {/* Body — inline defers scrolling to the step container that wraps it. */}
+      <div style={inline
+        ? { padding: 0 }
+        : { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: 16 }}>
         <SectionCard icon={Dumbbell} title={tt('onboardingTargets.emphasis.title', 'Muscle emphasis')} sub={tt('onboardingTargets.emphasis.sub', 'Extra volume where you want it')}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {MUSCLE_OPTIONS.map((m) => {
@@ -248,11 +241,16 @@ export default function OnboardingTargets({ initial, context = {}, onSave, onClo
       </div>
 
       {/* Footer */}
-      <div style={{ display: 'flex', gap: 10, padding: 16, borderTop: `1px solid ${OB.line}`, flexShrink: 0 }}>
+      <div style={{
+        display: 'flex', gap: 10, padding: inline ? '14px 0 0' : 16, flexShrink: 0,
+        borderTop: inline ? 'none' : `1px solid ${OB.line}`,
+      }}>
         <button type="button" onClick={onClose}
           style={{ flex: 1, padding: '13px', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer',
             background: OB.surface2, border: `1px solid ${OB.line}`, color: OB.sub }}>
-          {tt('onboardingTargets.skip', 'Skip')}
+          {inline
+            ? tt('onboardingTargets.skipStep', 'Skip for now')
+            : tt('onboardingTargets.skip', 'Skip')}
         </button>
         <button type="button" onClick={() => onSave(selections)} disabled={!hasAnything}
           style={{ flex: 2, padding: '13px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: hasAnything ? 'pointer' : 'default',
@@ -261,7 +259,34 @@ export default function OnboardingTargets({ initial, context = {}, onSave, onClo
           <Check size={17} /> {tt('onboardingTargets.save', 'Save targets')}
         </button>
       </div>
-    </div>
+    </>
+  );
+
+  if (inline) {
+    return <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column' }}>{body}</div>;
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 130,
+        background: 'rgba(11,15,18,0.45)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px))',
+      }}
+      role="dialog" aria-modal="true"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: OB.bg, borderRadius: 22, width: '100%', maxWidth: 460,
+          maxHeight: '100%', display: 'flex', flexDirection: 'column',
+          overflow: 'hidden', boxShadow: '0 24px 70px rgba(11,15,18,0.35)',
+        }}
+      >
+        {body}
+      </div>
     </div>
   );
 }

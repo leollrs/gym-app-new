@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Capacitor } from '@capacitor/core';
 import { isAvailable as healthAvailable, requestPermissions as healthRequest, readLatestWeight, readHeight } from '../lib/healthSync';
+import logger from '../lib/logger';
 import { generateProgram } from '../lib/workoutGenerator';
 import { generateProgramName, generateRoutineName } from '../lib/programNaming';
 import { buildOnboardingGoals, persistOnboardingGoals, mapGoalsForProgramGenerator, goalAnchoredName } from '../lib/onboardingGoals';
@@ -434,6 +435,20 @@ function getDefaultDays(freq, closedDays) {
   return result;
 }
 
+// What the member is shown while their plan is assembled. Each phase names a
+// real decision the generator makes from their answers, in the order it makes
+// them — see runGeneratePlanCore.
+const PLAN_BUILD_PHASES = ['goals', 'split', 'lifts', 'schedule'];
+const PLAN_BUILD_PHASE_MS = 550;
+// English fallbacks so the screen reads correctly even before the locale files
+// are picked up — same defaultValue convention used throughout this file.
+const PLAN_BUILD_FALLBACK = {
+  goals:    'Reading your goals',
+  split:    'Choosing your split',
+  lifts:    'Picking your lifts',
+  schedule: 'Laying out your week',
+};
+
 const CORE_STEPS = 11;   // steps 0-10: invite → social (phone inserted at step 9)
 const TOTAL_STEPS = 13;  // + step 11 (Program) + step 12 (Nutrition)
 
@@ -493,10 +508,15 @@ function formatPhoneInput(raw, countryCode) {
 }
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
-const Onboarding = () => {
+// Mounted by the `Onboarding` wrapper at the bottom of this file, which owns
+// the i18n readiness gate. Everything from here down may declare hooks freely:
+// this component only ever renders when translations are already loaded, so it
+// has no early return to trip over.
+const OnboardingFlow = () => {
   const { user, refreshProfile, markOnboarded, profile, signOut } = useAuth();
   const navigate = useNavigate();
-  const { t, i18n, ready: i18nReady } = useTranslation(['onboarding', 'common']);
+  // No `ready` here — the wrapper below already guarantees it.
+  const { t, i18n } = useTranslation(['onboarding', 'common']);
   const posthog = usePostHog();
 
   // Fetch gym hours + equipment for schedule/equipment steps
@@ -639,9 +659,6 @@ const Onboarding = () => {
     return () => { cancelled = true; };
   }, [user?.id, profile?.date_of_birth]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Guard: wait for i18n translations to load before rendering
-  if (!i18nReady) return null;
-
   // Skip Step 0 (invite code) if user already has gym attached — UNLESS a
   // signup-time claim is still pending (gym attached but invite unclaimed).
   const initialStep = (() => {
@@ -661,6 +678,12 @@ const Onboarding = () => {
   const targetsEnabled = useOnboardingTargetsEnabled();
   const [targetSelections, setTargetSelections] = useState(null);
   const [showTargets, setShowTargets] = useState(false);
+  // Step 3 has two faces: pick the goal, then name the targets. Targets used to
+  // be a dashed card that only appeared AFTER a goal was tapped and opened a
+  // dialog — easy to miss entirely, and the single highest-signal thing the
+  // member tells us. It is now a page of its own, reached by continuing past
+  // the goal, without renumbering a single step.
+  const [goalPhase, setGoalPhase] = useState('pick');
   // Age is derived from profiles.date_of_birth (mandatory at signup) — when
   // present the age input is locked to the computed value.
   const [ageFromDob, setAgeFromDob] = useState(false);
@@ -841,6 +864,7 @@ const Onboarding = () => {
 
   // Plan + meal plan state
   const [showGeneratePlan, setShowGeneratePlan] = useState(false);
+  const [buildPhase, setBuildPhase] = useState(0);
   const [generateError, setGenerateError] = useState('');
   // Variant-A routines (the default rotation). The preview also shows
   // variant B by toggling `previewWeekIdx` — both arrays are stored on the
@@ -884,6 +908,9 @@ const Onboarding = () => {
   // Each ref holds { key, promise, result, error } — key is a JSON
   // signature of the inputs. When inputs change we invalidate + restart.
   const planCacheRef = useRef({ key: null, promise: null, result: null, error: null });
+  // Latched once the member declines a plan, so the background preload cannot
+  // quietly build them another one if they step back to edit an answer.
+  const planDeclinedRef = useRef(false);
   const mealPlanCacheRef = useRef({ key: null, promise: null, result: null, error: null });
 
   // Snapshot builders — capture current inputs at call time. Used for both
@@ -939,6 +966,10 @@ const Onboarding = () => {
   useEffect(() => {
     // Gate: user must be past the Schedule step AND not past the plan preview
     if (step < 6 || step > 11 || onboardingDone) return;
+    // …and must not have already said no. Editing an earlier answer changes the
+    // input key, which is exactly what would otherwise re-run the generator and
+    // re-insert the program they just declined.
+    if (planDeclinedRef.current) return;
     // Gate: required inputs present
     if (!data.fitness_level || !data.primary_goal || !data.training_days_per_week) return;
     if (!(data.available_equipment?.length > 0)) return;
@@ -1011,32 +1042,78 @@ const Onboarding = () => {
     data.initial_weight_lbs, dietaryRestrictions, foodAllergies, dislikedIngredients,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── AUTO-APPLY plan preview when user reaches step 10 and cache is ready
-  // Skip the "Generate" button entirely — the work is already done.
-  useEffect(() => {
-    if (step !== 10 || showGeneratePlan) return;
-    if (planCacheRef.current.result) {
-      // Instant path: apply and show 'done' immediately
-      const r = planCacheRef.current.result;
-      setGeneratedRoutines(r.routinesA);
-      setGeneratedRoutinesB(r.routinesB);
-      setPreviewRoutineIdx(0);
-      setPreviewWeekIdx(0);
-      // The other two paths to 'done' call this; this one didn't. Result: on the
-      // COMMON path (plan pre-warmed while the member answered the earlier
-      // steps) the name field rendered empty with a generic placeholder, so
-      // there was nothing to just approve — and programId stayed null, so
-      // persistProgramName() no-op'd and a typed name was silently dropped too.
-      applyGeneratedMeta(r);
-      setShowGeneratePlan('done');
-    } else if (planCacheRef.current.promise) {
-      // Pending path: await in handler (shows subtle shimmer for max ~2s)
-      handleGeneratePlan();
-    }
-    // else: no preload happened → leave the manual "Generate" button
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The plan preview is NOT auto-applied on arrival any more.
+  //
+  // This used to flip straight to 'done' at step 10 whenever the preload had
+  // finished — the fastest possible path, and the wrong one: the plan simply
+  // appeared, fully formed, before the member had said they wanted one. It read
+  // like stock content that was always going to be there, which is the opposite
+  // of the thing being sold. So step 11 asks first, and saying yes runs a build
+  // sequence (see handleGeneratePlan). The preload still does the real work in
+  // the background; what changed is that the member sees it happen.
 
   const set = (field, value) => setData(d => ({ ...d, [field]: value }));
+
+  // ── ONE NUMBER, ONE PLACE ────────────────────────────────────
+  // Targets and the earlier steps ask for the same "current" values: body
+  // weight (also asked at Body Stats) and the four key lifts (also asked at
+  // Fitness Level). The member should only ever type the number they are aiming
+  // FOR. Two rules keep that true in both directions:
+  //
+  //   • Opening targets, the freshest known current wins over whatever was
+  //     stored last time — otherwise editing your weight on Body Stats and then
+  //     coming back showed the stale figure with no hint it was stale.
+  //   • Saving targets writes the current body weight back into Body Stats, so
+  //     the later step arrives pre-filled instead of asking again.
+  const targetsContext = {
+    fitnessLevel: data.fitness_level || 'intermediate',
+    onboardingWeightLbs: data.initial_weight_lbs ? parseFloat(data.initial_weight_lbs) : undefined,
+    primaryGoal: data.primary_goal,
+    liftBaselines: data.known_maxes || {},
+  };
+
+  const targetsInitial = useMemo(() => {
+    if (!targetSelections) return null;
+    const maxes = data.known_maxes || {};
+    return {
+      ...targetSelections,
+      bodyWeight: targetSelections.bodyWeight
+        ? { ...targetSelections.bodyWeight, current: data.initial_weight_lbs || targetSelections.bodyWeight.current }
+        : targetSelections.bodyWeight,
+      lifts: (targetSelections.lifts || []).map(l => (
+        maxes[l.exerciseId] ? { ...l, current: String(maxes[l.exerciseId]) } : l
+      )),
+    };
+  }, [targetSelections, data.initial_weight_lbs, data.known_maxes]);
+
+  const commitTargets = (sel) => {
+    setTargetSelections(sel);
+    // Feed the shared numbers back so no later step re-asks for them.
+    setData(d => {
+      const next = { ...d };
+      const bw = sel.bodyWeight?.current;
+      if (bw && String(bw).trim()) next.initial_weight_lbs = String(bw).trim();
+      const maxes = { ...d.known_maxes };
+      let maxesChanged = false;
+      for (const l of sel.lifts || []) {
+        if (l.current && String(l.current).trim() && maxes[l.exerciseId] !== String(l.current).trim()) {
+          maxes[l.exerciseId] = String(l.current).trim();
+          maxesChanged = true;
+        }
+      }
+      if (maxesChanged) next.known_maxes = maxes;
+      return next;
+    });
+    try {
+      posthog?.capture('onboarding_targets_set', {
+        priority_muscle_count: sel.priorityMuscles?.length || 0,
+        has_body_weight: !!sel.bodyWeight,
+        has_body_fat: !!sel.bodyFat,
+        lift_count: sel.lifts?.length || 0,
+        goal_count: (sel.bodyWeight ? 1 : 0) + (sel.bodyFat ? 1 : 0) + (sel.lifts?.length || 0),
+      });
+    } catch { /* analytics best-effort */ }
+  };
   const setMax = (exerciseId, value) =>
     setData(d => ({ ...d, known_maxes: { ...d.known_maxes, [exerciseId]: value } }));
 
@@ -1822,33 +1899,41 @@ const Onboarding = () => {
   };
 
   // Consumer: applies UI state from the (possibly pre-warmed) cache.
+  //
+  // Runs a build sequence alongside the real work. The sequence is a FLOOR, not
+  // an added delay: the plan is usually already generated (the preload starts at
+  // step 6), so without it the member taps "Build my plan" and the finished
+  // program appears in the same frame — which reads as canned, not as theirs.
+  // Each caption names a decision the generator actually made from their
+  // answers, so the pause is honest about what it is showing.
   const handleGeneratePlan = async () => {
     setShowGeneratePlan('generating');
     setGenerateError('');
+    setBuildPhase(0);
+    const paced = (async () => {
+      for (let i = 1; i < PLAN_BUILD_PHASES.length; i += 1) {
+        await new Promise(r => setTimeout(r, PLAN_BUILD_PHASE_MS));
+        setBuildPhase(i);
+      }
+      await new Promise(r => setTimeout(r, PLAN_BUILD_PHASE_MS));
+    })();
     try {
       let promise = planCacheRef.current.promise;
-      if (planCacheRef.current.result) {
-        // Already resolved — instant!
-        const cached = planCacheRef.current.result;
-        setGeneratedRoutines(cached.routinesA);
-        setGeneratedRoutinesB(cached.routinesB);
-        setPreviewRoutineIdx(0);
-        setPreviewWeekIdx(0);
-        applyGeneratedMeta(cached);
-        setShowGeneratePlan('done');
-        return;
+      let result = planCacheRef.current.result;
+      if (!result) {
+        if (!promise) {
+          // No preload — fall back to fresh run
+          const snapshot = buildPlanSnapshot();
+          promise = runGeneratePlanCore(snapshot);
+          planCacheRef.current = { key: planInputKey(), promise, result: null, error: null };
+        }
+        result = await promise;
+        // Preload failures resolve null (see the preload .catch) — surface the
+        // stored error through the normal friendly-error path below.
+        if (!result) throw planCacheRef.current.error || new Error(t('common:somethingWentWrong'));
+        planCacheRef.current.result = result;
       }
-      if (!promise) {
-        // No preload — fall back to fresh run
-        const snapshot = buildPlanSnapshot();
-        promise = runGeneratePlanCore(snapshot);
-        planCacheRef.current = { key: planInputKey(), promise, result: null, error: null };
-      }
-      const result = await promise;
-      // Preload failures resolve null (see the preload .catch) — surface the
-      // stored error through the normal friendly-error path below.
-      if (!result) throw planCacheRef.current.error || new Error(t('common:somethingWentWrong'));
-      planCacheRef.current.result = result;
+      await paced;
       setGeneratedRoutines(result.routinesA);
       setGeneratedRoutinesB(result.routinesB);
       setPreviewRoutineIdx(0);
@@ -1862,44 +1947,82 @@ const Onboarding = () => {
     }
   };
 
-  const handleSkipGeneratePlan = () => {
-    setShowGeneratePlan(false);
-    setStep(12);
-  };
-
   const handlePlanDone = () => {
     setShowGeneratePlan(false);
     setStep(12);
   };
 
   // "I don't want a plan". The program is ALREADY in the database by the time
-  // the preview renders — runGeneratePlanCore inserts generated_programs and
-  // seeds workout_schedule before returning — so skipping has to undo that or
-  // the member starts with the very plan they just declined.
+  // either exit is reachable — the preload effect runs runGeneratePlanCore in
+  // the background from step 6, and that inserts generated_programs, creates
+  // the routines and seeds workout_schedule. So declining has to UNDO a real
+  // program, not just skip a screen.
   //
-  // Scoped to this member's own rows, and safe here specifically: they are mid-
-  // onboarding, so the only generated program and the only schedule that can
-  // exist are the ones we just made. The generated ROUTINES stay in their
-  // library — they cost nothing, nothing surfaces them on its own, and deleting
-  // content the member can see is the riskier half of this.
+  // This used to live only in the preview's "I don't want a plan". The OTHER
+  // exit — "Skip" on the pre-generate screen — just advanced the step, so a
+  // member who declined before ever pressing Generate walked into the app with
+  // the full plan they had just refused: hero, week strip, the lot. Both exits
+  // go through here now.
+  //
+  // The generated ROUTINES go too. The old note said nothing surfaces them on
+  // its own; that is not true — /record lists every routine the member owns, so
+  // declining left eight `Auto: …` routines sitting in their library. They were
+  // created seconds ago and have never been trained, so there is no history to
+  // protect. They are taken from the program's own routine_ids rather than by
+  // name, so nothing the member made themselves can be caught by it.
   //
   // Onward to the meal-plan step either way: declining a workout plan says
   // nothing about wanting a meal plan. Skip both and they start with neither.
+  const discardGeneratedPlan = async () => {
+    // A preload may still be on the wire. Deleting first and letting the insert
+    // land after would leave exactly the program being declined.
+    try { await planCacheRef.current.promise; } catch { /* the preload swallows its own */ }
+
+    const ids = [...new Set([programId, planCacheRef.current.result?.programId].filter(Boolean))];
+
+    // Read the routines the program owns before the row goes.
+    let progRows = null;
+    {
+      const q = supabase.from('generated_programs').select('id, schedule_map').eq('profile_id', user.id);
+      const { data, error } = ids.length ? await q.in('id', ids) : await q;
+      if (error) logger.error('Onboarding: could not read the plan being declined:', error);
+      progRows = data || [];
+    }
+
+    const { error: schedErr } = await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
+    if (schedErr) logger.error('Onboarding: declining the plan left the week behind:', schedErr);
+
+    const targetIds = progRows.map(p => p.id).filter(Boolean);
+    if (targetIds.length) {
+      const { error: progErr } = await supabase.from('generated_programs').delete().in('id', targetIds);
+      if (progErr) logger.error('Onboarding: declining the plan left the program behind:', progErr);
+    }
+
+    const routineIds = [...new Set(progRows.flatMap(p => p.schedule_map?.routine_ids || []))].filter(Boolean);
+    if (routineIds.length) {
+      const { error: rErr } = await supabase.from('routines').delete().in('id', routineIds);
+      if (rErr) logger.error('Onboarding: declining the plan left its routines behind:', rErr);
+    }
+
+    // Nothing may re-apply or re-preload this plan afterwards.
+    planCacheRef.current = { key: null, promise: null, result: null, error: null };
+    planDeclinedRef.current = true;
+    setProgramId(null);
+    setGeneratedRoutines([]);
+    setGeneratedRoutinesB([]);
+  };
+
   const handleSkipPlan = async () => {
     setSkippingPlan(true);
-    try {
-      const delProg = supabase.from('generated_programs').delete().eq('profile_id', user.id);
-      await (programId ? delProg.eq('id', programId) : delProg);
-      await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
-    } catch (e) {
-      // Non-fatal: never trap someone in onboarding over cleanup.
-      console.warn('skip plan cleanup failed (non-fatal)', e);
-    }
+    await discardGeneratedPlan();
     posthog?.capture('onboarding_plan_skipped');
     setSkippingPlan(false);
     setShowGeneratePlan(false);
     setStep(12);
   };
+
+  // The pre-generate "Skip" — same act, same undo.
+  const handleSkipGeneratePlan = handleSkipPlan;
 
   // ── MEAL PLAN FLOW ───────────────────────────────────────────
   const DIETARY_OPTIONS = [
@@ -2196,8 +2319,29 @@ const Onboarding = () => {
   const isPhoneStep = step === 9;
   const isPlanStep = step === 11;
   const isMealStep = step === 12;
+  // Step 3's second face. Like the consent and phone steps, it carries its own
+  // Skip / Save row, so it opts out of the core nav.
+  const isTargetsPhase = step === 3 && goalPhase === 'targets' && targetsEnabled;
   // Phone step (9) renders its own button row (with Skip), so exclude from core nav.
-  const showCoreNav = step > 0 && !isConsentStep && !isPhoneStep && step < CORE_STEPS;
+  const showCoreNav = step > 0 && !isConsentStep && !isPhoneStep && !isTargetsPhase && step < CORE_STEPS;
+
+  // Continue / Back for the core nav, aware of step 3's two faces.
+  const goNext = () => {
+    if (step === 3 && goalPhase === 'pick' && targetsEnabled && data.primary_goal) {
+      setGoalPhase('targets');
+      try { posthog?.capture('onboarding_targets_viewed'); } catch { /* analytics best-effort */ }
+      return;
+    }
+    setGoalPhase('pick');
+    setStep(s => s + 1);
+  };
+  const goBack = () => {
+    if (isTargetsPhase) { setGoalPhase('pick'); return; }
+    setGoalPhase('pick');
+    setStep(s => s - 1);
+  };
+  // Leaving targets in either direction ends the phase.
+  const leaveTargets = () => { setGoalPhase('pick'); setStep(4); };
 
   return (
     <main
@@ -2604,7 +2748,7 @@ const Onboarding = () => {
         {/* ══════════════════════════════════════════════════════
             STEP 3 · GOAL (2×2 + 1 full-width)
             ══════════════════════════════════════════════════════ */}
-        {step === 3 && (
+        {step === 3 && goalPhase === 'pick' && (
           <div className="animate-fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {GOALS.map((g, i) => {
               const Icon = g.icon;
@@ -2665,17 +2809,24 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* Onboarding v2 "Your Targets" trigger — flag-gated, shows once a goal
-            is picked. Opens the skippable Targets overlay. */}
-        {step === 3 && targetsEnabled && !!data.primary_goal && (
+        {/* Onboarding v2 "Your Targets" trigger — flag-gated. Visible from the
+            moment the goal step renders, not gated behind picking a goal first:
+            a member who never taps a goal card never saw this existed. Continue
+            leads here too (goNext), so it is now both discoverable and
+            unavoidable-by-accident; the card stays as the way back in once
+            targets are set. */}
+        {step === 3 && goalPhase === 'pick' && targetsEnabled && (
           <button
             type="button"
-            onClick={() => { setShowTargets(true); try { posthog?.capture('onboarding_targets_viewed'); } catch {} }}
+            disabled={!data.primary_goal}
+            onClick={() => { setGoalPhase('targets'); try { posthog?.capture('onboarding_targets_viewed'); } catch { /* analytics best-effort */ } }}
             style={{
               marginTop: 12, width: '100%', padding: '14px 16px', borderRadius: 16,
               background: targetSelections ? 'rgba(46,196,196,0.10)' : OB.surface,
               border: `1.5px dashed ${targetSelections ? OB.teal : OB.line}`,
-              display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left',
+              display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
+              cursor: data.primary_goal ? 'pointer' : 'default',
+              opacity: data.primary_goal ? 1 : 0.5,
             }}
           >
             <div style={{
@@ -2692,10 +2843,27 @@ const Onboarding = () => {
                   : t('onboardingTargets.trigger', 'Set specific targets')}
               </div>
               <div style={{ fontSize: 12, color: OB.sub, marginTop: 1 }}>
-                {t('onboardingTargets.triggerSub', 'Optional — tailor your plan to a weight, lift or muscle')}
+                {data.primary_goal
+                  ? t('onboardingTargets.triggerSub', 'Optional — tailor your plan to a weight, lift or muscle')
+                  : t('onboardingTargets.triggerLocked', 'Pick a goal first')}
               </div>
             </div>
           </button>
+        )}
+
+        {/* STEP 3b · YOUR TARGETS — the goal step's second face. */}
+        {isTargetsPhase && (
+          <OnboardingTargets
+            inline
+            t={t}
+            initial={targetsInitial}
+            context={targetsContext}
+            onClose={() => {
+              if (!targetSelections) { try { posthog?.capture('onboarding_targets_skipped'); } catch { /* analytics best-effort */ } }
+              leaveTargets();
+            }}
+            onSave={(sel) => { commitTargets(sel); leaveTargets(); }}
+          />
         )}
 
         {/* ══════════════════════════════════════════════════════
@@ -3933,10 +4101,12 @@ const Onboarding = () => {
               <button
                 type="button"
                 onClick={handleSkipGeneratePlan}
+                disabled={skippingPlan}
                 style={{
                   background: 'transparent', border: 'none', cursor: 'pointer',
                   fontSize: 13, color: OB.sub, padding: 10,
                   fontFamily: OB_FONT.body, fontWeight: 600,
+                  opacity: skippingPlan ? 0.5 : 1,
                 }}
               >{t('generatePlan.skip')}</button>
             </div>
@@ -3946,14 +4116,39 @@ const Onboarding = () => {
         {step === 11 && showGeneratePlan === 'generating' && (
           <div role="status" aria-live="polite" className="animate-fade-in" style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: 14, padding: '56px 0',
+            gap: 18, padding: '48px 0',
           }}>
             <Loader2 size={28} color={OB.tealDeep} className="animate-spin"/>
-            <p style={{ fontFamily: OB_FONT.display, fontWeight: 700, fontSize: 13, color: OB.sub, letterSpacing: 0.2 }}>
-              {planCacheRef.current.promise
-                ? t('generatePlan.preparing', 'Preparing your plan…')
-                : t('generatePlan.generating')}
-            </p>
+            <div style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {PLAN_BUILD_PHASES.map((phase, i) => {
+                const done = i < buildPhase;
+                const active = i === buildPhase;
+                return (
+                  <div key={phase} style={{
+                    display: 'flex', alignItems: 'center', gap: 9,
+                    opacity: done || active ? 1 : 0.32,
+                    transition: 'opacity 260ms ease',
+                  }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: 999, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: done ? OB.teal : 'transparent',
+                      border: done ? 'none' : `1.5px solid ${active ? OB.teal : OB.lineStrong}`,
+                      transition: 'background 260ms ease, border-color 260ms ease',
+                    }}>
+                      {done && <Check size={10} color="#fff" strokeWidth={3.5} />}
+                    </div>
+                    <span style={{
+                      fontFamily: OB_FONT.display, fontWeight: active ? 800 : 700,
+                      fontSize: 13, letterSpacing: 0.1,
+                      color: active ? OB.ink : OB.sub,
+                    }}>
+                      {t(`generatePlan.building.${phase}`, PLAN_BUILD_FALLBACK[phase])}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -4669,7 +4864,7 @@ const Onboarding = () => {
         {showCoreNav && (
           <OBBottomBar>
             {canGoBack && (
-              <OBButton tone="ghost" icon={<ChevronLeft size={16}/>} onClick={() => setStep(s => s - 1)}>
+              <OBButton tone="ghost" icon={<ChevronLeft size={16}/>} onClick={goBack}>
                 {t('common:back')}
               </OBButton>
             )}
@@ -4678,7 +4873,7 @@ const Onboarding = () => {
                 full
                 tone="teal"
                 icon={<ArrowRight size={16}/>}
-                onClick={() => setStep(s => s + 1)}
+                onClick={goNext}
                 disabled={!canAdvance()}
               >
                 {t('common:continue')}
@@ -4716,35 +4911,18 @@ const Onboarding = () => {
 
       </div>{/* /container */}
 
-      {/* Onboarding v2 "Your Targets" overlay (top-level so its fixed position
-          is viewport-relative). Flag-gated at the trigger. */}
+      {/* "Your Targets" as an overlay — the way BACK in from later steps (the
+          plan preview's edit affordance). The step-3 phase renders it inline. */}
       {showTargets && (
         <OnboardingTargets
           t={t}
-          initial={targetSelections}
-          context={{
-            fitnessLevel: data.fitness_level || 'intermediate',
-            onboardingWeightLbs: data.initial_weight_lbs ? parseFloat(data.initial_weight_lbs) : undefined,
-            primaryGoal: data.primary_goal,
-            liftBaselines: data.known_maxes || {},
-          }}
+          initial={targetsInitial}
+          context={targetsContext}
           onClose={() => {
             setShowTargets(false);
-            if (!targetSelections) { try { posthog?.capture('onboarding_targets_skipped'); } catch {} }
+            if (!targetSelections) { try { posthog?.capture('onboarding_targets_skipped'); } catch { /* analytics best-effort */ } }
           }}
-          onSave={(sel) => {
-            setTargetSelections(sel);
-            setShowTargets(false);
-            try {
-              posthog?.capture('onboarding_targets_set', {
-                priority_muscle_count: sel.priorityMuscles?.length || 0,
-                has_body_weight: !!sel.bodyWeight,
-                has_body_fat: !!sel.bodyFat,
-                lift_count: sel.lifts?.length || 0,
-                goal_count: (sel.bodyWeight ? 1 : 0) + (sel.bodyFat ? 1 : 0) + (sel.lifts?.length || 0),
-              });
-            } catch { /* analytics best-effort */ }
-          }}
+          onSave={(sel) => { commitTargets(sel); setShowTargets(false); }}
         />
       )}
 
@@ -4787,6 +4965,30 @@ const Onboarding = () => {
       )}
     </main>
   );
+};
+
+// ── i18n GATE ──────────────────────────────────────────────
+// The readiness check lives out here, in a component whose entire hook list is
+// one useTranslation, so returning early from it is safe.
+//
+// It used to sit INSIDE the flow, above roughly ninety hook declarations. That
+// is a hard crash waiting for its moment: the first time `ready` goes false →
+// true on an already-mounted component, React sees a render with 1 hook
+// followed by a render with ~90 and throws "Rendered more hooks than during the
+// previous render", which in onboarding means a member who cannot create an
+// account at all. It never fired because `onboarding` and `common` are bundled
+// into i18n.init()'s `resources`, so `ready` is true on the very first render —
+// but that is a fact about how the bundles happen to load today, not a property
+// anyone was maintaining. A lazily-fetched locale, a slower device, or a
+// language switch mid-flow would each have been enough.
+//
+// Gating by MOUNT rather than by early return also means none of the flow's
+// effects — the plan preload, the draft restore, the analytics step tracker —
+// can run against half-loaded translations.
+const Onboarding = () => {
+  const { ready } = useTranslation(['onboarding', 'common']);
+  if (!ready) return null;
+  return <OnboardingFlow />;
 };
 
 export default Onboarding;

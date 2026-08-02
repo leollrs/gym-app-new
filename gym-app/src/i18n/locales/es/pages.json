@@ -13128,7 +13128,19 @@
         "activate": "Activar",
         "deactivate": "Desactivar",
         "edit": "Editar",
-        "delete": "Eliminar"
+        "delete": "Eliminar",
+        "difficulty": {
+          "beginner": "Principiante",
+          "intermediate": "Intermedio",
+          "advanced": "Avanzado"
+        },
+        "achievementType": {
+          "streak": "Racha",
+          "volume": "Volumen",
+          "pr": "PR",
+          "workouts": "Entrenamientos",
+          "checkins": "Check-ins"
+        }
       },
       "settings": {
         "gymInfo": "Info del Gimnasio",
@@ -13794,7 +13806,9 @@
       "bulkDeactivateTitle": "Desactivar gimnasios",
       "bulkDeactivateWarn": "Esto corta de inmediato el acceso a la app para todos los miembros de {{count}} gimnasios. Es reversible (Activar los restaura), pero los miembros son expulsados al instante.",
       "bulkDeactivateConfirmLabel": "Escribe {{count}} para confirmar",
-      "bulkDeactivateConfirm": "Desactivar"
+      "bulkDeactivateConfirm": "Desactivar",
+      "addingToPrefix": "Añadiendo a",
+      "createMemberFailed": "No se pudo crear el miembro"
     },
     "analytics": {
       "title": "Analiticas",

@@ -3645,7 +3645,21 @@ export default function TrainerClientNotes() {
           copyId={editing.copyId}
           program={editing.program}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); setProgReload((k) => k + 1); pushClientProgram(clientId).catch(() => {}); }}
+          onSaved={async () => {
+            setEditing(null);
+            setProgReload((k) => k + 1);
+            // `.catch(() => {})` here is what made a saved edit a lie. This is
+            // the ONLY call that carries the edit into the member's ACTIVE
+            // materialized program — without it the copy changes, the editor
+            // closes on "Saved", and the member keeps training the old version
+            // with nothing to indicate it. The trainer needs to know to retry.
+            try {
+              await pushClientProgram(clientId);
+            } catch (err) {
+              logger.error('TrainerClientDetail: pushing the edit to the client failed:', err);
+              showToast(t('trainerClientDetail.pushFailed', 'Saved, but your client is still on the old version. Open it and save again.'), 'error');
+            }
+          }}
           t={t}
         />
       )}

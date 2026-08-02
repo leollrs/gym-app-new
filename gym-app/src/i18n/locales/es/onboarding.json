@@ -282,7 +282,13 @@
     "programNameLabel": "Nombre del programa",
     "programNamePlaceholder": "Nombra tu programa",
     "resetName": "Restablecer",
-    "noPlan": "No quiero un plan"
+    "noPlan": "No quiero un plan",
+    "building": {
+      "goals": "Leyendo tus metas",
+      "split": "Eligiendo tu split",
+      "lifts": "Escogiendo tus ejercicios",
+      "schedule": "Armando tu semana"
+    }
   },
   "onboardingTargets": {
     "title": "Tus Metas",
@@ -331,7 +337,9 @@
     "caption": {
       "extra": "énfasis en {{muscles}}",
       "toward": "hacia {{n}} lb"
-    }
+    },
+    "triggerLocked": "Elige una meta primero",
+    "skipStep": "Saltar por ahora"
   },
   "mealPlan": {
     "askTitle": "¿Quieres un plan de comidas semanal?",

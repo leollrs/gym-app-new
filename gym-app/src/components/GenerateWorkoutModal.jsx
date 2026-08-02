@@ -506,6 +506,12 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
     setSaving(true);
     setError('');
     setGymHoursWarnings([]);
+    // Hoisted so the catch can undo a half-written program. Everything this
+    // function creates is created here first and committed at the end, so a
+    // failure anywhere leaves the member exactly where they started.
+    const savedRoutineAIds = [];
+    const savedRoutineBIds = [];
+    let programCommitted = false;
     try {
       // Fetch gym hours to know which days are closed
       const { data: gymHours } = await supabase
@@ -529,19 +535,24 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
         ? recentSessions.reduce((s, x) => s + x.duration_seconds, 0) / recentSessions.length
         : 3600; // default 60 min if no history
 
-      // Delete existing auto-generated routines (only those matching the specific pattern used by the generator)
-      const { data: existing } = await supabase
-        .from('routines')
-        .select('id')
-        .eq('created_by', user.id)
-        .like('name', 'Auto: Week%');
-
-      if (existing?.length) {
-        await supabase.from('routines').delete().in('id', existing.map(r => r.id));
-      }
-
-      // Delete existing generated_programs row
-      await supabase.from('generated_programs').delete().eq('profile_id', user.id);
+      // NOTHING IS DESTROYED HERE. This used to open with two deletes — every
+      // `Auto: Week%` routine, then `generated_programs.delete().eq(profile_id)`,
+      // which is EVERY program the member ever had: the one they're replacing,
+      // an adopted coach plan, and the `schedule_map.superseded_programs` chain
+      // that "Back to my program" restores from. Both ran before a single new
+      // routine existed, and the insert loop below throws on the first failed
+      // insert — so a network blip five rows in left the member with no
+      // program, no routines, no schedule and no history to fall back to.
+      //
+      // Build first, retire last (see the end of this function). Every other
+      // creation path in the app EXPIRES the outgoing program; only this one
+      // deleted it.
+      const { data: priorPrograms, error: priorErr } = await supabase
+        .from('generated_programs')
+        .select('id, schedule_map')
+        .eq('profile_id', user.id)
+        .gt('expires_at', new Date().toISOString());
+      if (priorErr) throw priorErr;
 
       // Compute preferred day mapping for workout_schedule
       // DB day_of_week: Sunday=0, Monday=1, ..., Saturday=6
@@ -605,13 +616,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
         setGymHoursWarnings(warnings);
       }
 
-      // Delete existing workout_schedule for this user
-      await supabase.from('workout_schedule').delete().eq('profile_id', user.id).then(() => {}).catch(() => {});
-
       // Save all routines (A + B sets)
       const allRoutines = [...result.routinesA, ...result.routinesB];
-      const savedRoutineAIds = [];
-      const savedRoutineBIds = [];
       // Creative names ("Auto: Apex Build") to match the regenerate path instead
       // of the generator's raw "Auto: Upper A" labels. Cardio routines (no
       // slotsKey) keep their themed names. Variant B's name index is bumped past
@@ -655,15 +661,25 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
         }
       }
 
+      // Every routine landed. NOW the old week can go: wiping it earlier meant
+      // a failed insert above left the member with an empty week strip.
+      const { error: wipeErr } = await supabase
+        .from('workout_schedule').delete().eq('profile_id', user.id);
+      if (wipeErr) throw wipeErr;
+
       // Save workout_schedule entries for Week A routines
       for (let i = 0; i < savedRoutineAIds.length && i < scheduleDays.length; i++) {
-        await supabase.from('workout_schedule').upsert({
+        const { error: schedErr } = await supabase.from('workout_schedule').upsert({
           profile_id: user.id,
           gym_id:     profile.gym_id,
           day_of_week: scheduleDays[i],
           routine_id:  savedRoutineAIds[i],
           updated_at:  new Date().toISOString(),
-        }, { onConflict: 'profile_id,day_of_week' }).then(() => {}).catch(() => {});
+        }, { onConflict: 'profile_id,day_of_week' });
+        // `.then(()=>{}).catch(()=>{})` here discarded the error twice over: a
+        // Supabase builder RESOLVES with { error } rather than rejecting, so the
+        // catch was unreachable and the empty then swallowed what did arrive.
+        if (schedErr) throw schedErr;
       }
 
       // Save generated_programs row — use form.program_weeks for expiry
@@ -684,7 +700,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
         start_dow:     new Date().getDay(),
       };
 
-      await supabase.from('generated_programs').insert({
+      const { data: newProgram, error: progErr } = await supabase.from('generated_programs').insert({
         profile_id:    user.id,
         gym_id:        profile.gym_id,
         program_start: programStart,
@@ -695,7 +711,51 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
         cardio_days:   result.cardio,
         template_weeks: result.template_weeks,
         schedule_map:  scheduleMapPayload,
-      });
+      }).select('id').single();
+      // Unchecked before. The routines and the week were already written, so a
+      // rejected insert here produced a member with a full schedule and no
+      // program: the Workouts hero and the week strip disagreed and the only
+      // way out was to generate again.
+      if (progErr) throw progErr;
+      programCommitted = true;
+
+      // ── Retire what this replaces ────────────────────────────────────────
+      // Expire, don't delete — every "program ended" path in this app expires,
+      // which is what keeps history, `superseded_programs` and the coach-plan
+      // release chain intact.
+      const retiring = (priorPrograms || []).filter(p => p.id !== newProgram?.id);
+      if (retiring.length) {
+        const { error: expErr } = await supabase
+          .from('generated_programs')
+          .update({ expires_at: new Date().toISOString() })
+          .in('id', retiring.map(p => p.id));
+        if (expErr) logger.error('GenerateWorkoutModal: could not retire the previous program:', expErr);
+      }
+
+      // Generating your own program ends any coach plan you were on, so the
+      // marker the Workouts hero reads has to go with it — otherwise the hero
+      // keeps showing the coach chip over a program the coach never wrote.
+      if (retiring.some(p => p.schedule_map?.trainer_plan_id)) {
+        const { error: markErr } = await supabase
+          .from('profiles').update({ active_trainer_plan_id: null }).eq('id', user.id);
+        if (markErr) logger.error('GenerateWorkoutModal: could not clear the coach marker:', markErr);
+      }
+
+      // Prune the retired programs' routines — but never one the member
+      // actually trained. workout_sessions.routine_id cascades, so deleting a
+      // trained routine takes the logged session with it. A failed lookup
+      // deletes nothing.
+      const staleIds = retiring.flatMap(p => p.schedule_map?.routine_ids || []).filter(Boolean);
+      if (staleIds.length) {
+        const { data: used, error: usedErr } = await supabase
+          .from('workout_sessions').select('routine_id').in('routine_id', staleIds);
+        const trained = new Set((used || []).map(x => x.routine_id));
+        const droppable = usedErr ? [] : staleIds.filter(id => !trained.has(id));
+        if (droppable.length) {
+          const { error: delErr } = await supabase.from('routines').delete().in('id', droppable);
+          if (delErr) logger.warn('GenerateWorkoutModal: stale routine cleanup failed:', delErr);
+        }
+      }
 
       // Persist the chosen day count + duration to onboarding so a later
       // "Regenerate" honors them (regenerate reads member_onboarding) instead of
@@ -734,6 +794,17 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
       // by useRoutines carry a PG/PostgREST code (server reject); code-less
       // errors are network-ish ("TypeError: Load failed").
       console.error('[generate workout] save failed:', err);
+      // Roll back the routines this run created. Without this an aborted
+      // generate leaves orphan `Auto:` routines behind on every retry — they
+      // belong to no program and no schedule, but they are still the member's
+      // rows and they accumulate.
+      if (!programCommitted) {
+        const orphans = [...savedRoutineAIds, ...savedRoutineBIds];
+        if (orphans.length) {
+          const { error: rbErr } = await supabase.from('routines').delete().in('id', orphans);
+          if (rbErr) logger.warn('GenerateWorkoutModal: rollback of new routines failed:', rbErr);
+        }
+      }
       const code = String(err?.code || '').trim();
       const isServerReject = /^[0-9A-Z]{5}$/.test(code) || /^PGRST/i.test(code);
       setError(isServerReject

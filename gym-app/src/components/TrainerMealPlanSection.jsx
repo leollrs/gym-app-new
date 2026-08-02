@@ -237,7 +237,9 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
       };
 
       const buildWeek = (srcDays) => Array.from({ length: 7 }, (_, i) => {
-        const src = srcDays[i % srcDays.length] || { meals: [] };
+        // Positional by DAY, so a blank authored day stays blank on that day.
+        // Only a plan authored with FEWER than 7 days cycles.
+        const src = (srcDays.length >= 7 ? srcDays[i] : srcDays[i % srcDays.length]) || { meals: [] };
         const used = new Set();
         const newMeals = (src.meals || []).map((m, mi) => {
           const full = m.id != null ? mealById.get(m.id) : null;
@@ -277,11 +279,19 @@ export default function TrainerMealPlanSection({ userId, groceryList = [], onAdd
       // keyed by (profile_id, week_start), so a 50-week plan becomes 50 rows on
       // 50 consecutive weeks starting from this one — it was writing a single
       // week and calling that "added".
+      // Start from the week the member is ACTUALLY on, not week 1. The card
+      // renders "Week 3 of 12" directly above this button; writing authored
+      // week 1 into the current calendar week restarted a mid-plan member.
+      const liveIdx = Math.max(0, planWeekKeys.indexOf(liveWeekKey));
       const base = new Date();
       base.setDate(base.getDate() - base.getDay());
-      const rows = planWeekKeys.map((wk, i) => {
-        const srcDays = (planWeeks[wk] || []).filter(d => (d.meals || []).length > 0);
-        if (!srcDays.length) return null;
+      const rows = planWeekKeys.slice(liveIdx).map((wk, i) => {
+        // Keep blank days in place. Filtering them out and then indexing the
+        // FILTERED array positionally shifted the whole week: a coach leaving
+        // Sunday empty put Monday's meals on Sunday. The preview doesn't
+        // filter either, so preview and write now agree.
+        const srcDays = planWeeks[wk] || [];
+        if (!srcDays.some(d => (d.meals || []).length > 0)) return null;
         const ws = new Date(base);
         ws.setDate(ws.getDate() + i * 7);
         return {

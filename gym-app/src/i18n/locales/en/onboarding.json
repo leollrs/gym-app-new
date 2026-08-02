@@ -282,7 +282,13 @@
     "programNameLabel": "Program name",
     "programNamePlaceholder": "Name your program",
     "resetName": "Reset",
-    "noPlan": "I don't want a plan"
+    "noPlan": "I don't want a plan",
+    "building": {
+      "goals": "Reading your goals",
+      "split": "Choosing your split",
+      "lifts": "Picking your lifts",
+      "schedule": "Laying out your week"
+    }
   },
   "onboardingTargets": {
     "title": "Your Targets",
@@ -331,7 +337,9 @@
     "caption": {
       "extra": "extra {{muscles}}",
       "toward": "toward {{n}} lb"
-    }
+    },
+    "triggerLocked": "Pick a goal first",
+    "skipStep": "Skip for now"
   },
   "mealPlan": {
     "askTitle": "Want a weekly meal plan?",

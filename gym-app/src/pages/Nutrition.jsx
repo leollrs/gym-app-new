@@ -19,6 +19,7 @@ import { usePostHog } from '@posthog/react';
 import { List as VirtualList } from 'react-window';
 import { Capacitor } from '@capacitor/core';
 import { supabase, ensureFreshSession, isSessionError } from '../lib/supabase';
+import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateMacros } from '../lib/macroCalculator';
 import { format, subDays } from 'date-fns';
@@ -3439,13 +3440,29 @@ function writePlanWeek({ userId, gymId, weekStart, days, targets, alsoLegacyKey 
   }
   // Server mirror → generated_meal_plans (correct columns + trainer-readable
   // RLS) so the plan survives reinstall / new device and the coach can see it.
+  //
+  // Retried once, then reported through `logger` rather than console.warn:
+  // console.warn is a no-op in production builds, so every failed mirror was
+  // invisible on both ends — the member kept planning against a localStorage
+  // copy that would not survive a reinstall, and nothing reached error_logs to
+  // say so. The retry is what actually matters on a phone: the common failure
+  // here is a few seconds of no signal, not a rejected row.
   if (userId && gymId) {
-    supabase.from('generated_meal_plans').upsert({
+    const row = {
       profile_id: userId, gym_id: gymId, week_start: weekStart,
       plan_data: planToPlanData(days || {}, savedAt),
       macro_targets: { calories: targets?.daily_calories || null, protein: targets?.daily_protein_g || null, carbs: targets?.daily_carbs_g || null, fat: targets?.daily_fat_g || null },
       is_active: true,
-    }, { onConflict: 'profile_id,week_start' }).then(({ error }) => { if (error) console.warn('[meal-plan sync]', error.message); });
+    };
+    const push = () => supabase.from('generated_meal_plans')
+      .upsert(row, { onConflict: 'profile_id,week_start' });
+    (async () => {
+      const { error } = await push();
+      if (!error) return;
+      await new Promise(r => setTimeout(r, 2500));
+      const { error: retryErr } = await push();
+      if (retryErr) logger.error('Nutrition: meal plan did not reach the server:', retryErr);
+    })();
   }
   return savedAt;
 }
@@ -8585,9 +8602,10 @@ export default function Nutrition({ embedded = false }) {
                   onClick={() => {
                     try {
                       const ws = getWeekStartDate();
-                      const key = `meal_plan_${user?.id || 'anon'}_${ws}`;
-                      let days = {};
-                      try { const raw = localStorage.getItem(key); if (raw) days = JSON.parse(raw).days || {}; } catch { /* ignore */ }
+                      // Read through the shared lane. Hand-rolling the key here
+                      // was already the same string, but the WRITE below was not
+                      // the same write — see the end of this handler.
+                      const days = { ...readPlanWeek(user?.id, ws) };
                       const start = new Date(ws + 'T12:00:00');
                       const weekDates = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return toLocalDateStr(d); });
                       // Fill the member's configured slots (incl. snacks), not just the core 3.
@@ -8601,15 +8619,18 @@ export default function Nutrition({ embedded = false }) {
                           if (!days[date][slot]) { days[date][slot] = colRecipes[qi]; qi++; }
                         }
                       }
-                      localStorage.setItem(key, JSON.stringify({ weekStart: ws, days }));
-                      // Mirror to the DB (same lane as WeeklyMealPlanner.savePlan) so
-                      // it's durable + cross-device, and ping My Plan to re-read if
-                      // it's already mounted — otherwise the add only shows on remount.
-                      if (user?.id) {
-                        supabase.from('meal_plans').upsert({
-                          profile_id: user.id, week_start: ws, plan_data: days, updated_at: new Date().toISOString(),
-                        }, { onConflict: 'profile_id,week_start' }).then(() => {}, () => {});
-                      }
+                      // ONE writer. This used to hand-roll the localStorage write
+                      // (dropping `savedAt`, which is how the server/local
+                      // freshness comparison decides who wins on next load) and
+                      // then mirror to `meal_plans` — a table the planner never
+                      // reads. Everything else in this file persists to
+                      // `generated_meal_plans` through writePlanWeek, in
+                      // planToPlanData shape. So the bundle appeared, then
+                      // vanished on the next hydrate, and the coach never saw it.
+                      writePlanWeek({
+                        userId: user?.id, gymId: profile?.gym_id, weekStart: ws, days, targets,
+                        alsoLegacyKey: true,   // ws is always the CURRENT week here
+                      });
                       window.dispatchEvent(new CustomEvent('tugympr:meal-plan-changed', { detail: { weekStart: ws } }));
                       showToast?.(t('nutrition.addedToWeek', "Added to this week's plan"), 'success');
                       setOpenCollection(null);

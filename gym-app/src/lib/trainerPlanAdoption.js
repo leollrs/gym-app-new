@@ -28,6 +28,17 @@ import { isSchemaMiss } from './schemaMiss';
 /** A materialized program is identifiable by this key in its schedule_map. */
 export const adoptedPlanId = (program) => program?.schedule_map?.trainer_plan_id || null;
 
+/**
+ * Stable content fingerprint for a plan's `weeks`. Only a real change to the
+ * training content should rebuild the member's program.
+ */
+export function weeksHash(weeks) {
+  const json = JSON.stringify(weeks ?? {});
+  let h = 5381;
+  for (let i = 0; i < json.length; i += 1) h = ((h << 5) + h + json.charCodeAt(i)) | 0;
+  return `w${json.length}:${(h >>> 0).toString(36)}`;
+}
+
 /** Mon-first week order — the steady-state (week 2+) day preference. */
 const PACKED_WEEK = [1, 2, 3, 4, 5, 6, 0];
 
@@ -132,18 +143,31 @@ export async function adoptTrainerPlan({
     : [];
 
   const N = idsA.length;
-  const start = new Date();
-  const startDow = start.getDay();
   const packedDays = PACKED_WEEK.slice(0, N);
 
-  // Week 1 runs from today; whatever no longer fits in THIS calendar week wraps
-  // into an extra final week. Without this, adopting on a Saturday puts most of
-  // week 1 on days the member already lived through.
-  const week1All = startToday
+  // START DATE. "Start Monday" means the program BEGINS next Monday — it used
+  // to still set program_start to today while filtering week 1 against today's
+  // weekday, which dropped the days already past. Adopting on a Saturday left
+  // week1_map EMPTY and Home rendered the whole first week as rest.
+  const start = new Date();
+  if (!startToday) {
+    const daysToMon = (8 - start.getDay()) % 7 || 7;   // next Monday, never today
+    start.setDate(start.getDate() + daysToMon);
+  }
+  // A rebuild keeps the ORIGINAL start: a coach's edit must not throw the
+  // member back to week 1 or push the end date out.
+  if (replacesAdopted?.program_start) start.setTime(new Date(replacesAdopted.program_start).getTime());
+  const startDow = start.getDay();
+
+  // Starting today, week 1 covers only the days LEFT in this calendar week and
+  // the rest wrap into a compensating final week. Starting Monday (or on a
+  // rebuild, where start is in the past) week 1 is whole — nothing to wrap.
+  const partialFirstWeek = startToday && !replacesAdopted;
+  const week1All = partialFirstWeek
     ? Array.from({ length: N }, (_, i) => (startDow + i) % 7)
     : packedDays;
-  const week1Dows = week1All.filter(d => d >= startDow);
-  const wrappedDows = startToday ? week1All.filter(d => d < startDow) : [];
+  const week1Dows = partialFirstWeek ? week1All.filter(d => d >= startDow) : [...week1All];
+  const wrappedDows = partialFirstWeek ? week1All.filter(d => d < startDow) : [];
   const needsExtraWeek = wrappedDows.length > 0;
 
   const planWeeks = Math.max(1, plan.duration_weeks || weekKeys.length || 1);
@@ -169,14 +193,27 @@ export async function adoptTrainerPlan({
     trainer_plan_id: plan.id,
     trainer_plan_coach: plan.coachName || null,
     trainer_plan_kind: plan.kind || 'trainer',
-    // The coach's plan version at the moment we materialized. An edit changes
-    // updated_at, which is how the member's app knows to rebuild.
-    trainer_plan_v: plan.updated_at || null,
+    // CONTENT hash, not updated_at. `updated_at` is written by the client on
+    // assignment changes too (confirmAssign, 0646's primary promotion), so
+    // keying on it rebuilt the member's whole program every time the coach
+    // merely re-assigned the plan.
+    trainer_plan_v: weeksHash(weeks),
   };
 
   // Expire whatever the member was on, and REMEMBER it so release can undo
   // this. Two active programs trip the dedupe in Workouts, which expires the
   // older one with no record — the member's own program would be unrecoverable.
+  // The previous training days ride in schedule_map, so this has to be read
+  // BEFORE the row is inserted — mutating scheduleMap afterwards changes
+  // nothing.
+  if (replacesAdopted) {
+    scheduleMap.superseded_training_days = replacesAdopted.schedule_map?.superseded_training_days ?? null;
+  } else {
+    const { data: prevProf } = await supabase
+      .from('profiles').select('preferred_training_days').eq('id', userId).maybeSingle();
+    scheduleMap.superseded_training_days = prevProf?.preferred_training_days ?? null;
+  }
+
   const nowIso = new Date().toISOString();
   if (replacesAdopted) {
     // REBUILD of an already-adopted plan (the coach edited it). Carry the
@@ -234,10 +271,15 @@ export async function adoptTrainerPlan({
       ...(replacesAdopted.schedule_map?.routine_ids_b || []),
     ])];
     if (oldIds.length) {
-      const { data: used } = await supabase
+      // FAIL CLOSED. The error was discarded, so a transient read failure gave
+      // `used = null` → empty `trained` → every old routine deleted, and
+      // workout_sessions.routine_id is ON DELETE SET NULL, so the member's
+      // completed sessions lost their routine link permanently.
+      const { data: used, error: usedErr } = await supabase
         .from('workout_sessions').select('routine_id').in('routine_id', oldIds);
       const trained = new Set((used || []).map(x => x.routine_id));
-      const drop = oldIds.filter(r => !trained.has(r));
+      const drop = usedErr ? [] : oldIds.filter(r => !trained.has(r));
+      if (usedErr) logger.error('trainerPlanAdoption: skipping cleanup, sessions read failed:', usedErr);
       if (drop.length) {
         await supabase.from('routine_exercises').delete().in('routine_id', drop);
         await supabase.from('workout_schedule').delete().in('routine_id', drop);
@@ -261,6 +303,16 @@ export async function adoptTrainerPlan({
     }, { onConflict: 'profile_id,day_of_week' });
     if (schErr) throw schErr;
   }
+
+  // ALIGN THE MEMBER'S TRAINING DAYS. `complete_workout` and the nightly streak
+  // cron protect a rest day only if it is absent from
+  // profiles.preferred_training_days — neither ever reads workout_schedule. A
+  // member whose onboarding said Mon/Wed/Fri, put on a Mon/Tue/Wed plan, had
+  // Friday counted as a missed training day and the cron zeroed their streak
+  // EVERY week for following their coach. Every other creator aligns these.
+  const { error: tdErr } = await supabase
+    .from('profiles').update({ preferred_training_days: packedDays }).eq('id', userId);
+  if (tdErr) logger.error('trainerPlanAdoption: could not align training days:', tdErr);
 
   // The marker is a FK to trainer_workout_plans, so it can only hold a trainer
   // plan id. A gym program's provenance lives in schedule_map.trainer_plan_kind
@@ -327,10 +379,16 @@ export async function releaseTrainerPlan({ userId, gymId }) {
     }))];
     let orphans = mineIds.filter(r => !claimed.has(r));
     if (orphans.length) {
-      const { data: used } = await supabase
+      // Fail closed, same reasoning as the rebuild path above.
+      const { data: used, error: usedErr } = await supabase
         .from('workout_sessions').select('routine_id').in('routine_id', orphans);
-      const trained = new Set((used || []).map(s => s.routine_id));
-      orphans = orphans.filter(r => !trained.has(r));
+      if (usedErr) {
+        logger.error('releaseTrainerPlan: skipping cleanup, sessions read failed:', usedErr);
+        orphans = [];
+      } else {
+        const trained = new Set((used || []).map(x => x.routine_id));
+        orphans = orphans.filter(r => !trained.has(r));
+      }
     }
     if (orphans.length) {
       const { error: reErr } = await supabase.from('routine_exercises').delete().in('routine_id', orphans);
@@ -355,8 +413,17 @@ export async function releaseTrainerPlan({ userId, gymId }) {
     const sMap = after?.schedule_map;
     const rids = sMap?.routine_ids_a?.length ? sMap.routine_ids_a : (sMap?.routine_ids || []);
     const dayMap = sMap?.routine_day_map || [];
-    const { error: clrErr } = await supabase
-      .from('workout_schedule').delete().eq('profile_id', userId);
+    // ONLY wipe if we can actually rebuild. A gym-template enrolment writes a
+    // schedule_map with no routine_ids at all (Workouts.enrollInTemplate), so
+    // the unconditional wipe left the member with an active program and ZERO
+    // scheduled days. Same when the restore target had been deleted.
+    const canReseed = rids.length > 0 && dayMap.length > 0;
+    if (!canReseed) {
+      logger.error('releaseTrainerPlan: restored program has no routine ids — leaving the week as is');
+    }
+    const { error: clrErr } = canReseed
+      ? await supabase.from('workout_schedule').delete().eq('profile_id', userId)
+      : { error: null };
     if (clrErr) logger.error('releaseTrainerPlan: could not clear the week:', clrErr);
     for (const entry of dayMap) {
       const rid = rids[entry.routine_index];
@@ -372,8 +439,15 @@ export async function releaseTrainerPlan({ userId, gymId }) {
     }
   }
 
+  // Hand the member's own training days back, or the streak stays aligned to
+  // the coach's week after they've left it.
+  const restoreDays = adopted
+    .map(p => p.schedule_map?.superseded_training_days)
+    .find(v => Array.isArray(v) && v.length);
+  const patch = { active_trainer_plan_id: null };
+  if (restoreDays) patch.preferred_training_days = restoreDays;
   const { error: markErr } = await supabase
-    .from('profiles').update({ active_trainer_plan_id: null }).eq('id', userId);
+    .from('profiles').update(patch).eq('id', userId);
   if (markErr) logger.error('releaseTrainerPlan: could not clear the marker:', markErr);
   return { ok: true, marked: !markErr };
 }
