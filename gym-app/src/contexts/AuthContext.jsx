@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, recoverDeadSession } from '../lib/supabase';
+import logger from '../lib/logger';
 import { applyBranding, cacheBranding } from '../lib/branding';
 import { setAppName } from '../lib/appName';
 import { getPalette } from '../lib/palettes';
@@ -714,19 +715,45 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    // Set when this mount forced a max-age sign-out, so the getSession()
+    // hydration below cannot re-adopt the very session we are tearing down —
+    // signOut() is in flight and getSession() can still answer with it.
+    let forcedSignOut = false;
+
     // Hard session max-age guard: even if supabase keeps refreshing tokens,
     // force re-auth after SESSION_MAX_AGE_MS. Runs synchronously on every
     // mount of AuthContext so stale long-lived sessions are killed asap.
     if (isSessionExpired(SESSION_MAX_AGE_MS)) {
+      forcedSignOut = true;
       try { clearSessionCreatedAt(); } catch {}
       try { clearPersistedUserData(); } catch {}
+      // CLEAR THE IN-MEMORY IDENTITY TOO. `user` and `profile` are hydrated
+      // synchronously from `offline_profile` at mount (see useState above), and
+      // wiping localStorage does not touch them. Leaving them set here is what
+      // produced the worst bug in this file: signOut() fires, but this branch
+      // used to `return undefined` BEFORE subscribing to onAuthStateChange, so
+      // nothing was listening for SIGNED_OUT and nothing ever cleared them.
+      //
+      // The app then rendered a fully painted, apparently signed-in dashboard
+      // with NO access token — supabase-js falls back to the anon key when the
+      // session is null, so every request went out as `anon` and came back
+      //   permission denied for function get_dashboard_data
+      //   42501 new row violates row-level security policy for "push_tokens"
+      //   42501 new row violates row-level security policy for "gym_workouts_of_the_day"
+      // …with PublicRoute bouncing /login straight back to / because it still
+      // saw a user. Only a full reinstall or cold start recovered it.
+      setUser(null);
+      setProfile(null);
       supabase.auth.signOut().finally(() => {
         // Use safeNavigate so Capacitor doesn't reload the WebView from disk
         // (which kills JS state, in-flight fetches, and pending native callbacks).
         safeNavigate('/login', { replace: true });
       });
       setLoading(false);
-      return undefined;
+      // Deliberately NOT returning early any more: safeNavigate keeps this
+      // provider mounted, so bailing out here also meant no auth listener for
+      // the rest of the session — the login the user is being sent to would
+      // have had nothing watching for SIGNED_IN.
     }
 
     // Wrap any unhandled promise rejection so a 401 anywhere in the app
@@ -771,7 +798,15 @@ export const AuthProvider = ({ children }) => {
     // Check for an existing session on mount. If offline/unreachable, the
     // hydrated user/profile from localStorage stays in place — we don't
     // overwrite to null just because getSession returned no live session.
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
+      if (forcedSignOut) { setLoading(false); return; }
+      // The error was being dropped on the floor. getSession() only fails when
+      // it had to REFRESH and the refresh failed — i.e. the stored session is
+      // dead. Falling through to the "offline, stay logged in" branch below
+      // then keeps a cached profile on screen with no token, and every write
+      // goes out as anon. Logged so it stops being invisible; logger.error is
+      // the only level that reaches error_logs in a production build.
+      if (sessionError) logger.error('AuthContext: getSession failed — session may be dead:', sessionError);
       if (session?.user) {
         setUser(session.user);
         fetchProfile(session.user.id);
@@ -1020,6 +1055,47 @@ export const AuthProvider = ({ children }) => {
     // 3. Create the auth user
     const { data, error: authError } = await supabase.auth.signUp({ email, password });
     if (authError) throw authError;
+
+    // 3b. supabase.auth.signUp DOES NOT ALWAYS ERROR ON FAILURE.
+    //
+    // Two shapes come back with `error === null` and neither is a usable
+    // account. Both used to fall straight through to `return data`, and the
+    // signup page navigates to /onboarding on anything that doesn't throw —
+    // which is how someone lands in onboarding with no session at all and the
+    // app then tells them their account doesn't exist.
+    //
+    //   • DUPLICATE EMAIL, obfuscated. With email confirmation enabled, GoTrue
+    //     answers an existing address with a FAKE user — real-looking id,
+    //     `identities: []`, no session — specifically so an attacker cannot
+    //     enumerate who is registered. `identities` being an empty array is the
+    //     documented tell, and it is the only one.
+    //
+    //   • CONFIRMATION REQUIRED. A genuinely new user, but no session until
+    //     they click the link in their email. Every write below runs as anon
+    //     and dies on RLS.
+    //
+    // Both are thrown with messages the signup page already recognises.
+    //
+    // ⚠️ SIGN OUT BEFORE THROWING. supabase-js persists whatever session came
+    // back BEFORE handing control back here, so bailing out without clearing it
+    // leaves the app authenticated as a user that has no `profiles` row. That
+    // state fails everywhere at once and reads as nonsense — "permission denied
+    // for function get_dashboard_data", "new row violates row-level security
+    // policy for push_tokens" — because every policy and grant downstream keys
+    // off a profile that was never inserted. The profile-insert catch below
+    // already had this rule; these two exits were added above it and skipped it.
+    const bail = async (message) => {
+      try { await supabase.auth.signOut(); } catch { /* nothing to clear */ }
+      throw new Error(message);
+    };
+
+    const identities = data?.user?.identities;
+    if (data?.user && Array.isArray(identities) && identities.length === 0) {
+      await bail('User already registered');
+    }
+    if (!data?.user || !data?.session) {
+      await bail('Account created but not signed in. Check your email to confirm, then sign in.');
+    }
 
     // 4. Insert the profile row (user is now authenticated)
     //    If this fails, sign out to avoid an orphaned auth user with no profile.

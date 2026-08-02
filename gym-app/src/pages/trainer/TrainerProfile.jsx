@@ -338,7 +338,6 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
   const [draft, setDraft] = useState(initialDraft);
 
   const submit = () => {
-    const email = draft.email.trim() || null;
     // Only send fields whose normalized value actually changed from the
     // seeded one — an untouched field can never be nulled, even if the seed
     // itself was empty because hydration failed.
@@ -348,9 +347,18 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
     Object.keys(next).forEach((k) => {
       if (next[k] !== base[k]) updates[k] = next[k];
     });
-    // Email is on auth.users, not profiles — pass it as a side-channel so the
-    // parent can route it through supabase.auth.updateUser (verification email).
-    onSave(updates, { email, originalEmail: currentEmail });
+    // BELT AND BRACES on the gym-owned identity. The inputs above are
+    // readOnly, so these can only differ if something rehydrated the draft
+    // mid-edit — but a readOnly attribute is a UI affordance, not a guarantee,
+    // and this is the payload that actually reaches the database. Stripping
+    // them here means the only way a trainer's name or username changes is an
+    // admin doing it.
+    delete updates.full_name;
+    delete updates.username;
+    // Email is not passed at all any more: routing it to
+    // supabase.auth.updateUser would send a verification link and change the
+    // login the gym provisioned.
+    onSave(updates, null);
   };
 
   return (
@@ -379,32 +387,44 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* IDENTITY IS THE GYM'S RECORD, NOT THE TRAINER'S.
+            Name, username and email are read-only here. A trainer is staff of a
+            gym: their name is what members see on the roster, on assigned plans
+            and on their public profile, and their email is the login the gym
+            provisioned. Letting them rewrite either drifts the app away from
+            the gym's own member records with no audit trail — and the username
+            is a public identifier other members resolve. Only the gym admin
+            changes these. Everything below (phone, bio, rates, socials) is the
+            trainer's own to edit. */}
+        <div style={{
+          padding: '10px 12px', borderRadius: 10, marginBottom: 2,
+          background: TT.surface2, border: `1px solid ${TT.borderSolid}`,
+          fontSize: 11, lineHeight: 1.45, color: TT.textSub,
+        }}>
+          {t('pages:trainerProfile.editIdentity.lockedNotice', 'Your name, username and email are managed by your gym. Ask an admin to change them.')}
+        </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.firstName', 'First name')}</label>
-            <input type="text" value={draft.first_name}
-              onChange={(e) => setDraft(d => ({ ...d, first_name: e.target.value }))}
-              maxLength={40} style={inputStyle} />
+            <input type="text" value={draft.first_name} maxLength={40}
+              readOnly aria-readonly="true" style={{ ...inputStyle, opacity: 0.55, cursor: 'not-allowed' }} />
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.middleName', 'Middle name')}</label>
-            <input type="text" value={draft.middle_name}
-              onChange={(e) => setDraft(d => ({ ...d, middle_name: e.target.value }))}
-              maxLength={40} style={inputStyle} />
+            <input type="text" value={draft.middle_name} maxLength={40}
+              readOnly aria-readonly="true" style={{ ...inputStyle, opacity: 0.55, cursor: 'not-allowed' }} />
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.lastName1', 'First last name')}</label>
-            <input type="text" value={draft.last_name}
-              onChange={(e) => setDraft(d => ({ ...d, last_name: e.target.value }))}
-              maxLength={40} style={inputStyle} />
+            <input type="text" value={draft.last_name} maxLength={40}
+              readOnly aria-readonly="true" style={{ ...inputStyle, opacity: 0.55, cursor: 'not-allowed' }} />
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.lastName2', 'Second last name')}</label>
-            <input type="text" value={draft.second_last_name}
-              onChange={(e) => setDraft(d => ({ ...d, second_last_name: e.target.value }))}
-              maxLength={40} style={inputStyle} />
+            <input type="text" value={draft.second_last_name} maxLength={40}
+              readOnly aria-readonly="true" style={{ ...inputStyle, opacity: 0.55, cursor: 'not-allowed' }} />
           </div>
         </div>
         <div>
@@ -412,9 +432,8 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
           <input
             type="text"
             value={draft.username}
-            onChange={(e) => setDraft(d => ({ ...d, username: e.target.value }))}
             maxLength={30}
-            style={inputStyle}
+            readOnly aria-readonly="true" style={{ ...inputStyle, opacity: 0.55, cursor: 'not-allowed' }}
           />
         </div>
         <div>
@@ -422,17 +441,10 @@ function EditIdentityModal({ open, onClose, profile, currentEmail, onSave, savin
           <input
             type="email"
             value={draft.email}
-            onChange={(e) => setDraft(d => ({ ...d, email: e.target.value }))}
-            placeholder={t('pages:trainerProfile.editIdentity.emailPlaceholder', 'you@example.com')}
             maxLength={120}
-            autoComplete="email"
-            style={inputStyle}
+            readOnly aria-readonly="true"
+            style={{ ...inputStyle, opacity: 0.55, cursor: 'not-allowed' }}
           />
-          {draft.email.trim().toLowerCase() !== (currentEmail || '').trim().toLowerCase() && draft.email.trim() && (
-            <div style={{ fontSize: 10.5, color: TT.textSub, marginTop: 4, lineHeight: 1.4 }}>
-              {t('pages:trainerProfile.editIdentity.emailHint', "We'll send a verification link to your new address.")}
-            </div>
-          )}
         </div>
         <div>
           <label style={labelStyle}>{t('pages:trainerProfile.editIdentity.phone', 'Phone')}</label>
@@ -1503,8 +1515,12 @@ export default function TrainerProfile() {
 
       // Email change goes through Supabase auth — sends a confirmation link
       // to the new address. The address only flips after the link is clicked.
-      const newEmail = sideChannel.email;
-      const oldEmail = sideChannel.originalEmail;
+      // Optional-chained: the identity sheet now passes `null` here, because a
+      // trainer cannot change the login their gym provisioned. Kept rather than
+      // deleted so an admin-side caller can still route a legitimate change
+      // through this same path.
+      const newEmail = sideChannel?.email;
+      const oldEmail = sideChannel?.originalEmail;
       if (newEmail && newEmail.toLowerCase() !== (oldEmail || '').toLowerCase()) {
         const { error: emailErr } = await supabase.auth.updateUser({ email: newEmail });
         if (emailErr) {

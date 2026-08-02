@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { OB } from '../lib/onboardingTokens';
 import { X, Check, Dumbbell, Scale, Percent, Target as TargetIcon } from 'lucide-react';
-import { realisticBand, BANDS, DEFAULT_BAND } from '../lib/goalRealism';
+import { realisticBand, isSupportedDirection, BANDS, DEFAULT_BAND } from '../lib/goalRealism';
 import { detectConflicts } from '../lib/onboardingGoals';
 
 /**
@@ -37,11 +37,33 @@ const fmtDate = (iso) => {
 
 // A pace-band selector that previews the realistic date for the entered gap.
 function BandPicker({ goalType, current, target, exerciseName, fitnessLevel, value, onChange, t }) {
-  const bands = useMemo(() => {
+  const { bands, backwards } = useMemo(() => {
     const c = parseFloat(current), tg = parseFloat(target);
-    if (!Number.isFinite(c) || !Number.isFinite(tg) || c === tg) return null;
-    return realisticBand({ goalType, gap: tg - c, fitnessLevel, exerciseName });
+    if (!Number.isFinite(c) || !Number.isFinite(tg) || c === tg) return { bands: null, backwards: false };
+    const gap = tg - c;
+    return {
+      bands: realisticBand({ goalType, gap, fitnessLevel, exerciseName }),
+      backwards: !isSupportedDirection({ goalType, gap, fitnessLevel, exerciseName }),
+    };
   }, [goalType, current, target, exerciseName, fitnessLevel]);
+
+  // A target pointing the wrong way used to render three dates, because the
+  // math took |gap| and could not tell "get 110 lb stronger" from "get 110 lb
+  // weaker". Say what is actually wrong instead of scheduling it.
+  if (backwards) {
+    return (
+      <div style={{
+        marginTop: 8, padding: '8px 10px', borderRadius: 10,
+        background: 'color-mix(in srgb, var(--color-warning, #F59E0B) 12%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--color-warning, #F59E0B) 40%, transparent)',
+        fontSize: 11.5, lineHeight: 1.4, color: 'var(--color-text-primary)',
+      }}>
+        {goalType === 'body_fat'
+          ? t('onboardingTargets.backwards.bodyFat', 'Your target is higher than where you are now — did you mean a lower number?')
+          : t('onboardingTargets.backwards.lift', 'Your target is lighter than what you lift now — did you mean a heavier number?')}
+      </div>
+    );
+  }
   if (!bands) return null;
   return (
     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>

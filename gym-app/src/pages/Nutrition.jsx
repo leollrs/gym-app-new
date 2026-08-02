@@ -8052,12 +8052,18 @@ export default function Nutrition({ embedded = false }) {
       const aiGrams = photoResult.items?.reduce((s, i) => s + (i.grams || 0), 0) || 0;
       // Only save if user actually changed something
       if (cal !== aiCal || pro !== aiPro || carb !== aiCarb || fat !== aiFat) {
+        // `.then()` is where postgrest-js issues the fetch, so a bare builder
+        // sends NOTHING. This was not "fire and forget" — it was a 100% loss:
+        // `ai_food_corrections` has never received a row from this path, and
+        // that table is the feedback loop for the AI macro estimates.
         supabase.from('ai_food_corrections').insert({
           profile_id: user.id,
           food_name: cleanedName,
           ai_calories: aiCal, ai_protein_g: aiPro, ai_carbs_g: aiCarb, ai_fat_g: aiFat, ai_grams: aiGrams,
           user_calories: cal, user_protein_g: pro, user_carbs_g: carb, user_fat_g: fat, user_grams: aiGrams,
-        }); // fire and forget
+        }).then(({ error: corrErr }) => {
+          if (corrErr) logger.error('Nutrition: AI correction not recorded:', corrErr);
+        });
       }
     }
 

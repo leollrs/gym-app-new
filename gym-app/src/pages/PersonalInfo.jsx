@@ -364,6 +364,22 @@ export default function PersonalInfo() {
                 placeholder={t('personalInfo.fullName', 'Full name')}
                 style={{ ...inputStyle, opacity: 0.6, cursor: 'not-allowed' }}
               />
+              {/* Email, read-only. It lives on auth.users, NOT on profiles —
+                  there is no email column there (see the schema notes) — so it
+                  comes off the session user. Members asked for it because this
+                  is the only screen that claims to hold their identity, and it
+                  was the one field it did not show. Changing it is the gym
+                  admin's job, same as the name above. */}
+              {user?.email && (
+                <input
+                  type="email"
+                  value={user.email}
+                  readOnly
+                  aria-readonly="true"
+                  aria-label={t('personalInfo.email', 'Email')}
+                  style={{ ...inputStyle, marginTop: 10, opacity: 0.6, cursor: 'not-allowed' }}
+                />
+              )}
               <div className="mt-3 flex gap-2">
                 {SEX_OPTIONS.map((opt) => {
                   const sel = sex === opt.value;

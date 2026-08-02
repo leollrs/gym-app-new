@@ -21,9 +21,18 @@ export const PROGRESSION_RATES = {
   advanced:     { compound: 1.25, isolation: 0.5 },
 };
 
-// Body-composition rates (per week), midpoints of the accepted-safe ranges.
-const BODY_WEIGHT_RATE = 1.5; // lb/week (safe range ~1–2)
-const BODY_FAT_RATE    = 0.5; // %/week  (safe range ~0.25–0.75, ~2%/month)
+// Body-composition rates (per week). DIRECTIONAL, because the body is not
+// symmetric and treating it as such produced dates that were simply wrong:
+//
+//   • LOSING weight at 1.5 lb/wk is a standard safe deficit.
+//   • GAINING weight at 1.5 lb/wk is not lean gain, it is 80% fat. The accepted
+//     lean-bulk rate for anyone past their first months is ~0.25–0.5 lb/wk, so
+//     a 20 lb gain is roughly 40 weeks, not 13. Quoting 13 sets the member up
+//     to "fail" a goal they were actually hitting.
+//   • BODY FAT only goes one way as a goal. A target above current is not a
+//     plan, it is a typo.
+const BODY_WEIGHT_RATE = { down: 1.5, up: 0.5 }; // lb/week
+const BODY_FAT_RATE    = { down: 0.5, up: null }; // %/week (~2%/month)
 
 // Intensity band multipliers applied to the base (max-safe) weekly rate.
 // aggressive = the base rate (fastest still-safe); slower bands take longer.
@@ -42,15 +51,38 @@ export function isIsolationExercise(exerciseName) {
   return ISOLATION_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
-// Base (max-safe) weekly rate for a goal type, in the goal's own units.
-function baseWeeklyRate({ goalType, fitnessLevel, exerciseName }) {
+/**
+ * Base (max-safe) weekly rate for a goal type, in the goal's own units, for the
+ * direction being asked about. `null` means THAT DIRECTION IS NOT A GOAL — the
+ * caller must show nothing rather than invent a timeline.
+ *
+ * The old signature had no direction and every caller passed `Math.abs(gap)`,
+ * which quietly made "squat 220 → 110" identical to "squat 110 → 220": the same
+ * 110 lb of compound work, a year out. Nobody plans fourteen months to get
+ * weaker — that input is a typo, and answering it with a confident date is
+ * worse than answering it with nothing.
+ *
+ * @param {'up'|'down'} direction
+ */
+function baseWeeklyRate({ goalType, fitnessLevel, exerciseName, direction }) {
   if (goalType === 'lift_1rm') {
+    // Strength only counts upward. Detraining is not something we schedule.
+    if (direction !== 'up') return null;
     const rates = PROGRESSION_RATES[fitnessLevel] || PROGRESSION_RATES.intermediate;
     return isIsolationExercise(exerciseName) ? rates.isolation : rates.compound;
   }
-  if (goalType === 'body_weight') return BODY_WEIGHT_RATE;
-  if (goalType === 'body_fat')    return BODY_FAT_RATE;
+  if (goalType === 'body_weight') return BODY_WEIGHT_RATE[direction] ?? null;
+  if (goalType === 'body_fat')    return BODY_FAT_RATE[direction] ?? null;
   return null;
+}
+
+/** Is this a direction the goal type can actually move in? */
+export function isSupportedDirection({ goalType, gap, fitnessLevel, exerciseName }) {
+  const n = Number(gap);
+  if (!n || Number.isNaN(n)) return true;   // no gap yet — nothing to object to
+  return baseWeeklyRate({
+    goalType, fitnessLevel, exerciseName, direction: n > 0 ? 'up' : 'down',
+  }) != null;
 }
 
 const clampWeeks = (w) => Math.max(1, Math.ceil(w));
@@ -67,9 +99,14 @@ function isoAfterWeeks(weeks) {
  * Returns null when we can't estimate (no gap or unsupported goal type).
  */
 export function honestWeeks({ goalType, gap, fitnessLevel, exerciseName, band = DEFAULT_BAND }) {
-  const absGap = Math.abs(Number(gap));
+  const signed = Number(gap);
+  const absGap = Math.abs(signed);
   if (!absGap || Number.isNaN(absGap)) return null;
-  const rate = baseWeeklyRate({ goalType, fitnessLevel, exerciseName });
+  // `gap` is SIGNED — the sign is the whole point. Callers that pass an
+  // absolute value get the "up" rate, which is what they meant.
+  const rate = baseWeeklyRate({
+    goalType, fitnessLevel, exerciseName, direction: signed > 0 ? 'up' : 'down',
+  });
   if (!rate) return null;
   const effectiveRate = rate * (BAND_MULTIPLIER[band] ?? BAND_MULTIPLIER[DEFAULT_BAND]);
   return clampWeeks(absGap / effectiveRate);
@@ -81,12 +118,14 @@ export function honestWeeks({ goalType, gap, fitnessLevel, exerciseName, band = 
  * safe rate range. Returns null when the gap can't be estimated.
  */
 export function realisticBand({ goalType, gap, fitnessLevel, exerciseName }) {
-  const absGap = Math.abs(Number(gap));
-  if (!absGap || Number.isNaN(absGap)) return null;
+  const signed = Number(gap);
+  if (!signed || Number.isNaN(signed)) return null;
   const out = {};
   for (const band of BANDS) {
-    const weeks = honestWeeks({ goalType, gap: absGap, fitnessLevel, exerciseName, band });
-    if (weeks == null) return null;
+    // Pass the SIGNED gap through — stripping the sign here is what let a
+    // backwards target render three confident dates.
+    const weeks = honestWeeks({ goalType, gap: signed, fitnessLevel, exerciseName, band });
+    if (weeks == null) return null;   // unsupported direction → no dates at all
     out[band] = { weeks, date: isoAfterWeeks(weeks) };
   }
   return out;
@@ -118,7 +157,7 @@ export function milestone({ goalType, startValue, targetValue, fitnessLevel, exe
   const weeksToTarget = honestWeeks({ goalType, gap, fitnessLevel, exerciseName, band });
   if (weeksToTarget == null || weeksToTarget <= MILESTONE_THRESHOLD_WEEKS) return null;
 
-  const rate = baseWeeklyRate({ goalType, fitnessLevel, exerciseName });
+  const rate = baseWeeklyRate({ goalType, fitnessLevel, exerciseName, direction });
   if (!rate) return null;
   const effectiveRate = rate * (BAND_MULTIPLIER[band] ?? BAND_MULTIPLIER[DEFAULT_BAND]);
   const move = effectiveRate * MILESTONE_WEEKS;           // magnitude of 12-week progress

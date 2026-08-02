@@ -10,6 +10,7 @@ import { PROD_WEB_URL } from '../lib/appUrls';
 import UserAvatar from '../components/UserAvatar';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
+import logger from '../lib/logger';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { format, isPast, isFuture, formatDistanceToNow, startOfDay, differenceInDays } from 'date-fns';
@@ -1081,7 +1082,15 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
   };
 
   const handleDeclineInvite = async (invite) => {
-    await supabase.from('challenge_team_invites').update({ status: 'declined' }).eq('id', invite.id);
+    // Dropping the invite from the list on a failed update made it look
+    // declined; it came straight back as pending on the next load, with no
+    // explanation for why it kept reappearing.
+    const { error: declineInviteErr } = await supabase
+      .from('challenge_team_invites').update({ status: 'declined' }).eq('id', invite.id);
+    if (declineInviteErr) {
+      logger.error('Challenges: team invite decline did not persist:', declineInviteErr);
+      return;
+    }
     setMyInvites(prev => prev.filter(i => i.id !== invite.id));
   };
 
@@ -1235,19 +1244,32 @@ const DailyChallenge = ({ userId, gymId, t }) => {
         if (value >= challenge.target && !completed) {
           setCompleted(true);
           // Check server-side first to prevent double-claiming
-          const { data: existing } = await supabase
+          const { data: existing, error: existingErr } = await supabase
             .from('daily_challenge_completions')
             .select('id')
             .eq('profile_id', userId)
             .eq('challenge_date', new Date().toISOString().split('T')[0])
             .maybeSingle();
 
-          if (!existing) {
-            await supabase.from('daily_challenge_completions').insert({
+          // This read IS the double-claim guard the comment above promises, so
+          // discarding its error defeated the guard entirely: a failed read left
+          // `existing` undefined, which reads identically to "not claimed yet".
+          // addPoints' dedup key bounds the damage to the points ledger, but the
+          // completions row would still be written twice. Skip the round instead.
+          if (existingErr) {
+            logger.error('Challenges: daily-claim guard read failed, not claiming:', existingErr);
+          } else if (!existing) {
+            const { error: claimErr } = await supabase.from('daily_challenge_completions').insert({
               profile_id: userId,
               challenge_date: new Date().toISOString().split('T')[0],
               points_awarded: 25,
             });
+            // No row means no record the challenge was completed. Awarding the
+            // points anyway would leave a points entry with nothing behind it.
+            if (claimErr) {
+              logger.error('Challenges: daily completion did not persist, skipping points:', claimErr);
+              return;
+            }
             addPoints(
               userId,
               gymId,
@@ -2023,7 +2045,14 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
   const handleAccept = async (duel) => {
     setProcessing(duel.id);
     try {
-      await supabase.from('friend_challenges').update({ status: 'active' }).eq('id', duel.id);
+      // The catch below already shows "Could not accept duel" — it just never
+      // fired, because the builder resolves with { error } instead of
+      // rejecting. Both players got an "accepted" notification for a duel whose
+      // status never left 'pending', and the row was patched locally to look
+      // active. Throwing routes it into the handler that was always there.
+      const { error: acceptErr } = await supabase
+        .from('friend_challenges').update({ status: 'active' }).eq('id', duel.id);
+      if (acceptErr) throw acceptErr;
 
       // Notify both users
       await sendNotification(duel.challenger_id, gymId, {
@@ -2050,7 +2079,12 @@ const FriendDuelsSection = ({ userId, gymId, userName, t }) => {
   const handleDecline = async (duel) => {
     setProcessing(duel.id);
     try {
-      await supabase.from('friend_challenges').update({ status: 'declined' }).eq('id', duel.id);
+      // Same unreachable catch as handleAccept. Worse here: the duel was
+      // removed from the local list on failure, so it looked declined until a
+      // refetch brought it back still pending.
+      const { error: declineErr } = await supabase
+        .from('friend_challenges').update({ status: 'declined' }).eq('id', duel.id);
+      if (declineErr) throw declineErr;
 
       await sendNotification(duel.challenger_id, gymId, {
         title: t('leaderboard.challengeFriend.declined'),

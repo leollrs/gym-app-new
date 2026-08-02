@@ -339,13 +339,18 @@
       "toward": "hacia {{n}} lb"
     },
     "triggerLocked": "Elige una meta primero",
-    "skipStep": "Saltar por ahora"
+    "skipStep": "Saltar por ahora",
+    "backwards": {
+      "lift": "Tu meta es más liviana de lo que levantas ahora — ¿querías poner un número más alto?",
+      "bodyFat": "Tu meta es más alta que donde estás ahora — ¿querías poner un número más bajo?"
+    }
   },
   "mealPlan": {
     "askTitle": "¿Quieres un plan de comidas semanal?",
     "askDesc": "Crearemos un plan de 7 días personalizado que cumple con tus macros según tus objetivos y métricas corporales.",
     "generate": "Sí, configúralo",
     "skip": "No gracias, yo manejo mi nutrición",
+    "finishFailed": "No pudimos guardar que terminaste. Revisa tu conexión y toca de nuevo.",
     "prefsTitle": "Preferencias Alimentarias",
     "prefsSubtitle": "Cuéntanos sobre tu dieta para personalizar tu plan de comidas.",
     "restrictionsLabel": "RESTRICCIONES DIETÉTICAS",

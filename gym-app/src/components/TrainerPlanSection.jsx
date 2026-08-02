@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import logger from '../lib/logger';
-import { adoptTrainerPlan, announceProgramChange } from '../lib/trainerPlanAdoption';
+import { adoptTrainerPlan, announceProgramChange, weeksHash } from '../lib/trainerPlanAdoption';
 import ProgramDetailModal from './ProgramDetailModal';
 
 // ── Member-side viewer for trainer-assigned workout plans (P0-2) ──────────
@@ -194,7 +194,20 @@ export default function TrainerPlanSection() {
         if (cancelled || error || !live || !live.is_active || live.is_draft) return;
 
         const builtV = adoptedProgram.schedule_map?.trainer_plan_v ?? null;
-        const currentV = live.updated_at || null;
+        // HASH vs HASH. `trainer_plan_v` is stamped by adoptTrainerPlan as
+        // `weeksHash(weeks)` — a content fingerprint like "w1483:1f2ke". This
+        // read was still comparing it against `live.updated_at`, an ISO
+        // timestamp, so the two could NEVER be equal: the early return below
+        // never fired and the plan was re-materialized on every single mount of
+        // this page. That is not a wasted round trip — the rebuild path forces
+        // `partialFirstWeek` false, so it overwrites the correct partial first
+        // week with a packed Monday-first map against the ORIGINAL
+        // program_start, and recomputes `expires_at` short enough that a
+        // late-cycle rebuild can insert a program that is already expired.
+        // A content hash is also strictly better than a timestamp here: a coach
+        // opening and saving a plan without changing anything bumps updated_at
+        // and used to trigger a full rebuild for every member on it.
+        const currentV = weeksHash(live.weeks);
         // No stamp = adopted before versions existed. Rebuild ONCE: it can't be
         // told apart from stale, the rebuild is non-destructive (trained
         // routines survive, the restore list carries forward), and it leaves

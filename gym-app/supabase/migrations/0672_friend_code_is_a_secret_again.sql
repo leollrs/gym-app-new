@@ -48,6 +48,18 @@
 -- `profiles` for the caller's own row), so this is invisible.
 -- ============================================================
 
+-- ⚠️ RUN THE THREE BLOCKS BELOW SEPARATELY, one at a time — same reason 0671
+-- has to be split. This file also takes an ACCESS EXCLUSIVE lock on two objects
+-- the app reads constantly (`gym_member_profiles_safe` and `profiles`), and
+-- holding one while waiting for the other is what deadlocked 0671 against live
+-- traffic. One exclusive lock per block, with a lock_timeout so a blocked block
+-- aborts instead of queueing every later request behind it. Each block is an
+-- independent tightening, so stopping between them is safe.
+-- ============================================================
+
+-- ═══════════════ BLOCK 1 — the view (ACCESS EXCLUSIVE) ════════════════════
+SET lock_timeout = '5s';
+
 -- ── 1. The view ───────────────────────────────────────────────────────────
 -- Rebuilt from 0569's column list verbatim, in order, with ONE expression
 -- changed. Diff against 0569 before applying.
@@ -80,6 +92,9 @@ AS
     p.gym_id = public.current_gym_id()
     OR p.id = auth.uid();
 
+NOTIFY pgrst, 'reload schema';
+
+-- ═══════════════ BLOCK 2 — the RPC twin (no table locks) ══════════════════
 -- ── 2. The RPC twin ───────────────────────────────────────────────────────
 -- Same signature and RETURNS TABLE as 0289 (unchanged, so CREATE OR REPLACE is
 -- legal); same body except the one column.
@@ -161,7 +176,12 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_gym_member_profiles_safe(TEXT, INT, INT) TO authenticated;
 
+NOTIFY pgrst, 'reload schema';
+
+-- ═══════════════ BLOCK 3 — profiles (ACCESS EXCLUSIVE) ════════════════════
 -- ── 3. Friendship is not consent ──────────────────────────────────────────
+SET lock_timeout = '5s';
+
 DROP POLICY IF EXISTS "profiles_friends_select" ON profiles;
 
 NOTIFY pgrst, 'reload schema';

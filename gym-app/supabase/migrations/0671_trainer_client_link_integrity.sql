@@ -70,6 +70,33 @@
 -- the admin analytics. The member pressed the button, saw it disappear from
 -- their side, and stayed on the trainer's list.
 -- ============================================================
+--
+-- ⚠️ RUN THE FOUR BLOCKS BELOW SEPARATELY, one at a time.
+--
+-- The first attempt at this file deadlocked against live traffic:
+--
+--   Process A waits for AccessExclusiveLock on <trainer_clients>, blocked by B
+--   Process B waits for AccessShareLock   on <profiles>,        blocked by A
+--
+-- A policy change takes an ACCESS EXCLUSIVE lock on its table — the strongest
+-- one there is, blocking even plain SELECTs. As one transaction this file grabs
+-- that lock on `trainer_clients` and then reaches for the same on `profiles`,
+-- while any ordinary request holds a share lock on `profiles` (every query
+-- touches it) and is waiting on `trainer_clients` through `is_trainer_of()`.
+-- Each side holds what the other needs.
+--
+-- Splitting removes the cycle: no transaction ever holds an exclusive lock on
+-- one hot table while waiting for another. `lock_timeout` then keeps a blocked
+-- block from queueing behind a long query — every session that arrives after it
+-- would queue behind the LOCK, not the query, which is how a 3-second wait
+-- becomes an outage. It aborts in 5s instead; just run that block again.
+--
+-- Partial application is safe. Each block is an independent tightening, so
+-- stopping after any of them leaves the database no less protected than before.
+-- ============================================================
+
+-- ═══════════════ BLOCK 1 — the consent guard (no table locks) ═════════════
+SET lock_timeout = '5s';
 
 -- ── 1. Link integrity ─────────────────────────────────────────────────────
 -- Rebuilt from 0657's definition verbatim, with the TG_OP = 'UPDATE' identity
@@ -129,15 +156,45 @@ BEGIN
 END;
 $$;
 
+NOTIFY pgrst, 'reload schema';
+
+-- ═══════════════ END OF BLOCK 1 ═══════════════
+-- Replacing a function takes no lock on any table, so nothing above can block
+-- a reader. The trigger picks the new body up on its next fire.
+
+
+NOTIFY pgrst, 'reload schema';
+
+-- ═══════════════ BLOCK 2 — trainer_clients (ACCESS EXCLUSIVE) ═════════════
+SET lock_timeout = '5s';
+
 -- Say it in the policy too. Rebuilt from 0274 with the WITH CHECK it never had.
+-- Alone in its block: this is one of the two locks whose ordering deadlocked.
 DROP POLICY IF EXISTS "trainer_clients_update_trainer" ON trainer_clients;
 CREATE POLICY "trainer_clients_update_trainer" ON trainer_clients
   FOR UPDATE
   USING (trainer_id = auth.uid())
   WITH CHECK (trainer_id = auth.uid());
 
+
+NOTIFY pgrst, 'reload schema';
+
+-- ═══════════════ BLOCK 3 — profiles (ACCESS EXCLUSIVE) ════════════════════
 -- ── 2. Programs go through the function, not through the profile row ──────
+-- The other half of the deadlock. `profiles` is the god-table — essentially
+-- every request in the app reads it — so this lock is the expensive one. It is
+-- a single DROP POLICY: it takes microseconds once it is granted. The risk is
+-- entirely in WAITING for it behind a slow query, which lock_timeout caps.
+SET lock_timeout = '5s';
+
 DROP POLICY IF EXISTS profiles_trainer_assign_program ON profiles;
+
+
+NOTIFY pgrst, 'reload schema';
+
+-- ═══════════════ BLOCK 4 — functions, grants, backfill ════════════════════
+-- No ACCESS EXCLUSIVE locks below this line. The backfill UPDATE at the end
+-- takes ROW EXCLUSIVE on trainer_clients, which does not block readers.
 
 -- Rebuilt from 0146 with the trainer-of-record check added. Diff against 0146.
 CREATE OR REPLACE FUNCTION public.trainer_assign_program(p_member_id UUID, p_program_id UUID)

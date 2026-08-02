@@ -22,6 +22,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase';
+import logger from './logger';
+
+/**
+ * Consent writes used to swallow their failures, and hydrateAIConsent() treats
+ * the DB as the source of truth on every launch. That combination made a failed
+ * REVOKE self-healing in the worst direction: local cleared, the UI said
+ * "consent removed", the DB still held the grant, and the next hydrate copied
+ * it back — the feature silently re-armed and the member's photos went to the
+ * vision API again. GDPR Art. 7(3) requires withdrawal to be as easy as giving
+ * it; a withdrawal that quietly undoes itself does not qualify.
+ *
+ * Every write now surfaces its failure. Message is deliberately empty so the
+ * caller's own translated fallback renders instead of a raw code.
+ */
+const consentWriteFailed = (code) => {
+  const err = new Error('');
+  err.code = code;
+  return err;
+};
 
 export const AI_CONSENT_VERSION = 1;
 const LS_KEY = 'ai_consent_v1';
@@ -121,19 +140,24 @@ export async function recordAIConsent(feature) {
         ...merged,
       };
 
-      await supabase
+      const { error: writeErr } = await supabase
         .from('profiles')
         .update({ ai_consent: dbMerged })
         .eq('id', user.id);
+      if (writeErr) throw writeErr;
 
       // Replace local with the DB-merged value so we pick up cross-device consents.
       writeLocal(dbMerged);
       return dbMerged;
     }
   } catch (err) {
-    // Network failure — the localStorage write already succeeded so the
-    // current session is unblocked. Next successful call will sync.
-    console.warn('[aiConsent] DB write failed, kept local only:', err?.message || err);
+    // The localStorage write above already unblocked THIS session, so the
+    // in-flight scan still works — but the grant did not persist, and the next
+    // hydrate will clear it. That fails closed (the member is re-prompted), so
+    // callers mid-scan are free to swallow this; the settings screen surfaces
+    // it rather than showing a false "Consent granted".
+    logger.error('[aiConsent] grant did not persist for', feature, err);
+    throw consentWriteFailed('consent_not_saved');
   }
 
   return merged;
@@ -177,13 +201,21 @@ export async function revokeAIConsent(feature) {
       dbNext[field] = null;
       dbNext.version = AI_CONSENT_VERSION;
 
-      await supabase
+      const { error: revokeErr } = await supabase
         .from('profiles')
         .update({ ai_consent: dbNext })
         .eq('id', user.id);
+      if (revokeErr) throw revokeErr;
     }
   } catch (err) {
-    console.warn('[aiConsent] DB revoke failed, kept local change:', err?.message || err);
+    // MUST NOT be swallowed. Local is cleared, so this session is gated off —
+    // but the DB still holds the grant, and hydrateAIConsent() copies the DB
+    // over local on the next launch, silently restoring the consent the member
+    // just withdrew. Throwing makes the settings screen say it failed instead
+    // of "AI consent removed", so they can retry rather than walk away
+    // believing they revoked it.
+    logger.error('[aiConsent] revoke did not persist for', feature, err);
+    throw consentWriteFailed('consent_not_revoked');
   }
 
   return next;
@@ -200,13 +232,17 @@ export async function revokeAllAIConsent() {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user?.id) {
-      await supabase
+      const { error: wipeErr } = await supabase
         .from('profiles')
         .update({ ai_consent: {} })
         .eq('id', user.id);
+      if (wipeErr) throw wipeErr;
     }
   } catch (err) {
-    console.warn('[aiConsent] DB full-revoke failed, kept local clear:', err?.message || err);
+    // Same trap as revokeAIConsent, applied to the GDPR "withdraw everything"
+    // path — the one place where silently not persisting is least acceptable.
+    logger.error('[aiConsent] full revoke did not persist:', err);
+    throw consentWriteFailed('consent_not_revoked');
   }
 }
 

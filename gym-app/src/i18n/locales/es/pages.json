@@ -2247,7 +2247,16 @@
     "adaptGeneralBody": "Tu programa va por buen camino. Sigue llegando al gym.",
     "gotIt": "Entendido",
     "programEmptyHint": "Este programa aún no tiene entrenamientos — pídele a tu gimnasio que lo complete.",
-    "deletingProgress": "Borrando {{done}}/{{total}}…"
+    "deletingProgress": "Borrando {{done}}/{{total}}…",
+    "pitchTitle": "Tu propio programa",
+    "pitchBody": "Hecho con tus metas y tu equipo. Te sube el peso solo cada semana.",
+    "pitchCta": "Crear mi programa",
+    "pitchDaysPerWeek": "días / semana",
+    "pitchWeeks": "semanas",
+    "pitchProgression": "progresión",
+    "pitchAutoValue": "Auto",
+    "leaveProgram": "Abandonar programa",
+    "leaveFailed": "No se pudo abandonar el programa. Revisa tu conexión e inténtalo de nuevo."
   },
   "quickStart": {
     "startWorkout": "Empezar Entrenamiento",
@@ -12133,7 +12142,8 @@
       "firstName": "Nombre",
       "middleName": "Segundo nombre",
       "lastName1": "Primer apellido",
-      "lastName2": "Segundo apellido"
+      "lastName2": "Segundo apellido",
+      "lockedNotice": "Tu nombre, usuario y correo los administra tu gimnasio. Pídele a un admin que los cambie."
     },
     "services": {
       "title": "Servicios",
@@ -14510,7 +14520,8 @@
     "saving": "Guardando…",
     "saved": "Guardado",
     "saveFailed": "No se pudo guardar",
-    "ageFromDob": "Calculada a partir de tu fecha de nacimiento"
+    "ageFromDob": "Calculada a partir de tu fecha de nacimiento",
+    "email": "Correo"
   },
   "support": {
     "title": "Ayuda y soporte",
@@ -15297,5 +15308,8 @@
     "createAccount": "Crear mi cuenta",
     "visitGym": "Conoce {{name}}",
     "poweredBy": "con tecnología de TuGymPR"
+  },
+  "adminOnboarding": {
+    "featuresSaveFailed": "No se pudieron guardar los ajustes de funciones — puedes configurarlos en Ajustes."
   }
 }

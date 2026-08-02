@@ -339,13 +339,18 @@
       "toward": "toward {{n}} lb"
     },
     "triggerLocked": "Pick a goal first",
-    "skipStep": "Skip for now"
+    "skipStep": "Skip for now",
+    "backwards": {
+      "lift": "Your target is lighter than what you lift now — did you mean a heavier number?",
+      "bodyFat": "Your target is higher than where you are now — did you mean a lower number?"
+    }
   },
   "mealPlan": {
     "askTitle": "Want a weekly meal plan?",
     "askDesc": "We'll create a personalized 7-day meal plan that hits your macro targets based on your goals and body metrics.",
     "generate": "Yes, set it up",
     "skip": "No thanks, I'll handle nutrition myself",
+    "finishFailed": "We couldn't save that you finished. Check your connection and tap again.",
     "prefsTitle": "Dietary Preferences",
     "prefsSubtitle": "Tell us about your diet so we can tailor your meal plan.",
     "restrictionsLabel": "DIETARY RESTRICTIONS",

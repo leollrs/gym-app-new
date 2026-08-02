@@ -676,13 +676,17 @@ export default function AdminOnboardingWizard({ onComplete }) {
 
     // Save feature toggles on step 3 completion
     if (step === 3 && gymId) {
-      try {
-        await supabase.from('gyms').update({
-          classes_enabled: features.classes_enabled,
-          qr_enabled: features.qr_enabled,
-        }).eq('id', gymId);
-      } catch {
-        // Non-blocking
+      // These two flags decide whether Classes and QR check-in exist for the
+      // whole gym. The catch was unreachable (the builder resolves with
+      // { error }), so an owner could tick both in setup, see the wizard
+      // advance, and end up with the features off and no idea why. Still
+      // non-blocking — the wizard shouldn't trap them — but they get told.
+      const { error: featErr } = await supabase.from('gyms').update({
+        classes_enabled: features.classes_enabled,
+        qr_enabled: features.qr_enabled,
+      }).eq('id', gymId);
+      if (featErr) {
+        showToast(t('adminOnboarding.featuresSaveFailed', 'Could not save the feature settings — set them in Settings.'), 'error');
       }
     }
 

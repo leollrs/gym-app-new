@@ -631,9 +631,18 @@ const AssignProgramModal = ({ selectedClients, gymId, trainerId, onClose, onDone
         });
         const prev = priorGym[c.id];
         if (prev && prev !== selectedProgram) {
-          await supabase.from('gym_program_enrollments')
-            .delete().eq('profile_id', c.id).eq('program_id', prev)
-            .then(() => {}, () => {});
+          // `.then(() => {}, () => {})` was a double no-op: the success arm did
+          // nothing and the rejection arm can never fire, because the builder
+          // resolves with { error } instead of rejecting. So a failed unenroll
+          // was invisible and the client stayed enrolled in their OLD gym
+          // program while also being assigned the new one — two live
+          // enrollments, which every downstream "current program" read then
+          // has to guess between.
+          const { error: unenrollErr } = await supabase.from('gym_program_enrollments')
+            .delete().eq('profile_id', c.id).eq('program_id', prev);
+          if (unenrollErr) {
+            logger.error('TrainerClients: old gym-program enrollment survived:', c.id, unenrollErr);
+          }
         }
         successCount += 1;
       }

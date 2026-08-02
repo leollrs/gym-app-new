@@ -9,6 +9,7 @@ import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { validateEmail, suggestEmailCorrection } from '../lib/validateEmail';
+import { titleCaseName } from '../lib/nameCase';
 import DobPicker from '../components/DobPicker';
 
 // ─── Warm-paper design tokens (branded auth, pre-gym-theme) ───────────
@@ -165,9 +166,12 @@ const splitFullName = (full) => {
 };
 
 // Compose the canonical profiles.full_name from the split inputs.
+// Title-cased at the seam, not just on blur: the blur handler is what the
+// member SEES, this is what actually reaches the database. Paste, autofill and
+// a submit while a field still has focus all skip blur.
 const composeFullName = (f) =>
   [f.firstName, f.middleName, f.lastName1, f.lastName2]
-    .map(s => (s || '').trim())
+    .map(s => titleCaseName(s))
     .filter(Boolean)
     .join(' ');
 
@@ -245,6 +249,10 @@ const Signup = () => {
   const [emailValidStatus, setEmailValidStatus] = useState('idle'); // 'idle' | 'valid' | 'invalid'
   const [emailValidReason, setEmailValidReason] = useState('');
   const [emailSuggestion, setEmailSuggestion] = useState(null); // "did you mean…" full email or null
+  // An address the server has already refused. Kept so the field itself can say
+  // so — a banner alone left a green "looks valid" tick sitting next to the
+  // exact input that caused the failure, which reads as "this one is fine".
+  const [rejectedEmail, setRejectedEmail] = useState(null);
   const emailDebounceRef = useRef(null);
 
   // HIBP soft warning
@@ -375,6 +383,15 @@ const Signup = () => {
   };
 
   const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
+
+  // Title-case a name field when the member leaves it, so they SEE `test`
+  // become `Test` rather than discovering it later on their profile. Only
+  // rewrites when the result differs, so it never fights a member who typed
+  // `DeLeon` deliberately (titleCaseName leaves self-cased words alone).
+  const titleCaseOnBlur = (field) => (e) => {
+    const next = titleCaseName(e.target.value);
+    if (next !== e.target.value) setForm(f => ({ ...f, [field]: next }));
+  };
 
   // ── Invite code validation (preserves existing RPC flow) ──
   const validateInviteCode = async (code) => {
@@ -664,8 +681,8 @@ const Signup = () => {
         email:    form.email,
         password: form.password,
         fullName: composedFullName,
-        firstName: form.firstName,
-        lastName: form.lastName1,
+        firstName: titleCaseName(form.firstName),
+        lastName: titleCaseName(form.lastName1),
         username: form.username,
         gymSlug,
         gymId: inviteData?.gym_id || null,
@@ -732,6 +749,15 @@ const Signup = () => {
         rawMsg.includes('already exists') ||
         rawMsg.includes('user already');
       if (looksLikeAccountExists) {
+        // Put it ON THE FIELD, not only in the banner. The form is long enough
+        // that the banner and the offending input are not on screen together,
+        // and the input was still showing its green format tick.
+        const bad = form.email.trim().toLowerCase();
+        setRejectedEmail(bad);
+        setErrors((prev) => ({
+          ...prev,
+          email: t('signupEmailInUse', 'This email already has an account — sign in instead.'),
+        }));
         setGlobalError(
           t(
             'signupCouldNotCreateAccount',
@@ -839,9 +865,13 @@ const Signup = () => {
   // gate — the gym vouches for member eligibility at enrollment.
   const dobAge = computeAge(dateOfBirth);
   const dobOk = !!dateOfBirth && !Number.isNaN(dobAge) && dobAge >= 0;
+  // True only while the box still holds the exact address the server refused.
+  const emailRejected = !!rejectedEmail && form.email.trim().toLowerCase() === rejectedEmail;
+
   const submitDisabled =
     loading ||
     emailValidStatus === 'invalid' ||
+    emailRejected ||   // re-submitting the same known-taken address can only fail again
     (form.email.length > 0 && emailValidStatus === 'idle') ||
     !allPwRulesPass ||
     !dobOk ||
@@ -1269,6 +1299,7 @@ const Signup = () => {
                         type="text"
                         value={form.firstName}
                         onChange={set('firstName')}
+                        onBlur={titleCaseOnBlur('firstName')}
                         placeholder={t('firstNamePlaceholder', { defaultValue: 'Alex' })}
                         maxLength={40}
                         autoComplete="given-name"
@@ -1287,6 +1318,7 @@ const Signup = () => {
                         type="text"
                         value={form.middleName}
                         onChange={set('middleName')}
+                        onBlur={titleCaseOnBlur('middleName')}
                         placeholder={t('middleNamePlaceholder', { defaultValue: 'J.' })}
                         maxLength={40}
                         autoComplete="additional-name"
@@ -1304,6 +1336,7 @@ const Signup = () => {
                         type="text"
                         value={form.lastName1}
                         onChange={set('lastName1')}
+                        onBlur={titleCaseOnBlur('lastName1')}
                         placeholder={t('lastName1Placeholder', { defaultValue: 'Rivera' })}
                         maxLength={40}
                         autoComplete="family-name"
@@ -1322,6 +1355,7 @@ const Signup = () => {
                         type="text"
                         value={form.lastName2}
                         onChange={set('lastName2')}
+                        onBlur={titleCaseOnBlur('lastName2')}
                         placeholder={t('lastName2Placeholder', { defaultValue: 'Santos' })}
                         maxLength={40}
                         autoComplete="family-name"
@@ -1354,22 +1388,34 @@ const Signup = () => {
               {/* Email */}
               <div>
                 <label htmlFor="su-email" style={labelStyle}>{t('email')}</label>
-                <div style={inputWrap(!!errors.email || emailValidStatus === 'invalid', true)}>
+                <div style={inputWrap(!!errors.email || emailValidStatus === 'invalid' || emailRejected, true)}>
                   <Mail size={16} color={OB.mute} style={{ position: 'absolute', left: 16 }} />
                   <input
                     id="su-email"
                     type="email"
                     value={form.email}
-                    onChange={set('email')}
+                    onChange={(e) => {
+                      // Editing it clears the refusal — otherwise the field
+                      // stays red while they type the corrected address.
+                      if (rejectedEmail) {
+                        setRejectedEmail(null);
+                        setErrors((prev) => ({ ...prev, email: undefined }));
+                        setGlobalError('');
+                      }
+                      set('email')(e);
+                    }}
+                    aria-invalid={emailRejected || !!errors.email || undefined}
                     placeholder={t('emailPlaceholder', { defaultValue: 'you@example.com' })}
                     maxLength={254}
                     autoComplete="email"
                     style={inputStyle}
                   />
-                  {form.email && emailValidStatus === 'valid' && (
+                  {/* The green tick only means "the format parses". It must not
+                      keep claiming that about an address the server refused. */}
+                  {form.email && emailValidStatus === 'valid' && !emailRejected && (
                     <CheckCircle size={16} color={OB.green} style={{ position: 'absolute', right: 14 }} />
                   )}
-                  {form.email && emailValidStatus === 'invalid' && (
+                  {form.email && (emailValidStatus === 'invalid' || emailRejected) && (
                     <AlertCircle size={16} color={OB.orange} style={{ position: 'absolute', right: 14 }} />
                   )}
                 </div>

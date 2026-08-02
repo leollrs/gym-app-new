@@ -16,7 +16,7 @@
  */
 
 import { supabase } from './supabase';
-import { realisticBand, milestone, DEFAULT_BAND } from './goalRealism';
+import { realisticBand, milestone, isSupportedDirection, DEFAULT_BAND } from './goalRealism';
 
 const UNIT = { body_weight: 'lb', body_fat: '%', lift_1rm: 'lb' };
 
@@ -43,6 +43,11 @@ function buildOne({ goalType, exerciseId, exerciseName, current, target, band, f
 
   const selBand = band || DEFAULT_BAND;
   const gap = targetValue - startValue;
+  // A target pointing the wrong way for its goal type (a LIGHTER lift, a HIGHER
+  // body fat) is a typo, not a plan. The sheet warns about it while they type;
+  // if they save anyway, don't turn it into a tracked goal that can only ever
+  // read as failing. Body weight is exempt — both directions are real goals.
+  if (!isSupportedDirection({ goalType, gap, fitnessLevel, exerciseName })) return null;
   const bands = realisticBand({ goalType, gap, fitnessLevel, exerciseName });
   const targetDate = bands?.[selBand]?.date || null;
   const ms = milestone({ goalType, startValue, targetValue, fitnessLevel, exerciseName, band: selBand });

@@ -2290,13 +2290,27 @@ const ActiveSession = () => {
     const payload = overrideLoggedSets
       ? { ...draftSaveRef.current, logged_sets: overrideLoggedSets }
       : draftSaveRef.current;
-    try {
-      await supabase.from('session_drafts')
-        .upsert(payload, { onConflict: 'profile_id,routine_id' });
-    } catch (err) {
-      // Draft save failed — non-critical, data still in localStorage
+    const warnDraftFailed = () => {
       setSaveWarning(t('activeSession.draftSaveFailed'));
       setTimeout(() => setSaveWarning(''), 3000);
+    };
+    try {
+      // The warning below was unreachable: the builder resolves with { error }
+      // and never throws, so `activeSession.draftSaveFailed` — written and
+      // translated in both locales — could not render. This row is the DB half
+      // of crash recovery, the part that survives an iOS WebView eviction or a
+      // reboot when localStorage doesn't. It failing silently is precisely the
+      // case the member needed to be told about.
+      const { error: draftErr } = await supabase.from('session_drafts')
+        .upsert(payload, { onConflict: 'profile_id,routine_id' });
+      if (draftErr) {
+        logger.error('ActiveSession: session draft did not persist:', draftErr);
+        warnDraftFailed();
+      }
+    } catch (err) {
+      // Kept for a genuine network-stack throw, which does still reject.
+      logger.error('ActiveSession: session draft threw:', err);
+      warnDraftFailed();
     }
   };
 

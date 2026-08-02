@@ -20,6 +20,7 @@
 // here without checking AdminModeration.jsx first — it's the consumer.
 
 import { supabase } from './supabase';
+import logger from './logger';
 
 // ── Reason allow-list (matches CHECK constraint in 20260429000001) ──────────
 export const REPORT_REASONS = [
@@ -134,14 +135,23 @@ export async function blockUser(targetUserId) {
 
   if (error) return { error };
 
-  // Drop any active friendship — block implies severance.
-  await supabase
+  // Drop any active friendship — block implies severance. Logged, not fatal:
+  // the block row above is what RLS enforces on messages, comments and
+  // friendship inserts, so the member IS protected even if this leg fails. But
+  // a surviving friendship row still feeds friend-scoped surfaces (the feed,
+  // friend streaks, the friend picker), so the blocked person keeps showing up
+  // where the member expects them gone. Silently discarding the error left no
+  // way to know that happened.
+  const { error: unfriendErr } = await supabase
     .from('friendships')
     .delete()
     .or(
       `and(requester_id.eq.${user.id},addressee_id.eq.${targetUserId}),` +
       `and(requester_id.eq.${targetUserId},addressee_id.eq.${user.id})`
     );
+  if (unfriendErr) {
+    logger.error('moderation: blocked, but the friendship survived:', unfriendErr);
+  }
 
   if (!_blockedSet) _blockedSet = new Set();
   _blockedSet.add(targetUserId);

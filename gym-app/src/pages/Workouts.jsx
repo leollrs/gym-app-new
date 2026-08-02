@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2, Circle, Lock,
   Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw, Play, Loader2,
-  ClipboardList,
+  ClipboardList, LogOut,
 } from 'lucide-react';
 import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 // Lazy so the heavy ExerciseLibrary module only loads when a routine exercise is
@@ -965,7 +965,17 @@ const Workouts = () => {
           // surfacing the duplicate-key error repeatedly). Only bail on a real,
           // non-duplicate error so a transient failure can retry next mount.
           if (error && error.code !== '23505') return;
-          supabase.from('generated_programs').update({ expiry_notified: true }).eq('id', latest.id);
+          // AWAITED. A bare builder is never sent — postgrest-js issues the
+          // fetch inside `then()`, so with no await/.then this line made zero
+          // network calls and the flag was never set. The notification insert
+          // above therefore re-ran on EVERY Workouts mount, forever, colliding
+          // with its own dedup_key each time.
+          supabase.from('generated_programs')
+            .update({ expiry_notified: true })
+            .eq('id', latest.id)
+            .then(({ error: flagErr }) => {
+              if (flagErr) logger.error('Workouts: could not mark the expiry notice as sent:', flagErr);
+            });
         });
       }
     };
@@ -1665,7 +1675,47 @@ const Workouts = () => {
         return;
       }
     } else if (isActive) {
-      await supabase.from('generated_programs').update({ expires_at: new Date().toISOString() }).eq('id', id);
+      // LEAVING OUTRIGHT — not swapping for another program. Expiring the row
+      // used to be the whole of it, and that is why leaving never worked:
+      // workout_schedule still held this program's routines, and Home reads
+      // that table as authoritative for the week. The member "left" and kept
+      // seeing the exact workouts they walked away from, on the same days.
+      //
+      // Switching appeared to work only because adopt/build WIPE and re-seed
+      // workout_schedule as part of installing the new program. Nothing on this
+      // path ever did, so the only way out of a program was into another one.
+      const { error: expErr } = await supabase.from('generated_programs')
+        .update({ expires_at: new Date().toISOString() }).eq('id', id);
+      if (expErr) {
+        logger.error('Workouts: could not expire program on leave:', expErr);
+        showToast(t('workouts.leaveFailed', "Couldn't leave the program. Try again."), 'error');
+        setLeaveProgramConfirm(null);
+        return;
+      }
+      // Unschedule only THIS program's routines, by id — never a blanket wipe of
+      // the member's week, which would take a sibling program's days with it.
+      // The routines themselves survive: they stay in My Routines, still
+      // trainable ad hoc, and workout_sessions keeps its routine_id links.
+      const m = target?.schedule_map || {};
+      const mine = [...new Set([
+        ...(m.routine_ids || []), ...(m.routine_ids_a || []), ...(m.routine_ids_b || []),
+      ])].filter(Boolean);
+      if (mine.length) {
+        const { error: wsErr } = await supabase.from('workout_schedule')
+          .delete().eq('profile_id', user.id).in('routine_id', mine);
+        if (wsErr) logger.error('Workouts: schedule survived the leave:', wsErr);
+      }
+      // A program built from a gym template also has an enrollment row, and it
+      // is what Discover reads to badge the template "Enrolled". Leaving the
+      // program without dropping it left the member enrolled in something they
+      // are no longer doing — and the Start button on that card stayed hidden.
+      if (target?.template_id) {
+        const { error: enrErr } = await supabase.from('gym_program_enrollments')
+          .delete().eq('program_id', target.template_id).eq('profile_id', user.id);
+        if (enrErr) logger.error('Workouts: gym enrollment survived the leave:', enrErr);
+        else setEnrolledIds((prev) => { const s = new Set(prev); s.delete(target.template_id); return s; });
+      }
+      announceProgramChange();
     } else {
       await supabase.from('generated_programs').delete().eq('id', id);
     }
@@ -1674,7 +1724,11 @@ const Workouts = () => {
       .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
     const programs = allGp || [];
     setAllPrograms(programs);
-    setGeneratedProgram(programs[0] || null);
+    // Newest LIVE program, not newest row. `programs[0]` is ordered by
+    // created_at, so the program just expired was still the newest and got
+    // handed straight back as the current one — the page re-rendered with the
+    // thing the member had just left.
+    setGeneratedProgram(programs.find(p => new Date(p.expires_at) > new Date()) || null);
     setLeaveProgramConfirm(null);
     setSelectedMyProgram(null);
   };
@@ -2730,47 +2784,113 @@ const Workouts = () => {
         );
       })()}
 
-      {/* ── No program / expired — two options ──────────────── */}
-      {!programLoading && !programActive && (
-        <section className="mb-10">
-          <p className="text-[10px] font-bold uppercase mb-3 px-1" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
-            {programExpired ? t('workouts.programEndedWhatsNext') : t('workouts.getStarted')}
-          </p>
-
-          {/* Primary CTA — Generate a program */}
-          <button
-            onClick={() => setShowGenerator(true)}
-            className="w-full text-left rounded-[22px] p-5 mb-3 active:scale-[0.98] transition-transform duration-150"
-            style={{ background: `color-mix(in srgb, ${TU_ACCENT} 6%, var(--color-bg-card))`, boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)' }}
+      {/* ── No program / expired — THE PITCH ─────────────────────
+          This was two flat list rows: an icon, a title, a chevron. They
+          described a FEATURE ("Custom Program · Built around your goals") and
+          nobody tapped them, because a list row is what you put things you
+          already understand into.
+          The Current Program card above converts precisely because it shows
+          CONCRETE STATE — week 3 of 6, 2/4 sessions, 45%. So this borrows its
+          exact anatomy (accent eyebrow → display headline → hairline → three-up
+          strip) and changes only the TENSE: what will be built instead of what
+          has been done. Same card, one step earlier — which is why it reads as
+          part of the product rather than as a promo slot.
+          The numbers are the member's own: their training days come from what
+          they answered in onboarding, so the card is already about them before
+          they touch it. */}
+      {!programLoading && !programActive && (() => {
+        const daysPerWeek = onboardingData?.training_days_per_week
+          || profile?.preferred_training_days?.length
+          || 3;
+        // The generator's own default (GenerateWorkoutModal form.program_weeks).
+        const planWeeks = 6;
+        // Two of these are numbers about their week; the third is a promise.
+        // Styling all three identically made "Auto" read as a broken number —
+        // the eye arrives expecting a digit. The accent marks it as a different
+        // KIND of fact, and drops one spot of accent into the strip that ties
+        // back to the eyebrow above it.
+        const facts = [
+          { v: daysPerWeek, k: t('workouts.pitchDaysPerWeek', 'days / week') },
+          { v: planWeeks, k: t('workouts.pitchWeeks', 'weeks') },
+          { v: t('workouts.pitchAutoValue', 'Auto'), k: t('workouts.pitchProgression', 'progression'), accent: true },
+        ];
+        return (
+        <section className="mb-4">
+          <div
+            className="rounded-[22px] overflow-hidden"
+            style={{
+              background: `color-mix(in srgb, ${TU_ACCENT} 5%, var(--color-bg-card))`,
+              boxShadow: '0 1px 2px rgba(15,20,25,0.04), 0 8px 24px rgba(15,20,25,0.05)',
+            }}
           >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-[14px] flex items-center justify-center flex-shrink-0"
-                style={{ background: `color-mix(in srgb, ${TU_ACCENT} 15%, transparent)` }}>
-                <Zap size={22} style={{ color: TU_ACCENT }} strokeWidth={2} />
+            <div className="px-5 pt-5 pb-5">
+              <div className="flex items-start justify-between mb-1">
+                <div className="min-w-0 pr-3">
+                  <p className="text-[10px] font-bold uppercase mb-1.5" style={{ color: TU_ACCENT, letterSpacing: '0.12em' }}>
+                    {programExpired ? t('workouts.programEndedWhatsNext') : t('workouts.getStarted')}
+                  </p>
+                  <h2 style={{ fontFamily: TU_DISPLAY, fontSize: 22, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: -0.5, lineHeight: 1.15 }}>
+                    {t('workouts.pitchTitle', 'Your own program')}
+                  </h2>
+                  <p className="text-[12.5px] mt-1.5 leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('workouts.pitchBody', 'Built from your goals and equipment. It moves the weight for you every week.')}
+                  </p>
+                </div>
+                <div className="w-11 h-11 rounded-[14px] flex items-center justify-center flex-shrink-0"
+                  style={{ background: `color-mix(in srgb, ${TU_ACCENT} 12%, transparent)` }}>
+                  <Zap size={20} style={{ color: TU_ACCENT }} strokeWidth={2} />
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[15px] font-bold leading-tight" style={{ color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>{t('workouts.customProgram')}</p>
-                <p className="text-[12px] mt-1 leading-snug" style={{ color: 'var(--color-text-muted)' }}>{t('workouts.builtAroundGoals')}</p>
+
+              {/* The same hairline + stat strip the active card uses for its
+                  progress, so the two read as one component in two states. */}
+              <div className="grid grid-cols-3 gap-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                {facts.map((f) => (
+                  <div key={f.k}>
+                    <p style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 22, lineHeight: 1, letterSpacing: -0.6, color: f.accent ? TU_ACCENT : 'var(--color-text-primary)' }}>{f.v}</p>
+                    <p className="text-[9px] font-bold uppercase mt-1" style={{ color: 'var(--color-text-subtle)', letterSpacing: '0.1em' }}>{f.k}</p>
+                  </div>
+                ))}
               </div>
-              <ChevronRight size={16} style={{ color: TU_ACCENT }} strokeWidth={2} className="flex-shrink-0" />
+
+              {/* Solid accent, full width. The old primary action was a chevron
+                  on a row — nothing about it said "this is the thing to do". */}
+              <button
+                onClick={() => setShowGenerator(true)}
+                className="w-full flex items-center justify-center gap-2 mt-4 rounded-[16px] active:scale-[0.98] transition-transform duration-150"
+                style={{ minHeight: 48, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))', fontFamily: TU_DISPLAY, fontWeight: 800, fontSize: 15, letterSpacing: -0.2 }}
+              >
+                {t('workouts.pitchCta', 'Build my program')}
+                <ChevronRight size={17} strokeWidth={2.6} />
+              </button>
             </div>
-          </button>
-
-          {/* Secondary — Browse templates */}
-          <button
-            onClick={() => goToView('browse')}
-            className="w-full flex items-center gap-3 px-5 py-3.5 rounded-[16px] text-left active:scale-[0.98] transition-transform duration-150"
-            style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))' }}
-          >
-            <BookOpen size={16} style={{ color: 'var(--color-text-muted)' }} strokeWidth={2} />
-            <p className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{t('workouts.browsePrograms')}</p>
-            <ChevronRight size={14} style={{ color: 'var(--color-text-subtle)' }} strokeWidth={2} className="ml-auto flex-shrink-0" />
-          </button>
+          </div>
         </section>
-      )}
+        );
+      })()}
+
+      {/* Explorar Programas — bold CTA (dark + accent glow) */}
+      <button
+        onClick={() => goToView('browse')}
+        className="relative w-full overflow-hidden flex items-center gap-3.5 p-5 rounded-3xl text-left active:scale-[0.99] transition-transform duration-150 mb-4"
+        style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-card)), var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
+      >
+        <div className="absolute pointer-events-none" style={{ top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 40%, transparent) 0%, transparent 70%)' }} />
+        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 48, height: 48, borderRadius: 14, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))' }}>
+          <BookOpen size={22} strokeWidth={2.4} />
+        </div>
+        <div className="relative flex-1 min-w-0">
+          <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase', color: TU_ACCENT }}>{t('workouts.discover', 'Discover')}</p>
+          <p style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 19, letterSpacing: -0.5, marginTop: 3, color: 'var(--color-text-primary)' }}>{t('workouts.browsePrograms', 'Browse programs')}</p>
+          <p style={{ fontSize: 11, marginTop: 2, color: 'var(--color-text-muted)' }}>{t('workouts.browseSubCount', { count: programTemplates.length || 0, defaultValue: '{{count}} available · 4 to 16 weeks' })}</p>
+        </div>
+        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))' }}>
+          <ChevronRight size={18} strokeWidth={2.6} />
+        </div>
+      </button>
 
       {/* Hub entry — A2: two count cards with name-peek + ACTIVO badge */}
-      <div className="grid grid-cols-2 gap-2.5 mb-4">
+      <div className="grid grid-cols-2 gap-2.5 mb-10">
         {[
           { key: 'routines', label: t('workouts.myRoutines'), n: routines.length, accentNum: false,
             peek: routines.slice(0, 3).map(r => localizeRoutineName(r.name)) },
@@ -2802,25 +2922,6 @@ const Workouts = () => {
         ))}
       </div>
 
-      {/* Explorar Programas — bold CTA (dark + accent glow) */}
-      <button
-        onClick={() => goToView('browse')}
-        className="relative w-full overflow-hidden flex items-center gap-3.5 p-5 rounded-3xl text-left active:scale-[0.99] transition-transform duration-150 mb-10"
-        style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-card)), var(--color-bg-card))', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
-      >
-        <div className="absolute pointer-events-none" style={{ top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'radial-gradient(circle, color-mix(in srgb, var(--color-accent) 40%, transparent) 0%, transparent 70%)' }} />
-        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 48, height: 48, borderRadius: 14, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))' }}>
-          <BookOpen size={22} strokeWidth={2.4} />
-        </div>
-        <div className="relative flex-1 min-w-0">
-          <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase', color: TU_ACCENT }}>{t('workouts.discover', 'Discover')}</p>
-          <p style={{ fontFamily: TU_DISPLAY, fontWeight: 900, fontSize: 19, letterSpacing: -0.5, marginTop: 3, color: 'var(--color-text-primary)' }}>{t('workouts.browsePrograms', 'Browse programs')}</p>
-          <p style={{ fontSize: 11, marginTop: 2, color: 'var(--color-text-muted)' }}>{t('workouts.browseSubCount', { count: programTemplates.length || 0, defaultValue: '{{count}} available · 4 to 16 weeks' })}</p>
-        </div>
-        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 38, height: 38, borderRadius: 999, background: TU_ACCENT, color: 'var(--color-text-on-accent, var(--color-bg-primary))' }}>
-          <ChevronRight size={18} strokeWidth={2.6} />
-        </div>
-      </button>
       </>)}
 
       {/* ── ROUTINES VIEW ── */}
@@ -3208,6 +3309,20 @@ const Workouts = () => {
                     )}
                   </div>
                 )}
+                {/* Leave. The confirm dialog and handler already existed, but the
+                    only way in was the red CTA at the bottom of the program-info
+                    sheet — two taps deep and past a scroll, so the action read as
+                    missing entirely. Sits under the card content rather than as a
+                    third header pill: the title reserves pr-44 and a third pill
+                    overflows it on a 375px screen. */}
+                <button
+                  onClick={() => setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive: true })}
+                  className="w-full mt-4 pt-3.5 flex items-center justify-center gap-1.5 text-[12.5px] font-bold text-red-400 active:opacity-60 transition-opacity"
+                  style={{ borderTop: '1px solid var(--color-border-subtle)' }}
+                >
+                  <LogOut size={13} strokeWidth={2.2} />
+                  {t('workouts.leaveProgram', 'Leave program')}
+                </button>
               </div>
             </div>
           );
@@ -4083,6 +4198,10 @@ const Workouts = () => {
           <p className="text-[12px] text-center mb-5" style={{ color: 'var(--color-text-muted)' }}>
             {t('workouts.startModeDescription', 'Choose how to align the program with your schedule.')}
           </p>
+          {/* 100 / 50-50: the primary choice takes the full row, the two
+              alternatives split the one below. Cancel is a real button surface,
+              not a bare text link — at 50% width next to a sibling it has to
+              read as a button or the row looks broken. */}
           <div className="space-y-2.5">
             <button
               onClick={() => proceedWithStartMode('today')}
@@ -4091,20 +4210,22 @@ const Workouts = () => {
             >
               {t('workouts.startFromToday', 'Start from today')}
             </button>
-            <button
-              onClick={() => proceedWithStartMode('normal')}
-              className="w-full py-3.5 rounded-2xl font-semibold text-[13px] transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-primary)' }}
-            >
-              {t('workouts.startNormally', 'Follow the normal schedule')}
-            </button>
-            <button
-              onClick={() => setStartModeChoice(null)}
-              className="w-full py-2 text-[12px] font-medium transition-colors"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              {t('common:cancel', 'Cancel')}
-            </button>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => proceedWithStartMode('normal')}
+                className="flex-1 min-w-0 py-3.5 px-2 rounded-2xl font-semibold text-[12.5px] leading-tight transition-colors"
+                style={{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-primary)' }}
+              >
+                {t('workouts.startNormally', 'Follow the normal schedule')}
+              </button>
+              <button
+                onClick={() => setStartModeChoice(null)}
+                className="flex-1 min-w-0 py-3.5 px-2 rounded-2xl font-semibold text-[12.5px] leading-tight transition-colors border"
+                style={{ backgroundColor: 'transparent', borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}
+              >
+                {t('common:cancel', 'Cancel')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -4130,10 +4251,13 @@ const Workouts = () => {
                 >
                   {t('workouts.yesSwitchProgram')}
                 </button>
+                {/* Was a bare text link. It's the safe choice in a destructive
+                    dialog, so it gets a real button surface — an outline, to
+                    stay clearly secondary to the green confirm. */}
                 <button
                   onClick={() => setSwitchStep(null)}
-                  className="w-full py-3 rounded-2xl font-medium text-[13px] transition-colors"
-                  style={{ color: 'var(--color-text-subtle)' }}
+                  className="w-full py-3.5 rounded-2xl font-semibold text-[13px] transition-colors border"
+                  style={{ backgroundColor: 'transparent', borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                 >
                   {t('workouts.keepCurrentProgram')}
                 </button>
@@ -4162,8 +4286,8 @@ const Workouts = () => {
                 <button
                   onClick={() => setSwitchStep(null)}
                   disabled={switchingProgram}
-                  className="w-full py-3 rounded-2xl font-medium text-[13px] transition-colors disabled:opacity-40"
-                  style={{ color: 'var(--color-text-subtle)' }}
+                  className="w-full py-3.5 rounded-2xl font-semibold text-[13px] transition-colors disabled:opacity-40 border"
+                  style={{ backgroundColor: 'transparent', borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
                 >
                   {t('workouts.cancel')}
                 </button>

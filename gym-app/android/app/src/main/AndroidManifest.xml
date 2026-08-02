@@ -15,6 +15,28 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config">
 
+        <!--
+            targetSdk 36 (Android 16) ignores android:screenOrientation,
+            android:resizableActivity and the aspect-ratio attributes on any display
+            whose smallest width is >= 600dp — tablets, unfolded foldables, desktop
+            windowing. Without this property the portrait lock below silently stops
+            applying there and the app becomes freely rotatable and resizable.
+
+            The UI is phone-first: MemoryRouter, a fixed bottom tab bar, and layout
+            that assumes a portrait viewport with safe-area insets. It has never been
+            laid out or tested in tablet landscape, so shipping it unlocked as a side
+            effect of a compliance bump would be shipping an untested UI. This keeps
+            the current behaviour so the target-API change stays a target-API change.
+
+            EXPIRES: the opt-out is honoured through targetSdk 36 only. It is ignored
+            at targetSdk 37, so the adaptive-layout work has to be done before the
+            next annual Play bump — not deferred again.
+            https://developer.android.com/about/versions/16/behavior-changes-16
+        -->
+        <property
+            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+            android:value="true" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
             android:name=".MainActivity"

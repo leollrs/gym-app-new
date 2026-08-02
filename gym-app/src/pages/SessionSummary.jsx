@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, Share2, Trophy, Zap, Flame, Trash2 } from 'lucide-react';
 import { AppleHealthSyncedChip } from '../components/AppleHealthBadge';
 import { supabase } from '../lib/supabase';
+import logger from '../lib/logger';
 import { writeWorkout } from '../lib/healthSync';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -396,7 +397,11 @@ const SessionSummary = () => {
 
       if (newlyEarned.length > 0) {
         // One batched insert instead of N serial round-trips.
-        await supabase.from('activity_feed_items').insert(
+        // Not fatal — the achievement itself is already persisted by
+        // awardAchievements, so the member keeps it either way; only the gym
+        // feed post is lost. Worth knowing about though, because a member
+        // quietly never showing up in the feed reads as the feature being dead.
+        const { error: feedErr } = await supabase.from('activity_feed_items').insert(
           newlyEarned.map(ach => ({
             gym_id:    profile.gym_id,
             actor_id:  user.id,
@@ -411,6 +416,7 @@ const SessionSummary = () => {
             },
           }))
         );
+        if (feedErr) logger.error('SessionSummary: achievement feed post failed:', feedErr);
 
         // Notifications fire concurrently \u2014 each carries a unique dedupKey, so
         // parallelism cannot create duplicates.

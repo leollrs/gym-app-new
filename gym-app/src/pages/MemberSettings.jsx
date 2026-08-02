@@ -146,7 +146,17 @@ export default function MemberSettings() {
 
   const handleUnblock = useCallback(async (blockId, blockedId) => {
     setUnblocking(blockedId);
-    await supabase.from('blocked_users').delete().eq('id', blockId);
+    // This list is the ONLY place a member can undo a block. Dropping the row
+    // optimistically on a failed delete removed their last handle on it: the
+    // person stayed blocked in the DB but vanished from Blocked Users, so there
+    // was no longer any way to unblock them from the UI at all.
+    const { error: unblockErr } = await supabase.from('blocked_users').delete().eq('id', blockId);
+    if (unblockErr) {
+      logger.error('MemberSettings: unblock failed, keeping the row visible:', unblockErr);
+      showToast(t('common:somethingWentWrong'), 'error');
+      setUnblocking(null);
+      return;
+    }
     setBlockedList(prev => prev.filter(b => b.id !== blockId));
     showToast(t('social.unblockUser'), 'success');
     setUnblocking(null);
@@ -236,9 +246,15 @@ export default function MemberSettings() {
     // Settings, so Onboarding's prefill flow + Recovery's connect CTA both
     // see the connection on cold start. Mirrors what Onboarding/Recovery do.
     if (type === 'health' && result === 'granted' && user?.id) {
-      supabase.from('profiles').update({ health_sync_enabled: true }).eq('id', user.id).then(() => {
-        refreshProfile?.();
-      }, () => {});
+      // The rejection arm here was unreachable (the builder resolves with
+      // { error }), so a failed write silently left the canonical opt-in flag
+      // off while the OS permission was granted — the app kept re-asking on
+      // Onboarding prefill and Recovery because those read this column.
+      supabase.from('profiles').update({ health_sync_enabled: true }).eq('id', user.id)
+        .then(({ error: hsErr }) => {
+          if (hsErr) logger.error('MemberSettings: health_sync_enabled did not persist:', hsErr);
+          else refreshProfile?.();
+        });
     }
     refreshPermissions();
   }, [openExplainer, refreshPermissions, user?.id, refreshProfile]);
@@ -327,7 +343,12 @@ export default function MemberSettings() {
                   i18n.changeLanguage(lang.code);
                   posthog?.capture('language_changed', { new_language: lang.code });
                   if (user?.id) {
-                    await supabase.from('profiles').update({ preferred_language: lang.code }).eq('id', user.id);
+                    // i18n.changeLanguage above already switched the UI, so a
+                    // failed write looks like it worked until the next cold
+                    // start or a second device reads the old value back.
+                    const { error: langErr } = await supabase.from('profiles')
+                      .update({ preferred_language: lang.code }).eq('id', user.id);
+                    if (langErr) logger.error('MemberSettings: language preference did not persist:', langErr);
                   }
                 }}
                 className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.06] transition-colors duration-200"

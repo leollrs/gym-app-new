@@ -3,6 +3,8 @@
 //               sessionsInFirst6Weeks, challengesCompleted, totalVolumeLbs }
 // icon: lucide-react icon name (rendered as SVG in UI)
 
+import logger from './logger';
+
 export const ACHIEVEMENT_DEFS = [
   // Workouts
   {
@@ -368,7 +370,7 @@ export async function getStreakWithProtections(userId, gymId, sessions, supabase
       : [];
   } catch (err) {
     // Gracefully fall back if tables don't exist yet (e.g. migration not applied)
-    console.warn('getStreakWithProtections: falling back to basic streak', err?.message);
+    logger.error('getStreakWithProtections: falling back to basic streak', err);
   }
 
   return computeStreakFromSessions(sessions, {
@@ -424,7 +426,7 @@ export async function useStreakFreeze(userId, supabase) {
     }
     return true;
   } catch (err) {
-    console.warn('useStreakFreeze failed:', err?.message);
+    logger.error('useStreakFreeze failed:', err);
     return false;
   }
 }
@@ -587,7 +589,7 @@ async function awardCustomAchievements(userId, gymId, supabase, data, existingKe
     .select('id, gym_id, name, description, icon, category, criteria, key')
     .or(`gym_id.eq.${gymId},gym_id.is.null`);
   if (defErr || !defRows?.length) {
-    if (defErr) console.warn('Custom achievement defs fetch error:', defErr.message);
+    if (defErr) logger.error('Custom achievement defs fetch error:', defErr);
     return [];
   }
 
@@ -638,7 +640,7 @@ async function awardCustomAchievements(userId, gymId, supabase, data, existingKe
   if (error) {
     // Real failure (RLS/constraint) — don't celebrate achievements that
     // didn't persist, or the toast would repeat on every workout.
-    console.warn('Custom achievement upsert error:', error.message);
+    logger.error('Custom achievement upsert error:', error);
     return [];
   }
 
@@ -655,13 +657,24 @@ export async function awardAchievements(userId, gymId, supabase) {
     .eq('user_id', userId)
     .eq('gym_id', gymId);
 
-  if (selectErr) console.warn('Achievement select error:', selectErr.message);
+  // FAIL CLOSED. This read is the ONLY thing that says "already earned". When
+  // its error was discarded, existingKeys fell back to [] and every achievement
+  // the member qualifies for came back marked NEW. The upsert's ignoreDuplicates
+  // kept the table clean, so nothing looked broken there — but the return value
+  // is what SessionSummary feeds into activity_feed_items, publicly, one row per
+  // achievement. One transient read failure re-announced the member's entire
+  // trophy case to the whole gym's feed. Awarding nothing this round is the
+  // strictly better failure: the next workout re-checks anyway.
+  if (selectErr) {
+    logger.error('achievements: could not read earned set, skipping this round:', selectErr);
+    return [];
+  }
 
   const existingKeys = (existingRows ?? []).map((r) => r.achievement_key);
   const data = await fetchAchievementData(userId, gymId, supabase);
   const now = new Date().toISOString();
 
-  const newDefs = checkNewAchievements(data, existingKeys);
+  let newDefs = checkNewAchievements(data, existingKeys);
   if (newDefs.length > 0) {
     const inserts = newDefs.map((def) => ({
       user_id: userId,
@@ -676,7 +689,15 @@ export async function awardAchievements(userId, gymId, supabase) {
       .from('user_achievements')
       .upsert(inserts, { onConflict: 'user_id,achievement_key', ignoreDuplicates: true });
 
-    if (error) console.warn('Achievement upsert error:', error.message);
+    // Same reasoning as the read above, other direction: if the row never
+    // landed, these are not earned. Returning them anyway posted an
+    // "unlocked" item to the gym feed for an achievement the DB does not
+    // have — and the next workout would find it still missing and post it
+    // again. Drop them; they get re-detected once the write works.
+    if (error) {
+      logger.error('achievements: award did not persist, not announcing:', error);
+      newDefs = [];
+    }
   }
 
   // Custom platform-authored definitions — never let this break workout completion.
@@ -684,7 +705,7 @@ export async function awardAchievements(userId, gymId, supabase) {
   try {
     newCustom = await awardCustomAchievements(userId, gymId, supabase, data, existingKeys, now);
   } catch (err) {
-    console.warn('Custom achievement check error:', err?.message);
+    logger.error('Custom achievement check error:', err);
   }
 
   return [...newDefs, ...newCustom];

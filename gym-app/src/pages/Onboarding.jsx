@@ -1411,12 +1411,17 @@ const OnboardingFlow = () => {
 
   const handleConsentAgree = async () => {
     setConsentDeclined(false);
-    try {
-      await supabase
-        .from('profiles')
-        .update({ data_consent_at: new Date().toISOString(), data_consent_version: '1.0' })
-        .eq('id', user.id);
-    } catch {}
+    // The try/catch here was decorative: a Supabase builder RESOLVES with
+    // { error }, it does not throw, so the catch could never fire and the
+    // failure was discarded either way. This row IS the record of consent —
+    // losing it means the member agreed and nothing anywhere proves it.
+    // Advancing anyway is deliberate (blocking onboarding on a flaky network
+    // is worse), but the failure now reaches error_logs instead of nowhere.
+    const { error: consentErr } = await supabase
+      .from('profiles')
+      .update({ data_consent_at: new Date().toISOString(), data_consent_version: '1.0' })
+      .eq('id', user.id);
+    if (consentErr) logger.error('Onboarding: data consent was not recorded:', consentErr);
     setStep(s => s + 1);
   };
 
@@ -1978,24 +1983,64 @@ const OnboardingFlow = () => {
     // land after would leave exactly the program being declined.
     try { await planCacheRef.current.promise; } catch { /* the preload swallows its own */ }
 
-    const ids = [...new Set([programId, planCacheRef.current.result?.programId].filter(Boolean))];
-
-    // Read the routines the program owns before the row goes.
-    let progRows = null;
-    {
-      const q = supabase.from('generated_programs').select('id, schedule_map').eq('profile_id', user.id);
-      const { data, error } = ids.length ? await q.in('id', ids) : await q;
-      if (error) logger.error('Onboarding: could not read the plan being declined:', error);
-      progRows = data || [];
-    }
+    // EVERY live program this member has, not just the one this run created.
+    //
+    // Narrowing to the ids from this run left a stale program alive: the member
+    // is mid-onboarding, so any program that already exists came from an
+    // EARLIER pass through this same screen — including one declined on a build
+    // where the pre-generate "Skip" did not clean up. That leftover is exactly
+    // what they see on the other side, and it is indistinguishable from "the
+    // decline did nothing". A member who has not finished onboarding cannot
+    // legitimately own a program, so there is nothing here to be careful about.
+    const { data: progData, error: readErr } = await supabase
+      .from('generated_programs')
+      .select('id, schedule_map')
+      .eq('profile_id', user.id);
+    if (readErr) logger.error('Onboarding: could not read the plan being declined:', readErr);
+    // …EXCEPT a coach's plan. The justification for the wide scope is "a member
+    // mid-onboarding cannot legitimately own a program", and that is not true
+    // for gym-created members: admin_create_member / claim_imported_invite
+    // (0467-0469) pre-create the profile with is_onboarded=false, so a trainer
+    // can assign and materialize a plan BEFORE the member ever signs in. They
+    // then walk to step 11, tap "I don't want a plan" meaning the generated
+    // one, and delete their coach's program, its routines and their week.
+    // workout_sessions.routine_id is ON DELETE SET NULL, so any session already
+    // logged against those routines loses its link permanently.
+    const progRows = (progData || []).filter(p => !p.schedule_map?.trainer_plan_id);
 
     const { error: schedErr } = await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
     if (schedErr) logger.error('Onboarding: declining the plan left the week behind:', schedErr);
+    // Same read-back as below: the week strip renders workout_schedule directly
+    // when no program is active, so a silently-ignored DELETE here shows the
+    // declined plan's workouts on Home with nothing to remove them.
+    {
+      const { data: leftover } = await supabase
+        .from('workout_schedule').select('routine_id').eq('profile_id', user.id).limit(1);
+      if (leftover?.length) logger.error('Onboarding: workout_schedule DELETE removed nothing — check its RLS policy');
+    }
 
     const targetIds = progRows.map(p => p.id).filter(Boolean);
     if (targetIds.length) {
       const { error: progErr } = await supabase.from('generated_programs').delete().in('id', targetIds);
       if (progErr) logger.error('Onboarding: declining the plan left the program behind:', progErr);
+
+      // READ IT BACK. A DELETE that matches no policy affects zero rows and
+      // returns NO error — it is indistinguishable from success, which is
+      // exactly how a declined plan can still be live on the member's phone.
+      // `generated_programs` has no policy in any migration (it was created
+      // outside them), so this cannot be settled by reading the schema.
+      const { data: survivors } = await supabase
+        .from('generated_programs').select('id').in('id', targetIds).gt('expires_at', new Date().toISOString());
+      if (survivors?.length) {
+        // Fall back to the operation the rest of the app is built on: expiring
+        // a program is an UPDATE, a different policy from DELETE, and it is
+        // what every other "program ended" path already uses successfully.
+        logger.error('Onboarding: DELETE removed no rows — expiring instead', { count: survivors.length });
+        const { error: expErr } = await supabase.from('generated_programs')
+          .update({ expires_at: new Date(Date.now() - 1000).toISOString() })
+          .in('id', survivors.map(p => p.id));
+        if (expErr) logger.error('Onboarding: could not expire the declined plan either:', expErr);
+      }
     }
 
     const routineIds = [...new Set(progRows.flatMap(p => p.schedule_map?.routine_ids || []))].filter(Boolean);
@@ -2113,12 +2158,31 @@ const OnboardingFlow = () => {
     } catch (e) { console.warn('persist program name failed (non-fatal)', e); }
   };
 
+  // The very last gate between the member and the app, and both call sites
+  // discarded its error. markOnboarded() only flips the in-memory profile and
+  // the offline cache, so a failed write LOOKED like success — right up until
+  // the background refreshProfile() reconciled with a server that still said
+  // is_onboarded=false. ProtectedRoute then bounced the member back to step 0,
+  // by which point the draft keys below had already been deleted: they got to
+  // redo the entire onboarding. Retry once, and on failure change nothing —
+  // no draft wipe, no navigate — so tapping again just works.
+  const commitOnboarded = async () => {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const { error: obErr } = await supabase
+        .from('profiles').update({ is_onboarded: true }).eq('id', user.id);
+      if (!obErr) return true;
+      logger.error(`Onboarding: is_onboarded write failed (attempt ${attempt}):`, obErr);
+    }
+    setMealPlanError(t('mealPlan.finishFailed', 'We could not save that you finished. Check your connection and tap again.'));
+    return false;
+  };
+
   const handleSkipMealPlan = async () => {
     // See handleMealPlanDone — same ordering: DB write → optimistic local
     // flip via markOnboarded() (synchronous) → navigate → background
     // refreshProfile. Awaiting refreshProfile inline used to race the
     // navigate on slow networks and bounce the user back to step 0.
-    await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
+    if (!(await commitOnboarded())) return;
     posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS, targets_set: !!targetSelections });
     setOnboardingDone(true);
     markOnboarded();
@@ -2293,8 +2357,9 @@ const OnboardingFlow = () => {
     // the user back to /onboarding step 0). markOnboarded() updates the
     // in-memory profile AND offline_profile cache synchronously, so the
     // next render of ProtectedRoute always sees is_onboarded=true. The
-    // background refreshProfile then reconciles with the server.
-    await supabase.from('profiles').update({ is_onboarded: true }).eq('id', user.id);
+    // background refreshProfile then reconciles with the server — which is
+    // exactly why commitOnboarded() has to confirm the write landed first.
+    if (!(await commitOnboarded())) return;
     posthog?.capture('onboarding_completed', { total_steps: TOTAL_STEPS, targets_set: !!targetSelections });
     setOnboardingDone(true);
     markOnboarded();
@@ -2427,6 +2492,11 @@ const OnboardingFlow = () => {
           step={displayStep}
           total={TOTAL_STEPS}
           title={
+            // Step 3's second face has its own heading. Without this the page
+            // read "What's your main goal? · This shapes your rep ranges" above
+            // a form full of target weights — the header describing the screen
+            // you just left.
+            isTargetsPhase ? t('onboardingTargets.title', 'Your Targets') :
             step === 0 ? t('inviteCode.title') :
             step === 1 ? t('langStep.title') :
             step === 2 ? t('fitnessLevel.title') :
@@ -2441,6 +2511,7 @@ const OnboardingFlow = () => {
             null
           }
           sub={
+            isTargetsPhase ? t('onboardingTargets.subtitle', 'Pick what matters — we tailor your plan to it. Optional.') :
             step === 0 ? t('inviteCode.subtitle') :
             step === 1 ? t('langStep.subtitle') :
             step === 2 ? t('fitnessLevel.subtitle') :

@@ -82,7 +82,7 @@ const StepCustomize = ({ form, onChange, onToggleMuscle }) => {
               <input type="number" inputMode="numeric" min="10" max="180" placeholder="60"
                 value={form.session_duration_min}
                 onChange={e => set('session_duration_min', e.target.value === '' ? '' : parseInt(e.target.value, 10) || '')}
-                className="w-full rounded-[14px] px-3 py-2.5 outline-none pr-12 focus:ring-2 focus:ring-[#6D5FDB]"
+                className="w-full rounded-[14px] px-3 py-2.5 outline-none pr-12 focus:ring-2 focus:ring-[color:var(--color-accent)]"
                 style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-primary)', border: 'none', fontSize: '16px' }}
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] pointer-events-none" style={{ color: 'var(--color-text-muted)' }}>min</span>
@@ -198,7 +198,7 @@ const StepPreview = ({ result, programWeeks }) => {
             <button
               onClick={() => setViewWeek(w => Math.max(1, w - 1))}
               disabled={viewWeek <= 1}
-              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
+              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[color:var(--color-accent)] focus:outline-none"
               style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
               aria-label={t('generateWorkout.ariaPreviousWeek', 'Previous week')}
             >
@@ -215,7 +215,7 @@ const StepPreview = ({ result, programWeeks }) => {
             <button
               onClick={() => setViewWeek(w => Math.min(totalWeeks, w + 1))}
               disabled={viewWeek >= totalWeeks}
-              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
+              className="min-w-[44px] min-h-[44px] w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-20 focus:ring-2 focus:ring-[color:var(--color-accent)] focus:outline-none"
               style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-subtle)' }}
               aria-label={t('generateWorkout.ariaNextWeek', 'Next week')}
             >
@@ -846,15 +846,15 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
         {/* Header */}
         <div className="flex items-center justify-between px-5 pb-4 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(109, 95, 219, 0.12)' }}>
-              <Zap size={15} style={{ color: '#6D5FDB' }} />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}>
+              <Zap size={15} style={{ color: 'var(--color-accent)' }} />
             </div>
             <div>
               <p id="generate-workout-title" className="text-[15px]" style={{ color: 'var(--color-text-primary)', fontFamily: '"Familjen Grotesk", "Archivo", system-ui, sans-serif', fontWeight: 800, letterSpacing: '-0.3px' }}>{t('generateWorkout.generateMyProgram')}</p>
               <p className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>{mode === 'choose' ? t('generateWorkout.chooseSubtitle', 'How do you want to build it?') : t('generateWorkout.stepXOfY', { current: step + 1, total: 2 })}</p>
             </div>
           </div>
-          <button onClick={onClose} aria-label={t('generateWorkout.ariaCloseDialog', 'Close dialog')} className="w-9 h-9 rounded-full flex items-center justify-center focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+          <button onClick={onClose} aria-label={t('generateWorkout.ariaCloseDialog', 'Close dialog')} className="w-9 h-9 rounded-full flex items-center justify-center focus:ring-2 focus:ring-[color:var(--color-accent)] focus:outline-none" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
             <X size={18} style={{ color: 'var(--color-text-muted)' }} />
           </button>
         </div>
@@ -863,7 +863,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
         {mode === 'auto' && (
           <div className="flex gap-1 px-5 pt-3 flex-shrink-0">
             {[0, 1].map(i => (
-              <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= step ? 'bg-[#6D5FDB]' : ''}`} style={i > step ? { backgroundColor: 'var(--color-border-subtle)' } : undefined} />
+              <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= step ? 'bg-[color:var(--color-accent)]' : ''}`} style={i > step ? { backgroundColor: 'var(--color-border-subtle)' } : undefined} />
             ))}
           </div>
         )}
@@ -890,8 +890,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
                 className="w-full flex items-start gap-3 p-4 rounded-2xl text-left active:scale-[0.99] transition-transform"
                 style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
               >
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(109,95,219,0.14)' }}>
-                  <Zap size={18} style={{ color: '#6D5FDB' }} />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}>
+                  <Zap size={18} style={{ color: 'var(--color-accent)' }} />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('generateWorkout.autoChoice', 'Auto-generate')}</p>
@@ -929,7 +929,7 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
             {step > 0 && (
               <button
                 onClick={() => setStep(s => s - 1)}
-                className="flex items-center gap-1.5 px-4 py-3 rounded-full transition-colors text-[13px] font-semibold focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
+                className="flex items-center gap-1.5 px-4 py-3 rounded-full transition-colors text-[13px] font-semibold focus:ring-2 focus:ring-[color:var(--color-accent)] focus:outline-none"
                 style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-hover)' }}
               >
                 <ChevronLeft size={15} /> {t('generateWorkout.back')}
@@ -939,8 +939,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
               <button
                 onClick={() => setStep(1)}
                 disabled={!canAdvance}
-                className="flex-1 flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[14px] py-3 rounded-[16px] transition-all focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
-                style={{ backgroundColor: '#6D5FDB', fontWeight: 800 }}
+                className="flex-1 flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed text-[14px] py-3 rounded-[16px] transition-all focus:ring-2 focus:ring-[color:var(--color-accent)] focus:outline-none"
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)', fontWeight: 800 }}
               >
                 {t('generateWorkout.previewProgram')} <ChevronRight size={15} />
               </button>
@@ -948,8 +948,8 @@ const GenerateWorkoutModal = ({ onboarding, onClose, onGenerated, onCreateManual
               <button
                 onClick={handleGenerate}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 disabled:opacity-50 text-white text-[14px] py-3 rounded-[16px] transition-all focus:ring-2 focus:ring-[#6D5FDB] focus:outline-none"
-                style={{ backgroundColor: '#6D5FDB', fontWeight: 800 }}
+                className="flex-1 flex items-center justify-center gap-2 disabled:opacity-50 text-[14px] py-3 rounded-[16px] transition-all focus:ring-2 focus:ring-[color:var(--color-accent)] focus:outline-none"
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)', fontWeight: 800 }}
               >
                 {saving ? t('generateWorkout.generating') : <><Check size={15} strokeWidth={2.5} /> {t('generateWorkout.generateMyProgram')}</>}
               </button>

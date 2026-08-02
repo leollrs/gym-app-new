@@ -104,8 +104,52 @@ function transformFor(opts) {
 // 44 px row thumb (Nutrition.jsx:2654) all the way up to the recipe-detail
 // hero (full width x 260 px, Nutrition.jsx:554). One default can't serve both,
 // so meals keep the original until each thumbnail site passes its own width.
+// ⚠️ THESE THUMBNAILS ARE BAKED, NOT RENDERED.
+//
+// They used to be `{ width: 144, quality: 70 }` handed to the Storage render
+// endpoint. That endpoint is metered as "Storage Image Transformations" and the
+// quota counts UNIQUE ORIGIN IMAGES per billing cycle — 100 on Pro. These two
+// prefixes hold ~127 objects between them (117 ingredients from migration 0634
+// plus the category tiles), so the project sat permanently over quota on static
+// content that never changes, with no members required to push it there.
+//
+// `scripts/bake-thumbnails.mjs` writes a 144 px copy to `<prefix>thumb/<file>`
+// once. Serving that is a plain object read: no render endpoint, no meter. Run
+// it again after adding images to either prefix:
+//
+//   SUPABASE_SERVICE_KEY=… node scripts/bake-thumbnails.mjs food-images ingredients/ categories/
+//
+// A missing thumb is not a crash — every call site here renders through
+// FoodThumb or an onError handler, so it degrades to the placeholder.
 const THUMB_ONLY_PREFIXES = ['ingredients/', 'categories/'];
+
+// ⚠️ FLIP THIS TO `true` ONLY AFTER THE BAKE HAS RUN.
+//
+// The code change and the data migration ship independently — pointing at
+// `thumb/` before those objects exist would show the placeholder for every
+// ingredient and category tile. While it is false the app behaves exactly as
+// before (render endpoint, metered), so this is safe to release at any time.
+//
+//   SUPABASE_SERVICE_KEY=… node scripts/bake-thumbnails.mjs food-images ingredients/ categories/
+//
+// …then set this to true, rebuild, and the meter goes to zero.
+export const BAKED_THUMBS_READY = false;
+
+// The pre-bake fallback: the 144px transform this whole change exists to
+// retire. Kept so that flipping the flag is the ONLY difference between the two
+// states — without it, "not ready yet" quietly meant "serve the 228 KB original
+// into a 44 px box", which is worse than what we started with.
 const THUMB_TRANSFORM = { width: 144, quality: 70 };
+
+/** `ingredients/kale.jpg` → `ingredients/thumb/kale.jpg`, else null. */
+function bakedThumbPath(clean) {
+  if (!BAKED_THUMBS_READY) return null;
+  const prefix = THUMB_ONLY_PREFIXES.find((p) => clean.startsWith(p));
+  if (!prefix) return null;
+  const rest = clean.slice(prefix.length);
+  if (!rest || rest.includes('/')) return null;   // already under thumb/, or nested
+  return `${prefix}thumb/${rest}`;
+}
 
 /**
  * Convert a local image path (e.g. "/foods/chicken_breast.jpg") to its
@@ -129,14 +173,19 @@ export function foodImageUrl(path, opts) {
   if (path.startsWith('blob:')) return path;
   let clean = path.startsWith('/') ? path.slice(1) : path;
   clean = clean.replace(/\.png$/i, '.jpg');
-  // Explicit opts always win; otherwise fall back to the thumbnail default for
-  // the prefixes whose call sites are all ≤44 px (see THUMB_ONLY_PREFIXES).
-  const transform = transformFor(
-    opts || (THUMB_ONLY_PREFIXES.some((p) => clean.startsWith(p)) ? THUMB_TRANSFORM : null),
-  );
+  // A caller asking for a specific size still gets a rendered copy — those sites
+  // (a full-width hero, a 150 px card) have no baked variant. With no opts, the
+  // thumbnail prefixes swap to their BAKED copy instead of billing a transform.
+  const baked = opts ? null : bakedThumbPath(clean);
+  // No baked copy and no explicit size, but this IS a thumbnail prefix → fall
+  // back to the old rendered thumbnail rather than the full-size original.
+  const fallbackThumb = (!opts && !baked && THUMB_ONLY_PREFIXES.some((p) => clean.startsWith(p)) && !clean.includes('/thumb/'))
+    ? THUMB_TRANSFORM
+    : null;
+  const transform = transformFor(opts || fallbackThumb);
   const { data } = supabase.storage
     .from('food-images')
-    .getPublicUrl(clean, transform ? { transform } : undefined);
+    .getPublicUrl(baked || clean, transform ? { transform } : undefined);
   return data?.publicUrl || null;
 }
 

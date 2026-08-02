@@ -121,14 +121,16 @@ const HealthSync = () => {
   const persistConnected = useCallback(async (enabled) => {
     localStorage.setItem('tugympr_health_connected', String(enabled));
     if (user?.id) {
-      try {
-        await supabase
-          .from('profiles')
-          .update({ health_sync_enabled: enabled })
-          .eq('id', user.id);
-      } catch {
-        // DB write failed; localStorage still has the value as cache
-      }
+      // The try/catch was dead code: a Supabase builder RESOLVES with { error },
+      // it never throws, so this could only ever have caught a bug in the SDK.
+      // localStorage keeps THIS device working, but health_sync_enabled is the
+      // canonical flag — Onboarding's prefill and Recovery's connect CTA both
+      // read it — so losing it means the connection looks off everywhere else.
+      const { error: hsErr } = await supabase
+        .from('profiles')
+        .update({ health_sync_enabled: enabled })
+        .eq('id', user.id);
+      if (hsErr) logger.error('HealthSync: health_sync_enabled did not persist:', hsErr);
     }
   }, [user?.id]);
 

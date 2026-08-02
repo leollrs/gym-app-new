@@ -1,7 +1,11 @@
 ext {
     minSdkVersion = 26
     compileSdkVersion = 36
-    targetSdkVersion = 35
+    // Play requires the target API to stay within one year of the latest Android
+    // release. Android 16 = API 36; from Aug 30 2026 an app still on 35 cannot
+    // publish updates at all. Behaviour changes this opts into, and how each is
+    // handled, are documented in AndroidManifest.xml.
+    targetSdkVersion = 36
     androidxActivityVersion = '1.9.2'
     androidxAppCompatVersion = '1.7.0'
     androidxCoordinatorLayoutVersion = '1.2.0'

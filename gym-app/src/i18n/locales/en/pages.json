@@ -2247,7 +2247,16 @@
     "programEmptyHint": "This program has no workouts yet — ask your gym to finish it.",
     "deletingProgress": "Deleting {{done}}/{{total}}…",
     "coachManaged": "Coach's plan",
-    "coachManagedHint": "Your coach manages this program"
+    "coachManagedHint": "Your coach manages this program",
+    "pitchTitle": "Your own program",
+    "pitchBody": "Built from your goals and equipment. It moves the weight for you every week.",
+    "pitchCta": "Build my program",
+    "pitchDaysPerWeek": "days / week",
+    "pitchWeeks": "weeks",
+    "pitchProgression": "progression",
+    "pitchAutoValue": "Auto",
+    "leaveProgram": "Leave program",
+    "leaveFailed": "Couldn't leave the program. Check your connection and try again."
   },
   "quickStart": {
     "startWorkout": "Start Workout",
@@ -12099,7 +12108,8 @@
       "firstName": "First name",
       "middleName": "Middle name",
       "lastName1": "First last name",
-      "lastName2": "Second last name"
+      "lastName2": "Second last name",
+      "lockedNotice": "Your name, username and email are managed by your gym. Ask an admin to change them."
     },
     "services": {
       "title": "Services",
@@ -14476,7 +14486,8 @@
     "saving": "Saving…",
     "saved": "Saved",
     "saveFailed": "Failed to save",
-    "ageFromDob": "Calculated from your date of birth"
+    "ageFromDob": "Calculated from your date of birth",
+    "email": "Email"
   },
   "support": {
     "title": "Help & Support",
@@ -15297,5 +15308,8 @@
     "calves": "Calves",
     "forearm-back-ext": "Forearm extensors (back)",
     "forearm-back-flex": "Forearm flexors (back)"
+  },
+  "adminOnboarding": {
+    "featuresSaveFailed": "Could not save the feature settings — you can set them in Settings."
   }
 }

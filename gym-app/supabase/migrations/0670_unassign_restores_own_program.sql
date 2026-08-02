@@ -30,7 +30,19 @@ AS $$
 DECLARE
   v_map        JSONB;
   v_restore    JSONB;
-  v_days       INT[];
+  -- TEXT[], NOT INT[]. `profiles.preferred_training_days` stores English DAY
+  -- NAMES — 0059 declares `TEXT[]` with the comment "e.g. ['Monday',
+  -- 'Wednesday','Friday']", and the streak cron maps them with
+  -- `CASE day WHEN 'Sunday' THEN 0 …` (0242:493).
+  --
+  -- Declaring this INT[] made the UPDATE below `COALESCE(integer[], text[])`,
+  -- which plpgsql rejects at PLAN time (42804) on EVERY call, whatever the
+  -- data. And both trigger wrappers in 0669 catch WHEN OTHERS — a plpgsql
+  -- EXCEPTION block is a subtransaction, so the catch ROLLED BACK everything
+  -- this function had just done: the expiry, the schedule delete, the restore,
+  -- the re-seed, the marker clear. Applying it would have silently reverted
+  -- unassignment to its pre-0669 behaviour, leaving one RAISE LOG behind.
+  v_days       TEXT[];
   r            RECORD;
 BEGIN
   IF p_member_id IS NULL OR p_plan_id IS NULL THEN RETURN; END IF;
@@ -112,7 +124,7 @@ BEGIN
   -- Training days back to whatever they were before adoption.
   v_days := CASE
     WHEN jsonb_typeof(v_map -> 'superseded_training_days') = 'array'
-      THEN ARRAY(SELECT jsonb_array_elements_text(v_map -> 'superseded_training_days')::int)
+      THEN ARRAY(SELECT jsonb_array_elements_text(v_map -> 'superseded_training_days'))
     ELSE NULL
   END;
 

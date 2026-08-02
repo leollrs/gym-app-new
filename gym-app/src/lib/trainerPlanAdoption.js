@@ -42,6 +42,14 @@ export function weeksHash(weeks) {
 /** Mon-first week order — the steady-state (week 2+) day preference. */
 const PACKED_WEEK = [1, 2, 3, 4, 5, 6, 0];
 
+// workout_schedule.day_of_week is an INT (Sunday=0), but
+// profiles.preferred_training_days is TEXT[] of ENGLISH DAY NAMES (0059), and
+// every SQL reader maps it with a literal `CASE day WHEN 'Sunday' THEN 0 ...`.
+// Writing the ints straight through gave {'1','2','3'}: no CASE branch matches,
+// so the array became {NULL,NULL,NULL} — see alignTrainingDays below for why
+// that is worse than leaving it empty.
+export const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 const dayList = (weeks, key) => (weeks?.[String(key)] || [])
   .filter(d => (d.exercises || []).length > 0);
 
@@ -281,9 +289,22 @@ export async function adoptTrainerPlan({
       const drop = usedErr ? [] : oldIds.filter(r => !trained.has(r));
       if (usedErr) logger.error('trainerPlanAdoption: skipping cleanup, sessions read failed:', usedErr);
       if (drop.length) {
-        await supabase.from('routine_exercises').delete().in('routine_id', drop);
-        await supabase.from('workout_schedule').delete().in('routine_id', drop);
-        await supabase.from('routines').delete().in('id', drop);
+        // Ordered by FK dependency, so a discarded failure at any step made the
+        // NEXT one fail too — and both were invisible. The member keeps working
+        // either way; what's left behind is orphaned routines still listed under
+        // "My Routines". Logged rather than thrown: aborting the adoption over
+        // failed cleanup of the OLD plan would be the worse trade.
+        for (const [table, col] of [
+          ['routine_exercises', 'routine_id'],
+          ['workout_schedule', 'routine_id'],
+          ['routines', 'id'],
+        ]) {
+          const { error: delErr } = await supabase.from(table).delete().in(col, drop);
+          if (delErr) {
+            logger.error(`trainerPlanAdoption: cleanup of ${table} failed, rows orphaned:`, delErr);
+            break; // everything after this is FK-blocked anyway
+          }
+        }
       }
     }
   }
@@ -310,8 +331,19 @@ export async function adoptTrainerPlan({
   // member whose onboarding said Mon/Wed/Fri, put on a Mon/Tue/Wed plan, had
   // Friday counted as a missed training day and the cron zeroed their streak
   // EVERY week for following their coach. Every other creator aligns these.
+  //
+  // Write NAMES, not the ints in packedDays. The column is TEXT[], so Postgres
+  // accepted {'1','2','3'} without complaint and the bug was invisible: the
+  // reader's CASE fell through to NULL for every element, `v_gap_dow = ANY
+  // ('{NULL,NULL,NULL}')` evaluated to NULL rather than FALSE, plpgsql treats a
+  // NULL condition as false, so the rest-day branch was never taken. Every rest
+  // day then counted as a MISSED training day — it burned the member's two
+  // monthly streak freezes and broke the streak after that. The exact failure
+  // this alignment exists to prevent, caused by the alignment itself.
   const { error: tdErr } = await supabase
-    .from('profiles').update({ preferred_training_days: packedDays }).eq('id', userId);
+    .from('profiles')
+    .update({ preferred_training_days: packedDays.map(d => DOW_NAMES[d]) })
+    .eq('id', userId);
   if (tdErr) logger.error('trainerPlanAdoption: could not align training days:', tdErr);
 
   // The marker is a FK to trainer_workout_plans, so it can only hold a trainer

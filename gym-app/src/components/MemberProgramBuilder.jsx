@@ -7,7 +7,10 @@ import { useToast } from '../contexts/ToastContext';
 import { getExercises } from '../lib/exerciseStore';
 const ALL_EXERCISES = getExercises();
 import { exName } from '../lib/exerciseName';
+import logger from '../lib/logger';
 import ExerciseVideoThumb from './ExerciseVideoThumb';
+import AllExercisesModal from './AllExercisesModal';
+import { modalChipDefs, matchesChip } from '../lib/exerciseChips';
 // Tapping an exercise thumbnail opens its full info card — lazy so the large
 // ExerciseLibrary module isn't bundled into the builder chunk until needed.
 const ExerciseInfoCard = lazy(() => import('../pages/ExerciseLibrary').then(m => ({ default: m.ExerciseCard })));
@@ -89,61 +92,6 @@ function useDragSort(ids, onReorder) {
     return (drag.y - drag.startY) - (curIndex - drag.from) * (drag.h + DRAG_GAP);
   };
   return { dragId: drag?.id ?? null, draggedTranslate, start: h.current.start };
-}
-
-// ── Inline exercise picker (bottom sheet, live search, tap to add) ──
-function ExercisePicker({ onAdd, onClose, t, lang }) {
-  const [q, setQ] = useState('');
-  const list = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return ALL_EXERCISES
-      .filter(ex => !needle || exName(ex).toLowerCase().includes(needle) || (ex.muscle || '').toLowerCase().includes(needle))
-      .slice(0, 80);
-  }, [q]);
-  return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl flex flex-col"
-        style={{ maxHeight: '82vh', background: 'var(--color-bg-card)', borderTopLeftRadius: 22, borderTopRightRadius: 22, border: '1px solid var(--color-border-subtle)' }}
-      >
-        <div className="flex items-center gap-2 px-4 pt-4 pb-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-          <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-surface-hover)' }}>
-            <Search size={16} style={{ color: 'var(--color-text-subtle)' }} />
-            <input
-              autoFocus value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder={t('programBuilder.searchExercises', 'Search exercises…')}
-              className="flex-1 bg-transparent outline-none text-[14px]" style={{ color: 'var(--color-text-primary)' }}
-            />
-          </div>
-          <button onClick={onClose} aria-label={t('common:close', 'Close')} className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="overflow-y-auto p-3 flex flex-col gap-2">
-          {list.map(ex => (
-            <button
-              key={ex.id} onClick={() => onAdd(ex)}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left active:scale-[0.99] transition-transform"
-              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
-            >
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)' }}>
-                <Dumbbell size={15} style={{ color: 'var(--color-accent)' }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>{exName(ex)}</p>
-                <p className="text-[11.5px] truncate" style={{ color: 'var(--color-text-subtle)' }}>{t(`muscleGroups.${ex.muscle}`, ex.muscle)}</p>
-              </div>
-              <Plus size={18} style={{ color: 'var(--color-accent)' }} />
-            </button>
-          ))}
-          {list.length === 0 && (
-            <p className="text-center text-[13px] py-10" style={{ color: 'var(--color-text-subtle)' }}>{t('programBuilder.noMatches', 'No exercises found')}</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ── One exercise row inside a day (grip + name + sets/reps/rest + remove) ──
@@ -324,6 +272,12 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
   const [saving, setSaving] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(!!editProgram);
   const [pickerDayUid, setPickerDayUid] = useState(null);
+  // Both memoized: AllExercisesModal keys its filter+sort useMemo on these
+  // props, so a fresh arrow each render would re-filter the whole catalog on
+  // every keystroke. There is no "recent" notion here, so that chip simply
+  // matches nothing rather than being a special case.
+  const pickerChips = useMemo(() => modalChipDefs(t), [t]);
+  const pickerFilter = useCallback((ex, chipId) => matchesChip(ex, chipId), []);
   const [error, setError] = useState('');
   // Shown when the user shortens an in-progress program on edit: choose whether
   // to shorten the current run (keep its start + progress) or start fresh.
@@ -537,14 +491,32 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
           const { data: r, error: rErr } = await supabase.from('routines')
             .insert({ name: `Auto: ${dayLabel}`, created_by: user.id, gym_id: profile.gym_id })
             .select('id').single();
-          if (rErr || !r?.id) continue;
-          created.push({ id: r.id, dow: day.dow });
+          if (rErr || !r?.id) {
+            // Was a bare `continue` — the day just vanished from the program
+            // and the member had no way to tell which one, or that any had.
+            logger.error('programBuilder: routine insert failed, day dropped:', dayLabel, rErr);
+            continue;
+          }
           const rows = day.exercises.map((ex, p) => ({
             routine_id: r.id, exercise_id: ex.id, position: p + 1,
             target_sets: Number(ex.sets) || 3, target_reps: String(ex.reps || '8-12'),
             rest_seconds: Number(ex.restSeconds) || 90, group_id: null, group_type: null,
           }));
-          if (rows.length) await supabase.from('routine_exercises').insert(rows);
+          if (rows.length) {
+            // The routine row already exists at this point, so a discarded error
+            // here produced a routine with ZERO exercises that was still pushed
+            // into `created` and wired into workout_schedule below: the member
+            // tapped their scheduled day and got an empty session. Bin the shell
+            // instead of scheduling it.
+            const { error: exErr } = await supabase.from('routine_exercises').insert(rows);
+            if (exErr) {
+              logger.error('programBuilder: exercises failed, dropping empty routine:', dayLabel, exErr);
+              await supabase.from('routines').delete().eq('id', r.id);
+              continue;
+            }
+          }
+          // Only count the day once it actually has its exercises.
+          created.push({ id: r.id, dow: day.dow });
         }
         return created;
       };
@@ -554,10 +526,16 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
 
       // Seed workout_schedule from week A only — every other surface resolves
       // the B routine for even weeks from routine_ids_b by slot index.
+      // MUST throw. The delete above already wiped the member's entire
+      // workout_schedule, so a silently failed re-seed left them with a blank
+      // week and no error anywhere — the destructive half succeeded and the
+      // restorative half didn't. The outer catch surfaces "Could not save
+      // program", which is at least true and actionable.
       for (const { id, dow } of madeA) {
-        await supabase.from('workout_schedule').upsert({
+        const { error: schErr } = await supabase.from('workout_schedule').upsert({
           profile_id: user.id, gym_id: profile.gym_id, day_of_week: dow, routine_id: id, updated_at: new Date().toISOString(),
         }, { onConflict: 'profile_id,day_of_week' });
+        if (schErr) throw schErr;
       }
 
       const idsA = madeA.map(r => r.id);
@@ -775,13 +753,18 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         </div>
       )}
 
-      {pickerDayUid && (
-        <ExercisePicker
-          t={t} lang={lang}
-          onAdd={(ex) => { addExerciseToDay(pickerDayUid, ex); }}
-          onClose={() => setPickerDayUid(null)}
-        />
-      )}
+      {/* The Exercise Library picker, not a second hand-rolled one. The old
+          inline sheet had no filters, no video, no favorites — and a silent
+          `.slice(0, 80)` that hid most of a 300+ exercise catalog behind the
+          first 80 text matches, with nothing on screen saying so. */}
+      <AllExercisesModal
+        open={!!pickerDayUid}
+        onClose={() => setPickerDayUid(null)}
+        exercises={ALL_EXERCISES}
+        onExerciseTap={(ex) => { addExerciseToDay(pickerDayUid, ex); setPickerDayUid(null); }}
+        chipDefs={pickerChips}
+        filterByChip={pickerFilter}
+      />
 
       {/* Tapped an exercise thumbnail → open its full info card (video, muscles, cues). */}
       {infoExercise && (
