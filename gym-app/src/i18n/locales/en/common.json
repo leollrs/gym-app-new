@@ -519,5 +519,10 @@
     "friday": "Fridays",
     "saturday": "Saturdays"
   },
-  "offline": "Offline"
+  "offline": "Offline",
+  "updateAvailable": {
+    "title": "Update available",
+    "body": "Version {{version}} is ready to install.",
+    "cta": "Update"
+  }
 }

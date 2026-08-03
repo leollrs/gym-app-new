@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, recoverDeadSession } from '../lib/supabase';
 import logger from '../lib/logger';
+import { titleCaseName } from '../lib/nameCase';
 import { applyBranding, cacheBranding } from '../lib/branding';
 import { setAppName } from '../lib/appName';
 import { getPalette } from '../lib/palettes';
@@ -279,7 +280,17 @@ export const AuthProvider = ({ children }) => {
       // Notifications page for consistency. See useEffect below.
     }
 
-    setProfile(data ?? null);
+    // Title-case the display name here, once, instead of at every render site.
+    // Signup started casing names on write, but that only helps accounts made
+    // AFTER it shipped — every existing row still holds whatever was typed
+    // ("test 20"), and nothing cased on read. Doing it in fetchProfile means
+    // the header, profile page, greetings and everything else reading
+    // profile.full_name agree without touching 50 call sites.
+    //
+    // Deliberately NOT applied to `username`: a handle is not a name, and
+    // @test20 is correct lowercase. titleCaseName also leaves any word the
+    // member cased themselves alone, so "Carlos DeLeon" survives intact.
+    setProfile(data ? { ...data, full_name: titleCaseName(data.full_name) || data.full_name } : null);
     // Persist a non-authoritative landing hint (the user's primary role) so the
     // NEXT cold boot knows whether this user lands on a privileged surface and
     // can hold the splash instead of flashing the member home. See landingHint.

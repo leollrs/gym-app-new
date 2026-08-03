@@ -37,7 +37,14 @@
     "gymClosedPickAnother": "Pick another day",
     "gymClosedDropDay": "Drop this day",
     "gymClosedKeep": "Keep it",
-    "daysMismatch": "This program has {{count}} training days a week — you set {{target}} in your setup. That's fine, just checking it's on purpose."
+    "daysMismatch": "This program has {{count}} training days a week — you set {{target}} in your setup. That's fine, just checking it's on purpose.",
+    "weekOfTotal": "Week {{n}} of {{total}}",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "goToWeek": "Week {{n}}",
+    "sameAsWeek": "Same as week {{n}}. Changes here apply to both.",
+    "addDayToThisWeek": "Add a day to week {{n}}",
+    "errNeedsWeekOne": "Week 1 needs at least one day with exercises."
   },
   "weekdaysShort": {
     "sunday": "S",
@@ -2256,7 +2263,11 @@
     "pitchProgression": "progression",
     "pitchAutoValue": "Auto",
     "leaveProgram": "Leave program",
-    "leaveFailed": "Couldn't leave the program. Check your connection and try again."
+    "leaveFailed": "Couldn't leave the program. Check your connection and try again.",
+    "noActiveProgram": "No active program",
+    "noActiveProgramDesc": "Resume one below, or build a new one to get back on a schedule.",
+    "leaveCoachPlanTitle": "Leave your coach’s plan?",
+    "leaveCoachPlanDesc": "This is the plan your trainer built for you. Leaving stops it on your side and restores whatever program you were on before. Your trainer can assign it again."
   },
   "quickStart": {
     "startWorkout": "Start Workout",

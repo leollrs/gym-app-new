@@ -42,7 +42,7 @@ function parseSemver(v) {
   return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
 }
 
-function compareSemver(a, b) {
+export function compareSemver(a, b) {
   const [a1, a2, a3] = parseSemver(a);
   const [b1, b2, b3] = parseSemver(b);
   if (a1 !== b1) return a1 - b1;

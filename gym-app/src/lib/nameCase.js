@@ -42,7 +42,7 @@ function caseWord(word, index) {
 
   // Split on the separators that carry their own capital, and case each part.
   // The separators are kept so `jean-luc` → `Jean-Luc` and `o'brien` → `O'Brien`.
-  let out = lower.split(/([-'’])/).map((part, i, arr) => {
+  let out = lower.split(/([-'’])/).map((part) => {
     if (part === '-' || part === "'" || part === '’') return part;
     if (!part) return part;
     // A single letter before an apostrophe is a prefix (d'Angelo, O'Brien):
@@ -50,9 +50,12 @@ function caseWord(word, index) {
     return cap(part);
   }).join('');
 
-  // Mc/Mac prefixes take a second capital: mcdonald → McDonald.
+  // Mc takes a second capital: mcdonald → McDonald.
+  // There is deliberately NO Mac rule. It would turn `machado` → `MacHado` and
+  // `macario` → `MacArio`, and in this market those names are far commoner than
+  // MacKay. Someone who wants MacKay types the K, and the self-cased check at
+  // the top of this function then leaves it alone.
   out = out.replace(/^(Mc)([a-zà-ÿ])/, (_, p, c) => p + c.toLocaleUpperCase());
-  out = out.replace(/^(Mac)([a-zà-ÿ]{2,})/, (_, p, c) => p + c.charAt(0).toLocaleUpperCase() + c.slice(1));
 
   return out;
 }

@@ -37,7 +37,14 @@
     "gymClosedPickAnother": "Escoger otro día",
     "gymClosedDropDay": "Quitar este día",
     "gymClosedKeep": "Dejarlo así",
-    "daysMismatch": "Este programa tiene {{count}} días de entreno por semana — pusiste {{target}} en tu configuración. No hay problema, solo confirmando que es a propósito."
+    "daysMismatch": "Este programa tiene {{count}} días de entreno por semana — pusiste {{target}} en tu configuración. No hay problema, solo confirmando que es a propósito.",
+    "weekOfTotal": "Semana {{n}} de {{total}}",
+    "prevWeek": "Semana anterior",
+    "nextWeek": "Semana siguiente",
+    "goToWeek": "Semana {{n}}",
+    "sameAsWeek": "Igual que la semana {{n}}. Lo que cambies aquí aplica a las dos.",
+    "addDayToThisWeek": "Añadir un día a la semana {{n}}",
+    "errNeedsWeekOne": "La semana 1 necesita al menos un día con ejercicios."
   },
   "weekdaysShort": {
     "sunday": "D",
@@ -2256,7 +2263,11 @@
     "pitchProgression": "progresión",
     "pitchAutoValue": "Auto",
     "leaveProgram": "Abandonar programa",
-    "leaveFailed": "No se pudo abandonar el programa. Revisa tu conexión e inténtalo de nuevo."
+    "leaveFailed": "No se pudo abandonar el programa. Revisa tu conexión e inténtalo de nuevo.",
+    "noActiveProgram": "Sin programa activo",
+    "noActiveProgramDesc": "Retoma uno de abajo, o crea uno nuevo para volver a tener un horario.",
+    "leaveCoachPlanTitle": "¿Abandonar el plan de tu entrenador?",
+    "leaveCoachPlanDesc": "Este es el plan que tu entrenador creó para ti. Si lo abandonas se detiene de tu lado y se restaura el programa que tenías antes. Tu entrenador puede volver a asignarlo."
   },
   "quickStart": {
     "startWorkout": "Empezar Entrenamiento",

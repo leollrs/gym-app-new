@@ -4,6 +4,7 @@ import { usePostHog } from '@posthog/react';
 import { useQueryClient } from '@tanstack/react-query';
 import QRCodeModal from './components/QRCodeModal';
 import UpdateRequiredModal from './components/UpdateRequiredModal';
+import UpdateAvailableBanner from './components/UpdateAvailableBanner';
 import MaintenanceGate from './components/MaintenanceGate';
 import { startVersionCheck } from './lib/appVersionCheck';
 import { initSWUpdate, subscribeSWUpdate, applySWUpdate } from './lib/swUpdate';
@@ -1667,6 +1668,7 @@ function App() {
         screens) the moment the API reports we're below min_required_version.
         Renders nothing while the client is up to date. */}
     <UpdateRequiredModal />
+    <UpdateAvailableBanner />
     {/* Maintenance lock — full-screen overlay for all non-super-admins while
         maintenance mode is on (toggled in platform Operations). */}
     <MaintenanceGate />

@@ -519,5 +519,10 @@
     "friday": "viernes",
     "saturday": "sábados"
   },
-  "offline": "Sin conexión"
+  "offline": "Sin conexión",
+  "updateAvailable": {
+    "title": "Actualización disponible",
+    "body": "La versión {{version}} está lista para instalar.",
+    "cta": "Actualizar"
+  }
 }

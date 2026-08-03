@@ -29,9 +29,15 @@ describe('titleCaseName', () => {
     expect(titleCaseName('rivera-santos')).toBe('Rivera-Santos');
   });
 
-  it('handles Mc / Mac', () => {
+  it('handles Mc — but deliberately leaves Mac alone', () => {
     expect(titleCaseName('mcdonald')).toBe('McDonald');
-    expect(titleCaseName('mackay')).toBe('MacKay');
+    // A Mac rule would wreck the far commoner Spanish surnames in this market.
+    // MacKay is one name; Machado and Macario are everywhere here.
+    expect(titleCaseName('machado')).toBe('Machado');
+    expect(titleCaseName('macario')).toBe('Macario');
+    expect(titleCaseName('mackay')).toBe('Mackay');
+    // Someone who wants MacKay types the K, and self-cased words are untouched.
+    expect(titleCaseName('MacKay')).toBe('MacKay');
   });
 
   it('leaves a word the member cased themselves alone', () => {

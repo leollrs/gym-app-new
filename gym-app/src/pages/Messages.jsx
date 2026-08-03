@@ -1317,8 +1317,12 @@ const ChatView = ({ conversationId, onBack }) => {
 // ── Swipeable Row (Apple-style swipe actions) ──────────────────
 // Generic swipe-to-reveal row. `actions` is an ordered list of
 // { key, icon, label, confirmLabel?, bg, color, destructive? onClick } rendered
-// right-to-left behind the row. A full left-swipe fires the destructive action
-// (or the last one). Actions with a confirmLabel require a second tap.
+// right-to-left behind the row. Actions with a confirmLabel require a second tap.
+//
+// There is deliberately NO full-swipe shortcut. It used to fire the destructive
+// action outright once you dragged past 200px, so an over-enthusiastic flick
+// deleted a conversation with no tap and no confirm. The row now stops dead at
+// the width of its buttons — the swipe reveals, the tap decides.
 const SwipeableRow = ({ children, actions = [], openRowId, setOpenRowId, rowId }) => {
   const rowRef = useRef(null);
   const startXRef = useRef(0);
@@ -1330,9 +1334,7 @@ const SwipeableRow = ({ children, actions = [], openRowId, setOpenRowId, rowId }
   const [transitioning, setTransitioning] = useState(false);
 
   const SNAP_THRESHOLD = 80;
-  const FULL_SWIPE_THRESHOLD = 200;
   const OPEN_WIDTH = Math.max(1, actions.length) * 75; // 75px per button
-  const fullSwipeAction = actions.find(a => a.destructive) || actions[actions.length - 1];
 
   // Close when another row opens
   useEffect(() => {
@@ -1361,24 +1363,18 @@ const SwipeableRow = ({ children, actions = [], openRowId, setOpenRowId, rowId }
 
     currentXRef.current = clientX;
     // Only allow swiping left (positive diff = reveal actions)
+    // Clamp to exactly the buttons' width. It used to allow 280px so there was
+    // runway for the full-swipe gesture; without that gesture the extra travel
+    // is just the row sliding off into empty space.
     const newOffset = isOpen ? Math.max(0, OPEN_WIDTH + diff) : Math.max(0, diff);
-    setOffsetX(Math.min(newOffset, 280));
-  }, [isOpen]);
+    setOffsetX(Math.min(newOffset, OPEN_WIDTH));
+  }, [isOpen, OPEN_WIDTH]);
 
   const handleEnd = useCallback(() => {
     if (!isDraggingRef.current) return;
 
     setTransitioning(true);
     setTimeout(() => setTransitioning(false), 300);
-
-    if (offsetX > FULL_SWIPE_THRESHOLD) {
-      // Full swipe — trigger the destructive action directly
-      setOffsetX(0);
-      setIsOpen(false);
-      setConfirmKey(null);
-      fullSwipeAction?.onClick?.();
-      return;
-    }
 
     if (offsetX > SNAP_THRESHOLD) {
       // Snap open
@@ -1391,7 +1387,7 @@ const SwipeableRow = ({ children, actions = [], openRowId, setOpenRowId, rowId }
       setIsOpen(false);
       setConfirmKey(null);
     }
-  }, [offsetX, fullSwipeAction, rowId, setOpenRowId, OPEN_WIDTH]);
+  }, [offsetX, rowId, setOpenRowId, OPEN_WIDTH]);
 
   const handleClose = useCallback(() => {
     setTransitioning(true);
@@ -1772,21 +1768,28 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {headerExtra}
+          {/* Both sat as bare glyphs on the background — nothing said they were
+              tappable until you hit them. A filled circle gives each a real
+              target; the active "add friends" state fills with the accent so
+              the toggle reads on/off instead of only changing icon colour. */}
           <button
             onClick={() => setShowFriends(s => !s)}
-            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
-            style={{ color: showFriends ? 'var(--color-accent, #D4AF37)' : 'var(--color-text-muted)' }}
+            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+            style={showFriends
+              ? { background: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }
+              : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+            aria-pressed={showFriends}
             aria-label={t('messages.addFriends', { defaultValue: 'Add friends' })}
           >
-            <UserPlus size={22} strokeWidth={2.2} />
+            <UserPlus size={20} strokeWidth={2.2} />
           </button>
           <button
             onClick={onNewMessage}
-            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-white/[0.06] transition-colors"
-            style={{ color: 'var(--color-accent, #D4AF37)' }}
+            className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', color: 'var(--color-accent, #D4AF37)' }}
             aria-label={t('messages.newMessage')}
           >
-            <Plus size={22} strokeWidth={2.5} />
+            <Plus size={20} strokeWidth={2.5} />
           </button>
         </div>
       </div>

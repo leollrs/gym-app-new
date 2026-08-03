@@ -272,6 +272,18 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
   const [saving, setSaving] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(!!editProgram);
   const [pickerDayUid, setPickerDayUid] = useState(null);
+  // Which calendar week the builder is showing. Odd weeks run rotation A, even
+  // run B — the same rule the save path and the runtime already use, so what
+  // you edit here is exactly what that week will run.
+  const [activeWeek, setActiveWeek] = useState(1);
+  const swipeX = useRef(null);
+  const variantOfWeek = (w) => (w % 2 === 1 ? 'A' : 'B');
+  // Mirrors the save path's split verbatim (`variant !== 'B'` is rotation A) so
+  // a day can never render under one week and be saved into the other. Legacy
+  // single-week programs load with variant null and belong to A.
+  const daysForWeek = (w) => (variantOfWeek(w) === 'B'
+    ? days.filter(d => d.variant === 'B')
+    : days.filter(d => d.variant !== 'B'));
   // Both memoized: AllExercisesModal keys its filter+sort useMemo on these
   // props, so a fresh arrow each render would re-filter the whole catalog on
   // every keystroke. There is no "recent" notion here, so that chip simply
@@ -390,25 +402,31 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
   // Weekday collisions are per WEEK, not across the whole program: an A/B plan
   // is meant to reuse Monday in both rotations, so week A owning Monday must not
   // grey Monday out in week B.
+  //
+  // The bucket key MUST match the save path's split (`variant !== 'B'` is
+  // rotation A), which means a legacy null variant belongs to A — not to its
+  // own '_' bucket. Keying null separately let "add a day to week 1" hand out a
+  // weekday a null-variant day already owned: both landed in sortedA, and the
+  // workout_schedule upsert is ON CONFLICT (profile_id, day_of_week), so the
+  // second one silently overwrote the first and a training day disappeared.
+  const rotationKey = (variant) => (variant === 'B' ? 'B' : 'A');
   const usedDowsByVariant = useMemo(() => {
     const m = new Map();
     for (const d of days) {
-      const k = d.variant ?? '_';
+      const k = d.variant === 'B' ? 'B' : 'A';
       if (!m.has(k)) m.set(k, new Set());
       m.get(k).add(d.dow);
     }
     return m;
   }, [days]);
-  const dowsFor = (variant) => usedDowsByVariant.get(variant ?? '_') || new Set();
-  // Rendered groups. `null` variant = a single-week program; it renders exactly
-  // as before, with no week headings.
-  const dayGroups = useMemo(() => {
-    const variants = [...new Set(days.map(d => d.variant ?? null))];
-    if (variants.length <= 1 && variants[0] == null) return [{ variant: null, days }];
-    return ['A', 'B']
-      .filter(v => variants.includes(v))
-      .map(v => ({ variant: v, days: days.filter(d => d.variant === v) }));
-  }, [days]);
+  const dowsFor = (variant) => usedDowsByVariant.get(rotationKey(variant)) || new Set();
+  // Replaced by the week pager: days are now selected by the week you're on
+  // (daysForWeek) instead of being grouped into A/B headings on one long page.
+
+  // Shrinking the duration must not strand the pager on a week that no longer
+  // exists — 12 → 4 weeks while sitting on week 9 rendered an empty editor
+  // with no way back.
+  useEffect(() => { setActiveWeek(w => Math.min(w, Math.max(1, weeks))); }, [weeks]);
 
   const addDay = (variant = null) => {
     const used = dowsFor(variant);
@@ -434,6 +452,18 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
     if (!name.trim()) { setError(t('programBuilder.errName', 'Name your program')); return; }
     const validDays = days.filter(d => d.exercises.length > 0);
     if (validDays.length === 0) { setError(t('programBuilder.errEmpty', 'Add at least one exercise to a day')); return; }
+    // Rotation A defines the SLOTS every other week fills, so a program with
+    // only even-week days cannot be built. This became reachable the moment the
+    // week pager gave week 2 a way in, and it failed in the worst possible
+    // order: handleSave expires the active program and wipes workout_schedule
+    // BEFORE it discovers sortedA is empty, so the member lost their live
+    // program and their week and got a generic "couldn't save". Caught here,
+    // before anything destructive runs.
+    if (!validDays.some(d => d.variant !== 'B')) {
+      setActiveWeek(1);
+      setError(t('programBuilder.errNeedsWeekOne', 'Week 1 needs at least one day with exercises.'));
+      return;
+    }
     // Shortening an in-progress program: block going below the week already
     // reached, and otherwise ask whether to shorten the current run (keep its
     // start + progress) or start a fresh program from today.
@@ -468,7 +498,12 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
           .eq('profile_id', user.id)
           .gt('expires_at', new Date().toISOString());
         if (editInPlace) expireQ = expireQ.neq('id', editProgram.id);
-        await expireQ;
+        // Checked: this enforces one-active-program-at-a-time. Discarding the
+        // error left the old program live while the new one was created, and
+        // every "current program" read downstream then has two rows to guess
+        // between. Better to stop before building than to create the ambiguity.
+        const { error: expErr } = await expireQ;
+        if (expErr) throw expErr;
       }
 
       const startDate = new Date(); startDate.setHours(0, 0, 0, 0);
@@ -698,21 +733,67 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
           {/* Days — grouped by the week they belong to. An A/B program alternates
               two rotations, so listing all of them in one flat run (and numbering
               their weekdays straight through) misrepresented the plan. */}
-          {dayGroups.map(({ variant, days: groupDays }) => (
-            <div key={variant ?? 'single'} className={variant ? 'mb-5' : ''}>
-              {variant && (
-                <div className="flex items-center gap-2 mb-2 mt-1">
-                  <span
-                    className="text-[11px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full"
-                    style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', color: 'var(--color-accent)' }}
-                  >
-                    {t('programBuilder.weekVariant', { variant, defaultValue: `Week ${variant}` })}
-                  </span>
-                  <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
-                    {variant === 'A'
-                      ? t('programBuilder.weekVariantAHint', 'Weeks 1, 3, 5…')
-                      : t('programBuilder.weekVariantBHint', 'Weeks 2, 4, 6…')}
-                  </span>
+          {/* Week pager. The program really does run week-by-week, so the
+              builder shows every week instead of one flat list — but the model
+              underneath alternates two rotations (odd weeks = A, even = B), so
+              a repeat week says so out loud rather than pretending to be its
+              own thing. Editing week 3 IS editing week 1; hiding that would be
+              the same lie as the old "6 weeks" picker that changed nothing. */}
+          {(() => {
+            const variant = variantOfWeek(activeWeek);
+            const groupDays = daysForWeek(activeWeek);
+            const mirrorOf = activeWeek > 2 ? (variant === 'A' ? 1 : 2) : null;
+            return (
+            <div
+              onTouchStart={(e) => { swipeX.current = e.touches[0].clientX; }}
+              onTouchEnd={(e) => {
+                const dx = e.changedTouches[0].clientX - (swipeX.current ?? 0);
+                if (Math.abs(dx) < 45) return;
+                setActiveWeek(w => Math.min(weeks, Math.max(1, w + (dx < 0 ? 1 : -1))));
+              }}
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <button
+                  type="button" onClick={() => setActiveWeek(w => Math.max(1, w - 1))} disabled={activeWeek === 1}
+                  aria-label={t('programBuilder.prevWeek', 'Previous week')}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-25"
+                  style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                  {t('programBuilder.weekOfTotal', { n: activeWeek, total: weeks, defaultValue: `Week ${activeWeek} of ${weeks}` })}
+                </span>
+                <button
+                  type="button" onClick={() => setActiveWeek(w => Math.min(weeks, w + 1))} disabled={activeWeek === weeks}
+                  aria-label={t('programBuilder.nextWeek', 'Next week')}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-25 rotate-180"
+                  style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-primary)' }}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+              </div>
+              {/* Dots: filled = the week you're on, hollow = the rest. Tappable
+                  so a 12-week program isn't 11 swipes away from its last week. */}
+              <div className="flex items-center justify-center gap-1.5 mb-3 flex-wrap">
+                {Array.from({ length: weeks }, (_, i) => i + 1).map(w => (
+                  <button
+                    key={w} type="button" onClick={() => setActiveWeek(w)}
+                    aria-label={t('programBuilder.goToWeek', { n: w, defaultValue: `Week ${w}` })}
+                    className="rounded-full transition-all"
+                    style={{
+                      width: w === activeWeek ? 20 : 7, height: 7,
+                      background: w === activeWeek ? 'var(--color-accent)'
+                        : variantOfWeek(w) === variant ? 'color-mix(in srgb, var(--color-accent) 40%, transparent)'
+                        : 'var(--color-border-default)',
+                    }}
+                  />
+                ))}
+              </div>
+              {mirrorOf && (
+                <div className="rounded-xl px-3 py-2.5 mb-3 text-[12px] leading-snug"
+                  style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)', color: 'var(--color-text-muted)' }}>
+                  {t('programBuilder.sameAsWeek', { n: mirrorOf, defaultValue: `Same as week ${mirrorOf}. Changes here apply to both.` })}
                 </div>
               )}
               <div className="flex flex-col gap-3">
@@ -744,12 +825,11 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
                 style={{ background: 'var(--color-bg-card)', border: '1px dashed var(--color-border-default)', color: 'var(--color-text-muted)' }}
               >
                 <Calendar size={16} />
-                {variant
-                  ? t('programBuilder.addDayToWeek', { variant, defaultValue: `Add a day to week ${variant}` })
-                  : t('programBuilder.addDay', 'Add a day')}
+                {t('programBuilder.addDayToThisWeek', { n: activeWeek, defaultValue: `Add a day to week ${activeWeek}` })}
               </button>
             </div>
-          ))}
+            );
+          })()}
         </div>
       )}
 

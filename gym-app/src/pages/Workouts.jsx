@@ -1724,11 +1724,13 @@ const Workouts = () => {
       .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
     const programs = allGp || [];
     setAllPrograms(programs);
-    // Newest LIVE program, not newest row. `programs[0]` is ordered by
-    // created_at, so the program just expired was still the newest and got
-    // handed straight back as the current one — the page re-rendered with the
-    // thing the member had just left.
-    setGeneratedProgram(programs.find(p => new Date(p.expires_at) > new Date()) || null);
+    // Newest row, expired or not — the same contract as every other setter of
+    // this state. The hero card is gated on `programActive`, which re-checks
+    // expiry, so a just-expired program here cannot render as current; and
+    // `programExpired` reads this to show "Program ended — what's next?"
+    // instead of the cold-start pitch. Narrowing it to the newest LIVE row
+    // silently killed that copy for anyone who had just left a program.
+    setGeneratedProgram(programs[0] || null);
     setLeaveProgramConfirm(null);
     setSelectedMyProgram(null);
   };
@@ -3451,6 +3453,33 @@ const Workouts = () => {
           </div>
         )}
 
+        {/* No ACTIVE program, but past ones exist. The only empty state here
+            fired at zero programs, so this case fell through both: the big
+            active-program card has nothing to render, the list shows one
+            finished program, and the rest of the screen is void with no way
+            forward except a header button that reads as secondary. */}
+        {!programActive && allPrograms.length > 0 && (
+          <div className="rounded-2xl px-5 py-7 mt-2 text-center" style={{ background: 'var(--color-surface-hover)' }}>
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3"
+              style={{ background: 'color-mix(in srgb, var(--color-accent) 16%, transparent)' }}>
+              <Zap size={22} style={{ color: TU_ACCENT }} />
+            </div>
+            <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              {t('workouts.noActiveProgram', 'No active program')}
+            </p>
+            <p className="text-[12px] mt-1 mb-4 mx-auto" style={{ color: 'var(--color-text-subtle)', maxWidth: 280 }}>
+              {t('workouts.noActiveProgramDesc', 'Resume one below, or build a new one to get back on a schedule.')}
+            </p>
+            <button
+              onClick={() => setShowGenerator(true)}
+              className="px-5 py-3 rounded-2xl text-[13px] font-bold active:scale-[0.98] transition-transform"
+              style={{ background: TU_ACCENT, color: 'var(--color-text-on-accent, #000)' }}
+            >
+              {t('workouts.newProgram')}
+            </button>
+          </div>
+        )}
+
       </section>
 
       </>)}
@@ -3468,7 +3497,11 @@ const Workouts = () => {
             <h2 style={{ fontFamily: TU_DISPLAY, fontSize: 32, fontWeight: 900, color: 'var(--color-text-primary)', letterSpacing: -1, lineHeight: 1 }}>{browseTitle}</h2>
           </div>
           {browseSection === null && programTemplates.length > 0 && (
-            <button onClick={() => openBrowseSection('all')} className="flex items-center gap-1 py-1 flex-shrink-0" style={{ fontSize: 11, fontWeight: 700, color: TU_ACCENT }}>
+            <button
+              onClick={() => openBrowseSection('all')}
+              className="flex items-center gap-1 px-3 py-2 rounded-full flex-shrink-0 active:scale-[0.97] transition-transform"
+              style={{ fontSize: 11.5, fontWeight: 700, color: TU_ACCENT, background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
+            >
               {t('workouts.browseAll', 'All')} · {programTemplates.length} <ChevronRight size={11} strokeWidth={2.2} />
             </button>
           )}
@@ -4374,8 +4407,18 @@ const Workouts = () => {
       // Active program → "Leave" copy (warns about losing progress).
       // Past/expired program → "Delete" copy (just remove from history).
       const isLeaving = !!leaveProgramConfirm.isActive;
-      const titleKey  = isLeaving ? 'workouts.leaveProgramTitle' : 'workouts.deleteProgramTitle';
-      const descKey   = isLeaving ? 'workouts.leaveProgramDesc'  : 'workouts.deleteProgramDesc';
+      // A coach-assigned plan needs its own words. Editing one is already
+      // locked behind the "Coach's plan" badge, but leaving is not gated at
+      // all — so the member could drop the plan their trainer built for them
+      // while reading generic copy about "your progress in this program".
+      // Leaving stays allowed (it's their training), but they should know
+      // whose plan it is before they do it.
+      const leavingCoachPlan = isLeaving
+        && !!adoptedPlanId(allPrograms.find(p => p.id === leaveProgramConfirm.id) || generatedProgram);
+      const titleKey = !isLeaving ? 'workouts.deleteProgramTitle'
+        : leavingCoachPlan ? 'workouts.leaveCoachPlanTitle' : 'workouts.leaveProgramTitle';
+      const descKey = !isLeaving ? 'workouts.deleteProgramDesc'
+        : leavingCoachPlan ? 'workouts.leaveCoachPlanDesc' : 'workouts.leaveProgramDesc';
       const cancelKey = isLeaving ? 'workouts.keepTraining'      : 'workouts.keepIt';
       const confirmKey = isLeaving ? 'workouts.confirmLeave'     : 'workouts.confirmDeleteProgram';
       return (
