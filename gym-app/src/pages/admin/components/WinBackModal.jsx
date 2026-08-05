@@ -112,11 +112,16 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         const seed = convo?.encryption_seed || convoId;
 
         const encrypted = await encryptMessage(fullMsg, convoId, seed);
-        await supabase.from('direct_messages').insert({
+        // Sin este chequeo, un DM que no se escribía seguía adelante hasta
+        // grabar win_back_attempts con outcome:'no_response' — o sea, un envío
+        // fallido quedaba registrado como win-back ENTREGADO que el miembro
+        // ignoró, envenenando las analíticas de retención.
+        const { error: dmErr } = await supabase.from('direct_messages').insert({
           conversation_id: convoId,
           sender_id: adminId,
           body: encrypted,
         });
+        if (dmErr) throw dmErr;
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
 
         // Send push notification so phone buzzes
@@ -165,8 +170,9 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           attemptRow.variant = assignedVariant;
           attemptRow.message_template = activeCampaign.id;
         }
-        await supabase.from('win_back_attempts').insert(attemptRow);
-      } catch (_) {}
+        const { error: attemptErr } = await supabase.from('win_back_attempts').insert(attemptRow);
+        if (attemptErr) logger.error('win_back_attempts insert failed:', attemptErr);
+      } catch (e) { logger.error('win_back_attempts failed:', e); }
 
       // Log contact
       try {
@@ -174,11 +180,12 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
         const note = activeCampaign
           ? `Win-back via ${channelLabel} [${activeCampaign.name} — Variant ${assignedVariant}]${rewardName ? `: ${rewardName}` : ''}`
           : (rewardName ? `Win-back via ${channelLabel} with offer: ${rewardName}` : `Win-back via ${channelLabel}`);
-        await supabase.from('admin_contact_log').insert({
+        const { error: logErr } = await supabase.from('admin_contact_log').insert({
           admin_id: adminId, member_id: member.id, gym_id: gymId,
           method: 'win_back', note,
         });
-      } catch (_) {}
+        if (logErr) logger.error('admin_contact_log insert failed:', logErr);
+      } catch (e) { logger.error('contact log failed:', e); }
 
       logAdminAction('send_winback', 'member', member.id, { channel, offer: rewardName });
       posthog?.capture('admin_winback_sent', { method: channel });

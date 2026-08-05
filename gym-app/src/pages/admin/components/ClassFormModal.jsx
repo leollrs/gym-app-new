@@ -47,7 +47,7 @@ function CharCount({ value, max }) {
  *  - New class → slots accumulate in `pendingSlots` and are written in
  *    a single batch after the parent class row is inserted.
  */
-export default function ClassFormModal({ classData, onClose, onSave, saving, gymId, trainers = [], onAddSlot, onDeleteSlot, t, tc, lang }) {
+export default function ClassFormModal({ classData, initialSlots, onClose, onSave, saving, gymId, trainers = [], onAddSlot, onDeleteSlot, t, tc, lang }) {
   const [form, setForm] = useState({
     name: classData?.name || '',
     description: classData?.description || '',
@@ -67,7 +67,12 @@ export default function ClassFormModal({ classData, onClose, onSave, saving, gym
     is_active: classData?.is_active ?? true,
     workout_template_id: classData?.workout_template_id || null,
   });
-  const [pendingSlots, setPendingSlots] = useState([]);
+  // Sembrado desde `initialSlots` cuando el formulario nace de una propuesta:
+  // el entrenador ya dijo qué día y a qué hora, y hacer que el admin lo vuelva
+  // a teclear mirando la propuesta al lado es precisamente el trabajo manual
+  // que este flujo existe para quitar. Vacío en cualquier otro caso.
+  const [pendingSlots, setPendingSlots] = useState(() =>
+    Array.isArray(initialSlots) ? initialSlots : []);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(classImageUrl(classData?.image_path) || classData?.image_url || '');
   // The stored path, tracked separately from the preview URL. Without this the

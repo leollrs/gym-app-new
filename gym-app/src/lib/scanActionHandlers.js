@@ -16,17 +16,36 @@ import { logAdminAction } from './adminAudit';
 //   • pending → generated but not yet printed: a nudge so the desk knows
 //     something is owed even when nobody pre-printed it (go print/grab it).
 async function fetchCardsForMemberCheckin(supabase, gymId, memberId) {
-  const { data } = await supabase
-    .from('print_cards')
-    .select('id, occasion, headline, subline, reward_label, status')
-    .eq('gym_id', gymId)
-    .eq('profile_id', memberId)
-    .in('status', ['printed', 'pending'])
-    .order('created_at', { ascending: true });
-  const rows = data || [];
+  // Cards and gifts in parallel — this runs while a member is standing at the
+  // desk, so the two reads must not be serial.
+  //
+  // swag_grants carries item_name/emoji denormalized (mig 0682) precisely
+  // because swag_items is super-admin-only by RLS: joining through to it here
+  // would read NULL and tell the desk to hand over a blank.
+  const [cardsRes, giftsRes] = await Promise.all([
+    supabase
+      .from('print_cards')
+      .select('id, occasion, headline, subline, reward_label, status')
+      .eq('gym_id', gymId)
+      .eq('profile_id', memberId)
+      .in('status', ['printed', 'pending'])
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('swag_grants')
+      .select('id, item_name, item_name_es, item_emoji, occasion')
+      .eq('gym_id', gymId)
+      .eq('profile_id', memberId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true }),
+  ]);
+
+  const rows = cardsRes?.data || [];
   return {
     cardsToDeliver: rows.filter((c) => c.status === 'printed'),
     cardsPending: rows.filter((c) => c.status === 'pending'),
+    // Non-fatal: on a gym whose DB predates 0682 this errors and returns [],
+    // and check-in carries on exactly as before.
+    giftsToDeliver: giftsRes?.data || [],
   };
 }
 
@@ -84,7 +103,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
     // → fall through to the generic not-found message.
     if (error || !data || data.success !== true || !data.profile_id) return null;
 
-    const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, data.profile_id);
+    const { cardsToDeliver, cardsPending, giftsToDeliver } = await fetchCardsForMemberCheckin(supabase, gymId, data.profile_id);
     const pendingReferral = await fetchPendingReferral(supabase, gymId, data.profile_id);
     if (data.duplicate) {
       return {
@@ -93,7 +112,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
         memberName: data.member_name,
         memberId: data.profile_id,
         avatarUrl: data.avatar_url,
-        data: { duplicate: true, cardsToDeliver, cardsPending, pendingReferral },
+        data: { duplicate: true, cardsToDeliver, cardsPending, giftsToDeliver, pendingReferral },
         // Still mirror the scan to the gym's legacy software / local bridge.
         // TuGymPR's 3h rule only suppresses duplicate points/streak credit — it
         // does NOT mean the person didn't physically show up at the desk, which
@@ -115,7 +134,7 @@ async function tryExternalIdCheckin(scanned, ctx) {
       memberName: data.member_name,
       memberId: data.profile_id,
       avatarUrl: data.avatar_url,
-      data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending, pendingReferral },
+      data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending, giftsToDeliver, pendingReferral },
       externalPayload: { action: 'checkin', memberId: data.profile_id, memberExternalId: data.external_id, memberName: data.member_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
     };
   } catch (err) {
@@ -159,7 +178,7 @@ export async function handleCheckinScan(parsed, ctx) {
     // Cards still need delivering even on duplicate check-in — the member
     // might be back at the desk for another reason and we shouldn't lose
     // the chance to hand off what's in inventory.
-    const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
+    const { cardsToDeliver, cardsPending, giftsToDeliver } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
     const pendingReferral = await fetchPendingReferral(supabase, gymId, member.id);
     return {
       success: true,
@@ -167,7 +186,7 @@ export async function handleCheckinScan(parsed, ctx) {
       memberName: member.full_name,
       memberId: member.id,
       avatarUrl: member.avatar_url,
-      data: { duplicate: true, cardsToDeliver, cardsPending, pendingReferral },
+      data: { duplicate: true, cardsToDeliver, cardsPending, giftsToDeliver, pendingReferral },
       // Mirror every desk scan to the legacy software / local bridge, even when
       // TuGymPR suppresses duplicate points (see note in tryExternalIdCheckin).
       externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { duplicate: true } },
@@ -223,7 +242,7 @@ export async function handleCheckinScan(parsed, ctx) {
   // Fetch the member's cards (printed = hand over now, pending = print nudge)
   // so the toast can surface them. Awaited AFTER points so the check-in feels
   // fast — adds ~1 round trip but only on the success path.
-  const { cardsToDeliver, cardsPending } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
+  const { cardsToDeliver, cardsPending, giftsToDeliver } = await fetchCardsForMemberCheckin(supabase, gymId, member.id);
   const pendingReferral = await fetchPendingReferral(supabase, gymId, member.id);
 
   const msg = pointsAwarded > 0
@@ -236,7 +255,7 @@ export async function handleCheckinScan(parsed, ctx) {
     memberName: member.full_name,
     memberId: member.id,
     avatarUrl: member.avatar_url,
-    data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending, pendingReferral },
+    data: { pointsEarned: pointsAwarded, cardsToDeliver, cardsPending, giftsToDeliver, pendingReferral },
     externalPayload: { action: 'checkin', memberId: member.id, memberExternalId: member.qr_external_id, memberName: member.full_name, timestamp: new Date().toISOString(), data: { pointsEarned: pointsAwarded } },
   };
 }
@@ -401,15 +420,41 @@ export async function handleReferralScan(parsed, ctx) {
     return { success: false, message: t('admin.scan.wrongGym', 'QR code is for a different gym') };
   }
 
-  // Find the pending referral by code
-  const { data: referral } = await supabase
+  // `referrals` NO tiene columna referral_code — sus columnas son
+  // (id, referrer_id, referred_id, gym_id, referral_code_id, status, …)
+  // por mig 0116:25-35. La consulta anterior filtraba por una columna
+  // inexistente, PostgREST devolvía 42703, y como solo se destructuraba
+  // `{ data }` el error se tragaba: el escaneo SIEMPRE decía "no hay referido
+  // pendiente". Hay que resolver el código a su id primero.
+  const { data: codeRow, error: codeErr } = await supabase
+    .from('referral_codes')
+    .select('id')
+    .eq('code', parsed.referralCode)
+    .eq('gym_id', gymId)
+    .maybeSingle();
+
+  if (codeErr) {
+    logger.error('Referral code lookup failed:', codeErr);
+    return { success: false, message: t('admin.scan.referralNotFound', 'No pending referral found for this code') };
+  }
+  if (!codeRow) {
+    return { success: false, message: t('admin.scan.referralNotFound', 'No pending referral found for this code') };
+  }
+
+  const { data: referral, error: refErr } = await supabase
     .from('referrals')
     .select('id, referrer_id, referred_id, status')
-    .eq('referral_code', parsed.referralCode)
+    .eq('referral_code_id', codeRow.id)
+    .eq('gym_id', gymId)
     .eq('status', 'pending')
+    .order('created_at', { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
 
+  if (refErr) {
+    logger.error('Referral lookup failed:', refErr);
+    return { success: false, message: t('admin.scan.referralNotFound', 'No pending referral found for this code') };
+  }
   if (!referral) {
     return { success: false, message: t('admin.scan.referralNotFound', 'No pending referral found for this code') };
   }

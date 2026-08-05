@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useLocation, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
-import { Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_STORE_URL, PLAY_STORE_URL } from '../lib/appUrls';
 import logger from '../lib/logger';
+import StoreBadges from '../components/StoreBadges';
 
 // Public "download the app" landing. Two variants share the same chrome:
 //
@@ -63,10 +63,31 @@ export default function AppDownloadLanding({ variant = 'trainer' }) {
   // context isn't a routable in-app screen on its own).
   if (native) return <Navigate to={isGet ? '/' : `/trainers/${id}`} replace />;
 
+  // Lead with the store the visitor can actually install from.
+  //
+  // An email cannot detect a device — no mail client runs script — so the
+  // invite emails send everyone to this ONE page and the detection happens
+  // here, where a user agent exists. Listing both buttons in a fixed order made
+  // half of all arrivals read past a button they can't use to reach theirs.
+  //
+  // The other store is still listed, just demoted: someone opening the mail on a
+  // desktop belongs to neither branch, and a phone that lies about its UA should
+  // never be a dead end.
+  const platform = (() => {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    if (/android/i.test(ua)) return 'android';
+    // iPadOS 13+ reports itself as a Mac; the touch-point count is what separates
+    // an iPad from a trackpad Mac.
+    if (/iphone|ipod|ipad/i.test(ua)) return 'ios';
+    if (/Macintosh/.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1) return 'ios';
+    return null;
+  })();
+
   const stores = [
-    APP_STORE_URL && { url: APP_STORE_URL, label: t('appDownload.appStore', 'Download for iOS') },
-    PLAY_STORE_URL && { url: PLAY_STORE_URL, label: t('appDownload.playStore', 'Download for Android') },
-  ].filter(Boolean);
+    APP_STORE_URL && { key: 'ios', url: APP_STORE_URL },
+    PLAY_STORE_URL && { key: 'android', url: PLAY_STORE_URL },
+  ].filter(Boolean)
+    .sort((a, b) => (a.key === platform ? -1 : b.key === platform ? 1 : 0));
 
   const openInApp = () => {
     // Hand off to the installed app via the registered custom scheme. Works even
@@ -130,23 +151,17 @@ export default function AppDownloadLanding({ variant = 'trainer' }) {
         </p>
 
         {stores.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 320, margin: '0 auto' }}>
-            {stores.map((s) => (
-              <a
-                key={s.url}
-                href={s.url}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  padding: '14px 18px', borderRadius: 14,
-                  background: ACCENT, color: '#06231F',
-                  fontWeight: 800, fontSize: 15, textDecoration: 'none',
-                }}
-              >
-                <Download size={17} strokeWidth={2.4} />
-                {s.label}
-              </a>
-            ))}
-          </div>
+          /* The real badges, not a tinted pill with a download glyph. A store
+             button that doesn't look like the store's button reads as a
+             third-party mirror — exactly the doubt you don't want on the one
+             page whose only job is getting the app installed. */
+          <StoreBadges
+            stores={stores}
+            captions={{
+              ios: t('appDownload.appStoreCaption', 'Download on the'),
+              android: t('appDownload.playCaption', 'Get it on'),
+            }}
+          />
         ) : (
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,

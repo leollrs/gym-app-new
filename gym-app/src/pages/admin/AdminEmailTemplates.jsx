@@ -63,6 +63,13 @@ export default function AdminEmailTemplates() {
             name: payload.name,
             template_type: payload.template_type,
             template_data: payload.template_data,
+            // step_key y auto_enabled tienen que ir aquí. Se quedaron fuera y
+            // el efecto era que el flujo principal — abrir una plantilla,
+            // asignarle un momento automático, encenderla — escribía NADA y
+            // aun así sacaba el toast de éxito. Solo funcionaba al crear, y
+            // una automatización encendida no se podía apagar.
+            step_key: payload.step_key,
+            auto_enabled: payload.auto_enabled,
           })
           .eq('id', tpl.id)
           .eq('gym_id', gymId);
@@ -128,6 +135,12 @@ export default function AdminEmailTemplates() {
       ...JSON.parse(JSON.stringify(tpl)),
       id: 'prebuilt-' + crypto.randomUUID(),
       name: `${tpl.name} (copy)`,
+      // Una copia arranca manual. Heredar el momento viola el índice único
+      // (gym_id, step_key) WHERE auto_enabled (0687:40-42), así que duplicar
+      // una plantilla automática fallaba siempre al guardar; y heredar
+      // auto_enabled haría que una copia empezara a enviar sola.
+      step_key: null,
+      auto_enabled: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });

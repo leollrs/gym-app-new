@@ -1777,7 +1777,7 @@ const ConversationList = ({ onSelectConversation, onNewMessage, onGoBack, header
             className="w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition-transform"
             style={showFriends
               ? { background: 'var(--color-accent, #D4AF37)', color: 'var(--color-text-on-accent, #000)' }
-              : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+              : { background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-muted)' }}
             aria-pressed={showFriends}
             aria-label={t('messages.addFriends', { defaultValue: 'Add friends' })}
           >

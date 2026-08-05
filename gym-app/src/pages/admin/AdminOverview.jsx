@@ -148,7 +148,7 @@ export default function AdminOverview() {
 
   if (isLoading || !data) return <OverviewSkeleton />;
 
-  const { stats, pulse, recentActivity, onboardingCount, retention, growthSeries } = data;
+  const { stats, pulse, recentActivity, onboardingCount, onboardingMembers, retention, growthSeries } = data;
   const classesEnabled = gymConfig?.classesEnabled ?? false;
 
 
@@ -285,6 +285,7 @@ export default function AdminOverview() {
             gymId={gymId}
             pendingResetsCount={pendingResets.length}
             onboardingCount={onboardingCount}
+            onboardingMembers={onboardingMembers}
             firstPendingResetId={pendingResets[0]?.id}
             onResetClick={setResetApprovalId}
           />
@@ -426,7 +427,10 @@ export default function AdminOverview() {
               {t('admin.overview.close', 'Close')}
             </button>
             <button
-              onClick={() => { setWatchlistDetail(null); navigate('/admin/churn'); }}
+              // El modal se titula con el NOMBRE de esta persona; mandar a la
+              // lista general de churn tiraba justo el dato que el usuario ya
+              // había seleccionado.
+              onClick={() => { const id = watchlistDetail?.id; setWatchlistDetail(null); navigate(id ? `/admin/members?member=${id}` : '/admin/churn'); }}
               className="px-4 py-2 rounded-xl text-[13px] font-bold"
               style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent, #000)' }}
             >

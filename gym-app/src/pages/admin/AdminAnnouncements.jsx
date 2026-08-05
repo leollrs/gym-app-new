@@ -54,14 +54,52 @@ function GhostBtn({ icon: Icon, onClick, label, danger = false }) {
   );
 }
 
-const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
+const EMPTY_FORM = { title: '', message: '', type: 'news', scheduled_for: '', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' };
+
+/**
+ * Crear Y editar. `announcement = null` → crear.
+ *
+ * Antes la edición era una COPIA de este mismo formulario incrustada dentro de
+ * la tarjeta: ~130 líneas duplicadas que ya habían divergido, y que al abrirse
+ * empujaban la lista entera hacia abajo, así que el admin perdía de vista lo
+ * que estaba editando. Un solo componente, un solo formulario.
+ */
+const CreateModal = ({ isOpen, onClose, gymId, adminId, announcement = null }) => {
   const { t, i18n } = useTranslation('pages');
   const isEs = i18n.language?.startsWith('es');
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ title: '', message: '', type: 'news', scheduled_for: '', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
+  const isEdit = !!announcement;
+
+  // Sembrado en el INICIALIZADOR, no en un efecto. El padre monta este modal
+  // con key={editing.id}, así que cambiar de anuncio ya provoca un montaje
+  // limpio — y con eso el efecto sobraba y solo añadía un render en cascada.
+  // Además evita el otro riesgo: la fila se reidentifica en cada refetch de
+  // React Query, y un efecto dependiente del objeto pisaría lo que el admin
+  // está escribiendo cada vez que la lista se revalida.
+  const [form, setForm] = useState(() => {
+    if (!announcement) return EMPTY_FORM;
+    // datetime-local necesita "YYYY-MM-DDTHH:mm" — sin segundos ni zona.
+    const scheduledFor = announcement.published_at && isFuture(new Date(announcement.published_at))
+      ? format(new Date(announcement.published_at), "yyyy-MM-dd'T'HH:mm")
+      : '';
+    return {
+      title: announcement.title || '',
+      message: announcement.message || '',
+      type: announcement.type || 'news',
+      scheduled_for: scheduledFor,
+      is_recurring: announcement.is_recurring || false,
+      recurrence_rule: announcement.recurrence_rule || 'weekly',
+      recurrence_day: announcement.recurrence_day ?? 1,
+      recurrence_end: announcement.recurrence_end || '',
+    };
+  });
   const [error, setError] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Abierto de entrada si ya hay algo dentro — si no, el admin no ve que su
+  // anuncio es recurrente o está programado hasta que despliega a ciegas.
+  const [showAdvanced, setShowAdvanced] = useState(
+    () => !!announcement && Boolean(announcement.is_recurring
+      || (announcement.published_at && isFuture(new Date(announcement.published_at)))));
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const DAY_LABELS = [
@@ -91,24 +129,53 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
       const finalMessage = cleanMessage.length > BODY_MAX
         ? `${cleanMessage.slice(0, BODY_MAX - 1).trimEnd()}…`
         : cleanMessage;
-      const { error: err } = await supabase.from('announcements').insert({
-        gym_id:      gymId,
-        created_by:  adminId,
+      const shared = {
         title:       finalTitle,
         message:     finalMessage,
         type:        form.type,
-        published_at: form.scheduled_for
-          ? new Date(form.scheduled_for).toISOString()
-          : new Date().toISOString(),
         is_recurring: form.is_recurring,
         recurrence_rule: form.is_recurring ? form.recurrence_rule : null,
         recurrence_day: form.is_recurring ? form.recurrence_day : null,
         recurrence_end: form.is_recurring && form.recurrence_end ? form.recurrence_end : null,
+      };
+
+      if (isEdit) {
+        // published_at solo si el admin escoge una fecha nueva; dejarlo en
+        // blanco conserva la que tuviera.
+        if (form.scheduled_for) shared.published_at = new Date(form.scheduled_for).toISOString();
+        // .select('id') y cero filas = fallo: un update que no matcha nada
+        // resuelve con error:null, así que sin esto un desajuste de gym_id
+        // salía como guardado correcto.
+        const { data, error: err } = await supabase
+          .from('announcements').update(shared)
+          .eq('id', announcement.id).eq('gym_id', gymId)
+          .select('id');
+        if (err) throw err;
+        if (!data || data.length === 0) throw new Error(t('admin.announcements.saveFailed', 'Could not save the announcement.'));
+        return { finalTitle, finalMessage };
+      }
+
+      const { error: err } = await supabase.from('announcements').insert({
+        gym_id:      gymId,
+        created_by:  adminId,
+        published_at: form.scheduled_for
+          ? new Date(form.scheduled_for).toISOString()
+          : new Date().toISOString(),
+        ...shared,
       });
       if (err) throw err;
       return { finalTitle, finalMessage };
     },
     onSuccess: ({ finalTitle, finalMessage }) => {
+      // Editar NO re-difunde. El anuncio ya salió: volver a empujarlo notifica
+      // de nuevo a todo el gimnasio por corregir una errata.
+      if (isEdit) {
+        logAdminAction('update_announcement', 'announcement', announcement.id, { title: finalTitle });
+        queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
+        showToast(t('admin.announcements.saved', 'Announcement saved'), 'success');
+        onClose();
+        return;
+      }
       logAdminAction('create_announcement', 'announcement', null, { title: finalTitle });
       posthog?.capture('admin_announcement_sent', { type: form.type });
       queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
@@ -152,13 +219,35 @@ const CreateModal = ({ isOpen, onClose, gymId, adminId }) => {
   });
 
   return (
-    <AdminModal isOpen={isOpen} onClose={onClose} title={t('admin.announcements.newAnnouncement', 'New Announcement')} titleIcon={Megaphone}
+    <AdminModal isOpen={isOpen} onClose={onClose}
+      title={isEdit
+        ? t('admin.announcements.editAnnouncement', 'Edit Announcement')
+        : t('admin.announcements.newAnnouncement', 'New Announcement')}
+      titleIcon={Megaphone}
       footer={
-        <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}
-          className="w-full py-3 rounded-xl font-bold text-[14px] disabled:opacity-50"
-          style={{ background: 'var(--color-accent)', color: '#fff' }}>
-          {createMutation.isPending ? t('admin.announcements.publishing', 'Publishing...') : form.scheduled_for ? t('admin.announcements.schedule', 'Schedule') : t('admin.announcements.publishNow', 'Publish Now')}
-        </button>
+        // Fragmento, NO un <div>: AdminModal ya envuelve el pie en un
+        // `flex gap-3` (AdminModal.jsx:116), así que un div propio se
+        // convertía en un único hijo flex y se encogía al ancho del contenido
+        // — los dos botones apelmazados a la izquierda. Como hijos directos,
+        // cada `flex-1` reparte la fila 50-50. Cancelar lleva superficie de
+        // botón propia, nunca un enlace pelado.
+        <>
+          <button onClick={onClose} disabled={createMutation.isPending}
+            className="flex-1 py-3 rounded-xl text-[13.5px] font-semibold border transition-colors disabled:opacity-50"
+            style={{ background: 'var(--color-admin-panel)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text-sub)' }}>
+            {t('admin.announcements.cancel', 'Cancel')}
+          </button>
+          <button onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !form.title || !form.message}
+            className="flex-1 py-3 rounded-xl font-bold text-[14px] disabled:opacity-50"
+            style={{ background: 'var(--color-accent)', color: '#fff' }}>
+            {createMutation.isPending
+              ? (isEdit ? t('admin.announcements.saving', 'Saving...') : t('admin.announcements.publishing', 'Publishing...'))
+              : isEdit ? t('admin.announcements.save', 'Save')
+              : form.scheduled_for ? t('admin.announcements.schedule', 'Schedule')
+              : t('admin.announcements.publishNow', 'Publish Now')}
+          </button>
+        </>
       }
     >
       <div className="space-y-4">
@@ -295,9 +384,9 @@ export default function AdminAnnouncements() {
   const gymId = profile?.gym_id;
 
   const [showCreate, setShowCreate] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ title: '', message: '', type: 'news', scheduled_for: '', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
-  const [editShowAdvanced, setEditShowAdvanced] = useState(false);
+  // La fila que se está editando, o null. El modal la recibe entera y se
+  // siembra solo; ya no hay un segundo formulario que mantener en paralelo.
+  const [editing, setEditing] = useState(null);
   const EDIT_DAY_LABELS = [
     t('admin.announcements.daySun', 'Sun'),
     t('admin.announcements.dayMon', 'Mon'),
@@ -339,64 +428,6 @@ export default function AdminAnnouncements() {
     onError: (err) => showToast(err.message, 'error'),
   });
 
-  // ── Edit mutation ──
-  const editMutation = useMutation({
-    mutationFn: async () => {
-      if (!editForm.title || !editForm.message) throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
-      const cleanTitle = sanitize(editForm.title).trim();
-      const cleanMessage = sanitize(editForm.message).trim();
-      if (!cleanTitle || !cleanMessage) {
-        throw new Error(t('admin.announcements.titleMessageRequired', 'Title and message are required.'));
-      }
-      const finalTitle = cleanTitle.length > TITLE_MAX
-        ? `${cleanTitle.slice(0, TITLE_MAX - 1).trimEnd()}…`
-        : cleanTitle;
-      const finalMessage = cleanMessage.length > BODY_MAX
-        ? `${cleanMessage.slice(0, BODY_MAX - 1).trimEnd()}…`
-        : cleanMessage;
-      const updatePayload = {
-        title: finalTitle,
-        message: finalMessage,
-        type: editForm.type,
-        is_recurring: editForm.is_recurring,
-        recurrence_rule: editForm.is_recurring ? editForm.recurrence_rule : null,
-        recurrence_day: editForm.is_recurring ? editForm.recurrence_day : null,
-        recurrence_end: editForm.is_recurring && editForm.recurrence_end ? editForm.recurrence_end : null,
-      };
-      // Only update published_at when admin explicitly picks a new schedule —
-      // leaving the field blank preserves whatever was there before.
-      if (editForm.scheduled_for) {
-        updatePayload.published_at = new Date(editForm.scheduled_for).toISOString();
-      }
-      const { error: err } = await supabase
-        .from('announcements')
-        .update(updatePayload)
-        .eq('id', editingId)
-        .eq('gym_id', gymId);
-      if (err) throw err;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: adminKeys.announcements(gymId) });
-      cancelEditing();
-    },
-    onError: (err) => showToast(err.message, 'error'),
-  });
-
-  const startEditing = (a) => {
-    setEditingId(a.id);
-    // datetime-local needs "YYYY-MM-DDTHH:mm" — slice off seconds + timezone.
-    const scheduledFor = a.published_at && isFuture(new Date(a.published_at))
-      ? format(new Date(a.published_at), "yyyy-MM-dd'T'HH:mm")
-      : '';
-    setEditForm({ title: a.title, message: a.message, type: a.type, scheduled_for: scheduledFor, is_recurring: a.is_recurring || false, recurrence_rule: a.recurrence_rule || 'weekly', recurrence_day: a.recurrence_day ?? 1, recurrence_end: a.recurrence_end || '' });
-    setEditShowAdvanced(Boolean(scheduledFor || a.is_recurring));
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditForm({ title: '', message: '', type: 'news', scheduled_for: '', is_recurring: false, recurrence_rule: 'weekly', recurrence_day: 1, recurrence_end: '' });
-    setEditShowAdvanced(false);
-  };
 
   // Compute counts per status for tab badges
   const statusCounts = useMemo(() => {
@@ -492,140 +523,9 @@ export default function AdminAnnouncements() {
               <div className="space-y-3">
                 {filtered.map((a, idx) => {
                   const isScheduled = a.published_at && isFuture(new Date(a.published_at));
-                  const isEditing = editingId === a.id;
                   return (
                     <FadeIn key={a.id} delay={idx * 40}>
                       <AdminCard hover>
-                        {isEditing ? (
-                          <div className="space-y-3">
-                            <div>
-                              <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.titleLabel', 'Title')}</label>
-                              <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
-                                maxLength={TITLE_MAX}
-                                className="w-full bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)] focus:outline-none" />
-                            </div>
-                            <div>
-                              <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.messageLabel')}</label>
-                              <textarea value={editForm.message} onChange={e => setEditForm(p => ({ ...p, message: e.target.value }))} rows={3}
-                                maxLength={BODY_MAX}
-                                className="w-full bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] rounded-xl px-4 py-2.5 text-[13px] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] outline-none focus:border-[var(--color-accent)] resize-none" />
-                            </div>
-                            <div>
-                              <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">{t('admin.announcements.typeLabel', 'Type')}</label>
-                              <div className="flex gap-2 flex-wrap">
-                                {TYPE_OPTS.map(opt => (
-                                  <button key={opt.value} onClick={() => setEditForm(p => ({ ...p, type: opt.value }))}
-                                    className={`flex-1 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
-                                      editForm.type === opt.value ? '' : 'border border-[var(--color-admin-border)] text-[var(--color-admin-text-sub)]'
-                                    }`}
-                                    style={editForm.type === opt.value ? opt.selectedStyle : { background: 'var(--color-bg-deep)' }}>
-                                    {t(`admin.announcementTypes.${opt.labelKey}`)}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            {/* Advanced — schedule + recurrence (mirrors Create modal). */}
-                            <div>
-                              <button
-                                type="button"
-                                onClick={() => setEditShowAdvanced(!editShowAdvanced)}
-                                className="flex items-center gap-2 text-[12px] font-medium text-[var(--color-admin-text-sub)] hover:text-[var(--color-admin-text)] transition-colors"
-                              >
-                                <ChevronDown size={14} className={`transition-transform ${editShowAdvanced ? 'rotate-180' : ''}`} />
-                                {t('admin.announcements.advancedOptions', 'Advanced Options')}
-                                {(editForm.scheduled_for || editForm.is_recurring) && (
-                                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-accent)' }} />
-                                )}
-                              </button>
-                              {editShowAdvanced && (
-                                <div className="mt-3 space-y-4">
-                                  <div>
-                                    <label className="block text-[12px] font-medium text-[var(--color-admin-text-sub)] mb-1.5">
-                                      {t('admin.announcements.scheduleLabel', 'Schedule (optional — leave blank to publish now)')}
-                                    </label>
-                                    <input type="datetime-local" value={editForm.scheduled_for} onChange={e => setEditForm(p => ({ ...p, scheduled_for: e.target.value }))}
-                                      className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none"
-                                      style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                                    <p className="text-[10px] text-[var(--color-admin-text-muted)] mt-1">
-                                      {t('admin.announcements.timezoneHint', 'Times are in your device\'s local timezone')}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                      <label className="text-[12px] font-medium text-[var(--color-admin-text-sub)]">{t('admin.announcements.recurring', 'Recurring')}</label>
-                                      <button
-                                        onClick={() => setEditForm(p => ({ ...p, is_recurring: !p.is_recurring }))}
-                                        className="w-9 h-5 rounded-full relative flex-shrink-0 transition-colors"
-                                        style={{ backgroundColor: editForm.is_recurring ? 'var(--color-accent)' : 'var(--color-admin-panel)' }}
-                                      >
-                                        <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                                          style={{ left: editForm.is_recurring ? 'calc(100% - 18px)' : '2px' }} />
-                                      </button>
-                                    </div>
-                                    {editForm.is_recurring && (
-                                      <div className="space-y-3 rounded-xl p-3" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                                        <div>
-                                          <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.frequency', 'Frequency')}</label>
-                                          <div className="flex gap-2">
-                                            {['daily', 'weekly', 'biweekly', 'monthly'].map(r => (
-                                              <button key={r} onClick={() => setEditForm(p => ({ ...p, recurrence_rule: r }))}
-                                                className="flex-1 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-colors"
-                                                style={editForm.recurrence_rule === r
-                                                  ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }
-                                                  : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)', border: '1px solid var(--color-admin-border)' }}>
-                                                {t(`admin.announcements.recurrence.${r}`, r)}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-                                        {editForm.recurrence_rule === 'weekly' || editForm.recurrence_rule === 'biweekly' ? (
-                                          <div>
-                                            <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.dayOfWeek', 'Day of week')}</label>
-                                            <div className="flex gap-1.5">
-                                              {EDIT_DAY_LABELS.map((d, i) => (
-                                                <button key={d} onClick={() => setEditForm(p => ({ ...p, recurrence_day: i }))}
-                                                  className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors"
-                                                  style={editForm.recurrence_day === i
-                                                    ? { background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)' }
-                                                    : { background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}>{d}</button>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        ) : editForm.recurrence_rule === 'monthly' ? (
-                                          <div>
-                                            <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.dayOfMonth', 'Day of month')}</label>
-                                            <input type="number" min="1" max="28" value={editForm.recurrence_day || 1}
-                                              onChange={e => setEditForm(p => ({ ...p, recurrence_day: parseInt(e.target.value) || 1 }))}
-                                              className="w-20 rounded-xl px-3 py-2 text-[13px] outline-none"
-                                              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                                          </div>
-                                        ) : null}
-                                        <div>
-                                          <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1">{t('admin.announcements.endDate', 'End date (optional)')}</label>
-                                          <input type="date" value={editForm.recurrence_end} onChange={e => setEditForm(p => ({ ...p, recurrence_end: e.target.value }))}
-                                            className="w-full rounded-xl px-3 py-2 text-[13px] outline-none"
-                                            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex gap-2">
-                              <button onClick={cancelEditing}
-                                className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors"
-                                style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-sub)' }}>
-                                {t('admin.announcements.cancel', 'Cancel')}
-                              </button>
-                              <button onClick={() => editMutation.mutate()} disabled={editMutation.isPending || !editForm.title || !editForm.message}
-                                className="flex-1 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-50"
-                                style={{ background: 'var(--color-accent)', color: '#fff' }}>
-                                {editMutation.isPending ? t('admin.announcements.saving', 'Saving...') : t('admin.announcements.save', 'Save')}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
                           <div className="flex items-center gap-4">
                             <ToneIconChip icon={Megaphone} tone="hot" size={46} />
                             <div className="flex-1 min-w-0">
@@ -672,13 +572,12 @@ export default function AdminAnnouncements() {
                                 </div>
                               ) : (
                                 <>
-                                  <GhostBtn icon={Pencil} label={t('admin.announcements.editAria', 'Edit announcement')} onClick={() => startEditing(a)} />
+                                  <GhostBtn icon={Pencil} label={t('admin.announcements.editAria', 'Edit announcement')} onClick={() => setEditing(a)} />
                                   <GhostBtn icon={Trash2} danger label={t('admin.announcements.deleteAria', 'Delete announcement')} onClick={() => setConfirmDeleteId(a.id)} />
                                 </>
                               )}
                             </div>
                           </div>
-                        )}
                       </AdminCard>
                     </FadeIn>
                   );
@@ -691,6 +590,20 @@ export default function AdminAnnouncements() {
 
       {showCreate && (
         <CreateModal isOpen={showCreate} onClose={() => setShowCreate(false)} gymId={gymId} adminId={user.id} />
+      )}
+
+      {/* Mismo componente, con la fila cargada. `key` fuerza un montaje limpio
+          al saltar de un anuncio a otro sin cerrar en medio, así que el efecto
+          de siembra vuelve a correr. */}
+      {editing && (
+        <CreateModal
+          key={editing.id}
+          isOpen
+          onClose={() => setEditing(null)}
+          gymId={gymId}
+          adminId={user.id}
+          announcement={editing}
+        />
       )}
     </div>
   );

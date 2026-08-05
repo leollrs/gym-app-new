@@ -117,6 +117,7 @@ const MySessions       = lazy(() => import('./pages/MySessions'));
 const PublicTrainerProfile = lazy(() => import('./pages/PublicTrainerProfile'));
 const AppDownloadLanding = lazy(() => import('./pages/AppDownloadLanding'));
 const ReferralLanding  = lazy(() => import('./pages/ReferralLanding'));
+const Unsubscribe      = lazy(() => import('./pages/Unsubscribe'));
 
 // ── Lazy-loaded trainer pages ───────────────────────────────
 const TrainerLayout        = lazy(() => import('./layouts/TrainerLayout'));
@@ -194,6 +195,7 @@ const CustomMeals        = lazy(() => import('./pages/platform/CustomMeals'));
 const GymHealth          = lazy(() => import('./pages/platform/GymHealth'));
 const FeatureAdoption    = lazy(() => import('./pages/platform/FeatureAdoption'));
 const CardQueue          = lazy(() => import('./pages/platform/CardQueue'));
+const PlatformSwag       = lazy(() => import('./pages/platform/Swag'));
 const Attention          = lazy(() => import('./pages/platform/Attention'));
 const PlatformNotifications = lazy(() => import('./pages/platform/PlatformNotifications'));
 
@@ -1726,6 +1728,11 @@ function App() {
           redirect — a logged-out visitor renders the landing. A logged-in one
           still gets bounced home by that effect. */}
       <Route path="/referral/:code"   element={<ErrorBoundary><ReferralLanding /></ErrorBoundary>} />
+      {/* Email unsubscribe (mig 0685). NO guard — the recipient has no session
+          and may not even have an account any more. PublicRoute would be wrong
+          here: it bounces logged-IN users away, and a member reading gym mail on
+          the same phone they're signed in on must still be able to opt out. */}
+      <Route path="/u/:token"         element={<ErrorBoundary><Unsubscribe /></ErrorBoundary>} />
       <Route path="/add-friend/:code" element={<LoadingScreen />} />
       {/* Invite deep links → focus the class / challenge in-app so they can join */}
       <Route path="/challenge/:id"    element={<LoadingScreen />} />
@@ -1859,6 +1866,7 @@ function App() {
                 <Route path="/gym-health"   element={<GymHealth />} />
                 <Route path="/adoption"     element={<FeatureAdoption />} />
                 <Route path="/cards"        element={<CardQueue />} />
+                <Route path="/swag"         element={<PlatformSwag />} />
                 <Route path="/support"      element={<SupportConsole />} />
                 <Route path="/settings"     element={<PlatformSettings />} />
                 <Route path="/audit-log"    element={<AuditLog />} />

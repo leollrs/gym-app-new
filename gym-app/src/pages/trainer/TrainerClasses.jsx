@@ -1347,7 +1347,10 @@ function TemplatesTab({ classes, gymId, t }) {
 }
 
 // ── Propose New Class Modal ──
-function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
+// gymId/trainerId ya no se reciben: submit_class_proposal deriva las dos cosas
+// de auth.uid() del lado del servidor, que además es lo correcto — un cliente
+// no debería poder decir en nombre de qué entrenador propone.
+function ProposeClassModal({ onClose, onSubmitted, t, tc }) {
   const { showToast } = useToast();
   useScrollLock(true);
   const [form, setForm] = useState({ name: '', description: '', day_of_week: 1, start_time: '09:00', duration: 60 });
@@ -1357,32 +1360,32 @@ function ProposeClassModal({ gymId, trainerId, onClose, t, tc }) {
     if (!form.name.trim()) return;
     setSubmitting(true);
     try {
-      const details = {
-        class_name: form.name.trim(),
-        description: form.description.trim(),
-        suggested_day: form.day_of_week,
-        suggested_time: form.start_time,
-        duration_minutes: Number(form.duration) || 60,
-      };
-      const { error } = await supabase.rpc('log_admin_action', {
-        p_action: 'class_proposal',
-        p_entity_type: 'class',
-        p_entity_id: null,
-        p_details: details,
+      // Un solo RPC (mig 0692). Antes esto escribía una fila de auditoría y
+      // mandaba una notificación, y nada más: la propuesta no quedaba guardada
+      // en ninguna tabla consultable, así que el admin recibía un aviso sobre
+      // algo que no podía ver, aceptar ni rechazar — y el entrenador nunca
+      // sabía en qué quedaba. Ahora es una fila con estado; submit_class_proposal
+      // se encarga también de la auditoría y del aviso, en la misma operación.
+      const { data, error } = await supabase.rpc('submit_class_proposal', {
+        p_name: form.name.trim(),
+        p_description: form.description.trim() || null,
+        p_day: form.day_of_week,
+        p_time: form.start_time || null,
+        p_duration: Number(form.duration) || 60,
       });
       if (error) throw error;
-
-      // P2-10: the audit log alone was a write-only black hole — also ping
-      // every gym admin (in-app + push, migration 0535). Tolerate the RPC
-      // not existing yet so the proposal flow never breaks pre-migration.
-      const { error: notifyError } = await supabase.rpc('notify_class_proposal', {
-        p_class_name: form.name.trim(),
-        p_details: details,
-      });
-      if (notifyError) logger.error('ProposeClass: admin notify failed (tolerated)', notifyError);
+      if (!data?.success) {
+        showToast(
+          data?.error === 'ALREADY_PENDING'
+            ? t('trainerClasses.proposalDuplicate', 'You already have a pending proposal with that name')
+            : t('trainerClasses.errorProposal', 'Could not send the proposal'),
+          'error');
+        return;
+      }
 
       posthog?.capture('trainer_class_proposed');
       showToast(t('trainerClasses.proposalSent', 'Proposal sent to admin'), 'success');
+      onSubmitted?.();
       onClose();
     } catch (err) {
       logger.error('ProposeClass: error', err);
@@ -1535,6 +1538,26 @@ export default function TrainerClasses() {
   const [showProposeClass, setShowProposeClass] = useState(false);
   const dateLocale = i18n.language === 'es' ? es : enUS;
 
+  // Las propuestas propias, con su estado (mig 0692). Antes de existir la tabla
+  // no había forma de saber si el admin había hecho algo con lo propuesto:
+  // salía un toast de "enviada" y silencio para siempre.
+  const { data: myProposals = [], refetch: refetchProposals } = useQuery({
+    queryKey: ['trainer', 'my-class-proposals', trainerId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('class_proposals')
+        .select('id, name, status, created_at, decided_at')
+        .eq('trainer_id', trainerId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!trainerId,
+    staleTime: 60_000,
+  });
+  const openProposals = myProposals.filter(p => p.status === 'pending');
+
   useEffect(() => { document.title = t('trainerClasses.documentTitle'); }, [t]);
 
   const CLASS_SELECT = '*, gym_class_schedules(id, day_of_week, specific_date, start_time, end_time, override_capacity)';
@@ -1630,6 +1653,40 @@ export default function TrainerClasses() {
           </TPrimaryButton>
         </div>
 
+        {/* Estado de lo propuesto. Solo se muestran las 3 más recientes: esto
+            es un acuse de recibo, no un historial. */}
+        {myProposals.length > 0 && (
+          <div className="flex flex-wrap gap-1.5" style={{ marginBottom: 14 }}>
+            {myProposals.slice(0, 3).map(p => {
+              const tone = p.status === 'accepted'
+                ? { bg: 'var(--color-success-soft)', fg: 'var(--color-success-ink)' }
+                : p.status === 'dismissed'
+                  ? { bg: 'var(--color-bg-hover)', fg: 'var(--color-text-muted)' }
+                  : { bg: 'color-mix(in srgb, var(--tt-accent, #14B8A6) 12%, transparent)', fg: 'var(--tt-accent, #14B8A6)' };
+              return (
+                <span
+                  key={p.id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold"
+                  style={{ background: tone.bg, color: tone.fg }}
+                >
+                  {p.name}
+                  <span style={{ opacity: 0.75 }}>
+                    · {t(`trainerClasses.proposalStatus.${p.status}`, {
+                      defaultValue: p.status === 'accepted' ? 'accepted'
+                        : p.status === 'dismissed' ? 'dismissed' : 'pending',
+                    })}
+                  </span>
+                </span>
+              );
+            })}
+            {openProposals.length > 3 && (
+              <span className="text-[11.5px] self-center" style={{ color: 'var(--color-text-faint)' }}>
+                +{openProposals.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Tab bar — sub-tab navigation */}
         <div style={{ marginBottom: 14 }}>
           <UnderlineTabs
@@ -1675,9 +1732,8 @@ export default function TrainerClasses() {
 
       {showProposeClass && (
         <ProposeClassModal
-          gymId={gymId}
-          trainerId={trainerId}
           onClose={() => setShowProposeClass(false)}
+          onSubmitted={() => refetchProposals()}
           t={t}
           tc={tc}
         />

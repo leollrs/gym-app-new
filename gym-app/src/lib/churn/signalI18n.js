@@ -109,6 +109,7 @@ const SIGNAL_I18N = {
 // human 'label' for the code (see line 264 of 0398), so they must be mapped
 // here too or they render raw (e.g. "low_attendance") on the Spanish side.
 const SIGNAL_CODE_I18N = {
+  never_activated: 'admin.churnSignals.codeNeverActivated',
   low_attendance: 'admin.churnSignals.codeLowAttendance',
   absent:         'admin.churnSignals.codeAbsent',
   cooling:        'admin.churnSignals.codeCooling',
@@ -197,11 +198,17 @@ export function translateSignalName(t, key) {
 
 // Owner-queue segments → i18n keys (used inside "Check in (X)" fallback).
 const SEGMENT_I18N = {
-  critical: 'admin.queueReason.segmentCritical',
-  at_risk:  'admin.queueReason.segmentAtRisk',
-  cooling:  'admin.queueReason.segmentCooling',
-  healthy:  'admin.queueReason.segmentHealthy',
-  churned:  'admin.queueReason.segmentChurned',
+  critical:   'admin.queueReason.segmentCritical',
+  at_risk:    'admin.queueReason.segmentAtRisk',
+  cooling:    'admin.queueReason.segmentCooling',
+  healthy:    'admin.queueReason.segmentHealthy',
+  churned:    'admin.queueReason.segmentChurned',
+  // 0680: never-trained members split out of `critical` into their own lanes.
+  // Only `activation` is ever queued; dormant/paused are state-only but are
+  // mapped anyway so nothing can leak raw if that ever changes.
+  activation: 'admin.queueReason.segmentActivation',
+  dormant:    'admin.queueReason.segmentDormant',
+  paused:     'admin.queueReason.segmentPaused',
 };
 
 /**
@@ -240,7 +247,12 @@ export function translateQueueReason(t, reason) {
       if (frag === 'Never trained') {
         return t('admin.queueReason.neverTrained', { defaultValue: 'Never trained' });
       }
-      let m = frag.match(/^(\d+)d silent$/);
+      // 0680 activation lane: tenure replaces the attendance fragments, which
+      // described the symptom ("0 sessions this week") as if it were the
+      // problem for someone who never started.
+      let m = frag.match(/^Joined (\d+)d ago$/);
+      if (m) return t('admin.queueReason.joinedNDaysAgo', { n: Number(m[1]), defaultValue: `Joined ${m[1]}d ago` });
+      m = frag.match(/^(\d+)d silent$/);
       if (m) return t('admin.queueReason.daysSilent', { count: Number(m[1]), defaultValue: `${m[1]}d silent` });
       m = frag.match(/^(\d+)d quiet$/);
       if (m) return t('admin.queueReason.daysQuiet', { count: Number(m[1]), defaultValue: `${m[1]}d quiet` });

@@ -33,9 +33,71 @@ function escHtml(s: string): string {
 }
 
 const i18nStrings: Record<string, Record<string, string>> = {
-  en: { greeting: 'Hey', team: 'Your team', poweredBy: 'Powered by', showQr: 'Show this QR code at the front desk', manualCode: 'Manual code' },
-  es: { greeting: 'Hola', team: 'Tu equipo', poweredBy: 'Powered by', showQr: 'Muestra este código QR en recepción', manualCode: 'Código manual' },
+  en: { greeting: 'Hey', team: 'Your team', poweredBy: 'Powered by', showQr: 'Show this QR code at the front desk', manualCode: 'Manual code', accessCode: 'Your access code', openApp: 'Get started' },
+  es: { greeting: 'Hola', team: 'Tu equipo', poweredBy: 'Powered by', showQr: 'Muestra este código QR en recepción', manualCode: 'Código manual', accessCode: 'Tu código de acceso', openApp: 'Empezar' },
 };
+
+// Where a member who doesn't have the app yet is sent. `/get` (AppDownloadLanding)
+// reads the visitor's platform and leads with the matching store — an EMAIL
+// cannot do that itself, no client runs script, so the detection has to live one
+// hop later on a page that can. Both direct store links are still printed for the
+// case the mail was opened on a desktop.
+const APP_ORIGIN = 'https://app.tugympr.com';
+
+// The download row renders only once a store URL actually exists in app_config.
+// Before launch both are blank, and a "Download the app" link pointing at a
+// "coming soon" page is a dead end with a button on it. This lights up on its
+// own the day the URLs are filled in — no redeploy.
+function downloadFooter(lang: string, iosUrl?: string | null, androidUrl?: string | null) {
+  if (!iosUrl && !androidUrl) return '';
+  const isEs = lang === 'es';
+  const t = {
+    get: isEs ? '¿No tienes la app?' : "Don't have the app?",
+    download: isEs ? 'Descárgala aquí' : 'Download it here',
+    ios: 'App Store',
+    android: 'Google Play',
+  };
+  const direct = [
+    iosUrl ? `<a href="${escHtml(iosUrl)}" style="color:#6b7280;text-decoration:underline;">${t.ios}</a>` : '',
+    androidUrl ? `<a href="${escHtml(androidUrl)}" style="color:#6b7280;text-decoration:underline;">${t.android}</a>` : '',
+  ].filter(Boolean).join(' <span style="color:#374151;">·</span> ');
+  return `
+<tr><td align="center" style="padding:22px 0 0 0;">
+<p style="margin:0 0 6px;font-size:12px;color:#6b7280;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+${t.get} <a href="${escHtml(APP_ORIGIN)}/get" style="color:#9ca3af;text-decoration:underline;font-weight:600;">${t.download}</a>
+</p>
+<p style="margin:0;font-size:11px;color:#4b5563;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${direct}</p>
+</td></tr>`;
+}
+
+// Readable text ON the gym's accent colour.
+//
+// The CTA button is filled with `primaryColor`, which is whatever the gym
+// picked — and a good number of them pick gold or lime. White on gold is about
+// 2:1; the label all but vanishes. Same relative-luminance rule the app uses for
+// `--color-text-on-accent`, reimplemented here because an edge function shares
+// no code with the client. Falls back to white on an unparseable value, which is
+// the safe side for the dark palettes that dominate.
+const INK = '#0B1220';
+function onColor(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return '#ffffff';
+  const n = parseInt(m[1], 16);
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  // Compare the two ACTUAL contrast ratios rather than testing luminance against
+  // a hand-picked threshold. The first version used `L > 0.45`, and TuGymPR's
+  // own gold (#D4AF37) lands at L = 0.4491 — just under, so it chose white, at
+  // 2.1:1. Unreadable, on the brand's own colour, on the one button in the mail.
+  // A threshold has a boundary and the boundary is always in the wrong place;
+  // this has neither.
+  const withWhite = 1.05 / (L + 0.05);
+  const withInk   = (L + 0.05) / 0.05;
+  return withInk >= withWhite ? INK : '#ffffff';
+}
 
 function buildEmailHtml({
   gymName,
@@ -49,6 +111,11 @@ function buildEmailHtml({
   rewardLabel,
   rewardQrCode,
   rewardQrImageUrl,
+  accessCode,
+  ctaUrl,
+  ctaLabel,
+  iosStoreUrl,
+  androidStoreUrl,
 }: {
   gymName: string;
   logoUrl?: string;
@@ -62,6 +129,18 @@ function buildEmailHtml({
   rewardQrCode?: string;
   rewardQrImageUrl?: string;
   rewardMemberId?: string;
+  // Optional STRUCTURE. This template renders `body` as a run of identical grey
+  // paragraphs — which is right for prose and wrong for the two things a
+  // transactional email actually exists to deliver. An access code set in the
+  // same 15px grey as the sentence around it is not a code, it is a word; and a
+  // link buried mid-sentence is not a call to action. The template cannot guess
+  // which line matters, so the caller says so, and the plain-text path is
+  // untouched for every caller that has nothing to declare.
+  accessCode?: string;
+  ctaUrl?: string;
+  ctaLabel?: string;
+  iosStoreUrl?: string | null;
+  androidStoreUrl?: string | null;
 }) {
   const str = i18nStrings[lang] || i18nStrings.en;
   const paragraphs = body
@@ -111,10 +190,42 @@ ${logoUrl
 <!-- Greeting + Body -->
 <tr><td style="padding:40px 40px 32px 40px;">
 
-<p style="margin:0 0 4px;font-size:24px;font-weight:700;color:#ffffff;line-height:1.2;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${str.greeting} ${escHtml(memberFirstName)} 👋</p>
+<p style="margin:0 0 4px;font-size:24px;font-weight:700;color:#ffffff;line-height:1.2;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${str.greeting} ${escHtml(memberFirstName)}</p>
 <p style="margin:0 0 28px;font-size:13px;color:#6b7280;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${escHtml(subject)}</p>
 
 ${paragraphs}
+
+${accessCode ? `
+<!-- ACCESS CODE — the reason this email exists. Monospace, tracked out, and
+     boxed in the gym's accent so it reads as something to TYPE, not to read.
+     Tabular figures matter: a proportional font makes 5SKZYX ambiguous. -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 28px 0;">
+<tr><td align="center" style="background-color:#0B1220;border:1px solid ${primaryColor}44;border-radius:14px;padding:22px 16px 20px 16px;">
+<p style="margin:0 0 10px;font-size:10px;font-weight:700;color:${primaryColor};text-transform:uppercase;letter-spacing:1.6px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${str.accessCode}</p>
+<p style="margin:0;font-size:30px;font-weight:700;color:#ffffff;letter-spacing:7px;line-height:1.1;font-family:'SF Mono',SFMono-Regular,Menlo,Consolas,'Courier New',monospace;">${escHtml(accessCode)}</p>
+</td></tr>
+</table>
+` : ''}
+
+${ctaUrl ? `
+<!-- CTA — a real target, not a link inside a sentence. Table-wrapped with the
+     radius on BOTH the cell and the anchor: Outlook drops the anchor's box
+     model and keeps the cell, everything else does the opposite. Label colour is
+     contrast-picked, because a gold-branded gym with white text on the button
+     has an invisible label. -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px 0;">
+<tr><td align="center">
+<table cellpadding="0" cellspacing="0" border="0">
+<tr><td align="center" style="background-color:${primaryColor};border-radius:12px;">
+<a href="${escHtml(ctaUrl)}" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:700;color:${onColor(primaryColor)};text-decoration:none;border-radius:12px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${escHtml(ctaLabel || str.openApp)}</a>
+</td></tr>
+</table>
+</td></tr>
+</table>
+<!-- The same URL in plain text. A mail client that strips the button, or a
+     member forwarding this to themselves, still has something to tap. -->
+<p style="margin:12px 0 0;font-size:11px;line-height:1.5;color:#4b5563;text-align:center;word-break:break-all;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${escHtml(ctaUrl)}</p>
+` : ''}
 
 ${rewardLabel ? `
 <!-- Reward Voucher -->
@@ -122,7 +233,7 @@ ${rewardLabel ? `
 <tr><td>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${primaryColor}10;border:1px solid ${primaryColor}33;border-radius:12px;overflow:hidden;">
 <tr><td style="padding:24px;text-align:center;">
-<p style="margin:0 0 4px;font-size:11px;font-weight:600;color:${primaryColor};text-transform:uppercase;letter-spacing:1px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">&#127873; REWARD</p>
+<p style="margin:0 0 4px;font-size:11px;font-weight:600;color:${primaryColor};text-transform:uppercase;letter-spacing:1px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">REWARD</p>
 <p style="margin:0 0 16px;font-size:18px;font-weight:700;color:#ffffff;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">${escHtml(rewardLabel!)}</p>
 ${rewardQrImageUrl
   ? `<img src="${escHtml(rewardQrImageUrl)}" alt="QR ${escHtml(rewardQrCode || '')}" width="160" height="160" style="display:block;width:160px;height:160px;margin:0 auto 12px auto;border-radius:8px;background:#ffffff;padding:8px;"/>`
@@ -156,7 +267,8 @@ ${rewardQrCode ? `<p style="margin:0;font-size:11px;color:#6b7280;font-family:'C
 <!-- ============================================================ -->
 <!-- FOOTER                                                       -->
 <!-- ============================================================ -->
-<tr><td align="center" style="padding:28px 0 0 0;">
+${downloadFooter(lang, iosStoreUrl, androidStoreUrl)}
+<tr><td align="center" style="padding:22px 0 0 0;">
 <p style="margin:0;font-size:11px;color:#374151;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
 ${escHtml(gymName)} · ${str.poweredBy} <span style="color:#6b7280;">TuGymPR</span>
 </p>
@@ -238,7 +350,11 @@ Deno.serve(async (req) => {
     // ── END GYM USAGE CAP CHECK ─────────────────────────────────
 
     const payload = await req.json();
-    const { memberId, subject, body, overrideEmail, emailOverrideAcknowledged, lang, rewardType, rewardLabel, testMode, to, html, prerenderedHtml } = payload;
+    // `scope` marca un envío COMERCIAL (campañas de Outreach). Cuando viene, se
+    // consulta email_allowed_for y se emite List-Unsubscribe. Cuando no viene,
+    // el envío es transaccional (código de acceso, reset) y NO se gatea — un
+    // miembro que se dio de baja de las promociones sigue necesitando su código.
+    const { memberId, subject, body, overrideEmail, emailOverrideAcknowledged, lang, rewardType, rewardLabel, testMode, to, html, prerenderedHtml, accessCode, ctaUrl, ctaLabel, scope } = payload;
 
     // ── TEST MODE: admin previewing a template by sending it to a free-form address ──
     // Skips member lookup, audit-log linkage, and the buildEmailHtml branding wrap —
@@ -375,7 +491,7 @@ Deno.serve(async (req) => {
     // Get member profile
     const { data: memberProfile } = await supabase
       .from('profiles')
-      .select('id, full_name, gym_id')
+      .select('id, full_name, gym_id, email_unsub_token')
       .eq('id', memberId)
       .single();
 
@@ -383,18 +499,88 @@ Deno.serve(async (req) => {
       return jsonResp({ error: 'Member not found in your gym' }, 404);
     }
 
-    // Get the member's stored email (needed for both sending and audit logging)
-    const { data: authUser } = await supabase.auth.admin.getUserById(memberId);
-    const storedEmail = authUser?.user?.email || null;
+    // ── Consentimiento, SOLO para envíos comerciales ──
+    //
+    // Toda la plataforma manda desde el mismo noreply@tugympr.com, así que las
+    // quejas de spam de UN gimnasio tumban invitaciones, resets y códigos de
+    // acceso de TODOS. Construimos el aparato de consentimiento en 0685 y este
+    // enviador — el que un admin usa a diario desde Outreach — lo esquivaba por
+    // completo: cero referencias a consent, unsubscribe o supresión.
+    //
+    // Un `scope` desconocido hace que email_allowed_for compruebe el interruptor
+    // maestro, que haya dirección usable, y la lista de supresión — sin exigir
+    // ningún opt-in por tipo. Eso es exactamente lo que corresponde a un envío
+    // masivo iniciado por el admin: baja voluntaria respetada, sin dejar la
+    // herramienta en cero el primer día.
+    const isCommercial = typeof scope === 'string' && scope.length > 0;
+    let unsubscribeUrl: string | null = null;
+    if (isCommercial) {
+      const { data: allowed, error: allowErr } = await supabase
+        .rpc('email_allowed_for', { p_profile_id: memberId, p_scope: scope });
+      if (allowErr) {
+        console.error('email_allowed_for failed:', allowErr);
+        return jsonResp({ error: 'Consent check failed' }, 500);
+      }
+      if (allowed !== true) {
+        return jsonResp({ sent: false, reason: 'opted_out' });
+      }
+      unsubscribeUrl = memberProfile.email_unsub_token
+        ? `${APP_ORIGIN}/u/${memberProfile.email_unsub_token}`
+        : null;
+    }
+
+    // Resolve the member's real email.
+    //
+    // auth.users.email is NOT it for anyone an admin created. admin_create_member
+    // (mig 0467:126) provisions a SHADOW auth user on a synthetic placeholder
+    // ('invite-<uuid>@invite.tugympr.invalid') so the member's real address isn't
+    // claimed before they sign up themselves; the real one is stashed in
+    // raw_user_meta_data.pending_email and on gym_invites.email. Migration 0603
+    // taught the DISPLAY rpcs (admin_get_member_email) that rule — this function
+    // never learned it, so mailing a not-yet-activated member either addressed
+    // the .invalid placeholder or died on "Member has no email on file".
+    //
+    // The lookup error was also discarded, so ANY failure here — not just a
+    // missing address — surfaced as that same misleading message.
+    const { data: authUser, error: authLookupErr } = await supabase.auth.admin.getUserById(memberId);
+    if (authLookupErr) {
+      console.error('send-admin-email: auth lookup failed', memberId, authLookupErr);
+    }
+    const rawEmail = authUser?.user?.email || null;
+    const isPlaceholder = !!rawEmail && /@[^@]*\.invalid$/i.test(rawEmail);
+    let storedEmail = isPlaceholder ? null : rawEmail;
+
+    if (!storedEmail) {
+      storedEmail = (authUser?.user?.user_metadata?.pending_email as string | undefined) || null;
+    }
+    if (!storedEmail) {
+      // Last resort: the invite the admin created carries the address they typed.
+      const { data: inviteRow } = await supabase
+        .from('gym_invites')
+        .select('email')
+        .eq('used_by', memberId)
+        .not('email', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      storedEmail = inviteRow?.email || null;
+    }
 
     // Determine the actual recipient email
     const finalEmail = overrideEmail || storedEmail;
     if (!finalEmail) {
-      return jsonResp({ error: 'Member has no email on file' }, 404);
+      return jsonResp({
+        error: authLookupErr
+          ? 'Could not read the member record to find their email'
+          : 'Member has no email on file',
+      }, 404);
     }
 
-    // Get gym name + branding (parallel — independent queries)
-    const [{ data: gym }, { data: branding }] = await Promise.all([
+    // Get gym name + branding + store links (parallel — independent queries).
+    // `app_config` row 1 is the same source `get_app_version` serves to the app,
+    // so the footer links stay in step with the update banner instead of being a
+    // second place to remember to edit.
+    const [{ data: gym }, { data: branding }, { data: appCfg }] = await Promise.all([
       supabase.from('gyms')
         .select('name')
         .eq('id', callerProfile.gym_id)
@@ -402,6 +588,10 @@ Deno.serve(async (req) => {
       supabase.from('gym_branding')
         .select('logo_url, primary_color, secondary_color, custom_app_name')
         .eq('gym_id', callerProfile.gym_id)
+        .maybeSingle(),
+      supabase.from('app_config')
+        .select('ios_store_url, android_store_url')
+        .eq('id', 1)
         .maybeSingle(),
     ]);
 
@@ -519,7 +709,37 @@ Deno.serve(async (req) => {
       rewardQrCode: voucherQrCode,
       rewardQrImageUrl: voucherQrImageUrl,
       rewardMemberId: rewardType && rewardLabel ? memberId : undefined,
+      // Optional structure — see buildEmailHtml. Bounded here rather than in the
+      // template so a malformed payload can't stretch the layout or smuggle
+      // markup past escHtml's length assumptions.
+      iosStoreUrl: appCfg?.ios_store_url || null,
+      androidStoreUrl: appCfg?.android_store_url || null,
+      accessCode: typeof accessCode === 'string' ? accessCode.trim().slice(0, 24) : undefined,
+      // Host-allowlisted, matching send-invite:215-217. Previously any https URL
+      // passed, so a gym-branded email sent from the platform's shared
+      // noreply@tugympr.com could point anywhere — an open redirect wearing the
+      // sender's reputation. The legacy tugympr.app host stays tolerated for
+      // already-shipped app builds, same as send-invite.
+      ctaUrl: typeof ctaUrl === 'string'
+        && /^https:\/\/(app\.tugympr\.com|([a-z0-9-]+\.)?tugympr\.app)\//i.test(ctaUrl.trim())
+        ? ctaUrl.trim().slice(0, 300)
+        : undefined,
+      ctaLabel: typeof ctaLabel === 'string' ? ctaLabel.trim().slice(0, 40) : undefined,
     });
+
+    // Un enlace de baja VISIBLE, no solo la cabecera: CAN-SPAM lo exige en el
+    // cuerpo. Se inyecta aquí y no en buildEmailHtml porque renderedHtml puede
+    // venir de tres sitios distintos (plantilla propia, `html`, o
+    // `prerenderedHtml`) y los tres necesitan el enlace.
+    let finalHtml = renderedHtml;
+    if (isCommercial && unsubscribeUrl) {
+      const label = lang === 'es' ? 'Darse de baja' : 'Unsubscribe';
+      const block = `<div style="margin:24px auto 0;max-width:600px;text-align:center;font-family:Arial,sans-serif;">`
+        + `<a href="${unsubscribeUrl}" style="font-size:12px;color:#9CA3AF;text-decoration:underline;">${label}</a></div>`;
+      finalHtml = finalHtml.includes('</body>')
+        ? finalHtml.replace(/<\/body>(?![\s\S]*<\/body>)/, `${block}</body>`)
+        : finalHtml + block;
+    }
 
     // Send via Resend — images are remote URLs (logo: signed Supabase URL,
     // QR: api.qrserver.com). No attachments needed.
@@ -533,17 +753,37 @@ Deno.serve(async (req) => {
         from: `${gymName} <noreply@tugympr.com>`,
         to: [finalEmail],
         subject,
-        html: renderedHtml,
+        html: finalHtml,
+        // Obligatorio en Gmail/Yahoo para remitentes masivos desde feb-2024.
+        // Se emite SOLO en comercial: el correo transaccional no lleva baja.
+        ...(isCommercial && memberProfile.email_unsub_token
+          ? {
+              headers: {
+                'List-Unsubscribe': `<${SUPABASE_URL}/functions/v1/unsubscribe-oneclick?t=${memberProfile.email_unsub_token}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              },
+            }
+          : {}),
       }),
     });
 
     if (!emailResp.ok) {
-      const errBody = await emailResp.text();
-      // Keep the upstream Resend status + body server-side for debugging
-      // (most common cause: sender domain not verified → 403 with detail),
-      // but return a generic message so we don't leak upstream internals.
+      const errBody = await emailResp.text().catch(() => '');
       console.error('Resend error:', emailResp.status, errBody);
-      return jsonResp({ error: 'Failed to send email' }, 502);
+      // The old comment here already named the most common cause — "sender
+      // domain not verified → 403 with detail" — and then withheld it "so we
+      // don't leak upstream internals". Every caller of this endpoint is an
+      // authenticated gym ADMIN: they are the operator, and the provider's
+      // message is the only thing that tells them whether to verify the domain,
+      // rotate the key, or wait out a rate limit. Withholding it is what made
+      // email look permanently broken next to a working SMS.
+      let reason = '';
+      try { reason = JSON.parse(errBody)?.message || JSON.parse(errBody)?.error?.message || ''; } catch { /* not JSON */ }
+      return jsonResp({
+        error: `Email provider refused the send (${emailResp.status})${reason ? `: ${reason}` : ''}`,
+        provider: 'resend',
+        providerStatus: emailResp.status,
+      }, 502);
     }
 
     // Log for audit trail and rate limiting.

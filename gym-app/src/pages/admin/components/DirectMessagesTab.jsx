@@ -220,8 +220,11 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
     // distinct `?member=` value — this function also runs on the refresh poll
     // now, and re-applying would drag the admin out of whatever thread they
     // had since opened.
+    // Sin `enriched.length > 0`: ese guard significaba que un admin con CERO
+    // conversaciones no obtenía nada en absoluto, y quien llegaba desde
+    // "Mensajear a este miembro" aterrizaba en un buzón vacío sin explicación.
     const memberId = searchParams.get('member');
-    if (memberId && memberId !== deepLinkedMemberRef.current && enriched.length > 0) {
+    if (memberId && memberId !== deepLinkedMemberRef.current) {
       deepLinkedMemberRef.current = memberId;
       const existing = enriched.find(c =>
         c.participant_1 === memberId || c.participant_2 === memberId
@@ -231,6 +234,24 @@ export default function DirectMessagesTab({ gymId, adminId, gym, searchParams, t
         setActiveConvoId(existing.id);
         setActiveMember(other);
         setMobileShowThread(true);
+      } else {
+        // No hay hilo todavía: se crea, igual que hace ProfilePreview.jsx:365.
+        // Antes no había rama `else` — el enlace simplemente no hacía nada.
+        supabase.rpc('get_or_create_conversation', { p_other_user: memberId })
+          .then(async ({ data: convoId, error }) => {
+            if (error || !convoId) {
+              logger.warn('DirectMessagesTab: get_or_create_conversation failed:', error?.message);
+              return;
+            }
+            const { data: prof } = await supabase
+              .from('profiles').select('id, full_name, avatar_url').eq('id', memberId).maybeSingle();
+            setActiveConvoId(convoId);
+            setActiveMember(prof || { id: memberId });
+            setMobileShowThread(true);
+            // Sin recargar la lista aquí: esto vive DENTRO de
+            // loadConversations, y llamarla sería recursión. El sondeo de
+            // refresco recoge el hilo nuevo en su siguiente vuelta.
+          });
       }
     }
   }, [gymId, adminId, searchParams]);

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import posthogClient from 'posthog-js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -73,31 +73,36 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
 
   // Load all gym members. Excludes deactivated/banned members so they don't
   // surface in the redemption recipient picker (they can't redeem either way).
-  const { data: allMembers = [], isLoading: membersLoading } = useQuery({
-    queryKey: storeKeys.members(gymId),
+  // Búsqueda EN EL SERVIDOR. Antes se traían 500 filas ordenadas por nombre y
+  // se filtraba en cliente: pasados los 500 miembros, cualquiera
+  // alfabéticamente posterior al corte era imposible de encontrar, así que el
+  // staff literalmente no podía registrarle una compra ni un canje.
+  const [memberQuery, setMemberQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setMemberQuery(memberSearch.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [memberSearch]);
+
+  const { data: members = [], isLoading: membersLoading } = useQuery({
+    queryKey: [...storeKeys.members(gymId), memberQuery],
     queryFn: async () => {
+      // `,` `(` `)` y `\` rompen la sintaxis del filtro or() de PostgREST.
+      const safe = memberQuery.replace(/[,()\\]/g, ' ').trim();
+      if (!safe) return [];
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, username, avatar_url, role, membership_status')
         .eq('gym_id', gymId)
         .in('role', ['member', 'trainer'])
         .not('membership_status', 'in', '(deactivated,banned)')
+        .or(`full_name.ilike.%${safe}%,username.ilike.%${safe}%`)
         .order('full_name')
-        .limit(500);
+        .limit(20);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!gymId,
+    enabled: !!gymId && !!memberQuery,
   });
-
-  const members = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return [];
-    return allMembers.filter(m =>
-      m.full_name?.toLowerCase().includes(q) ||
-      m.username?.toLowerCase().includes(q)
-    ).slice(0, 20);
-  }, [memberSearch, allMembers]);
 
   // Fetch punch card progress for selected member + product
   const { data: punchCount = 0 } = useQuery({
@@ -362,9 +367,7 @@ export default function MemberPurchasesTab({ gymId, t, dateFnsLocale }) {
                   )}
                   {showMemberDropdown && memberSearch.trim().length > 0 && !membersLoading && members.length === 0 && (
                     <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 6px)', left: 0, right: 0, background: TK.surface, border: `1px solid ${TK.borderSolid}`, borderRadius: 12, padding: '12px 14px', fontFamily: FK.body, fontSize: 12.5, color: TK.textMute }}>
-                      {allMembers.length === 0
-                        ? t('admin.store.noMembersLoaded', 'No members loaded. Check connection or refresh.')
-                        : t('admin.store.noMatch', 'No member matches that search.')}
+                      {t('admin.store.noMatch', 'No member matches that search.')}
                     </div>
                   )}
                 </div>

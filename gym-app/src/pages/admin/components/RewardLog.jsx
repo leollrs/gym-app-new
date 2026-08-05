@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../../lib/supabase';
+import { selectAllRows } from '../../../lib/churn/batchedSelect';
 import { useToast } from '../../../contexts/ToastContext';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { FadeIn } from '../../../components/admin';
@@ -10,6 +11,12 @@ import { rewardKeys } from './rewardConstants';
 import { TK, FK, TONE, Ico, ICON, Card } from './retosKit';
 
 const eyebrow = { fontFamily: FK.body, fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: TK.textFaint };
+
+// Ventana del registro de actividad, en meses. Es un límite explícito y
+// compartido por los tres flujos, a diferencia del `.limit(100)` por tabla que
+// había antes: ahí el corte caía en una fecha distinta según lo ocupada que
+// estuviera cada tabla, y un mes salía a medias sin que nada lo dijera.
+const LOG_MONTHS = 12;
 
 // status sort rank: pending/active first, then expired, then claimed/redeemed
 const STATUS_RANK = { pending: 0, active: 0, expired: 1, redeemed: 2, claimed: 2 };
@@ -94,25 +101,42 @@ export default function RewardLog({ gymId, isEs, t }) {
   const { data: logEntries = [], isLoading } = useQuery({
     queryKey: [...rewardKeys.all(gymId), 'activity-log'],
     queryFn: async () => {
+      // Una VENTANA compartida, no un tope por tabla. Los tres flujos se
+      // fusionan en una sola vista agrupada por mes, así que un `.limit(100)`
+      // independiente en cada uno significaba que el corte caía en una fecha
+      // distinta por tabla: un mes mostraba premios de reto pero ningún canje,
+      // no porque no hubiera canjes sino porque esa tabla se había llenado su
+      // cupo antes. Con la misma ventana, un mes dentro del rango está completo
+      // en los tres o en ninguno.
+      const since = new Date();
+      since.setMonth(since.getMonth() - LOG_MONTHS);
+      const sinceIso = since.toISOString();
+
       const [challengeRes, voucherRes, redemptionRes] = await Promise.all([
-        supabase
+        selectAllRows((lo, hi) => supabase
           .from('challenge_prizes')
           .select('id, profile_id, placement, reward_label, points_awarded, status, created_at, redeemed_at, challenges(name), profiles!challenge_prizes_profile_id_fkey(full_name)')
           .eq('gym_id', gymId)
+          .gte('created_at', sinceIso)
           .order('created_at', { ascending: false })
-          .limit(100),
-        supabase
+          .order('id', { ascending: true })
+          .range(lo, hi)),
+        selectAllRows((lo, hi) => supabase
           .from('email_reward_vouchers')
           .select('id, member_id, reward_label, reward_type, status, created_at, redeemed_at, profiles!email_reward_vouchers_member_id_fkey(full_name)')
           .eq('gym_id', gymId)
+          .gte('created_at', sinceIso)
           .order('created_at', { ascending: false })
-          .limit(100),
-        supabase
+          .order('id', { ascending: true })
+          .range(lo, hi)),
+        selectAllRows((lo, hi) => supabase
           .from('reward_redemptions')
           .select('id, profile_id, reward_name, points_spent, status, created_at, claimed_at, profiles!reward_redemptions_profile_id_fkey(full_name)')
           .eq('gym_id', gymId)
+          .gte('created_at', sinceIso)
           .order('created_at', { ascending: false })
-          .limit(100),
+          .order('id', { ascending: true })
+          .range(lo, hi)),
       ]);
 
       const entries = [];

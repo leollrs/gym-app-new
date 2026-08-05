@@ -131,7 +131,10 @@ async function buildAlreadyScannedToast(original, gymId, t) {
 
 export default function ScanFeedback() {
   const { profile } = useAuth();
-  const { t } = useTranslation('pages');
+  const { t, i18n } = useTranslation('pages');
+  // Swag item names are stored per-locale on the grant row (item_name /
+  // item_name_es), not through i18n — they're founder-entered SKU names.
+  const isEs = i18n.language?.startsWith('es');
   const queryClient = useQueryClient();
   const scanClaim = useScanClaimContext();
   const navigate = useNavigate();
@@ -177,6 +180,34 @@ export default function ScanFeedback() {
       return { ...prev, data: { ...prev.data, cardsToDeliver: nextCards } };
     });
   }, [gymId, adminId, queryClient]);
+
+  // Hand over a physical gift (mig 0682). Unlike the card path above this goes
+  // through an RPC rather than a direct UPDATE — merch is worth more than a
+  // card, so there is exactly ONE writer and it always records who handed it
+  // over. (The card path here writes only three columns and leaves the 0506
+  // accountability fields NULL, diverging from MarkDeliveredModal; that
+  // inconsistency is deliberately not replicated for goods.)
+  const deliverGift = useCallback(async (grantId) => {
+    if (!grantId || !gymId) return;
+    setDeliveringId(grantId);
+    const { data, error } = await supabase.rpc('deliver_swag_grant', {
+      p_grant_id: grantId,
+      p_handler_name: profile?.full_name ?? null,
+      p_note: null,
+    });
+    setDeliveringId(null);
+    // Leave the row in place on failure so the desk can retry.
+    if (error || !data?.success) return;
+
+    setToast((prev) => {
+      if (!prev) return prev;
+      const nextGifts = (prev.data?.giftsToDeliver || []).filter((g) => g.id !== grantId);
+      const stillCards = (prev.data?.cardsToDeliver?.length ?? 0) > 0
+        || (prev.data?.cardsPending?.length ?? 0) > 0;
+      if (nextGifts.length === 0 && !stillCards) return null;
+      return { ...prev, data: { ...prev.data, giftsToDeliver: nextGifts } };
+    });
+  }, [gymId, profile?.full_name]);
 
   // Jump to the Print Cards page (lands on the "To print" tab) so the front
   // desk can print/grab the pending card. Closes the toast on the way out so
@@ -356,7 +387,8 @@ export default function ScanFeedback() {
   useEffect(() => {
     if (!toast) return;
     const hasCards = (toast.data?.cardsToDeliver?.length ?? 0) > 0
-      || (toast.data?.cardsPending?.length ?? 0) > 0;
+      || (toast.data?.cardsPending?.length ?? 0) > 0
+      || (toast.data?.giftsToDeliver?.length ?? 0) > 0;
     if (hasCards) return undefined;
     clearTimeout(dismissTimer.current);
     dismissTimer.current = setTimeout(() => setToast(null), 5000);
@@ -501,7 +533,7 @@ export default function ScanFeedback() {
             // Tap-to-dismiss only when there's nothing to act on; if any card is
             // queued for delivery OR waiting to print, the toast stays put so the
             // admin can act — the inner card sections catch clicks separately.
-            onClick={((toast.data?.cardsToDeliver?.length ?? 0) > 0 || (toast.data?.cardsPending?.length ?? 0) > 0) ? undefined : () => setToast(null)}
+            onClick={((toast.data?.cardsToDeliver?.length ?? 0) > 0 || (toast.data?.cardsPending?.length ?? 0) > 0 || (toast.data?.giftsToDeliver?.length ?? 0) > 0) ? undefined : () => setToast(null)}
           >
             <div className="h-1" style={{ background: toast.success ? (toastCfg?.color || 'var(--color-success)') : 'var(--color-danger)' }} />
 
@@ -618,6 +650,62 @@ export default function ScanFeedback() {
                 </div>
               </div>
 
+              {/* Gifts to hand over (mig 0682). Listed ABOVE the cards because
+                  it's the more valuable physical object and the one the member
+                  is standing there for. Name + emoji come denormalized off the
+                  grant row — swag_items is super-admin-only by RLS. */}
+              {(toast.data?.giftsToDeliver?.length ?? 0) > 0 && (
+                <div
+                  className="mt-3 pt-3"
+                  style={{ borderTop: '1px solid var(--color-border-subtle)' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Gift size={12} style={{ color: 'var(--color-success)' }} />
+                    <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-success)' }}>
+                      {t('admin.scan.giftsToDeliverTitle', { count: toast.data.giftsToDeliver.length, defaultValue: 'Gift to hand over' })}
+                    </p>
+                  </div>
+                  <ul className="space-y-2">
+                    {toast.data.giftsToDeliver.map((gift) => {
+                      const isDelivering = deliveringId === gift.id;
+                      const label = (isEs && gift.item_name_es) ? gift.item_name_es : gift.item_name;
+                      return (
+                        <li
+                          key={gift.id}
+                          className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+                          style={{
+                            background: 'var(--color-success-soft)',
+                            border: '1px solid color-mix(in srgb, var(--color-success) 20%, transparent)',
+                          }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            {gift.occasion && (
+                              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-success-ink)' }}>
+                                {t(`admin.printCards.occasions.${gift.occasion}`, gift.occasion)}
+                              </p>
+                            )}
+                            <p className="text-[13px] font-semibold leading-snug mt-0.5" style={{ color: 'var(--color-text-primary)' }}>
+                              {gift.item_emoji ? `${gift.item_emoji} ` : ''}{label}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => deliverGift(gift.id)}
+                            disabled={isDelivering}
+                            className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95 disabled:opacity-50"
+                            style={{ background: 'var(--color-success)', color: '#fff' }}
+                          >
+                            {isDelivering
+                              ? t('admin.scan.cardDelivering', { defaultValue: '...' })
+                              : t('admin.scan.cardDeliver', { defaultValue: 'Handed over' })}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
               {/* Cards-to-deliver — the moment the whole print-card system
                   exists for. Front desk sees what's waiting in inventory
                   for this member and hands it over in the same breath as
@@ -731,7 +819,7 @@ export default function ScanFeedback() {
 
               {/* Shared close — shown whenever any card (deliverable or pending)
                   is on the toast, since neither auto-dismisses. */}
-              {((toast.data?.cardsToDeliver?.length ?? 0) > 0 || (toast.data?.cardsPending?.length ?? 0) > 0) && (
+              {((toast.data?.cardsToDeliver?.length ?? 0) > 0 || (toast.data?.cardsPending?.length ?? 0) > 0 || (toast.data?.giftsToDeliver?.length ?? 0) > 0) && (
                 <button
                   onClick={() => setToast(null)}
                   className="mt-2 w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition-colors"

@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+// Auth lock — a per-tab promise-chain lock instead of supabase-js's default
+// cross-tab Web Locks. See src/lib/authLock.js for why, and for the
+// `acquireTimeout` contract it has to honor.
+import inMemoryLock from './authLock';
 
 const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey  = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -81,38 +85,6 @@ const secureStorage = {
     memoryFallback.delete(key);
   },
 };
-
-// ---------------------------------------------------------------------------
-// Auth lock — in-memory (per-tab) instead of supabase-js's default cross-tab
-// Web Locks (navigator.locks).
-//
-// WHY: the default navigatorLock is held while our async storage adapter
-// resolves the token. In React StrictMode (dev) the AuthProvider mounts →
-// starts acquiring the lock → unmounts, ORPHANING it. The next acquire then
-// blocks ~5s, gets force-"stolen", and throws
-//   `AbortError: Lock was stolen by another request`
-// which left the auth init hung and the whole app stuck on the black splash.
-// (Multiple tabs amplify it, but StrictMode alone reproduces it.)
-//
-// A per-tab promise-chain lock serializes token refresh WITHIN the tab — which
-// is all that matters for refresh races in practice (this was the supabase-js
-// default for years before navigator.locks) — and can never be orphaned or
-// stolen, eliminating the black-screen class of bug. Separate browser profiles
-// (our admin/trainer/member test sessions) each have their own scope anyway.
-const _authLocks = new Map();
-async function inMemoryLock(name, _acquireTimeout, fn) {
-  const prev = _authLocks.get(name) || Promise.resolve();
-  let release;
-  const gate = new Promise((resolve) => { release = resolve; });
-  // Next caller for this name awaits our `gate`, so calls run strictly serially.
-  _authLocks.set(name, prev.then(() => gate));
-  try {
-    await prev;          // wait for the previous holder to release
-    return await fn();
-  } finally {
-    release();           // hand off to the next waiter
-  }
-}
 
 // ── Abort-timeout fetch — the dead-socket-on-resume fix ─────────────────────
 // THE BUG (both iOS WKWebView AND Android Chromium WebView): when the OS
@@ -270,7 +242,10 @@ export function isSessionError(err) {
 // clean login instead.
 
 // Remove the persisted Supabase session token from every storage layer.
-async function purgePersistedAuthToken() {
+// Exported because signOut()'s last-resort path needs it: on native the token
+// lives in @capacitor/preferences, so a fallback that only sweeps localStorage
+// (which the native adapter never writes to) clears nothing at all.
+export async function purgePersistedAuthToken() {
   const isAuthKey = (k) => typeof k === 'string' && k.startsWith('sb-') && k.endsWith('-auth-token');
   if (isNative) {
     try {

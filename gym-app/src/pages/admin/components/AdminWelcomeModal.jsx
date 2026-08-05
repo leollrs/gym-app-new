@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Sparkles, MessageCircle, Microscope, AlertTriangle, ChevronRight, X,
@@ -23,7 +22,6 @@ import {
  *   3. Your first week (3 concrete actions)
  */
 export default function AdminWelcomeModal({ gymId, gymName, profileId, onClose }) {
-  const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const [step, setStep] = useState(0);
 
@@ -165,7 +163,12 @@ export default function AdminWelcomeModal({ gymId, gymName, profileId, onClose }
 }
 
 // ── Standard panel layout ────────────────────────────────────────────────
-function Panel({ icon: Icon, eyebrow, title, body, footnote }) {
+function Panel({ icon, eyebrow, title, body, footnote }) {
+  // Ligado dentro del cuerpo, no destructurado en la firma: el
+  // varsIgnorePattern del proyecto (^[A-Z_]) exime VARIABLES capitalizadas pero
+  // no ARGUMENTOS, y la config no acredita el uso dentro de JSX. Mismo apaño
+  // que NeedsAttentionCard y MorningQueuePanel.
+  const Icon = icon;
   return (
     <div className="flex-1 flex flex-col justify-center">
       <div

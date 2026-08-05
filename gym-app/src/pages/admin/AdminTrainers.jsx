@@ -418,7 +418,15 @@ export default function AdminTrainers() {
     }
   };
   const unlogTrainerContact = async (id) => {
-    try { await supabase.from('admin_contact_log').delete().eq('member_id', id).eq('gym_id', gymId); } catch { /* best-effort */ }
+    // Solo la última entrada (mig 0689). El .delete() de antes borraba el
+    // historial entero. Y el error se comprueba: un builder de Supabase
+    // resuelve con {error}, nunca lanza, así que el catch no veía nada.
+    // `data.success` además de `error`: el RPC responde {success:false} con
+    // HTTP 200, así que un FORBIDDEN pasaba por éxito.
+    const { data, error } = await supabase.rpc('admin_unmark_contacted', { p_member_id: id });
+    if (error || data?.success !== true) {
+      showToast(error?.message || t('admin.trainers.contactLogError', 'Could not log contact'), 'error');
+    }
   };
 
   const openDetail = (id) => { setSelectedId(id); setView('detail'); setShowAssign(false); setDetailMenuOpen(false); window.scrollTo(0, 0); };

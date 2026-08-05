@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
   Image, Type, MousePointerClick, FileText, Loader2,
-  Save, Send, Copy, ArrowLeft, Eye, Gift,
+  Save, Send, Copy, ArrowLeft, Eye, Gift, Zap,
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
@@ -12,7 +12,14 @@ import logger from '../../../lib/logger';
 import { rewardLabelText } from '../../../lib/rewardSymbols';
 import { AdminCard, Toggle } from '../../../components/admin';
 import { generateEmailHtml } from '../../../lib/admin/emailTemplateRenderer';
-import { TEMPLATE_TYPES, TEMPLATE_VARIABLES } from './emailTemplatePrebuilts';
+import { appDeepLink, gymShareUrl } from '../../../lib/appUrls';
+import { TEMPLATE_TYPES, variablesForStep } from './emailTemplatePrebuilts';
+
+// Las secciones que tienen sentido como destino de un botón de correo. Es un
+// subconjunto a propósito de APP_SECTIONS (appUrls.js:96): 'streak' y 'profile'
+// apuntan a la misma pantalla, y 'log' o 'records' no son un sitio al que
+// mandes a alguien desde un correo de retención.
+const CTA_SECTIONS = ['home', 'workout', 'classes', 'checkin', 'rewards', 'challenges', 'progress', 'nutrition', 'social', 'leaderboard', 'messages'];
 import { kindMeta, toneStyles } from './emailTemplateKinds';
 import EmailLivePreview from './EmailLivePreview';
 
@@ -58,6 +65,16 @@ function SectionBlock({ title, icon: Icon, enabled, onToggle, children, toggleAr
   );
 }
 
+// The automated moments a template can serve. Lifecycle steps are the ones
+// run_lifecycle_messages_daily actually fires (0420: day_1…day_60); win-back is
+// winback_steps() (0402:77-87); 'classes' is the reminder pair sent by
+// scheduled-reminders. A step with no generator would never send.
+const AUTO_STEPS = [
+  'day_1', 'day_3', 'day_5', 'day_7', 'day_14', 'day_21', 'day_30', 'day_60',
+  'winback_day_7', 'winback_day_30', 'winback_day_60',
+  'classes',
+];
+
 function Field({ label, children }) {
   return (
     <div>
@@ -79,6 +96,30 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
   const { user, profile } = useAuth();
   const gymId = profile?.gym_id;
   const isEs = i18n.language?.startsWith('es');
+
+  // Web propia del gimnasio (0653 añadió gyms.website_url); si no la tienen,
+  // su página pública /g/:slug, que siempre existe.
+  const { data: gymLinks } = useQuery({
+    queryKey: ['gym-cta-links', gymId],
+    queryFn: async () => {
+      const { data } = await supabase.from('gyms').select('slug, website_url').eq('id', gymId).maybeSingle();
+      return data || null;
+    },
+    enabled: !!gymId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const gymWebsite = gymLinks?.website_url || '';
+  const gymLanding = gymLinks?.slug ? gymShareUrl(gymLinks.slug) : '';
+
+  // El modo se DERIVA de la URL guardada, no se guarda aparte: así una
+  // plantilla vieja con un enlace pegado a mano abre en "Personalizado" sin
+  // migración ni columna nueva.
+  const ctaUrl = template?.cta?.url || '';
+  const appMatch = ctaUrl.match(/\/invite\/go\/([a-z]+)$/i);
+  const ctaSection = appMatch ? appMatch[1] : '';
+  const ctaMode = appMatch ? 'app'
+    : (ctaUrl && (ctaUrl === gymWebsite || ctaUrl === gymLanding)) ? 'gym'
+    : 'custom';
 
   // The gym's own rewards catalog — what the admin already configured under
   // /admin/rewards. We surface these as a picker inside the Reward section so
@@ -260,6 +301,53 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
                 })}
               </div>
             </Field>
+
+            {/* Automation (mig 0687). Two separate decisions on purpose:
+                choosing a moment does NOT start sending. Nothing goes out until
+                the switch is on, so a gym can prepare copy without waking up
+                emailing its members. */}
+            <Field label={t('admin.emailTemplates.automation', 'Automatic sending')}>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={template.step_key || ''}
+                  onChange={e => set('step_key', e.target.value || null)}
+                  className="rounded-xl px-3 py-2 text-[13px] outline-none"
+                  style={{
+                    background: 'var(--color-bg-input, var(--color-bg-elevated))',
+                    border: '1px solid var(--color-border-subtle)',
+                    color: 'var(--color-text-primary)',
+                    minWidth: 210,
+                  }}
+                >
+                  <option value="">{t('admin.emailTemplates.stepNone', 'Manual only')}</option>
+                  {AUTO_STEPS.map(s => (
+                    <option key={s} value={s}>{t(`admin.emailTemplates.step.${s}`, s)}</option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!template.auto_enabled}
+                  disabled={!template.step_key}
+                  onClick={() => set('auto_enabled', !template.auto_enabled)}
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-[12.5px] font-bold transition-colors disabled:opacity-40"
+                  style={{
+                    background: template.auto_enabled ? 'var(--color-success-soft)' : 'var(--color-admin-panel)',
+                    color: template.auto_enabled ? 'var(--color-success-ink)' : 'var(--color-admin-text-sub)',
+                    border: `1px solid ${template.auto_enabled ? 'transparent' : 'var(--color-admin-border)'}`,
+                  }}
+                >
+                  <Zap size={13} />
+                  {template.auto_enabled
+                    ? t('admin.emailTemplates.autoOn', 'Sending automatically')
+                    : t('admin.emailTemplates.autoOff', 'Not sending')}
+                </button>
+              </div>
+              <p className="text-[11.5px] mt-1.5" style={{ color: 'var(--color-admin-text-faint)' }}>
+                {t('admin.emailTemplates.automationHint', 'Members only get this if they haven\'t opted out of that kind of email. Every automatic message carries an unsubscribe link.')}
+              </p>
+            </Field>
           </div>
         </AdminCard>
 
@@ -323,7 +411,12 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
             <span className="text-[10px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mr-1 self-center">
               {t('admin.emailTemplates.insertVariable')}
             </span>
-            {TEMPLATE_VARIABLES.map(v => (
+            {/* Filtrado por el momento asignado: los tokens ricos
+                (plan de hoy, próxima clase, enlaces a la app) solo los rellena
+                el envío automático, y solo algunos tienen sentido en cada
+                flujo. Ofrecerlos en una plantilla manual garantizaba que
+                llegara el {{token}} literal al buzón. */}
+            {variablesForStep(template.step_key).map(v => (
               <VariablePill
                 key={v.key}
                 label={t(`admin.emailTemplates.variables.${v.key}`)}
@@ -357,35 +450,73 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
               className={inputClass}
             />
           </Field>
-          <Field label={t('admin.emailTemplates.ctaUrl')}>
-            <div className="flex items-center gap-2">
+          {/* Destino, no una caja de URL en blanco.
+              Pegar un enlace a mano tenía dos problemas: nadie sabe qué URL
+              poner, y la que se pegaba solía ser una del navegador que NO abre
+              la app. `appDeepLink()` (appUrls.js:144) ya resuelve las dos
+              cosas: con la app instalada el enlace universal la abre en la
+              sección; sin ella, cae en la web y desde ahí se le puede ofrecer
+              la descarga. Eso es lo que debía estar preseleccionado. */}
+          <Field label={t('admin.emailTemplates.ctaDestination', 'Button destination')}>
+            <select
+              value={ctaMode}
+              onChange={(e) => {
+                const mode = e.target.value;
+                if (mode === 'app') set('cta.url', appDeepLink(ctaSection || 'home'));
+                else if (mode === 'gym') set('cta.url', gymWebsite || gymLanding);
+                else set('cta.url', '');
+              }}
+              className={inputClass}
+            >
+              <option value="app">{t('admin.emailTemplates.ctaDestApp', 'Open the app')}</option>
+              <option value="gym">{t('admin.emailTemplates.ctaDestGym', "Gym's website")}</option>
+              <option value="custom">{t('admin.emailTemplates.ctaDestCustom', 'Custom link')}</option>
+            </select>
+          </Field>
+
+          {/* ctaAppSection, no ctaSection: esa clave ya era el TÍTULO de esta
+              sección ("Llamada a la Acción") y reutilizarla la pisaba. */}
+          {ctaMode === 'app' && (
+            <Field label={t('admin.emailTemplates.ctaAppSection', 'Where in the app')}>
+              <select
+                value={ctaSection || 'home'}
+                onChange={(e) => set('cta.url', appDeepLink(e.target.value))}
+                className={inputClass}
+              >
+                {CTA_SECTIONS.map(s => (
+                  <option key={s} value={s}>
+                    {t(`admin.emailTemplates.appSection.${s}`, { defaultValue: s })}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10.5px] mt-1.5" style={{ color: 'var(--color-admin-text-faint)' }}>
+                {t('admin.emailTemplates.ctaAppHint', 'Opens the app if they have it — otherwise the web version, which offers the download.')}
+              </p>
+            </Field>
+          )}
+
+          {ctaMode === 'custom' && (
+            <Field label={t('admin.emailTemplates.ctaUrl')}>
               <input
                 value={template.cta.url}
                 onChange={e => set('cta.url', e.target.value)}
                 placeholder={t('admin.emailTemplates.urlPlaceholder', 'https://...')}
-                className={`${inputClass} flex-1`}
+                className={inputClass}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof window !== 'undefined') set('cta.url', window.location.origin);
-                }}
-                className="px-3 py-2 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors"
-                style={{
-                  background: 'color-mix(in srgb, var(--color-accent, #D4AF37) 12%, transparent)',
-                  color: 'var(--color-accent, #D4AF37)',
-                  border: '1px solid color-mix(in srgb, var(--color-accent, #D4AF37) 25%, transparent)',
-                }}
-              >
-                {t('admin.emailTemplates.useAppUrl', 'Use app URL')}
-              </button>
-            </div>
-            {template.cta.enabled && !template.cta.url && (
-              <p className="text-[10.5px] mt-1.5" style={{ color: 'var(--color-warning, #F59E0B)' }}>
-                {t('admin.emailTemplates.ctaUrlMissing', 'Button has no link — recipients clicking it will go nowhere.')}
-              </p>
-            )}
-          </Field>
+            </Field>
+          )}
+
+          {ctaMode === 'gym' && !gymWebsite && (
+            <p className="text-[10.5px] -mt-1" style={{ color: 'var(--color-admin-text-faint)' }}>
+              {t('admin.emailTemplates.ctaGymFallback', 'No website saved for this gym — using its public page instead.')}
+            </p>
+          )}
+
+          {template.cta.enabled && !template.cta.url && (
+            <p className="text-[10.5px] -mt-1" style={{ color: 'var(--color-warning, #F59E0B)' }}>
+              {t('admin.emailTemplates.ctaUrlMissing', 'Button has no link — recipients clicking it will go nowhere.')}
+            </p>
+          )}
           <Field label={t('admin.emailTemplates.ctaColor')}>
             <div className="flex items-center gap-2">
               <input

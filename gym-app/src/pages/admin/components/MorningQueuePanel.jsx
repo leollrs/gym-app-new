@@ -26,6 +26,9 @@ const SEGMENT_META = {
   critical: { rank: 0, color: '#E8522A', soft: '#FBE6DD' },
   at_risk:  { rank: 1, color: '#E8A93A', soft: '#FBEED4' },
   cooling:  { rank: 2, color: '#4A7AE6', soft: '#E2EAFB' },
+  // Activation (mig 0680) — a member who never started isn't leaving, they
+  // never arrived. Green, and ranked last: real churn always outranks it.
+  activation: { rank: 3, color: '#2FA66B', soft: '#DFF1E6' },
 };
 
 const ACTION_ICONS = {
@@ -36,7 +39,9 @@ const ACTION_ICONS = {
 
 // Approx churn score per segment — ContactPanel renders a risk badge + score bar
 // and the queue item only carries the segment, not the raw score.
-const SEGMENT_SCORE = { critical: 85, at_risk: 60, cooling: 40 };
+// `activation` is deliberately low: they carry no churn signal at all, so the
+// panel must not paint an unstarted member as high-risk.
+const SEGMENT_SCORE = { critical: 85, at_risk: 60, cooling: 40, activation: 20 };
 
 const SNOOZE_HOURS = 24;
 const PAGE_SIZE = 10;
@@ -93,7 +98,7 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
   );
 
   const stats = useMemo(() => {
-    const counts = { critical: 0, at_risk: 0, cooling: 0 };
+    const counts = { critical: 0, at_risk: 0, cooling: 0, activation: 0 };
     items.forEach(i => { if (counts[i.segment] != null) counts[i.segment]++; });
     return counts;
   }, [items]);
@@ -255,9 +260,9 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
               </div>
             </div>
           </div>
-          {(stats.critical > 0 || stats.at_risk > 0 || stats.cooling > 0) && (
+          {(stats.critical > 0 || stats.at_risk > 0 || stats.cooling > 0 || stats.activation > 0) && (
             <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {[['critical', stats.critical], ['at_risk', stats.at_risk], ['cooling', stats.cooling]]
+              {[['critical', stats.critical], ['at_risk', stats.at_risk], ['cooling', stats.cooling], ['activation', stats.activation]]
                 .filter(([, n]) => n > 0)
                 .map(([seg, n]) => {
                   const m = SEGMENT_META[seg];
@@ -396,12 +401,15 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
           onMarkContacted={async (memberId, channel, note) => {
             // Persist the contact (date · channel · content) so it shows in the
             // panel's history and marks the member as contacted.
-            try {
-              await supabase.from('admin_contact_log').insert({
-                admin_id: profile?.id ?? null, member_id: memberId, gym_id: gymId,
-                method: channel || 'manual', note: note ?? null,
-              });
-            } catch (e) { logger.error('admin_contact_log insert failed:', e); }
+            // El error se destructura, no se atrapa: un builder de Supabase
+            // RESUELVE con {error} y nunca lanza, así que el try/catch que
+            // había aquí era decorativo — un insert fallido dejaba al miembro
+            // marcado como contactado sin haberlo registrado.
+            const { error: logErr } = await supabase.from('admin_contact_log').insert({
+              admin_id: profile?.id ?? null, member_id: memberId, gym_id: gymId,
+              method: channel || 'manual', note: note ?? null,
+            });
+            if (logErr) logger.error('admin_contact_log insert failed:', logErr);
             // Reaching out also resolves the queue item (reached_out).
             const qid = contacting?._queueItemId;
             if (qid) {
@@ -416,8 +424,17 @@ export default function MorningQueuePanel({ gymId, cardHeight = 0 }) {
             }
           }}
           onUnmarkContacted={async (memberId) => {
-            try { await supabase.from('admin_contact_log').delete().eq('member_id', memberId).eq('gym_id', gymId); }
-            catch (e) { logger.error('admin_contact_log delete failed:', e); }
+            // Al RPC, como AdminChurn y AdminTrainers. Este era el TERCER sitio
+            // y se quedó con el .delete() sin acotar: borraba el historial de
+            // contacto ENTERO del miembro, sin confirmación, desde el mismo
+            // panel que lo muestra. Se comprueba también `data.success`: el RPC
+            // devuelve {success:false} con HTTP 200, así que mirar solo `error`
+            // deja pasar un FORBIDDEN o un WRONG_GYM como si hubiera ido bien.
+            const { data, error } = await supabase.rpc('admin_unmark_contacted', { p_member_id: memberId });
+            if (error || data?.success !== true) {
+              logger.error('admin_unmark_contacted failed:', error || data);
+              showToast(t('admin.churn.unmarkContactedError', 'Failed to unmark contacted'), 'error');
+            }
           }}
           onClose={() => setContacting(null)}
         />

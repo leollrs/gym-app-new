@@ -75,7 +75,11 @@ export default function AdminFirstRunChecklist({ gymId }) {
       label: t('admin.setup.brandingLabel', 'Add your logo and brand color'),
       desc: t('admin.setup.brandingDesc', 'Members see your branding throughout the app'),
       cta: t('admin.setup.brandingCta', 'Open branding'),
-      onClick: () => navigate('/admin/settings?tab=branding'),
+      // Ruta real. `?tab=branding` no lo lee nadie: AdminSettings.jsx es un hub
+      // de 109 líneas que ni siquiera importa useSearchParams, porque Settings
+      // se partió en sub-rutas. Un dueño nuevo pulsaba "Añade tu logo" y
+      // aterrizaba en el índice a buscarlo a mano.
+      onClick: () => navigate('/admin/settings/branding'),
     },
     {
       key: 'hours',
@@ -83,7 +87,9 @@ export default function AdminFirstRunChecklist({ gymId }) {
       label: t('admin.setup.hoursLabel', 'Set your gym hours'),
       desc: t('admin.setup.hoursDesc', 'So check-ins and class scheduling work correctly'),
       cta: t('admin.setup.hoursCta', 'Set hours'),
-      onClick: () => navigate('/admin/settings?tab=general'),
+      // `?tab=general` era doblemente incorrecto: ni el parámetro se lee ni
+      // "general" es la sección de horarios.
+      onClick: () => navigate('/admin/settings/hours'),
     },
     {
       key: 'welcome',
@@ -91,7 +97,11 @@ export default function AdminFirstRunChecklist({ gymId }) {
       label: t('admin.setup.welcomeLabel', 'Customize the welcome message'),
       desc: t('admin.setup.welcomeDesc', 'The first thing every new member sees'),
       cta: t('admin.setup.welcomeCta', 'Edit welcome'),
-      onClick: () => navigate('/admin/settings?tab=branding'),
+      // Ruta real. `?tab=branding` no lo lee nadie: AdminSettings.jsx es un hub
+      // de 109 líneas que ni siquiera importa useSearchParams, porque Settings
+      // se partió en sub-rutas. Un dueño nuevo pulsaba "Añade tu logo" y
+      // aterrizaba en el índice a buscarlo a mano.
+      onClick: () => navigate('/admin/settings/branding'),
     },
     {
       key: 'invites',

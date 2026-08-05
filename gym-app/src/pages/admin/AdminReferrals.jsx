@@ -165,13 +165,26 @@ export default function AdminReferrals() {
   });
 
   const approveMutation = useMutation({
+    // Was a bare `UPDATE referrals SET status='completed'`, which flipped the
+    // badge and paid out NOTHING: no reward_points_log, no reward_points, no
+    // points_awarded, no check_referral_milestones. Since
+    // referral_config.require_admin_approval defaults to true, every
+    // approval-gated gym had been silently awarding nothing.
+    //
+    // It was also terminal — complete_referral early-returns on
+    // status='completed' (0612:70), so an already-"approved" referral can only
+    // be repaired by pushing it back to 'pending' first.
+    //
+    // complete_referral is revoked from `authenticated` (0222:190-191), so it
+    // has to go through a definer wrapper. admin_complete_referral (mig 0681)
+    // is that wrapper — and unlike safe_complete_referral it reads
+    // additional_roles, so a multi-role admin isn't rejected.
     mutationFn: async (referralId) => {
-      const { error } = await supabase
-        .from('referrals')
-        .update({ status: 'completed', completed_at: new Date().toISOString() })
-        .eq('id', referralId)
-        .eq('gym_id', gymId); // defense-in-depth: scope to this gym, not RLS alone
+      const { data, error } = await supabase.rpc('admin_complete_referral', {
+        p_referral_id: referralId,
+      });
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'APPROVE_FAILED');
     },
     onSuccess: () => {
       posthogClient?.capture('admin_referral_approved');

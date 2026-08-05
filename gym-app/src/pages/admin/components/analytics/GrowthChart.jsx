@@ -2,6 +2,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../../lib/supabase';
+import { selectAllRows } from '../../../../lib/churn/batchedSelect';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { format, subMonths, startOfMonth } from 'date-fns';
 import { exportCSV } from '../../../../lib/csvExport';
@@ -13,13 +14,20 @@ async function fetchGrowthData(gymId, dateFnsLocale, span) {
   const now = new Date();
   const from = subMonths(startOfMonth(now), span - 1).toISOString();
 
-  const { data: members, error } = await supabase
+  // Paginado y ordenado: sin esto PostgREST tapaba en 1000 filas y los meses
+  // perdían altas al azar — que en un gráfico de crecimiento se lee como una
+  // CAÍDA real del negocio. Un gimnasio que suma ~85 al mes cruza las 1000
+  // dentro de la ventana de 12 meses por defecto. Esto alimenta también el CSV
+  // de `member-growth`.
+  const { data: members, error } = await selectAllRows((lo, hi) => supabase
     .from('profiles')
     .select('created_at')
     .eq('gym_id', gymId)
     .eq('role', 'member')
     .eq('imported_archived', false)
-    .gte('created_at', from);
+    .gte('created_at', from)
+    .order('created_at', { ascending: true })
+    .range(lo, hi));
   if (error) throw error;
 
   const monthMap = {};

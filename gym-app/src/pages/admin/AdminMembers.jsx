@@ -28,9 +28,11 @@ import InviteModal from './components/InviteModal';
 import CreateInviteModal from './components/CreateInviteModal';
 import MemberDetail from './components/MemberDetail';
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
+import ProspectsTab from './components/ProspectsTab';
+import ProspectModal from './components/ProspectModal';
 
 import { translateSignal as translateChurnSignal } from '../../lib/churn/signalI18n';
-import { fetchMembers, fetchMemberCount, fetchAllInvites, getInviteStatus, MEMBERS_PAGE_SIZE } from '../../lib/admin/memberQueries';
+import { fetchMembers, fetchMemberById, fetchMemberCount, fetchAllInvites, fetchProspects, getInviteStatus, MEMBERS_PAGE_SIZE } from '../../lib/admin/memberQueries';
 import { useScrollLock } from '../../hooks/useScrollLock';
 export { translateChurnSignal };
 
@@ -75,7 +77,7 @@ export default function AdminMembers() {
   const gymId = profile?.gym_id;
   const isAuthorized = profile && availableRoles.some(r => r === 'admin' || r === 'super_admin') && !!gymId;
 
-  const [tab, setTab] = useState('members'); // 'members' | 'invites' | 'resets'
+  const [tab, setTab] = useState('members'); // 'members' | 'invites' | 'prospects' | 'resets'
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
@@ -95,19 +97,16 @@ export default function AdminMembers() {
   const [hasMoreMembers, setHasMoreMembers] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [quickMsgMemberId, setQuickMsgMemberId] = useState(null);
+  // Prospects (mig 0681). `prospectEdit` holds the row being edited, or the
+  // sentinel 'new' when adding. `convertingProspect` is the row whose
+  // conversion opened CreateInviteModal — it stays set so the success handler
+  // can attribute the referral and mark the prospect converted.
+  const [prospectEdit, setProspectEdit] = useState(null);
+  const [convertingProspect, setConvertingProspect] = useState(null);
 
-  // Auto-open member detail from ?member=ID query param
-  useEffect(() => {
-    const memberId = searchParams.get('member');
-    if (memberId && allMembers.length > 0 && !selected) {
-      const found = allMembers.find(m => m.id === memberId);
-      if (found) {
-        setSelected(found);
-        searchParams.delete('member');
-        setSearchParams(searchParams, { replace: true });
-      }
-    }
-  }, [searchParams, allMembers, selected, setSearchParams]);
+  // Deep-link resolution guard — the id we've already tried to fetch directly,
+  // so a miss doesn't re-request on every render. See the effect below `members`.
+  const deepLinkTried = useRef(null);
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -140,6 +139,55 @@ export default function AdminMembers() {
   });
 
   const members = allMembers.length > 0 ? allMembers : initialMembers;
+
+  // Auto-open member detail from the ?member=ID query param — Overview's morning
+  // queue ("Conversaciones de hoy"), activity feed and needs-attention card all
+  // navigate here expecting the profile to open.
+  //
+  // Guards on `members` — the list actually on screen — NOT on `allMembers`.
+  // `allMembers` is only ever filled as a side effect inside the roster queryFn,
+  // and React Query skips queryFn entirely on a cache hit (staleTime 30s, plus
+  // the persisted localStorage cache). On that path the table renders from
+  // `initialMembers` via the fallback above while `allMembers` is still [], so
+  // the old guard read "no members loaded" on a fully-populated page and the
+  // link silently did nothing.
+  //
+  // The roster is also filtered (role='member', un-archived, first page only)
+  // while the queue is not, so a linked member can be legitimately absent —
+  // fall back to a direct fetch, and surface a toast if even that comes up
+  // empty. This path must never fail silently.
+  useEffect(() => {
+    const memberId = searchParams.get('member');
+    if (!memberId || selected) return;
+
+    const clearParam = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('member');
+      setSearchParams(next, { replace: true });
+    };
+
+    const found = members.find(m => m.id === memberId);
+    if (found) { setSelected(found); clearParam(); return; }
+
+    // Let the first roster load settle before deciding they're missing.
+    // El guard es SOLO contra re-entradas del efecto mientras el fetch está en
+    // vuelo — se limpia en el .finally(). Antes se quedaba puesto para siempre,
+    // así que volver al MISMO miembro una segunda vez no abría nada y encima
+    // dejaba ?member= colgado en la URL, porque clearParam tampoco corría.
+    if (isLoading || deepLinkTried.current === memberId) return;
+    deepLinkTried.current = memberId;
+
+    fetchMemberById(gymId, memberId)
+      .then(row => {
+        if (row) setSelected(row);
+        else showToast(t('admin.members.memberNotFound', 'That member is no longer in this gym'), 'error');
+      })
+      .catch(err => {
+        logger.error('AdminMembers: deep-link member fetch failed:', err);
+        showToast(t('admin.members.memberLoadFailed', 'Could not open that member'), 'error');
+      })
+      .finally(() => { deepLinkTried.current = null; clearParam(); });
+  }, [searchParams, members, selected, isLoading, gymId, setSearchParams, showToast, t]);
 
   // Real roster size, independent of how many pages have been loaded. Falls back
   // to the loaded count only if the count query itself failed, so the header
@@ -180,6 +228,20 @@ export default function AdminMembers() {
     enabled: !!gymId,
     staleTime: 30_000,
   });
+
+  const { data: prospects = [], isLoading: prospectsLoading, isError: prospectsError, refetch: refetchProspects } = useQuery({
+    queryKey: [...adminKeys.members.all(gymId), 'prospects'],
+    queryFn: () => fetchProspects(gymId),
+    enabled: !!gymId,
+    staleTime: 30_000,
+  });
+
+  // Only unresolved prospects are "waiting on you" — converted/lost ones must
+  // not inflate the tab badge into a permanent number that never goes down.
+  const openProspectCount = useMemo(
+    () => prospects.filter(p => p.status === 'new' || p.status === 'contacted').length,
+    [prospects],
+  );
 
   // Derived invite lists
   const pendingInvites = useMemo(() => allInvites.filter(i => getInviteStatus(i) === 'pending'), [allInvites]);
@@ -261,6 +323,92 @@ export default function AdminMembers() {
     } catch (err) {
       logger.error('Failed to copy invite code:', err);
     }
+  };
+
+  /**
+   * Close the loop after a prospect has been turned into a member.
+   *
+   * The referral is the point of the whole feature: a member who physically
+   * brought a friend has never been credited, because `referrals` is only ever
+   * written by `register_referral`, which the NEW USER has to call for
+   * themselves from their own phone with a code typed in. `admin_attribute_referral`
+   * (mig 0681) is the admin-callable half that never existed.
+   *
+   * The row lands 'pending' on purpose — it pays out when the member actually
+   * signs up, or when an admin approves it in /admin/referrals. See the note at
+   * the bottom of migration 0681 for why.
+   */
+  const markProspectConverted = async (prospect, newMemberId, referrerId) => {
+    // Ya convertido: no se vuelve a atribuir. Sin esta guarda, un fallo al
+    // marcar el prospecto dejaba la ficha abierta, el operador daba a Convertir
+    // otra vez, y salía un SEGUNDO referido independiente para la misma persona.
+    if (prospect.status === 'converted') { refetchProspects(); return; }
+
+    // El referidor viene del formulario, no de la ficha: el admin puede haberlo
+    // quitado o escaneado otro código. `referrals` tiene
+    // UNIQUE(referred_id, gym_id) y no hay ruta de re-atribución (mig 0681), así
+    // que acreditar al equivocado es irreversible.
+    const finalReferrerId = referrerId !== undefined ? referrerId : prospect.referred_by_profile_id;
+
+    // Attribution first: if it collides we still want the prospect marked
+    // converted (they DID become a member), just without stealing the credit
+    // from whoever was already attributed.
+    if (finalReferrerId) {
+      try {
+        const { data, error } = await supabase.rpc('admin_attribute_referral', {
+          p_referred_id: newMemberId,
+          p_referrer_id: finalReferrerId,
+        });
+        if (error) throw error;
+        if (data?.success) {
+          showToast(t('admin.prospects.referralCredited', {
+            name: data.referrer_name,
+            defaultValue: 'Referral credited to {{name}}',
+          }), 'success');
+        } else if (data?.error === 'ALREADY_ATTRIBUTED') {
+          showToast(t('admin.prospects.referralAlreadyAttributed', {
+            name: data.referrer_name || '',
+            defaultValue: 'Already credited to {{name}} — referrals cannot be reassigned',
+          }), 'info');
+        } else {
+          logger.warn('AdminMembers: referral attribution refused:', data);
+          showToast(t('admin.prospects.referralFailed', 'Member created, but the referral could not be credited'), 'error');
+        }
+      } catch (err) {
+        logger.error('AdminMembers: admin_attribute_referral failed:', err);
+        showToast(t('admin.prospects.referralFailed', 'Member created, but the referral could not be credited'), 'error');
+      }
+    }
+
+    try {
+      // .select('id'): un update que no matcha NINGUNA fila resuelve con
+      // error:null, así que un desajuste de RLS o de gym_id era indistinguible
+      // del éxito — la ficha seguía abierta y el operador la convertía otra vez.
+      const { data, error } = await supabase
+        .from('gym_prospects')
+        .update({
+          status: 'converted',
+          converted_profile_id: newMemberId,
+          converted_at: new Date().toISOString(),
+        })
+        .eq('id', prospect.id)
+        .select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('no rows matched');
+      logAdminAction('convert_prospect', 'prospect', prospect.id, {
+        member_id: newMemberId,
+        had_referrer: !!finalReferrerId,
+      });
+    } catch (err) {
+      logger.error('AdminMembers: mark prospect converted failed:', err);
+      // Con voz: el miembro SÍ se creó, pero la ficha sigue abierta y hay que
+      // decirlo o alguien la convierte por segunda vez.
+      showToast(t('admin.prospects.convertMarkFailed', {
+        defaultValue: 'Member created, but the prospect card could not be closed. Refresh before converting again.',
+      }), 'error');
+    }
+
+    refetchProspects();
   };
 
   const handleRevokeInvite = async (inviteId) => {
@@ -483,6 +631,7 @@ export default function AdminMembers() {
   const tabOptions = [
     { key: 'members', label: t('admin.members.tabMembers', 'Members'), count: members.length },
     { key: 'invites', label: t('admin.members.tabInvites', 'Invites'), count: pendingCount },
+    { key: 'prospects', label: t('admin.members.tabProspects', 'Prospects'), count: openProspectCount },
     { key: 'resets', label: t('admin.members.tabResets', 'Resets'), count: resetCount },
   ];
 
@@ -1047,6 +1196,21 @@ export default function AdminMembers() {
           </div>
         )
           );
+          if (tabKey === 'prospects') return (
+            <ProspectsTab
+              prospects={prospects}
+              isLoading={prospectsLoading}
+              isError={prospectsError}
+              refetch={refetchProspects}
+              dateFnsLocale={dateFnsLocale}
+              onAdd={() => setProspectEdit('new')}
+              onEdit={(p) => setProspectEdit(p)}
+              onConvert={(p) => {
+                setConvertingProspect(p);
+                setShowCreateInvite(true);
+              }}
+            />
+          );
           return null;
         }}
       </SwipeableTabContent>
@@ -1083,8 +1247,38 @@ export default function AdminMembers() {
       {showCreateInvite && (
         <CreateInviteModal
           gymId={gymId}
-          onClose={() => setShowCreateInvite(false)}
-          onCreated={() => { refetchInvites(); refetch(); }}
+          // Converting a prospect prefills the form and carries the referrer
+          // through, so whoever brought them gets credited on creation.
+          initialValues={convertingProspect ? {
+            fullName: convertingProspect.full_name,
+            email: convertingProspect.email || '',
+            phone: convertingProspect.phone || '',
+            referrer: convertingProspect.referrer || null,
+          } : null}
+          onClose={() => { setShowCreateInvite(false); setConvertingProspect(null); }}
+          onCreated={async (newMemberId, referrerId) => {
+            refetchInvites();
+            refetch();
+            // Capture and clear before awaiting: the result screen offers "Add
+            // another", and a second member created from it must not inherit
+            // this prospect's referrer.
+            const converting = convertingProspect;
+            if (converting && newMemberId) {
+              setConvertingProspect(null);
+              // referrerId es el del formulario al pulsar crear, que es el que
+              // el admin realmente dejó puesto.
+              await markProspectConverted(converting, newMemberId, referrerId);
+            }
+          }}
+        />
+      )}
+
+      {prospectEdit && (
+        <ProspectModal
+          gymId={gymId}
+          prospect={prospectEdit === 'new' ? null : prospectEdit}
+          onClose={() => setProspectEdit(null)}
+          onSaved={refetchProspects}
         />
       )}
 

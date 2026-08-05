@@ -35,6 +35,7 @@ const loadMeals = async () => {
 };
 import { getExerciseById } from '../lib/exerciseStore';
 import { foodImageUrl } from '../lib/imageUrl';
+import { formatReferralCode } from '../lib/referralCode';
 import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 import RewardPicker from '../components/RewardPicker';
 
@@ -1205,6 +1206,18 @@ const OnboardingFlow = () => {
         }
         setInviteStatus('success');
         setGymMissing(false);
+        // The admin may have attached a referrer when they created this invite
+        // (CreateInviteModal writes gym_invites.referral_code_id). Nothing ever
+        // read it back: the invite carried name, email and phone across and
+        // dropped the referral, so this field came up blank and the referrer was
+        // never credited. `referral_code` is the join added in mig 0678 — absent
+        // until it's applied, in which case this simply does nothing.
+        if (gymLookup.referral_code) {
+          const preset = formatReferralCode(gymLookup.referral_code);
+          set('has_workout_buddy', true);
+          set('workout_buddy_username', preset);
+          validateObReferral(preset);
+        }
         clearPendingInviteClaim();
         await refreshProfile();
         setTimeout(() => {
@@ -1273,13 +1286,12 @@ const OnboardingFlow = () => {
   };
 
   const handleObReferralChange = (raw) => {
-    // REF-XXXX-XXXX auto-format (same as signup): strip non-alphanumerics,
-    // uppercase, dashes at 3 and 7.
-    const cleaned = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 11);
-    let formatted;
-    if (cleaned.length <= 3) formatted = cleaned;
-    else if (cleaned.length <= 7) formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
-    else formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
+    // Shared with Signup and the admin Add Member modal. The local copy this
+    // replaced capped input at 11 alphanumerics — right for the ORIGINAL 4-hex
+    // code, and silently wrong since mig 0653 widened new codes to 8 hex (15
+    // chars). Every code minted since was being truncated as it was typed and
+    // then reported invalid.
+    const formatted = formatReferralCode(raw);
     set('workout_buddy_username', formatted);
     if (refTimerRef.current) clearTimeout(refTimerRef.current);
     if (!formatted.trim()) { setRefStatus('idle'); setRefData(null); return; }
@@ -4030,7 +4042,7 @@ const OnboardingFlow = () => {
                 <OBInput
                   value={data.workout_buddy_username || ''}
                   onChange={e => handleObReferralChange(e.target.value)}
-                  placeholder="REF-XXXX-XXXX"
+                  placeholder="REF-XXXX-XXXXXXXX"
                   maxLength={13}
                   icon={<Users size={18} color={OB.mute}/>}
                   monospace

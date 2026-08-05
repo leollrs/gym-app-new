@@ -889,6 +889,27 @@ if (isNative) {
       }
     });
 
+    // Second, independent restart trigger for the refresh ticker.
+    //
+    // `stopAutoRefresh()` above does more than stop a timer: it calls
+    // `_removeVisibilityChangedCallback()`, which permanently unregisters the
+    // visibilitychange listener auth-js installed at init — and `startAutoRefresh()`
+    // removes it again. So from the FIRST time this app is backgrounded, the
+    // `appStateChange` listener above is the only thing left in the process that
+    // can ever restart token auto-refresh. Miss one `isActive: true` — an iOS
+    // app-switcher peek, Control Center, a notification shade, a permission
+    // sheet, or a listener registered a beat after the WebView came back — and
+    // the ticker stays dead for the rest of the session while the app looks fine.
+    //
+    // Restarting on visible costs a no-op when the ticker is already running
+    // (`_startAutoRefresh` stops the previous one first) and re-arms it when it
+    // isn't. The founder asked for exactly this: refresh automatically,
+    // regardless of which signal the OS decided to send.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      try { supabase.auth.startAutoRefresh(); } catch { /* ignore */ }
+    });
+
     // Cold-start deep link: if iOS killed the WebView while an active workout
     // draft exists, jump straight to the session so the ActiveSession restore
     // path runs instead of the user landing on Dashboard and having to re-open.

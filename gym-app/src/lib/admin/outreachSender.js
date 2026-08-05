@@ -51,7 +51,7 @@ export async function sendOutreach({
     email: { sent: 0, failed: 0 },
     sms: { sent: 0, failed: 0 },
     inApp: { sent: 0, failed: 0 },
-    skipped: { noEmail: 0, noPhone: 0 },
+    skipped: { noEmail: 0, noPhone: 0, optedOut: 0 },
   };
 
   if (!recipients?.length) return results;
@@ -98,6 +98,11 @@ export async function sendOutreach({
     const s = statsMap[recipient.id] || {};
     const v = (x) => (escape ? escapeHtml(x) : x);
     return raw
+      // `member_name` is the token the template editor actually documents
+      // (emailTemplatePrebuilts.js:22) and every prebuilt body uses it — but it
+      // was missing here, so a template written with the UI's own advertised
+      // token arrived in the inbox with the literal {{member_name}} in it.
+      .replace(/\{\{member_name\}\}/g, v(recipient.full_name || ''))
       .replace(/\{\{full_name\}\}/g, v(recipient.full_name || ''))
       .replace(/\{\{first_name\}\}/g, v(first))
       .replace(/\{\{name\}\}/g, v(recipient.full_name || ''))
@@ -107,6 +112,21 @@ export async function sendOutreach({
       .replace(/\{\{workout_count\}\}/g, v(s.workout_count ?? '0'))
       .replace(/\{\{days_inactive\}\}/g, v(s.days_inactive ?? '—'));
   };
+
+  // NO se filtran líneas aquí. Lo intenté como "red de seguridad" copiando la
+  // regla de _shared/emailRenderer.ts, y estaba mal por dos razones:
+  //
+  //   • Allí el renderizador SABE qué valores tiene y solo tira la línea cuando
+  //     el token no resuelve. Aquí no hay ese conocimiento, así que se borraba
+  //     cualquier línea con llaves — incluido texto que el admin escribió a
+  //     mano — de correo, SMS, push e in-app a la vez, y sin que la vista
+  //     previa lo delatara.
+  //   • Corría también sobre el `html` prerenderizado, donde tirar una línea
+  //     se lleva por delante un <tr>/<td> y rompe la maqueta.
+  //
+  // Borrar contenido del mensaje de alguien es peor que dejar pasar un token
+  // literal. El editor ya solo ofrece tokens que este camino rellena
+  // (variablesForStep), que es donde corresponde resolverlo.
 
   const processRecipient = async (r) => {
     const personalizedBody = renderTokens(r, body);
@@ -157,17 +177,31 @@ export async function sendOutreach({
           // rate-limits). When a designer template is attached we pass the
           // pre-rendered, token-substituted `html`; otherwise we send `body` and the
           // function wraps it in the gym's branded template.
-          const { error } = await supabase.functions.invoke('send-admin-email', {
+          const { data, error } = await supabase.functions.invoke('send-admin-email', {
             headers: batchAuthHeader,
             body: {
               memberId: r.id,
               subject: personalizedSubject || 'Message from your gym',
               body: personalizedBody || personalizedSubject || ' ',
               ...(personalizedHtml ? { html: personalizedHtml } : {}),
+              // Marca esto como envío COMERCIAL. La función consulta entonces
+              // email_allowed_for (interruptor maestro + lista de supresión) y
+              // emite List-Unsubscribe. Sin este campo, la campaña salía
+              // esquivando todo el aparato de consentimiento de 0685 y sin
+              // enlace de baja — desde el remitente que comparte toda la
+              // plataforma, así que las quejas de un gimnasio le caen a todos.
+              scope: 'marketing',
             },
           });
           if (error) throw error;
-          results.email.sent++;
+          // El miembro se dio de baja o está en la lista de supresión: no es un
+          // fallo, pero tampoco un envío. Contarlo como enviado hacía que el
+          // resumen mintiera sobre el alcance real.
+          if (data?.sent === false && data?.reason === 'opted_out') {
+            results.skipped.optedOut++;
+          } else {
+            results.email.sent++;
+          }
         } catch (err) {
           logger.warn('outreach email failed', r.id, err);
           results.email.failed++;

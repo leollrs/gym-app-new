@@ -155,6 +155,75 @@ export async function fetchMembers(gymId, page = 0) {
   return rows;
 }
 
+/**
+ * Single-member loader for the `?member=<id>` deep link (Overview's morning
+ * queue, activity feed and needs-attention card all navigate here).
+ *
+ * fetchMembers only returns `role='member'`, un-archived rows, one 200-row page
+ * at a time. None of the surfaces that deep-link here apply those filters, so a
+ * linked member can be legitimately absent from the loaded roster — without
+ * this the link silently does nothing at all.
+ *
+ * Enriched with the same cold-start fallback fetchMembers uses so MemberDetail
+ * gets the row shape it expects. Returns null when the member isn't in this gym.
+ */
+export async function fetchMemberById(gymId, memberId) {
+  const sessionsSince = subDays(new Date(), 14).toISOString();
+  const [profileRes, sessionsRes] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, username, last_active_at, created_at, membership_started_at, admin_note, membership_status, membership_status_updated_at, qr_code_payload, qr_external_id, is_onboarded, checkin_photo_path')
+      .eq('id', memberId).eq('gym_id', gymId).maybeSingle(),
+    supabase
+      .from('workout_sessions')
+      .select('started_at')
+      .eq('gym_id', gymId).eq('profile_id', memberId).eq('status', 'completed')
+      .gte('started_at', sessionsSince)
+      .order('started_at', { ascending: false }),
+  ]);
+
+  if (profileRes.error) { logger.error('AdminMembers: fetchMemberById:', profileRes.error); return null; }
+  const m = profileRes.data;
+  if (!m) return null;
+
+  const sessions = sessionsRes.data || [];
+  const recentWorkouts = sessions.length;
+  const lastSessAt = sessions[0]?.started_at ?? null;
+  const neverActive = !lastSessAt;
+  const daysInactive = lastSessAt ? Math.floor((Date.now() - new Date(lastSessAt)) / 86400000) : null;
+  const fallback = estimateChurnScoreFallback(daysInactive ?? 0, recentWorkouts, neverActive);
+
+  const row = {
+    ...m,
+    recentWorkouts,
+    lastSessionAt: lastSessAt,
+    lastActivityAt: lastSessAt,
+    score: fallback.score,
+    risk_tier: fallback.risk_tier,
+    state: fallback.state,
+    key_signals: fallback.key_signals,
+    explanation: null,
+    primaryDriver: null,
+    trend: 'stable',
+    daysSinceLastActivity: daysInactive,
+    daysSinceLastCheckIn: null,
+    followup_sent_at: null,
+    membership_status: m.membership_status ?? 'active',
+    daysInactive,
+    neverActive,
+    checkin_photo_url: null,
+  };
+
+  try {
+    const photoMap = await signCheckinPhotos([m.checkin_photo_path]);
+    row.checkin_photo_url = m.checkin_photo_path ? (photoMap.get(m.checkin_photo_path) || null) : null;
+  } catch (err) {
+    logger.warn('AdminMembers: sign checkin photo:', err?.message);
+  }
+
+  return row;
+}
+
 export async function fetchAllInvites(gymId) {
   const { data, error } = await withQueryTimeout(
     supabase
@@ -176,4 +245,80 @@ export function getInviteStatus(invite) {
   const expiresAt = invite.expires_at ? new Date(invite.expires_at) : null;
   if (expiresAt && expiresAt < now) return 'expired';
   return 'pending';
+}
+
+// ── Prospects (mig 0681) ────────────────────────────────────────────────────
+// Walk-ins, free-first-class guests and members' guests: the step of the funnel
+// before an invite exists. Kept here beside the invite queries because the
+// admin Members page renders all three from one place.
+
+export const PROSPECT_STATUSES = ['new', 'contacted', 'converted', 'lost'];
+
+export const PROSPECT_SOURCES = ['first_free_class', 'guest_of_member', 'walk_in', 'event', 'other'];
+
+/**
+ * Prospects for a gym, newest visit first, with the referring member's name
+ * joined in — "who brought them" is the whole point of the row, so it must
+ * never require a second round trip to render.
+ */
+export async function fetchProspects(gymId) {
+  // Paginado con selectAllRows, igual que fetchMembers unas líneas más arriba y
+  // por la misma razón que se documenta ahí: PostgREST tapa la respuesta en
+  // 1000 filas independientemente de cualquier .limit(). Todo lo que cuelga de
+  // esto agrega en cliente — los contadores por estado de ProspectsTab, la
+  // insignia de la pestaña, el paginador — así que pasadas las 1000 fichas los
+  // números salían mal y las más antiguas eran inalcanzables.
+  const { data, error } = await withQueryTimeout(
+    selectAllRows((lo, hi) => supabase
+      .from('gym_prospects')
+      .select(`
+        id, full_name, phone, email, source, status, note, lost_reason,
+        visited_at, created_at, converted_at, converted_profile_id,
+        consent_contact_at, referred_by_profile_id,
+        access_code, visit_count, last_visit_at, unreachable_at,
+        referrer:referred_by_profile_id(id, full_name, avatar_url)
+      `)
+      .eq('gym_id', gymId)
+      .order('visited_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(lo, hi)),
+    10_000,
+    'fetchProspects',
+  );
+
+  // Lanza en vez de devolver []. Tragarse el error hacía que una lectura rota
+  // se dibujara como "Todavía no hay prospectos" — y "no hay ninguno" y "no se
+  // pudo cargar" significan lo contrario. Con el throw, React Query expone
+  // isError y la pestaña puede decir la verdad.
+  if (error) {
+    logger.error('AdminMembers: prospects:', error);
+    throw error;
+  }
+  return data || [];
+}
+
+// A prospect goes cold fast. These are the windows the follow-up pill uses.
+const PROSPECT_WARM_DAYS = 2;
+const PROSPECT_COLD_DAYS = 7;
+
+/**
+ * How urgently an open prospect needs a follow-up, from the time since their
+ * visit. Returns one of 'fresh' | 'warm' | 'cold', or null when the prospect
+ * is already resolved (converted or lost) and no longer needs chasing.
+ *
+ * `now` is injectable so this stays a pure function under test.
+ */
+export function prospectFollowUpTier(prospect, now = Date.now()) {
+  if (!prospect) return null;
+  if (prospect.status === 'converted' || prospect.status === 'lost') return null;
+
+  const visited = prospect.visited_at ? new Date(prospect.visited_at).getTime() : NaN;
+  if (!Number.isFinite(visited)) return 'fresh';
+
+  // Math.max guards a visit timestamp in the future (clock skew, or an admin
+  // back-dating a row) from reading as maximally stale via a negative delta.
+  const days = Math.max(0, (now - visited) / 86_400_000);
+  if (days >= PROSPECT_COLD_DAYS) return 'cold';
+  if (days >= PROSPECT_WARM_DAYS) return 'warm';
+  return 'fresh';
 }

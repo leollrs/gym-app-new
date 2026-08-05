@@ -263,10 +263,15 @@ export default function AdminChallenges() {
           .select('challenge_id')
           .eq('gym_id', gymId)
           .range(from, to)),
-        supabase
+        // Paginado como su hermano de participaciones justo encima. Truncado,
+        // `awardedSet` perdía retos ya premiados y la interfaz volvía a ofrecer
+        // "Premiar" sobre premios que ya se pagaron.
+        selectAllRows((from, to) => supabase
           .from('challenge_prizes')
           .select('challenge_id')
-          .eq('gym_id', gymId),
+          .eq('gym_id', gymId)
+          .order('challenge_id', { ascending: true })
+          .range(from, to)),
       ]);
       // Attach participant counts and prize status to each challenge
       const counts = {};

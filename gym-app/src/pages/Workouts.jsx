@@ -1704,6 +1704,26 @@ const Workouts = () => {
         const { error: wsErr } = await supabase.from('workout_schedule')
           .delete().eq('profile_id', user.id).in('routine_id', mine);
         if (wsErr) logger.error('Workouts: schedule survived the leave:', wsErr);
+      } else {
+        // GYM-TEMPLATE PROGRAMS CARRY NO ROUTINE IDS. enrollInTemplate writes a
+        // schedule_map of day maps only (:2151) — no routine_ids, no
+        // routine_ids_a/_b — so the id-scoped delete above matched nothing and
+        // this whole program type kept its week after "leaving". That is the
+        // exact bug this block exists to fix, still live for one shape of it.
+        //
+        // With no ids to scope by, the only safe fallback is to clear the week
+        // outright — and only when nothing else is live to lose. If another
+        // program is still active we cannot tell its rows apart from this
+        // one's, so we leave the schedule alone rather than delete a program
+        // the member is still following.
+        const otherLive = (allPrograms || []).some(p => p.id !== id && new Date(p.expires_at) > new Date());
+        if (!otherLive) {
+          const { error: wipeErr } = await supabase.from('workout_schedule')
+            .delete().eq('profile_id', user.id);
+          if (wipeErr) logger.error('Workouts: schedule survived the leave (template path):', wipeErr);
+        } else {
+          logger.error('Workouts: left a program with no routine ids while another is live; schedule left intact', { id });
+        }
       }
       // A program built from a gym template also has an enrollment row, and it
       // is what Discover reads to badge the template "Enrolled". Leaving the

@@ -1817,7 +1817,13 @@ export default function ReadinessModal({ open, onClose }) {
                   fontFamily: FONT_DISPLAY,
                   fontSize: 14,
                   fontWeight: 900,
-                  color: 'var(--color-accent, #2EC4C4)',
+                  // Readiness is a VERDICT, not branding. Painting it with the
+                  // gym's accent meant a perfect 100 rendered in that gym's
+                  // colour — red, on this one — telling the member the opposite
+                  // of what the number says. Uses the same green/amber/rose
+                  // thresholds as the factor rings below (_factorColor, :967)
+                  // so the header and the breakdown can never disagree.
+                  color: _factorColor(typeof score === 'number' ? score : null),
                   fontVariantNumeric: 'tabular-nums',
                   letterSpacing: -0.4,
                 }}

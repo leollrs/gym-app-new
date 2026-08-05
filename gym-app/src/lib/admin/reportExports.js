@@ -154,11 +154,22 @@ export async function exportMembers(gymId, from, to, t) {
   // Churn score + tier (nightly precompute written by compute-churn-scores).
   let churnMap = {};
   try {
-    const { data: scores } = await supabase
+    // Paginado, ordenado y ACOTADO EN EL TIEMPO. churn_risk_scores lleva una
+    // fila por miembro POR DÍA, así que sin ventana ni paginación el CSV
+    // listaba a todo el mundo (esa consulta sí pagina) mientras la mayoría de
+    // filas traía un nivel de riesgo en blanco o de hace años. Se rompía a las
+    // ~1000 filas ≈ un gimnasio de 300 tras tres noches de cron.
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: scores } = await selectAllRows((lo, hi) => supabase
       .from('churn_risk_scores')
-      .select('profile_id, score, risk_tier')
-      .eq('gym_id', gymId);
-    for (const s of (scores || [])) churnMap[s.profile_id] = s;
+      .select('profile_id, score, risk_tier, computed_at')
+      .eq('gym_id', gymId)
+      .gte('computed_at', since)
+      .order('computed_at', { ascending: false })
+      .order('profile_id', { ascending: true })
+      .range(lo, hi));
+    // Newest-first: el primero que se ve de cada miembro es el vigente.
+    for (const s of (scores || [])) if (!churnMap[s.profile_id]) churnMap[s.profile_id] = s;
   } catch (err) { console.warn('Failed to fetch churn scores for export', err); }
 
   // Login email lives on auth.users — admins read it through a SECURITY DEFINER

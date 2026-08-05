@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Bell, BellOff, Settings, ShieldCheck, Megaphone, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Settings, ShieldCheck, Megaphone, AlertTriangle, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostHog } from '@posthog/react';
@@ -23,6 +23,18 @@ const PROMOTIONAL_COLUMNS = [
   { col: 'notif_milestone_alerts',   titleKey: 'milestoneAlerts',   descKey: 'milestoneAlertsDesc' },
   { col: 'notif_reward_reminders',   titleKey: 'rewardReminders',   descKey: 'rewardRemindersDesc' },
   { col: 'notif_weekly_summary',     titleKey: 'weeklySummary',     descKey: 'weeklySummaryDesc' },
+];
+
+// EMAIL is a separate consent axis from push (mig 0685). A member who turned
+// push off has not consented to email, and one who left push on has not either
+// — which is why these are their own columns rather than a reuse of notif_*.
+// The master `notif_email_enabled` deliberately does NOT gate transactional
+// mail (invites, password resets, access codes): opting out of marketing must
+// never lock someone out of their own account.
+const EMAIL_COLUMNS = [
+  { col: 'notif_email_lifecycle', titleKey: 'emailLifecycle', descKey: 'emailLifecycleDesc' },
+  { col: 'notif_email_classes',   titleKey: 'emailClasses',   descKey: 'emailClassesDesc' },
+  { col: 'notif_email_winback',   titleKey: 'emailWinback',   descKey: 'emailWinbackDesc' },
 ];
 
 // Inline switch component matching the app's existing role="switch" pattern.
@@ -61,6 +73,11 @@ export default function NotificationSettings() {
     notif_milestone_alerts: true,
     notif_reward_reminders: true,
     notif_weekly_summary: true,
+    notif_email_enabled: true,
+    notif_email_lifecycle: true,
+    notif_email_classes: true,
+    // Opt-in, matching the column default: win-back is promotional.
+    notif_email_winback: false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -78,6 +95,10 @@ export default function NotificationSettings() {
       notif_challenge_updates:  profile.notif_challenge_updates  ?? true,
       notif_milestone_alerts:   profile.notif_milestone_alerts   ?? true,
       notif_reward_reminders:   profile.notif_reward_reminders   ?? true,
+      notif_email_enabled:      profile.notif_email_enabled      ?? true,
+      notif_email_lifecycle:    profile.notif_email_lifecycle    ?? true,
+      notif_email_classes:      profile.notif_email_classes      ?? true,
+      notif_email_winback:      profile.notif_email_winback      ?? false,
       notif_weekly_summary:     profile.notif_weekly_summary     ?? true,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -279,6 +300,53 @@ export default function NotificationSettings() {
                   onChange={(v) => updatePref(row.col, v)}
                   ariaLabel={t(`notificationSettings.${row.titleKey}`)}
                   disabled={saving || !masterEnabled}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Email — a separate consent axis from push (mig 0685). Not gated on
+            the push master switch: they are different channels and different
+            consent. */}
+        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-default)' }}>
+          <div className="px-5 pt-5 pb-3 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: 'rgba(59,130,246,0.1)' }}>
+              <Mail size={18} style={{ color: 'var(--color-info)' }} />
+            </div>
+            <div className="flex-1">
+              <p className="text-[15px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                {t('notificationSettings.emailTitle', 'Email')}
+              </p>
+              <p className="text-[12px] leading-relaxed mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('notificationSettings.emailDesc', "Turning these off never affects your account emails — invitations, password resets and access codes still arrive.")}
+              </p>
+            </div>
+            <PrefSwitch
+              checked={prefs.notif_email_enabled}
+              onChange={(v) => updatePref('notif_email_enabled', v)}
+              ariaLabel={t('notificationSettings.emailTitle', 'Email')}
+              disabled={saving}
+            />
+          </div>
+          <div className="px-5 pb-4">
+            {EMAIL_COLUMNS.map((row) => (
+              <div key={row.col} className="flex items-center gap-3 py-3"
+                style={{ borderTop: '1px solid var(--color-border-subtle)', opacity: prefs.notif_email_enabled ? 1 : 0.45 }}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    {t(`notificationSettings.${row.titleKey}`)}
+                  </p>
+                  <p className="text-[12px] leading-relaxed mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {t(`notificationSettings.${row.descKey}`)}
+                  </p>
+                </div>
+                <PrefSwitch
+                  checked={prefs[row.col]}
+                  onChange={(v) => updatePref(row.col, v)}
+                  ariaLabel={t(`notificationSettings.${row.titleKey}`)}
+                  disabled={saving || !prefs.notif_email_enabled}
                 />
               </div>
             ))}

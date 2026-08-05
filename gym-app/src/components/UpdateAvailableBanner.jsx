@@ -45,14 +45,17 @@ export default function UpdateAvailableBanner() {
 
   return (
     <div
-      className="fixed left-0 right-0 z-[95] px-4"
+      // pointer-events on the CARD only: the wrapper spans full width, and
+      // without this it swallowed taps across a whole strip of the screen
+      // even where the card is narrower than the viewport.
+      className="fixed left-0 right-0 z-[95] px-4 pointer-events-none"
       // Sits above the bottom tab bar, not over it — the member should still be
       // able to navigate away from a banner they haven't decided about.
-      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 76px)' }}
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}
       role="status"
     >
       <div
-        className="flex items-center gap-3 rounded-2xl px-4 py-3 mx-auto"
+        className="flex items-center gap-3 rounded-2xl px-4 py-3 mx-auto pointer-events-auto"
         style={{
           maxWidth: 520,
           background: 'var(--color-bg-card)',
@@ -74,7 +77,7 @@ export default function UpdateAvailableBanner() {
         </div>
         {storeUrl && (
           <a
-            href={storeUrl} target="_blank" rel="noreferrer" onClick={dismiss}
+            href={storeUrl} target="_blank" rel="noreferrer"
             className="shrink-0 px-3.5 py-2 rounded-xl text-[12.5px] font-bold active:scale-95 transition-transform"
             style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >

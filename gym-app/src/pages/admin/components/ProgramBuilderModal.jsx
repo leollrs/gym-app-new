@@ -20,10 +20,15 @@ import {
   calcDaySeconds,
   fmtTime,
 } from './programHelpers';
+import ExerciseVideoThumb from '../../../components/ExerciseVideoThumb';
 import ExercisePicker from './ExercisePicker';
 import { CLASS_COVERS } from './CoverPreview';
 import { classImageUrl } from '../../../lib/classImageUrl';
 import ClassImage from '../../../components/ClassImage';
+
+// Mismos escalones que el builder del miembro (MemberProgramBuilder.REST_OPTS),
+// para que un descanso escrito aquí y uno escrito allí sean el mismo conjunto.
+const REST_OPTIONS = [30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
 
 const genGroupId = () => 'g' + Math.random().toString(36).slice(2, 10);
 
@@ -62,17 +67,21 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
   const { data: exercises = [] } = useQuery({
     queryKey: ['exercises-library'],
     queryFn: async () => {
+      // video_url + equipment se piden para la miniatura y el subtítulo de la
+      // fila. Sin ellos la tarjeta pierde justo lo que la hace legible de un
+      // vistazo: la imagen y el "músculo · equipo".
       const { data } = await supabase
         .from('exercises')
-        .select('id, name, name_es, muscle_group')
+        .select('id, name, name_es, muscle_group, equipment, video_url')
         .order('name');
       return data || [];
     },
     staleTime: 5 * 60 * 1000,
   });
 
+  const exById = (id) => exercises.find(e => e.id === id) || null;
   const exName = (id) => {
-    const ex = exercises.find(e => e.id === id);
+    const ex = exById(id);
     return ex ? exNameLocalized(ex) : id;
   };
 
@@ -255,7 +264,6 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
   const error = localError || saveError;
 
   const inputStyle = { backgroundColor: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' };
-  const stepBtn = { width: 22, height: 22, borderRadius: 7, background: 'var(--color-admin-panel)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-sub)', fontSize: 12, display: 'grid', placeItems: 'center', flexShrink: 0 };
 
   return (
     <div
@@ -559,62 +567,136 @@ export default function ProgramBuilderModal({ program, initialData, onClose, onS
                                 </button>
                               </div>
                             )}
-                            <div style={grouped ? { borderLeft: '2px solid color-mix(in srgb, var(--color-accent) 55%, transparent)', paddingLeft: 8, marginLeft: 2 } : undefined}>
-                              {/* Line 1: select · name · swap · drop · remove */}
-                              <div className="flex items-center gap-2">
+                            {/* Tarjeta por ejercicio — lenguaje de
+                                WorkoutBuilder (el actual del miembro):
+                                rounded-2xl con SOMBRA en vez de borde, anillo
+                                de acento al seleccionar, checkbox redondo,
+                                miniatura, y micro-etiquetas en mayúsculas
+                                ENCIMA de cada control. Antes eran dos líneas
+                                planas con seis ±/± apretados: a ocho ejercicios
+                                se vuelve ilegible. */}
+                            {(() => {
+                              const meta = exById(ex.id);
+                              const sets = ex.sets ?? DEFAULT_SETS;
+                              return (
+                            <div
+                              className="rounded-2xl overflow-hidden transition-colors duration-200"
+                              style={{
+                                background: 'var(--color-bg-card)',
+                                boxShadow: isSel
+                                  ? '0 0 0 1.5px color-mix(in srgb, var(--color-accent) 55%, transparent), 0 1px 3px rgba(0,0,0,0.14)'
+                                  : '0 1px 3px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.04)',
+                                ...(grouped ? { borderLeft: '3px solid color-mix(in srgb, var(--color-accent) 55%, transparent)' } : {}),
+                              }}
+                            >
+                              <div className="flex items-center gap-2 px-3 py-2.5">
+                                {/* Redondo y tintado de acento, como el del
+                                    builder del miembro — el cuadrado gris no
+                                    se leía como "seleccionable". */}
                                 <button
                                   type="button"
                                   onClick={() => toggleSel(di, ei)}
                                   aria-label={t('admin.programs.builder.selectToGroup', 'Select to group')}
-                                  className="flex-shrink-0 grid place-items-center transition-colors"
-                                  style={{ width: 16, height: 16, borderRadius: 5, border: '1.5px solid', borderColor: isSel ? 'var(--color-accent)' : 'var(--color-admin-border)', background: isSel ? 'var(--color-accent)' : 'transparent' }}
+                                  className="w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors"
+                                  style={isSel
+                                    ? { background: 'var(--color-accent)', borderColor: 'var(--color-accent)', color: 'var(--color-text-on-accent,#000)' }
+                                    : { borderColor: 'color-mix(in srgb, var(--color-accent) 60%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' }}
                                 >
-                                  {isSel && <Check size={11} strokeWidth={3} color="#fff" />}
+                                  {isSel && <span className="text-[12px] font-bold leading-none">&#10003;</span>}
                                 </button>
-                                <span className="text-[12.5px] flex-1 min-w-0 truncate font-medium" style={{ color: 'var(--color-admin-text)' }}>{exName(ex.id)}</span>
-                                {ex.drop_set && (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0" style={{ background: 'color-mix(in srgb, var(--color-warning) 16%, transparent)', color: 'var(--color-warning)' }}>
-                                    <TrendingDown size={9} /> {t('admin.programs.builder.dropSetShort', 'Drop')}
-                                  </span>
-                                )}
-                                <button onClick={() => setPicker({ wk: currentWeek, di, ei, swap: true })} aria-label={t('admin.programs.builder.swap', 'Swap exercise')} className="transition-colors flex-shrink-0" style={{ color: 'var(--color-admin-text-muted)' }}>
-                                  <ArrowLeftRight size={13} />
-                                </button>
-                                <button onClick={() => toggleDrop(currentWeek, di, ei)} aria-label={t('admin.programs.builder.dropSet', 'Drop set')} className="transition-colors flex-shrink-0" style={{ color: ex.drop_set ? 'var(--color-warning)' : 'var(--color-admin-text-muted)' }}>
-                                  <TrendingDown size={13} />
-                                </button>
-                                <button onClick={() => removeExercise(currentWeek, di, ei)} aria-label={t('admin.programs.builder.removeExercise', 'Remove exercise')} className="transition-colors flex-shrink-0" style={{ color: 'var(--color-danger)' }}>
-                                  <Trash2 size={12} />
-                                </button>
-                              </div>
-                              {/* Line 2: sets · reps · rest */}
-                              <div className="flex items-center gap-3 pl-6 pb-1.5 pt-1 flex-wrap">
-                                <div className="flex items-center gap-1">
-                                  <button onClick={() => updateExercise(currentWeek, di, ei, 'sets', Math.max(1, (ex.sets ?? DEFAULT_SETS) - 1))} style={stepBtn}>{'−'}</button>
-                                  <span className="text-[11px] w-5 text-center tabular-nums" style={{ color: 'var(--color-admin-text)' }}>{ex.sets ?? DEFAULT_SETS}</span>
-                                  <button onClick={() => updateExercise(currentWeek, di, ei, 'sets', Math.min(20, (ex.sets ?? DEFAULT_SETS) + 1))} style={stepBtn}>+</button>
-                                  <span className="text-[10px] ml-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.builder.sets', 'sets')}</span>
+                                <ExerciseVideoThumb
+                                  exercise={{ videoUrl: meta?.video_url, muscle: meta?.muscle_group }}
+                                  size={40}
+                                  radius={11}
+                                  className="flex-shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-[14.5px] truncate" style={{ color: 'var(--color-admin-text)' }}>{exName(ex.id)}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    {meta?.muscle_group && (
+                                      <p className="text-[12px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
+                                        {/* Las dos claves viven en `pages`, que
+                                            ya es el namespace de este `t`. */}
+                                        {t(`muscleGroups.${meta.muscle_group}`, { defaultValue: meta.muscle_group })}
+                                        {meta.equipment ? ` · ${t(`exerciseLibrary.equipmentNames.${meta.equipment}`, { defaultValue: meta.equipment })}` : ''}
+                                      </p>
+                                    )}
+                                    {ex.drop_set && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'color-mix(in srgb, var(--color-warning) 16%, transparent)', color: 'var(--color-warning)' }}>
+                                        {t('admin.programs.builder.dropSetShort', 'Drop')}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center flex-shrink-0 -mr-1">
+                                  <button onClick={() => setPicker({ wk: currentWeek, di, ei, swap: true })} aria-label={t('admin.programs.builder.swap', 'Swap exercise')}
+                                    className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors active:scale-90 hover:text-[var(--color-accent)]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                                    <ArrowLeftRight size={16} />
+                                  </button>
+                                  <button onClick={() => toggleDrop(currentWeek, di, ei)} aria-label={t('admin.programs.builder.dropSet', 'Drop set')}
+                                    className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors active:scale-90" style={{ color: ex.drop_set ? 'var(--color-warning)' : 'var(--color-admin-text-muted)' }}>
+                                    <TrendingDown size={16} />
+                                  </button>
+                                  <button onClick={() => removeExercise(currentWeek, di, ei)} aria-label={t('admin.programs.builder.removeExercise', 'Remove exercise')}
+                                    className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors active:scale-90 hover:text-red-400" style={{ color: 'var(--color-admin-text-muted)' }}>
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Etiqueta arriba, control abajo. */}
+                              <div className="grid grid-cols-3" style={{ borderTop: '1px solid var(--color-border-subtle)', background: 'color-mix(in srgb, var(--color-admin-panel) 50%, var(--color-bg-card))' }}>
+                                <div className="px-2 py-2.5 flex flex-col items-center">
+                                  <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.builder.sets', 'sets')}</p>
+                                  <div className="flex items-center justify-center gap-3">
+                                    <button onClick={() => updateExercise(currentWeek, di, ei, 'sets', Math.max(1, sets - 1))}
+                                      aria-label={t('admin.programs.builder.sets', 'sets')}
+                                      className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none"
+                                      style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: 'var(--color-text-on-accent, #000)' }}>−</button>
+                                    <span className="font-bold text-[15px] tabular-nums w-5 text-center" style={{ color: 'var(--color-admin-text)' }}>{sets}</span>
+                                    <button onClick={() => updateExercise(currentWeek, di, ei, 'sets', Math.min(20, sets + 1))}
+                                      aria-label={t('admin.programs.builder.sets', 'sets')}
+                                      className="w-7 h-7 rounded-lg text-[13px] flex items-center justify-center active:scale-90 transition-all leading-none"
+                                      style={{ background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)', color: 'var(--color-text-on-accent, #000)' }}>+</button>
+                                  </div>
+                                </div>
+
+                                <div className="px-2 py-2.5 flex flex-col items-center" style={{ borderLeft: '1px solid var(--color-border-subtle)', borderRight: '1px solid var(--color-border-subtle)' }}>
+                                  <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.builder.reps', 'reps')}</p>
                                   <input
                                     type="text"
                                     value={ex.reps ?? DEFAULT_REPS}
                                     onChange={e => updateExercise(currentWeek, di, ei, 'reps', e.target.value.slice(0, 20))}
                                     placeholder="8-12"
                                     aria-label={t('admin.programs.builder.reps', 'Reps')}
-                                    className="w-14 rounded-md px-2 py-1 text-[11px] text-center outline-none"
-                                    style={inputStyle}
+                                    className="w-16 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-center outline-none transition-colors"
+                                    style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-admin-text)' }}
                                   />
-                                  <span className="text-[10px]" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.builder.reps', 'reps')}</span>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <button onClick={() => updateExercise(currentWeek, di, ei, 'rest_seconds', Math.max(0, (ex.rest_seconds ?? DEFAULT_REST) - 15))} style={stepBtn}>{'−'}</button>
-                                  <span className="text-[11px] w-8 text-center tabular-nums" style={{ color: 'var(--color-admin-text)' }}>{t('admin.programs.builder.restSeconds', '{{n}}s', { n: ex.rest_seconds ?? DEFAULT_REST })}</span>
-                                  <button onClick={() => updateExercise(currentWeek, di, ei, 'rest_seconds', Math.min(600, (ex.rest_seconds ?? DEFAULT_REST) + 15))} style={stepBtn}>+</button>
-                                  <span className="text-[10px] ml-0.5" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.builder.rest', 'rest')}</span>
+
+                                <div className="px-2 py-2.5 flex flex-col items-center">
+                                  <p className="text-[10px] uppercase font-bold tracking-wider mb-2 text-center" style={{ color: 'var(--color-admin-text-muted)' }}>{t('admin.programs.builder.rest', 'rest')}</p>
+                                  {/* Desplegable en vez de ±15s: llegar a 3 min
+                                      eran seis clics, por ejercicio. */}
+                                  <select
+                                    value={ex.rest_seconds ?? DEFAULT_REST}
+                                    onChange={e => updateExercise(currentWeek, di, ei, 'rest_seconds', Number(e.target.value))}
+                                    aria-label={t('admin.programs.builder.rest', 'rest')}
+                                    className="rounded-lg px-2 py-1.5 text-[13px] font-semibold text-center outline-none appearance-none cursor-pointer transition-colors"
+                                    style={{ background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)', color: 'var(--color-admin-text)' }}
+                                  >
+                                    {/* Minutos SOLO cuando son redondos: `s/60`
+                                        convertía 90s en "1.5m", que nadie lee
+                                        como descanso. */}
+                                    {REST_OPTIONS.map(s => (
+                                      <option key={s} value={s}>{s % 60 === 0 ? `${s / 60}m` : `${s}s`}</option>
+                                    ))}
+                                  </select>
                                 </div>
                               </div>
                             </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}

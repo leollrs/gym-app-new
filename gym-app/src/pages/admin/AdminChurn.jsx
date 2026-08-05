@@ -558,8 +558,15 @@ export default function AdminChurn() {
 
   const handleUnmarkContacted = useCallback(async (memberId) => {
     try {
-      const { error } = await supabase.from('admin_contact_log').delete().eq('member_id', memberId).eq('gym_id', gymId);
-      if (error) {
+      // RPC, no .delete(): el DELETE borraba TODAS las filas del miembro, no la
+      // última — o sea, deshacer un toque destruía el historial de gestión
+      // completo, sin confirmación, desde el mismo panel que lo muestra.
+      // PostgREST no sabe hacer DELETE … ORDER BY … LIMIT 1 (mig 0689).
+      // `data.success` además de `error`: el RPC devuelve {success:false,
+      // error:'FORBIDDEN'|'WRONG_GYM'} con HTTP 200, así que mirar solo `error`
+      // daba un "deshecho" limpio que no borró nada.
+      const { data, error } = await supabase.rpc('admin_unmark_contacted', { p_member_id: memberId });
+      if (error || data?.success !== true) {
         logger.error('Failed to unmark contact', error);
         showToast(t('admin.churn.unmarkContactedError', { defaultValue: 'Failed to unmark contacted' }), 'error');
         return;
@@ -569,7 +576,8 @@ export default function AdminChurn() {
       logger.error('Failed to unmark contact', err);
       showToast(t('admin.churn.unmarkContactedError', { defaultValue: 'Failed to unmark contacted' }), 'error');
     }
-  }, [gymId, refetch, showToast, t]);
+    // Sin gymId: el RPC deriva el gimnasio de auth.uid() del lado del servidor.
+  }, [refetch, showToast, t]);
 
   const handleAddToChallenge = async (member, challengeId) => {
     if (!challengeId) return;

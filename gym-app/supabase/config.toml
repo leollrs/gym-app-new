@@ -419,6 +419,15 @@ verify_jwt = false
 [functions.confirm-account-deletion]
 verify_jwt = false
 
+# El POST de List-Unsubscribe (RFC 8058). Gmail y Yahoo lo invocan sin ninguna
+# credencial — el token de la URL es la credencial. Si esta entrada falta, un
+# `supabase functions deploy` lo vuelve a poner tras verify_jwt y el one-click
+# se rompe EN SILENCIO: el proveedor cree que dio de baja, el correo sigue
+# llegando, y eso cuenta como queja de spam contra el remitente que comparte
+# toda la plataforma.
+[functions.unsubscribe-oneclick]
+verify_jwt = false
+
 # [experimental.pgdelta]
 # When enabled, pg-delta becomes the active engine for supported schema flows.
 # enabled = false

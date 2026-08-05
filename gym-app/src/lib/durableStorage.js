@@ -115,3 +115,37 @@ export function removeDurable(key) {
   if (!isNative || !isTracked(key)) return;
   Preferences.remove({ key }).catch(() => {});
 }
+
+/**
+ * Drop every mirrored key from durable storage. MUST be called on sign-out.
+ *
+ * THE BUG THIS EXISTS FOR: `clearPersistedUserData` (AuthContext) wipes
+ * localStorage and sessionStorage — and nothing else. On native the keys it
+ * clears are precisely the ones mirrored HERE, into @capacitor/preferences,
+ * which survives an app kill and an overwrite install. So signing out cleared
+ * the fast cache and left the durable copy intact; the next COLD start ran
+ * `hydrateFromDurable()`, copied `offline_profile` back into localStorage
+ * before React mounted, and AuthProvider hydrated `user` + `profile` from it
+ * synchronously. The previous member's account painted itself back onto the
+ * screen after a logout.
+ *
+ * It only reproduced on a cold start, which is why installing a build was part
+ * of the repro: with the JS context still alive there is no hydrate pass, so
+ * the logout looked like it held.
+ *
+ * The auth TOKEN is not mirrored here (supabase.js writes it to Preferences
+ * directly and signOut removes it), so what came back was a fully painted,
+ * token-less session — every request going out as `anon`. Same failure the
+ * SIGNED_OUT handler in AuthContext was hardened against, arriving by a route
+ * that handler cannot see.
+ */
+export async function clearDurable() {
+  if (!isNative) return;
+  try {
+    const { keys } = await Preferences.keys();
+    if (!Array.isArray(keys)) return;
+    await Promise.all(
+      keys.filter(isTracked).map((key) => Preferences.remove({ key }).catch(() => {})),
+    );
+  } catch { /* plugin failure — localStorage was still cleared by the caller */ }
+}

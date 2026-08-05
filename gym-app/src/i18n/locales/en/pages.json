@@ -43,6 +43,10 @@
     "nextWeek": "Next week",
     "goToWeek": "Week {{n}}",
     "sameAsWeek": "Same as week {{n}}. Changes here apply to both.",
+    "everyWeekRunsThis": "Every week of this program runs these days. Editing here changes all of them.",
+    "sameDaysNewWork": "Same training days as week 1 — only the workouts change. The days themselves are set in week 1.",
+    "addTrainingDay": "Add a training day",
+    "dayFixedByWeekOne": "Trains on {{day}}, set by week 1.",
     "addDayToThisWeek": "Add a day to week {{n}}",
     "errNeedsWeekOne": "Week 1 needs at least one day with exercises."
   },
@@ -3563,6 +3567,7 @@
       "needsAttentionTitle": "Needs your attention",
       "sendOutreach": "Send win-back",
       "sendReminder": "Send reminder",
+      "andNMore": "+{{n}} more",
       "openModeration": "Open moderation",
       "openReferrals": "Open referrals",
       "attentionPendingResets": "{{count}} password reset waiting for approval",
@@ -3746,7 +3751,8 @@
       "noWorkouts30": "No workouts in 30+ days",
       "decliningWorkoutFreq": "Declining workout frequency",
       "streakBrokenRecently": "Streak broken recently",
-      "neverOnboarded": "Never completed onboarding"
+      "neverOnboarded": "Never completed onboarding",
+      "codeNeverActivated": "Never got started"
     },
     "queueReason": {
       "neverTrained": "Never trained",
@@ -3759,7 +3765,11 @@
       "segmentAtRisk": "at risk",
       "segmentCooling": "cooling",
       "segmentHealthy": "healthy",
-      "segmentChurned": "churned"
+      "segmentChurned": "churned",
+      "segmentActivation": "not started",
+      "segmentDormant": "dormant",
+      "segmentPaused": "paused",
+      "joinedNDaysAgo": "Joined {{n}}d ago"
     },
     "scan": {
       "cardsToDeliverTitle": "Card to hand over",
@@ -3814,7 +3824,8 @@
       "invalidQR": "Invalid QR code",
       "earnedNotFound": "Earned reward not found",
       "earnedRewardClaimed": "{{name}} claimed: {{reward}}",
-      "prizeNotFound": "Challenge prize not found"
+      "prizeNotFound": "Challenge prize not found",
+      "giftsToDeliverTitle": "Gift to hand over"
     },
     "challengeTypes": {
       "consistency": "Consistency",
@@ -4193,6 +4204,8 @@
       "messageToMember": "Message to {{name}}",
       "sentAsNotification": "Sent as in-app notification",
       "pageTitle": "Admin - Members",
+      "memberNotFound": "That member is no longer in this gym",
+      "memberLoadFailed": "Could not open that member",
       "unknown": "Unknown",
       "qrCodeTitle": "QR Code",
       "selectMember": "Select member",
@@ -4204,7 +4217,10 @@
       "filterFrozen": "Frozen",
       "filterUnonboarded": "Not signed up",
       "churnMovedHint": "At-risk member workflows moved to Churn Intel.",
-      "openChurn": "Open Churn Intel"
+      "openChurn": "Open Churn Intel",
+      "tabProspects": "Prospects",
+      "bulkMessageError": "Failed to send the message",
+      "emailUpdateFailed": "Failed to update email"
     },
     "createInvite": {
       "title": "Add Member",
@@ -4234,6 +4250,7 @@
       "phonePlaceholder": "+1 555 123 4567",
       "email": "Email",
       "emailPlaceholder": "member@example.com",
+      "emailTaken": "That email already has an account. Search for them in Members instead.",
       "addMember": "Add Member",
       "createInvite": "Add Member",
       "creating": "Creating...",
@@ -4282,7 +4299,9 @@
       "goalGeneral": "General fitness",
       "trainingDays": "Training days per week",
       "adminNote": "Admin notes (private)",
-      "adminNotePlaceholder": "Injuries, history, preferences…"
+      "adminNotePlaceholder": "Injuries, history, preferences…",
+      "accessCta": "Set your password",
+      "createFailed": "Couldn't add member"
     },
     "memberInvites": {
       "inviteMember": "Invite Member",
@@ -4666,7 +4685,8 @@
       "noClassesToday": "No classes scheduled today",
       "guestInstructor": "Guest instructor",
       "guestInstructorPlaceholder": "e.g. Coach Alex (no app account)",
-      "guestInstructorHint": "Optional. Shown to members only when no trainer above is selected."
+      "guestInstructorHint": "Optional. Shown to members only when no trainer above is selected.",
+      "noSlotsShort": "—"
     },
     "churn": {
       "pageTitle": "Admin - Churn | TuGymPR",
@@ -5041,7 +5061,25 @@
       "msgNote": "Shows in member's Messages page + sends push notification",
       "messageSent": "Message sent!",
       "messageFailed": "Failed to send message",
-      "contactInAppPush": "In-app + push"
+      "contactInAppPush": "In-app + push",
+      "smsTplMissYou": "Hey {{name}}, we miss you at the gym! Come in this week, your spot is waiting.",
+      "smsTplCheckIn": "Hey {{name}}, just checking in. Need a new routine or a schedule change? Let us know!",
+      "smsTplNewClasses": "Hey {{name}}, we've added new classes you'd love. Come check them out!",
+      "msgLanguage": "Message language",
+      "langAuto": "{{lang}} · their language",
+      "waConfirmTitle": "Did it go through?",
+      "waConfirmHint": "WhatsApp can't tell us whether it was delivered — only you can.",
+      "waConfirmYes": "Yes, mark contacted",
+      "waNoWhatsapp": "No WhatsApp — send SMS instead",
+      "waFallbackSent": "Sent by SMS instead",
+      "markContactedError": "Failed to mark as contacted",
+      "unmarkContactedError": "Failed to unmark contacted",
+      "createFirstCampaign": "Create your first campaign",
+      "bulkMessageSent": "Message sent to {{count}} members",
+      "smsEmpty": "Write a message first",
+      "smsSending": "Sending…",
+      "winBackSentToast": "Win-back message sent",
+      "winBackSendFailed": "Couldn't send — try again"
     },
     "revenue": {
       "pageTitle": "Admin - Revenue | TuGymPR",
@@ -5562,7 +5600,12 @@
       "messageGuidance": "DM bodies are encrypted at rest and aren't shown here. Use the reporter and reason below to decide whether to suspend the sender or block them via member management.",
       "reportedProfile": "Reported Profile",
       "profileGuidance": "Review the member in the Members admin page to suspend, message, or remove their access.",
-      "profileMissing": "Profile no longer exists."
+      "profileMissing": "Profile no longer exists.",
+      "visibility": "Visibility",
+      "public": "Public",
+      "private": "Private",
+      "autoFlagged": "🤖 Auto",
+      "viewReport": "View report"
     },
     "segments": {
       "title": "Segments",
@@ -5676,7 +5719,17 @@
         "advanced": "Advanced"
       },
       "statAvgSize": "Avg segment size",
-      "selectSegment": "Select a segment to view members"
+      "selectSegment": "Select a segment to view members",
+      "segmentDeleted": "Segment deleted",
+      "deleteError": "Failed to delete segment",
+      "pinError": "Failed to update pin",
+      "bulkPartialFailure": "Sent {{sent}}/{{total}} — {{failed}} failed",
+      "bulkSent": "Sent to {{count}} members",
+      "messageModalDesc": "This sends a direct message to all {{count}} members in this segment.",
+      "messagePlaceholder": "Write your message…",
+      "sending": "Sending…",
+      "sendToCount": "Send to {{count}}",
+      "streakDays": "{{count}}d"
     },
     "reports": {
       "title": "Reports",
@@ -6184,7 +6237,8 @@
       "segments": {
         "critical": "Critical",
         "at_risk": "At risk",
-        "cooling": "Cooling"
+        "cooling": "Cooling",
+        "activation": "Not started"
       },
       "actions": {
         "call": "Call",
@@ -6365,6 +6419,9 @@
       "externalId": "Existing system code",
       "externalIdSaved": "Code saved",
       "externalIdSaveFailed": "Couldn't save the code.",
+      "infoSaveFailed": "Couldn't save. Please try again.",
+      "usernameTaken": "That username is already taken.",
+      "followupFailed": "Couldn't send the follow-up — nothing was recorded.",
       "externalIdDesc": "The code from your gym's existing system (e.g. keypad code, barcode number)",
       "externalIdPlaceholder": "e.g. 4821 or MBR-0042",
       "saving": "Saving…",
@@ -6423,7 +6480,8 @@
       "deletePermanently": "Delete permanently",
       "deleting": "Deleting…",
       "deleteSuccess": "Account permanently deleted.",
-      "deleteFailed": "Failed to delete member."
+      "deleteFailed": "Failed to delete member.",
+      "noteSaveFailed": "Failed to save note."
     },
     "digest": {
       "sectionTitle": "Weekly Digest",
@@ -6653,7 +6711,11 @@
       "filterRecurring": "Recurring",
       "advancedOptions": "Advanced Options",
       "timezoneHint": "Times are in your device's local timezone",
-      "noMatchingAnnouncements": "No announcements match this filter"
+      "noMatchingAnnouncements": "No announcements match this filter",
+      "createFirst": "Create your first announcement",
+      "editAnnouncement": "Edit Announcement",
+      "saved": "Announcement saved",
+      "saveFailed": "Could not save the announcement."
     },
     "messaging": {
       "title": "Messaging",
@@ -6862,7 +6924,8 @@
       "tplBringFriendDesc": "Reward referrals to the gym",
       "useTemplate": "Use template",
       "viewLeaderboard": "View leaderboard",
-      "noRewardsHint": "Add prizes to motivate participants"
+      "noRewardsHint": "Add prizes to motivate participants",
+      "createFirst": "Create your first challenge"
     },
     "programs": {
       "pageTitle": "Admin - Programs | TuGymPR",
@@ -7436,7 +7499,8 @@
       "tabAutomations": "Automations",
       "automations": "Automations",
       "featured": "Featured (replaces any current featured reward)",
-      "advancedSettings": "Translations & Advanced"
+      "advancedSettings": "Translations & Advanced",
+      "logChallenge": "Challenge"
     },
     "referrals": {
       "searchByName": "Search by name...",
@@ -8038,10 +8102,23 @@
       },
       "variables": {
         "member_name": "Member Name",
+        "first_name": "First Name",
         "gym_name": "Gym Name",
+        "gym_address": "Gym Address",
         "streak_count": "Streak",
         "workout_count": "Workouts",
-        "days_inactive": "Days Inactive"
+        "days_inactive": "Days Inactive",
+        "today_plan_name": "Today's Plan",
+        "today_plan_url": "Open Today's Plan",
+        "next_class_name": "Next Class",
+        "next_class_date": "Class Date",
+        "next_class_time": "Class Time",
+        "next_class_instructor": "Instructor",
+        "next_class_url": "Open Class",
+        "last_class_name": "Last Class",
+        "classes_url": "Open Classes",
+        "checkin_url": "Open Check-In",
+        "app_url": "Open App"
       },
       "unsubscribe": "Unsubscribe",
       "yourGym": "Your Gym",
@@ -8117,7 +8194,47 @@
       "paddingTight": "Tight",
       "paddingNormal": "Normal",
       "paddingSpacious": "Spacious",
-      "paddingExtra": "Extra"
+      "paddingExtra": "Extra",
+      "automation": "Automatic sending",
+      "stepNone": "Manual only",
+      "autoOn": "Sending automatically",
+      "autoOff": "Not sending",
+      "autoOnHint": "Sends automatically at this moment",
+      "automationHint": "Members only get this if they haven't opted out of that kind of email. Every automatic message carries an unsubscribe link.",
+      "step": {
+        "day_1": "Day 1",
+        "day_3": "Day 3",
+        "day_5": "Day 5",
+        "day_7": "Day 7",
+        "day_14": "Day 14",
+        "day_21": "Day 21",
+        "day_30": "Day 30",
+        "day_60": "Day 60",
+        "winback_day_7": "Win-back · day 7",
+        "winback_day_30": "Win-back · day 30",
+        "winback_day_60": "Win-back · day 60",
+        "classes": "Class reminder"
+      },
+      "ctaDestination": "Button destination",
+      "ctaDestApp": "Open the app",
+      "ctaDestGym": "Gym's website",
+      "ctaDestCustom": "Custom link",
+      "ctaAppHint": "Opens the app if they have it — otherwise the web version, which offers the download.",
+      "ctaGymFallback": "No website saved for this gym — using its public page instead.",
+      "appSection": {
+        "home": "Home",
+        "workout": "Today's workout",
+        "classes": "Classes",
+        "checkin": "Check-in",
+        "rewards": "Rewards",
+        "challenges": "Challenges",
+        "progress": "Progress",
+        "nutrition": "Nutrition",
+        "social": "Feed",
+        "leaderboard": "Leaderboard",
+        "messages": "Messages"
+      },
+      "ctaAppSection": "Where in the app"
     },
     "abTesting": {
       "title": "A/B Testing",
@@ -8364,7 +8481,8 @@
       "hintOpen": "open",
       "hintShortcut": "Cmd-K to toggle",
       "shortLabel": "Jump to…",
-      "open": "Open search"
+      "open": "Open search",
+      "loadError": "Search unavailable — could not load data."
     },
     "tvDisplay": {
       "title": "TV Display",
@@ -8438,7 +8556,129 @@
       "periodChangeFailed": "Could not update range.",
       "urlComboEsMixed": "Spanish mixed — leaderboards + challenges in Spanish"
     },
-    "unauthorized": "Not authorized"
+    "unauthorized": "Not authorized",
+    "prospects": {
+      "filterOpen": "Open",
+      "filterConverted": "Converted",
+      "filterLost": "Lost",
+      "filterAll": "All",
+      "addProspect": "New prospect",
+      "empty": "No prospects yet",
+      "emptyOpen": "No prospects waiting on you",
+      "emptyHint": "Log the people who come in for a free class or as a member's guest. They convert better than any ad.",
+      "status": {
+        "new": "New",
+        "contacted": "Contacted",
+        "converted": "Converted",
+        "lost": "Lost"
+      },
+      "followUp": {
+        "warm": "Follow up",
+        "cold": "Going cold"
+      },
+      "source": {
+        "first_free_class": "Free class",
+        "guest_of_member": "Member's guest",
+        "walk_in": "Walk-in",
+        "event": "Event",
+        "other": "Other"
+      },
+      "broughtBy": "Brought by {{name}}",
+      "markContacted": "Contacted",
+      "edit": "Edit",
+      "markLost": "Lost",
+      "convert": "Convert",
+      "reopen": "Reopen",
+      "savedToast": "Prospect saved",
+      "saveFailedToast": "Could not save prospect",
+      "clearReferrer": "Remove",
+      "referrerPlaceholder": "Search a member by name…",
+      "editTitle": "Edit prospect",
+      "addTitle": "New prospect",
+      "modalSubtitle": "Someone who came in but isn't a member yet",
+      "cancel": "Cancel",
+      "save": "Save prospect",
+      "saving": "Saving…",
+      "phone": "Phone",
+      "email": "Email",
+      "contactRequired": "Give at least a phone or an email — without one there is no follow-up.",
+      "sourceLabel": "How did they come in?",
+      "visitedAt": "Visit date",
+      "broughtByLabel": "Brought by",
+      "broughtByHint": "If a member brought them, pick them here — they get the referral credit automatically when this prospect becomes a member.",
+      "note": "Note",
+      "notePlaceholder": "What did they say? What are they looking for?",
+      "consentLabel": "They agreed to be contacted about membership.",
+      "referralNotice": "{{name}} will be credited with the referral when you convert this prospect into a member.",
+      "referralCredited": "Referral credited to {{name}}",
+      "referralAlreadyAttributed": "Already credited to {{name}} — referrals cannot be reassigned",
+      "referralFailed": "Member created, but the referral could not be credited",
+      "convertMarkFailed": "Member created, but the prospect card could not be closed. Refresh before converting again.",
+      "loadFailed": "Couldn't load prospects",
+      "retry": "Try again",
+      "codeTitle": "Their code",
+      "codeSubtitle": "Send it now — if it arrives, the number is real",
+      "codeMessage": "Your code at the gym is {{code}}. Keep it — show it when you come back.",
+      "codeExplain": "If they come back, enter this code at the desk and the visit is recorded. Someone who has come three times and still has not joined is the best lead you have.",
+      "codeSent": "Code sent",
+      "smsFailed": "Couldn't send by SMS — use WhatsApp, or redeploy send-sms",
+      "noPhone": "No phone number on file",
+      "copyCode": "Copy code",
+      "copied": "Copied",
+      "done": "Done",
+      "codePlaceholder": "Code",
+      "markVisit": "Visit",
+      "codeNotFound": "No prospect with that code",
+      "codeFailed": "Could not record the visit",
+      "visitRecorded": "{{name}} — visit {{n}}",
+      "visitAlready": "{{name}} was already marked in the last few hours",
+      "visitCount": "{{n}} visits",
+      "unreachable": "Unreachable",
+      "alreadyMember": "{{name}} is already a member with this contact.",
+      "alreadyProspect": "{{name}} came before ({{n}} visit(s)) — their code is {{code}}. Save anyway and you will have two records.",
+      "phoneError": {
+        "length": "That doesn't look like a complete phone number",
+        "bad_area_code": "That area code can't exist",
+        "bad_exchange": "That exchange can't exist",
+        "fictional": "That's the 555 number from the movies",
+        "repeated": "All the same digit — that isn't a real number",
+        "sequential": "Straight run of digits — that isn't a real number"
+      }
+    },
+    "swag": {
+      "pendingTitle": "Gifts to hand over",
+      "pendingCount": "{{count}} waiting",
+      "searchMember": "Search member…",
+      "unknownMember": "Unknown member",
+      "deliver": "Handed over",
+      "delivering": "…",
+      "deliveredToast": "Gift handed over",
+      "deliverFailedToast": "Could not mark it delivered",
+      "noMatch": "No member by that name has a gift waiting",
+      "giveGift": "Give a gift",
+      "giveGiftSub": "For a member no occasion queued one for",
+      "member": "Member",
+      "gift": "Gift",
+      "clear": "Clear",
+      "queueOnly": "Queue it",
+      "grantAndDeliver": "Hand it over now",
+      "grantedToast": "Gift queued",
+      "grantFailed": "Could not record the gift",
+      "grantedNotDelivered": "Gift recorded, but marking it delivered failed",
+      "notStocked": "That gift hasn't been shipped to this gym",
+      "noneWaiting": "Nothing waiting — use \"Give a gift\" to hand something over now"
+    },
+    "classProposals": {
+      "title": "Class proposals from your trainers",
+      "proposedBy": "Proposed by {{name}}",
+      "createClass": "Create class",
+      "dismiss": "Dismiss",
+      "dismissed": "Proposal dismissed",
+      "actionFailed": "Couldn't update the proposal",
+      "loadFailed": "Couldn't load proposals",
+      "retry": "Try again",
+      "minutes": "{{n}} min"
+    }
   },
   "shareCard": {
     "personalRecord": "PERSONAL RECORD",
@@ -9387,7 +9627,15 @@
     "transactionalDesc": "Workout reminders you scheduled, rest timer, streak protection, and account-safety alerts. We recommend keeping these on.",
     "transactionalWarning": "You'll miss critical alerts like rest-timer endings and streak warnings while these are off.",
     "promotionalTitle": "Announcements & social",
-    "promotionalDesc": "Gym news, challenges, friend activity, milestones, and reward nudges. Turn off any you don't want — the app keeps working normally."
+    "promotionalDesc": "Gym news, challenges, friend activity, milestones, and reward nudges. Turn off any you don't want — the app keeps working normally.",
+    "emailTitle": "Email",
+    "emailDesc": "Turning these off never affects your account emails — invitations, password resets and access codes still arrive.",
+    "emailLifecycle": "Getting started",
+    "emailLifecycleDesc": "A short series over your first weeks — what to do next, how to use the app.",
+    "emailClasses": "Class reminders",
+    "emailClassesDesc": "The night before and the morning of a class you booked yourself.",
+    "emailWinback": "Come back offers",
+    "emailWinbackDesc": "Only if you cancel your membership. Off unless you turn it on."
   },
   "healthSync": {
     "title": "Health Integration",
@@ -10291,7 +10539,12 @@
       "lastRun": "Last run {{time}} · {{count}} notifications sent",
       "defaultMessage": "Hey! We noticed you haven't been in lately. We miss you — come back and crush your goals. Your progress is waiting!",
       "confirmSaveTitle": "Save Campaign Settings",
-      "confirmSaveMessage": "This will replace all existing campaign steps with your current configuration. Any in-progress drip sequences will restart."
+      "confirmSaveMessage": "This will replace all existing campaign steps with your current configuration. Any in-progress drip sequences will restart.",
+      "removeStep": "Remove step",
+      "channelNotif": "Push",
+      "channelEmail": "Email",
+      "channelSms": "SMS",
+      "smsCapWarning": "Counts toward the monthly SMS limit · Only sent if the member has a phone on file"
     },
     "ab": {
       "addVariantB": "Add Variant B",
@@ -10299,7 +10552,8 @@
       "variantBPlaceholder": "Variant B message...",
       "splitHint": "Members are randomly assigned A or B based on their profile ID. Track results in Win-Back tab.",
       "conversionTitle": "A/B Test Results",
-      "variantRate": "{{returned}}/{{total}} returned ({{rate}}%)"
+      "variantRate": "{{returned}}/{{total}} returned ({{rate}}%)",
+      "removeVariantB": "Remove variant B"
     }
   },
   "classes": {
@@ -10453,6 +10707,12 @@
     "duration": "Duration (min)",
     "submitProposal": "Submit Proposal",
     "proposalSent": "Proposal sent to admin",
+    "proposalDuplicate": "You already have a pending proposal with that name",
+    "proposalStatus": {
+      "pending": "pending",
+      "accepted": "accepted",
+      "dismissed": "dismissed"
+    },
     "errorDeleteSlot": "Failed to delete slot",
     "addClass": "Add class",
     "analyticsEmptyDesc": "Once you have bookings, you'll see analytics here",
@@ -14309,6 +14569,60 @@
         "referralScan": "scanned referral for {{target}}",
         "genericAction": "performed action: {{action}}"
       }
+    },
+    "swag": {
+      "title": "Swag & inventory",
+      "subtitle": "What you bought, what you shipped, and what each gym has left",
+      "loadError": "Inventory failed to load — the numbers below are not reliable. If migration 0682 hasn't been applied yet, that's why.",
+      "tabInventory": "Inventory",
+      "tabBoxes": "Boxes",
+      "tabPurchases": "Purchases",
+      "myStock": "In my warehouse",
+      "gymStock": "At the gyms",
+      "newItem": "New item",
+      "itemName": "Name (EN)",
+      "itemNameEs": "Name (ES)",
+      "unitCost": "Cost $",
+      "save": "Save",
+      "itemSaved": "Item saved",
+      "saveFailed": "Could not save",
+      "noItems": "No items yet",
+      "noGymStock": "Nothing shipped yet",
+      "item": "Item",
+      "purchased": "Bought",
+      "shipped": "Shipped",
+      "onHand": "On hand",
+      "newBox": "Pack a box",
+      "pickGym": "Pick a gym…",
+      "createBox": "Create box",
+      "boxCreated": "Box created",
+      "noBoxes": "No boxes yet",
+      "unassigned": "unassigned",
+      "packed": "packed",
+      "shippedTag": "shipped",
+      "label": "Label",
+      "ship": "Ship",
+      "boxShipped": "Box marked shipped",
+      "needGym": "Assign a gym before shipping",
+      "needItems": "This box is empty",
+      "avail": "{{n}} free",
+      "boxTotals": "{{units}} units · {{cost}}",
+      "shippedOn": "shipped {{date}}",
+      "boxLabel": "Box label",
+      "print": "Print",
+      "recordPurchase": "Record a purchase",
+      "pickItem": "Item…",
+      "qty": "Qty",
+      "note": "Note",
+      "purchaseSaved": "Purchase recorded",
+      "purchaseHistory": "History",
+      "noPurchases": "Nothing recorded yet",
+      "tabRules": "Rules",
+      "rulesTitle": "What each gym gives, and when",
+      "rulesHelp": "A gift is queued the same night the member earns the occasion. Occasions the gym has switched off in its card settings never fire, so they never produce a gift either.",
+      "rulesFor": "{{n}} occasion(s) configured",
+      "rulesNoItems": "Create an item first — there is nothing to give yet.",
+      "noGift": "No gift"
     }
   },
   "socialFeed": {
@@ -15322,5 +15636,31 @@
   },
   "adminOnboarding": {
     "featuresSaveFailed": "Could not save the feature settings — you can set them in Settings."
+  },
+  "unsubscribe": {
+    "loading": "Loading…",
+    "invalidTitle": "This link no longer works",
+    "invalidBody": "If you're still getting emails you don't want, reply to any of them and we'll sort it out.",
+    "title": "Your emails",
+    "titleNamed": "Your emails, {{name}}",
+    "subtitle": "Choose what you want to receive. This doesn't affect your account emails — invitations, passwords and access codes still arrive.",
+    "allOff": "Done. You won't get any more of these.",
+    "resubscribe": "I unsubscribed by mistake — resubscribe me",
+    "unsubAll": "Unsubscribe from everything",
+    "saving": "Saving…",
+    "scope": {
+      "lifecycle": {
+        "title": "Getting started",
+        "desc": "A short series over your first weeks — what to do next, how to use the app."
+      },
+      "classes": {
+        "title": "Class reminders",
+        "desc": "The night before and the morning of a class you booked yourself."
+      },
+      "winback": {
+        "title": "Come back offers",
+        "desc": "Only if you cancel. Off unless you turn it on."
+      }
+    }
   }
 }

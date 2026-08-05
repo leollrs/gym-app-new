@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../../lib/supabase';
+import { selectAllRows } from '../../../../lib/churn/batchedSelect';
 import { adminKeys } from '../../../../lib/adminQueryKeys';
 import { BENCHMARKS } from '../../../../lib/benchmarks';
 import { CardSkeleton, ErrorCard } from '../../../../components/admin';
@@ -9,12 +10,19 @@ import { TK, FK, Card, Donut, Funnel } from './analyticsKit';
 const TOTAL_STEPS = 9;
 
 async function fetchOnboardingData(gymId) {
-  const { data: members, error } = await supabase
+  // Paginado y ORDENADO. PostgREST tapa la respuesta en 1000 filas pase lo que
+  // pase, y esta consulta no tenía ni paginación ni .order() — así que pasados
+  // los 1000 miembros históricos se quedaba con un subconjunto ARBITRARIO y las
+  // barras del embudo cambiaban entre un refresco y otro. Tres columnas
+  // diminutas: un gimnasio de 5000 son cinco peticiones.
+  const { data: members, error } = await selectAllRows((lo, hi) => supabase
     .from('profiles')
     .select('id, is_onboarded, onboarding_step')
     .eq('gym_id', gymId)
     .eq('role', 'member')
-    .eq('imported_archived', false);
+    .eq('imported_archived', false)
+    .order('id', { ascending: true })
+    .range(lo, hi));
   if (error) throw error;
 
   const total = (members || []).length;

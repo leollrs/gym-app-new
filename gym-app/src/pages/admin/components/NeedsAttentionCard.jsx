@@ -21,11 +21,16 @@ import { AdminCard, FadeIn } from '../../../components/admin';
  * `atRiskCount`, `pendingResetsCount`, `onboardingCount` are passed in from
  * the parent's existing overview query — we only fetch what's NEW
  * (reports, referrals) here so we don't double-query.
+ *
+ * An item may carry `people: [{ id, full_name }]`. Those render as clickable
+ * chips that deep-link to the member, so a row like "1 new member didn't finish
+ * onboarding" says WHO — a bare count gave the owner nothing to act on.
  */
 export default function NeedsAttentionCard({
   gymId,
   pendingResetsCount = 0,
   onboardingCount = 0,
+  onboardingMembers = [],
   firstPendingResetId = null,
   onResetClick,
 }) {
@@ -106,6 +111,7 @@ export default function NeedsAttentionCard({
       text: t(plural('admin.overview.attentionOnboarding', onboardingCount), { count: onboardingCount }),
       action: t('admin.overview.sendReminder', 'Send reminder'),
       onClick: () => navigate('/admin/outreach?audience=unonboarded'),
+      people: onboardingMembers,
     });
   }
 
@@ -129,27 +135,72 @@ export default function NeedsAttentionCard({
         <ul className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
           {items.map((item, i) => {
             const Icon = item.icon;
+            const people = item.people || [];
+            const iconEl = (
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: `color-mix(in srgb, ${item.color} 16%, transparent)` }}
+              >
+                <Icon size={14} style={{ color: item.color }} />
+              </div>
+            );
+            const actionEl = (
+              <span
+                className="text-[11px] font-semibold flex items-center gap-0.5 flex-shrink-0"
+                style={{ color: item.color }}
+              >
+                {item.action} <ChevronRight size={11} />
+              </span>
+            );
+
+            // Rows that name people split into sibling controls — a name chip is
+            // its own button, and a <button> can't legally nest inside a <button>.
+            if (people.length > 0) {
+              return (
+                <li key={i} className="flex items-start gap-3 px-4 py-3">
+                  {iconEl}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12.5px] leading-snug" style={{ color: 'var(--color-text-primary)' }}>
+                      {item.text}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      {people.slice(0, 4).map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => navigate(`/admin/members?member=${p.id}`)}
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full max-w-[180px] truncate transition-colors hover:bg-[color:var(--color-admin-panel)]"
+                          style={{ color: 'var(--color-admin-text-sub)', border: '1px solid var(--color-admin-border)' }}
+                        >
+                          {p.full_name || t('admin.overview.unknownMember', 'Unknown')}
+                        </button>
+                      ))}
+                      {people.length > 4 && (
+                        <span className="text-[11px]" style={{ color: 'var(--color-admin-text-faint)' }}>
+                          {/* `n`, not `count` — this file already works around
+                              i18next plural inference misfiring (see `plural`). */}
+                          {t('admin.overview.andNMore', { n: people.length - 4, defaultValue: '+{{n}} more' })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={item.onClick} className="flex-shrink-0 mt-[2px]">
+                    {actionEl}
+                  </button>
+                </li>
+              );
+            }
+
             return (
               <li key={i}>
                 <button
                   onClick={item.onClick}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[color:var(--color-admin-panel)]"
                 >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: `color-mix(in srgb, ${item.color} 16%, transparent)` }}
-                  >
-                    <Icon size={14} style={{ color: item.color }} />
-                  </div>
+                  {iconEl}
                   <p className="flex-1 text-[12.5px] leading-snug" style={{ color: 'var(--color-text-primary)' }}>
                     {item.text}
                   </p>
-                  <span
-                    className="text-[11px] font-semibold flex items-center gap-0.5 flex-shrink-0"
-                    style={{ color: item.color }}
-                  >
-                    {item.action} <ChevronRight size={11} />
-                  </span>
+                  {actionEl}
                 </button>
               </li>
             );

@@ -29,7 +29,12 @@ export default function AtRiskPreview({ atRisk = [] }) {
             const keySignal = m.key_signals?.[0] ?? null;
             return (
               <div key={m.id} className="flex items-center gap-2.5 py-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-                onClick={() => navigate('/admin/churn')}>
+                // Con el miembro. Antes navegaba a /admin/churn pelado, así que
+                // clicar una fila con nombre y apellido aterrizaba en la lista
+                // general. AdminChurn no lee ningún parámetro, pero
+                // AdminMembers sí (?member=, con fetch-por-id de respaldo) y
+                // abre su ficha, que es lo que se quería ver.
+                onClick={() => navigate(`/admin/members?member=${m.id}`)}>
                 <Avatar name={m.full_name} size="sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-medium text-[#E5E7EB] truncate">{m.full_name}</p>

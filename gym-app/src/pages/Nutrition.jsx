@@ -72,7 +72,11 @@ const TU = {
   macroF: 'var(--tu-macro-f, #FFC24A)',   // fat — gold
   accent: 'var(--color-accent, #2EC4C4)',
   hot:    '#FF5A2E',
-  coach:  '#6D5FDB',
+  // Was a fixed #6D5FDB (the coach purple). My Plan is a member surface in a
+  // white-label app — a hardcoded violet fought whatever colour the gym
+  // actually paid for. Every tinted use below is color-mix'd off the same
+  // variable, so it follows the brand instead of ignoring it.
+  coach:  'var(--color-accent, #2EC4C4)',
   display: '"Familjen Grotesk", "Archivo", system-ui, sans-serif',
 };
 
@@ -565,7 +569,7 @@ const RecipeDetailModal = ({ recipe, onClose, saved, onSave, onAddToGrocery, onL
             className="absolute top-4 right-4 min-w-[44px] min-h-[44px] w-10 h-10 rounded-full flex items-center justify-center focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(16px)' }}
             aria-label={saved ? t('nutrition.removeBookmark', 'Remove bookmark') : t('nutrition.bookmarkRecipe', 'Bookmark recipe')}>
-            <Star size={18} className={saved ? 'fill-[#FFC24A] text-[#FFC24A]' : ''} style={{ color: saved ? '#FFC24A' : '#6b7280' }} />
+            <Heart size={18} className={saved ? 'fill-current' : ''} style={{ color: saved ? TU.accent : '#6b7280' }} />
           </button>
         </div>
 
@@ -2158,7 +2162,7 @@ const FoodLogDetailModal = ({ log, onClose, onUpdate, onDelete, onToggleFavorite
           <button onClick={() => onToggleFavorite(log)} className="absolute top-4 right-4 min-w-[44px] min-h-[44px] w-10 h-10 rounded-full flex items-center justify-center z-10 focus:ring-2 focus:ring-[#D4AF37] focus:outline-none"
             style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid var(--color-border-default)' }}
             aria-label={isFavorite ? t('nutrition.removeBookmark', 'Remove bookmark') : t('nutrition.bookmarkRecipe', 'Bookmark recipe')}>
-            <Star size={16} className={isFavorite ? 'fill-[#FFC24A] text-[#FFC24A]' : 'text-white/85'} />
+            <Heart size={16} className={isFavorite ? 'fill-current' : 'text-white/85'} style={isFavorite ? { color: TU.accent } : undefined} />
           </button>
         )}
 
@@ -2400,7 +2404,7 @@ const TargetEditModal = ({ open, onClose, draft, setDraft, onSave, saving, onAut
                 <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>kcal/day</span>
               </div>
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold uppercase"
-                style={{ background: `${TU.coach}15`, color: TU.coach, letterSpacing: 0.5 }}>
+                style={{ background: `color-mix(in srgb, var(--color-accent) 8%, transparent)`, color: TU.coach, letterSpacing: 0.5 }}>
                 <Sparkles size={11} style={{ color: TU.coach }} /> Auto
               </span>
             </div>
@@ -2638,7 +2642,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
               <div className="px-3 pt-3">
                 <button type="button" onClick={() => setShowAddMeal(s => !s)}
                   className="w-full flex items-center justify-center gap-1.5 py-2 rounded-[12px] text-[12px] font-bold active:scale-[0.98] transition-transform"
-                  style={{ background: `${TU.coach}12`, color: TU.coach, border: `1px dashed ${TU.coach}55` }}>
+                  style={{ background: `color-mix(in srgb, var(--color-accent) 7%, transparent)`, color: TU.coach, border: `1px dashed color-mix(in srgb, var(--color-accent) 33%, transparent)` }}>
                   <Plus size={14} /> {t('nutrition.addCustomMeal', 'Add your own meal')}
                 </button>
                 <CustomMealBuilder open={showAddMeal} onClose={() => setShowAddMeal(false)}
@@ -2660,7 +2664,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
                       <p className="text-[13px] font-bold truncate flex items-center gap-1.5" style={{ fontFamily: TU.display, color: 'var(--color-text-primary)', letterSpacing: -0.2 }}>
                         <span className="truncate">{mealTitle(rMeal)}</span>
                         {rMeal.custom && (
-                          <span className="shrink-0 text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: `${TU.coach}1f`, color: TU.coach }}>
+                          <span className="shrink-0 text-[8.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, var(--color-accent) 12%, transparent)`, color: TU.coach }}>
                             {t('nutrition.customTag', 'Custom')}
                           </span>
                         )}
@@ -2686,7 +2690,7 @@ const DailySuggestion = ({ targets, todayTotals, onOpenRecipe, onLogMeal, lang, 
 
         return (
           <div className="rounded-[22px] overflow-hidden"
-            style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)', border: `1px solid ${TU.coach}22` }}>
+            style={{ background: 'var(--color-bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)', border: `1px solid color-mix(in srgb, var(--color-accent) 13%, transparent)` }}>
             <button onClick={() => onOpenRecipe(meal)}
               className="w-full flex items-center gap-3.5 p-4 text-left">
               {suggImg ? (
@@ -4028,7 +4032,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             <div className="flex gap-2">
               <button onClick={() => handleAutoplan(planWeeks)}
                 className="flex-1 min-w-0 py-3 rounded-[14px] text-[13.5px] font-bold flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
-                style={{ background: TU.coach, color: '#fff', letterSpacing: -0.2 }}>
+                style={{ background: TU.coach, color: 'var(--color-text-on-accent, #000)', letterSpacing: -0.2 }}>
                 <Sparkles size={15} style={{ flexShrink: 0 }} />
                 <span className="truncate">{planWeeks > 1
                   ? t('nutrition.generateNWeeks', { count: planWeeks, defaultValue: 'Generate {{count}} weeks' })
@@ -4146,7 +4150,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
             <div className="flex gap-2">
               <button onClick={() => handleCompleteDay(activeDateStr)}
                 className="flex-1 min-w-0 py-2.5 rounded-[12px] text-[12px] font-bold flex items-center justify-center gap-1.5 active:scale-95"
-                style={{ background: `${TU.coach}12`, border: `1px solid ${TU.coach}33`, color: TU.coach }}>
+                style={{ background: `color-mix(in srgb, var(--color-accent) 7%, transparent)`, border: `1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)`, color: TU.coach }}>
                 <Sparkles size={13} style={{ flexShrink: 0 }} />
                 <span className="truncate">{filledSlots > 0 ? t('nutrition.regenerateDay', 'Regenerate this day') : t('nutrition.generateDay', 'Generate this day')}</span>
               </button>
@@ -4366,7 +4370,7 @@ const WeeklyMealPlanner = ({ onClose, targets, onOpenRecipe, onOpenSearch, userI
               </div>
             </div>
             <div className="px-5 pt-2.5 pb-5 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-              <button onClick={() => setShowPlanConfig(false)} className="w-full py-3 rounded-[14px] text-[14px] font-bold active:scale-[0.97]" style={{ background: TU.coach, color: '#fff' }}>
+              <button onClick={() => setShowPlanConfig(false)} className="w-full py-3 rounded-[14px] text-[14px] font-bold active:scale-[0.97]" style={{ background: TU.coach, color: 'var(--color-text-on-accent, #000)' }}>
                 {t('nutrition.done', 'Done')}
               </button>
             </div>
@@ -4677,7 +4681,7 @@ const SummarySheetModal = ({ userId, targets, onClose, t, lang, prefetchedData }
               <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>
                 {t('nutrition.insight', 'Insight')}
               </div>
-              <div className="flex items-start gap-3 p-3.5 rounded-[14px]" style={{ background: `${TU.coach}12`, border: `1px solid ${TU.coach}22` }}>
+              <div className="flex items-start gap-3 p-3.5 rounded-[14px]" style={{ background: `color-mix(in srgb, var(--color-accent) 7%, transparent)`, border: `1px solid color-mix(in srgb, var(--color-accent) 13%, transparent)` }}>
                 <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,255,255,0.5)' }}>
                   <Sparkles size={15} style={{ color: TU.coach }} />
                 </div>
@@ -4973,9 +4977,9 @@ const HomeView = ({ targets, todayTotals, todayLogs, savedIds, onSave, onOpenRec
         return (
           <div className="mx-4 mb-4">
             <div className="flex items-center gap-3 p-3.5 rounded-[18px]"
-              style={{ background: 'var(--color-bg-card)', border: `1px solid ${TU.coach}22` }}>
+              style={{ background: 'var(--color-bg-card)', border: `1px solid color-mix(in srgb, var(--color-accent) 13%, transparent)` }}>
               <div className="w-10 h-10 rounded-[12px] flex items-center justify-center flex-shrink-0"
-                style={{ background: `${TU.coach}15` }}>
+                style={{ background: `color-mix(in srgb, var(--color-accent) 8%, transparent)` }}>
                 <Sparkles size={18} style={{ color: TU.coach }} />
               </div>
               <div className="flex-1 min-w-0">
@@ -5609,7 +5613,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                       {gMatch != null && (
                         <div className="absolute top-2 left-2">
                           <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{
-                            background: gMatch >= 80 ? TU.accent : gMatch >= 60 ? '#F59E0B' : 'rgba(0,0,0,0.6)', color: '#fff', backdropFilter: 'blur(6px)', letterSpacing: 0.1,
+                            background: gMatch >= 80 ? TU.accent : gMatch >= 60 ? '#F59E0B' : 'rgba(0,0,0,0.6)', color: gMatch >= 80 ? 'var(--color-text-on-accent, #fff)' : '#fff', backdropFilter: 'blur(6px)', letterSpacing: 0.1,
                           }}>
                             {gMatch}% {t('nutrition.goalMatch', 'match')}
                           </span>
@@ -5618,7 +5622,7 @@ const DiscoverView = ({ setView, savedIds, onSave, onOpenRecipe, onOpenCollectio
                       {ingredientMatchActive && (
                         <div className="absolute top-2 right-2">
                           <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{
-                            background: canMake ? TU.accent : '#F59E0B', color: '#fff', backdropFilter: 'blur(6px)', letterSpacing: 0.1,
+                            background: canMake ? TU.accent : '#F59E0B', color: canMake ? 'var(--color-text-on-accent, #fff)' : '#fff', backdropFilter: 'blur(6px)', letterSpacing: 0.1,
                           }}>
                             {canMake ? t('nutrition.ready', 'Ready') : t('nutrition.needsMore', 'Needs {{n}} more', { n: recipe.missing })}
                           </span>
@@ -6042,7 +6046,7 @@ const SavedView = ({ setView, savedIds, onSave, onOpenRecipe, scannedFavorites =
               <MacroGridCard key={recipe.id} image={recipe.image ? foodImageUrl(recipe.image) : null} title={mealTitle(recipe)}
                 kcal={recipe.calories} p={recipe.protein} c={recipe.carbs} f={recipe.fat}
                 onClick={() => onOpenRecipe(recipe)} ariaLabel={mealTitle(recipe)}
-                corner={<CardCornerBtn onClick={() => onSave(recipe.id)} ariaLabel={t('nutrition.unsave', 'Remove from saved')}><Star size={14} fill="#FFC24A" style={{ color: '#FFC24A' }} /></CardCornerBtn>} />
+                corner={<CardCornerBtn onClick={() => onSave(recipe.id)} ariaLabel={t('nutrition.unsave', 'Remove from saved')}><Heart size={14} fill={TU.accent} style={{ color: TU.accent }} /></CardCornerBtn>} />
             ))}
           </div>
         </>
@@ -6707,7 +6711,7 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
     <button type="button" onClick={onClick}
       className="px-3 py-2 rounded-full text-[12.5px] font-semibold active:scale-95 transition-all"
       style={active
-        ? { background: TU.accent, color: '#fff', border: 'none' }
+        ? { background: TU.accent, color: 'var(--color-text-on-accent, #000)', border: 'none' }
         : { background: 'var(--color-bg-card)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-subtle)' }}>
       {children}
     </button>
@@ -6787,7 +6791,7 @@ const MealPrefsSheet = ({ open, onClose, userId, gymId, initialAllergies = [], i
         <div className="px-5 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
           <button onClick={handleSave} disabled={saving}
             className="w-full py-3.5 rounded-[14px] font-bold text-[14px] active:scale-[0.98] transition-all disabled:opacity-60"
-            style={{ background: TU.accent, color: '#fff' }}>
+            style={{ background: TU.accent, color: 'var(--color-text-on-accent, #000)' }}>
             {saving ? '…' : t('nutrition.prefsSave', 'Save preferences')}
           </button>
         </div>
@@ -9021,7 +9025,7 @@ export default function Nutrition({ embedded = false }) {
                     });
                   }}
                   className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-[14px] font-bold text-[14px] active:scale-95"
-                  style={{ background: TU.coach, color: '#fff' }}
+                  style={{ background: TU.coach, color: 'var(--color-text-on-accent, #000)' }}
                 >
                   <Sparkles size={15} />{t('nutrition.scanWithAi', 'Scan with AI instead')}
                 </button>

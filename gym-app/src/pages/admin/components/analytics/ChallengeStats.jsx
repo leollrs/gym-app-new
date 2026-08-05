@@ -45,10 +45,16 @@ async function fetchChallengeData(gymId, filter) {
   if (chalError) throw chalError;
   if (!challenges || challenges.length === 0) return [];
 
-  const { data: participants, error: partError } = await supabase
+  // Paginado: este es el NUMERADOR de la tasa de participación y el
+  // denominador de arriba sí venía completo, así que un truncado a 1000
+  // participaciones hacía que los retos se leyeran como fracasos que no fueron.
+  const { data: participants, error: partError } = await selectAllRows((lo, hi) => supabase
     .from('challenge_participants')
     .select('challenge_id, profile_id')
-    .in('challenge_id', challenges.map(c => c.id));
+    .in('challenge_id', challenges.map(c => c.id))
+    .order('challenge_id', { ascending: true })
+    .order('profile_id', { ascending: true })
+    .range(lo, hi));
   if (partError) throw partError;
 
   const countMap = {};

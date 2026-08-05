@@ -38,7 +38,10 @@ export async function fetchOverviewData(gymId) {
     selectAllRows((from, to) => supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).range(from, to)),
     selectAllRows((from, to) => supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).range(from, to)),
     selectAllRows((from, to) => supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).gte('computed_at', subDays(now, 7).toISOString()).order('score', { ascending: false }).order('profile_id', { ascending: true }).range(from, to)),
-    supabase.from('profiles').select('id').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).eq('imported_archived', false).gte('created_at', fortyEightHoursAgo).limit(500),
+    // Name + avatar, not just the id — "Needs your attention" names the members
+    // who stalled in onboarding so the owner knows who to chase without
+    // cross-referencing the roster. The count alone was unactionable.
+    supabase.from('profiles').select('id, full_name, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('is_onboarded', false).eq('imported_archived', false).gte('created_at', fortyEightHoursAgo).limit(500),
     // Left-join the member's name/avatar (no !inner) so a check-in still renders
     // in the activity feed even when its profile is outside the members query's
     // filters (e.g. archived imports) or otherwise not in memberMap. The weekly
@@ -373,6 +376,7 @@ export async function fetchOverviewData(gymId) {
     },
     retention, riskTiers, atRisk, recentActivity,
     onboardingCount: onboardingGaps.length,
+    onboardingMembers: onboardingGaps,
     _dbScoreCount: churnScores.length, _totalMembers: total,
   };
 }

@@ -1,44 +1,66 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import SafeImg from '../../../components/SafeImg';
 import { UserPlus, Copy, Check, Loader2, Share2, ScanLine, X, Mail, Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-import { supabase, authHeader } from '../../../lib/supabase';
+import { supabase, authHeader, readFunctionError } from '../../../lib/supabase';
 import { inviteUrl as buildInviteUrl } from '../../../lib/appUrls';
 import AdminModal from '../../../components/admin/AdminModal';
 import PhoneInput from '../../../components/admin/PhoneInput';
 import NameFields from './NameFields';
-import { composeFullName, areNamePartsValid } from '../../../lib/admin/memberName';
+import { composeFullName, areNamePartsValid, splitFullName } from '../../../lib/admin/memberName';
 import logger from '../../../lib/logger';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { useToast } from '../../../contexts/ToastContext';
 import posthog from 'posthog-js';
 import useScanClaim from '../../../hooks/useScanClaim';
 import { parseQRContent } from '../../../lib/scanRouter';
+import { formatReferralCode, looksLikeReferralCode } from '../../../lib/referralCode';
 
 /**
  * CreateInviteModal — "Add Member" (Agregar Miembro)
  * Directly creates a member profile + generates a link code, then delivers that
- * access code to the member via our own providers (Resend email / Twilio SMS)
- * through the existing send-admin-email / send-sms edge functions (memberId path).
+ * access code through `send-invite` — the same branded invite (gym logo, the
+ * code in its own chip, a real CTA button) the Invite modal already sent.
  */
-export default function CreateInviteModal({ gymId, onClose, onCreated }) {
+/**
+ * `initialValues` prefills the form when the modal is opened as the second half
+ * of another flow — today that's converting a prospect (mig 0681), which also
+ * carries the referrer through so whoever brought them gets credited.
+ * Shape: `{ fullName, email, phone, referrer: { id, full_name, avatar_url } }`.
+ */
+export default function CreateInviteModal({ gymId, onClose, onCreated, initialValues = null }) {
   const { t, i18n } = useTranslation('pages');
   const { showToast } = useToast();
   const k = (key) => t(`admin.createInvite.${key}`);
 
   const [phase, setPhase] = useState('form'); // 'form' | 'result'
-  const [nameParts, setNameParts] = useState({ first: '', middle: '', last: '', second: '' });
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [nameParts, setNameParts] = useState(() =>
+    initialValues?.fullName
+      ? { first: '', middle: '', last: '', second: '', ...splitFullName(initialValues.fullName) }
+      : { first: '', middle: '', last: '', second: '' });
+  const [email, setEmail] = useState(initialValues?.email || '');
+  const [phone, setPhone] = useState(initialValues?.phone || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null); // { profileId, code, name }
   const [copiedCode, setCopiedCode] = useState(false);
 
   // Referral linking
-  const [referrerInfo, setReferrerInfo] = useState(null); // { id, name, avatarUrl, codeId }
+  const [referrerInfo, setReferrerInfo] = useState(() =>
+    initialValues?.referrer
+      ? {
+          id: initialValues.referrer.id,
+          name: initialValues.referrer.full_name,
+          avatarUrl: initialValues.referrer.avatar_url || null,
+          // No codeId: the prospect flow resolves the referrer by profile, not
+          // by code (a member who has never opened the Referrals page has no
+          // code row). Attribution runs through admin_attribute_referral, which
+          // takes profile ids and looks the code up itself if one exists.
+          codeId: null,
+        }
+      : null); // { id, name, avatarUrl, codeId }
   const [referralCode, setReferralCode] = useState('');
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralError, setReferralError] = useState(null);
@@ -57,6 +79,36 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   const [sendMethod, setSendMethod] = useState('both'); // 'email' | 'sms' | 'both'
   const [delivering, setDelivering] = useState(false);
   const [sentVia, setSentVia] = useState([]); // channels that succeeded
+  const [deliveryErrors, setDeliveryErrors] = useState([]); // why the others didn't
+
+  // Live "is this address free" check. `admin_create_member` rejects a taken
+  // email, but only once the whole form is filled and Add is pressed — the same
+  // late failure the member onboarding was already fixed for. The collision is
+  // on auth.users, which the browser cannot read under any role, so this asks
+  // `admin_email_available` (mig 0678) instead.
+  const [emailTaken, setEmailTaken] = useState(false);
+  const emailCheckTimer = useRef(null);
+  const emailCheckSeq = useRef(0);
+  const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+
+  useEffect(() => {
+    if (emailCheckTimer.current) clearTimeout(emailCheckTimer.current);
+    setEmailTaken(false);
+    if (!emailValid) return undefined;
+    const seq = ++emailCheckSeq.current;
+    emailCheckTimer.current = setTimeout(async () => {
+      const { data, error: rpcErr } = await supabase.rpc('admin_email_available', { p_email: email.trim().toLowerCase() });
+      // Ignore a stale response — the admin may have typed on since.
+      if (seq !== emailCheckSeq.current) return;
+      // Fail OPEN. Until 0678 is applied the RPC does not exist, and blocking
+      // the button on a missing function would take Add Member down entirely.
+      // `admin_create_member` still refuses a duplicate, so the worst case is
+      // the old behaviour: the error arrives on submit instead of before it.
+      if (rpcErr) { logger.warn('admin_email_available unavailable:', rpcErr); return; }
+      setEmailTaken(data === false);
+    }, 450);
+    return () => { if (emailCheckTimer.current) clearTimeout(emailCheckTimer.current); };
+  }, [email, emailValid]);
 
   const fullName = composeFullName(nameParts);
   const namesOk = areNamePartsValid(nameParts);
@@ -139,54 +191,128 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   // Claim scanner while form phase is active
   useScanClaim(handleReferralScan, phase === 'form');
 
-  // Deliver the access code to the new member via our providers (Resend / Twilio)
-  // through the member-aware edge functions (they resolve the stored email/phone
-  // from the member record). Best-effort — failures fall back to manual share.
-  const deliverAccess = async (memberId, code) => {
+  // Typing a referral code by hand. The field used to take raw keystrokes and
+  // only look anything up when you pressed Enter — so the admin had to type the
+  // dashes themselves AND know that Enter was the trigger, with nothing on
+  // screen saying so. Now the dashes appear as you type and a complete code
+  // resolves on its own.
+  const referralTimer = useRef(null);
+  const handleReferralType = (raw) => {
+    const formatted = formatReferralCode(raw);
+    setReferralCode(formatted);
+    setReferralError(null);
+    if (referralTimer.current) clearTimeout(referralTimer.current);
+    if (!looksLikeReferralCode(formatted)) return;
+    referralTimer.current = setTimeout(() => handleReferralScan(formatted), 500);
+  };
+  useEffect(() => () => {
+    if (referralTimer.current) clearTimeout(referralTimer.current);
+  }, []);
+
+  // Deliver the access code through `send-invite` — the SAME function the
+  // Invite modal uses.
+  //
+  // WHY THE SWITCH: this flow used to hand-roll its own delivery — three lines
+  // of plain text through send-admin-email's generic wrapper, and a sentence
+  // through send-sms. That wrapper renders every line as an identical grey
+  // paragraph, so the access code arrived as body text in a mail whose only
+  // branding was the gym's colours. Meanwhile `send-invite` already builds the
+  // real thing for the other invite path: the gym's logo, the code in its own
+  // bordered chip, a proper CTA button, a "powered by" footer. There was never
+  // a reason for Add Member to have the lesser one.
+  //
+  // It also addresses the message by `to` rather than looking the member up, so
+  // the shadow-auth-user trap (admin_create_member parks the real address in
+  // pending_email / gym_invites.email, mig 0467:126) can't bite this path at
+  // all — that is what "Member has no email on file" was.
+  const deliverAccess = async (memberId, code, recipientEmail) => {
     const channels = sendMethod === 'both' ? ['email', 'sms'] : [sendMethod];
     const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
     const firstName = (nameParts.first || '').trim();
     const inviteUrl = buildInviteUrl(code);
+    const toPhone = phone.trim();
     const succeeded = [];
+    // Surfaced verbatim on the result screen. "Couldn't send automatically" told
+    // the admin nothing they could act on — a Resend domain that isn't verified
+    // and a member who typo'd their address read identically.
+    const failures = [];
     setDelivering(true);
+
+    // `functions.invoke` reports a non-2xx as the useless
+    // "Edge Function returned a non-2xx status code" and leaves the real reason
+    // unread in `error.context`. Every 400 in send-invite says exactly what is
+    // wrong ("Valid `to` email is required", "Invalid phone number format",
+    // "This gym does not have an SMS phone number configured") — none of which
+    // reached anyone. readFunctionError pulls it out.
+    const reasonOf = async (fnErr, data) =>
+      data?.error || (await readFunctionError(fnErr)) || fnErr?.message || 'failed';
+
     try {
       for (const ch of channels) {
+        const to = ch === 'email' ? (recipientEmail || '').trim() : toPhone;
+        if (!to) {
+          logger.error(`deliverAccess: no ${ch} recipient, skipping`);
+          failures.push(`${ch}: no recipient on file`);
+          continue;
+        }
         try {
-          // send-admin-email / send-sms are verify_jwt=on — a header-less request
-          // is bounced by the gateway. authHeader() attaches a freshly-refreshed
-          // token; a dead session throws SESSION_EXPIRED, caught per-channel below
-          // so the UI falls back to the "share the code manually" path.
+          // send-invite is verify_jwt=on — a header-less request is bounced by
+          // the gateway. authHeader() attaches a freshly-refreshed token; a dead
+          // session throws SESSION_EXPIRED, caught per-channel below so the UI
+          // falls back to the "share the code manually" path.
           const authHeaders = await authHeader();
-          if (ch === 'email') {
-            const subject = k('accessEmailSubject') || 'Your gym access code';
-            const body = [
-              t('admin.createInvite.accessGreeting', { name: firstName, defaultValue: 'Hi {{name}}, your account is ready.' }),
-              t('admin.createInvite.accessCodeLine', { code, defaultValue: 'Your access code: {{code}}' }),
-              t('admin.createInvite.accessOpenLink', { url: inviteUrl, defaultValue: 'Tap to get started and set your password: {{url}}' }),
-            ].join('\n');
-            const { data, error: fnErr } = await supabase.functions.invoke('send-admin-email', {
-              headers: authHeaders,
-              body: { memberId, subject, body, lang },
-            });
-            if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message || 'email_failed');
-            succeeded.push('email');
-          } else {
-            const body = t('admin.createInvite.accessSmsBody', { code, url: inviteUrl, defaultValue: 'Your account is ready! Access code: {{code}}. Set your password: {{url}}' });
-            const { data, error: fnErr } = await supabase.functions.invoke('send-sms', {
-              headers: authHeaders,
-              body: { memberId, body, source: 'member_add' },
-            });
-            if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message || 'sms_failed');
-            succeeded.push('sms');
-          }
+          const { data, error: fnErr } = await supabase.functions.invoke('send-invite', {
+            headers: authHeaders,
+            body: { channel: ch, to, memberName: fullName, inviteCode: code, inviteUrl, lang },
+          });
+          if (fnErr || data?.error) throw new Error(await reasonOf(fnErr, data));
+          succeeded.push(ch);
         } catch (err) {
-          logger.warn(`deliverAccess ${ch} failed:`, err);
+          // FALL BACK to the path this replaced. `send-invite` builds the nicer
+          // message, but it is stricter about its inputs and it is a different
+          // deploy — if it refuses, the member still needs their code today.
+          // The real reason is logged either way, so a failure here is
+          // diagnosable instead of silent.
+          logger.error(`deliverAccess: send-invite ${ch} refused — ${err?.message}. Falling back.`);
+          try {
+            const authHeaders = await authHeader();
+            if (ch === 'email') {
+              // Just the sentence. The code and the link are passed as STRUCTURE
+              // (accessCode / ctaUrl) so the template can set them as a code chip
+              // and a real button — sending them as body lines is what made the
+              // access code render as one more grey paragraph among three.
+              const body = t('admin.createInvite.accessGreeting', { name: firstName, defaultValue: 'Hi {{name}}, your account is ready.' });
+              const { data, error: fnErr } = await supabase.functions.invoke('send-admin-email', {
+                headers: authHeaders,
+                body: {
+                  memberId, subject: k('accessEmailSubject') || 'Your gym access code', body, lang,
+                  overrideEmail: to, emailOverrideAcknowledged: true,
+                  accessCode: code,
+                  ctaUrl: inviteUrl,
+                  ctaLabel: t('admin.createInvite.accessCta', 'Set your password'),
+                },
+              });
+              if (fnErr || data?.error) throw new Error(await reasonOf(fnErr, data));
+            } else {
+              const body = t('admin.createInvite.accessSmsBody', { code, url: inviteUrl, defaultValue: 'Your account is ready! Access code: {{code}}. Set your password: {{url}}' });
+              const { data, error: fnErr } = await supabase.functions.invoke('send-sms', {
+                headers: authHeaders,
+                body: { memberId, body, source: 'member_add', overridePhone: to },
+              });
+              if (fnErr || data?.error) throw new Error(await reasonOf(fnErr, data));
+            }
+            succeeded.push(ch);
+          } catch (fallbackErr) {
+            logger.error(`deliverAccess ${ch} failed on both paths:`, fallbackErr?.message);
+            failures.push(`${ch}: ${fallbackErr?.message || 'failed'}`);
+          }
         }
       }
     } finally {
       setDelivering(false);
     }
     setSentVia(succeeded);
+    setDeliveryErrors(failures);
     if (succeeded.length === channels.length) {
       showToast(k('accessSent') || 'Access code sent', 'success');
     } else if (succeeded.length > 0) {
@@ -197,7 +323,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
   };
 
   const handleCreate = async () => {
-    if (!fullName || !namesOk || !email.trim() || !phone.trim()) return;
+    if (!fullName || !namesOk || !email.trim() || !phone.trim() || emailTaken) return;
     setLoading(true);
     setError(null);
 
@@ -258,10 +384,17 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
 
       setResult({ profileId: newMemberId, code: linkCode, name: fullName });
       setPhase('result');
-      if (onCreated) onCreated();
+      // Pass the new id up — the prospect-conversion flow needs it to attribute
+      // the referral and mark the prospect converted.
+      // Se devuelve el referidor FINAL del formulario, no el que llegó en
+      // initialValues. El admin puede quitarlo o escanear el código de otra
+      // persona, y sin esto quien convierte un prospecto acreditaba igual al
+      // referidor original — y `referrals` tiene UNIQUE(referred_id, gym_id),
+      // así que ese crédito equivocado es PERMANENTE (mig 0681).
+      if (onCreated) onCreated(newMemberId, referrerInfo?.id ?? null);
 
       // 4. Auto-deliver the access code via our providers (best-effort).
-      deliverAccess(newMemberId, linkCode);
+      deliverAccess(newMemberId, linkCode, email.trim().toLowerCase());
     } catch (err) {
       logger.error('CreateInviteModal: create failed:', err);
       setError(err.message || k('somethingWentWrong'));
@@ -284,7 +417,16 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
 
   const handleShare = async () => {
     if (!result?.code) return;
-    const shareText = `${k('shareText')} ${result.code}`;
+    // The link goes INSIDE the text, not in a separate `url` field.
+    //
+    // Sharing only "…usa el código: UND7NE" left the member a code and no door —
+    // they had to be told separately where to type it. The obvious fix is to
+    // pass `url` alongside `text`, but the share sheet's Copy action serializes
+    // the activity items, so the two either arrive duplicated or the text is
+    // dropped and only the URL survives. One string is the only shape that
+    // reliably carries BOTH through Copy, Messages, Mail and Notes alike — and
+    // iOS still auto-detects and previews a URL sitting inside message text.
+    const shareText = `${k('shareText')} ${result.code}\n${buildInviteUrl(result.code)}`;
     try {
       if (Capacitor.isNativePlatform()) {
         await Share.share({
@@ -320,9 +462,11 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
     setReferrerInfo(null);
     setReferralCode('');
     setReferralError(null);
+    setEmailTaken(false);
     setExternalId('');
     setMembershipStartedAt('');
     setSentVia([]);
+    setDeliveryErrors([]);
     setDelivering(false);
   };
 
@@ -353,9 +497,20 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={k('emailPlaceholder')}
+              aria-invalid={emailTaken || undefined}
               className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={inputStyle}
+              style={emailTaken
+                ? { ...inputStyle, border: '1px solid var(--color-danger)' }
+                : inputStyle}
             />
+            {/* On the field, not down by the button. Finding out at submit time
+                that the address is taken means re-reading a form you already
+                finished to work out which line was the problem. */}
+            {emailTaken && (
+              <p className="text-[11px] mt-1.5 font-semibold" style={{ color: 'var(--color-danger)' }}>
+                {t('admin.createInvite.emailTaken', 'That email already has an account. Search for them in Members instead.')}
+              </p>
+            )}
           </div>
 
           {/* Phone */}
@@ -450,12 +605,16 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
                 <input
                   type="text"
                   value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value)}
+                  onChange={(e) => handleReferralType(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && referralCode.trim()) { e.preventDefault(); handleReferralScan(referralCode); } }}
-                  placeholder={t('admin.createInvite.referralPlaceholder', 'Scan QR or type referral code')}
+                  placeholder="REF-XXXX-XXXXXXXX"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="text"
                   aria-label={t('admin.createInvite.referralPlaceholder', 'Scan QR or type referral code')}
                   className="w-full rounded-xl px-3 py-2.5 pr-10 text-[13px] outline-none transition-colors"
-                  style={inputStyle}
+                  style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: '0.04em' }}
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   {referralLoading ? (
@@ -502,7 +661,7 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
 
           <button
             onClick={handleCreate}
-            disabled={!fullName || !namesOk || !email.trim() || !phone.trim() || loading}
+            disabled={!fullName || !namesOk || !email.trim() || !phone.trim() || loading || emailTaken}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[13px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
             style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
           >
@@ -558,6 +717,19 @@ export default function CreateInviteModal({ gymId, onClose, onCreated }) {
               <>{t('admin.createInvite.accessSendFailed', "Couldn't send automatically — copy or share the code.")}</>
             )}
           </div>
+
+          {/* The reason, verbatim from the provider. "Couldn't send" is the
+              same sentence whether the sending domain is unverified, the key is
+              dead, or the member typed their address wrong — and only one of
+              those is the admin's to fix. */}
+          {!delivering && deliveryErrors.length > 0 && (
+            <div className="rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
+              style={{ background: 'color-mix(in srgb, var(--color-danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-danger) 20%, transparent)', color: 'var(--color-text-muted)' }}>
+              {deliveryErrors.map((line) => (
+                <p key={line} className="break-words">{line}</p>
+              ))}
+            </div>
+          )}
 
           {/* Prominent code display */}
           <div

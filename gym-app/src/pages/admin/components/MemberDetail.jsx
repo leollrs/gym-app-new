@@ -14,6 +14,7 @@ import { getRiskTier } from '../../../lib/churnScore';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { exportSelectedMembersCSV } from '../../../lib/exportData';
 import { composeFullName, areNamePartsValid, isValidNamePart, splitFullName } from '../../../lib/admin/memberName';
+import { matchesConfirmWord } from '../../../lib/admin/confirmWord';
 import { useScrollLock } from '../../../hooks/useScrollLock';
 import posthog from 'posthog-js';
 import { Avatar, AdminModal, PhoneInput } from '../../../components/admin';
@@ -436,7 +437,22 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       updates.membership_started_at = startedVal;
     }
     if (Object.keys(updates).length > 0) {
-      await supabase.from('profiles').update(updates).eq('id', member.id).eq('gym_id', gymId);
+      // El error se comprueba antes de tocar los refs o marcar "¡Guardado!".
+      // profiles tiene UNIQUE (gym_id, username) (0001:97), así que poner un
+      // username ya ocupado devuelve 23505 — y sin esto el admin veía el check
+      // verde, el formulario se limpiaba y la edición desaparecía.
+      const { error: saveErr } = await supabase.from('profiles')
+        .update(updates).eq('id', member.id).eq('gym_id', gymId);
+      if (saveErr) {
+        logger.error('Member profile save failed', saveErr);
+        showToast?.(
+          saveErr.code === '23505'
+            ? t('admin.memberDetail.usernameTaken', { defaultValue: 'That username is already taken.' })
+            : t('admin.memberDetail.infoSaveFailed', { defaultValue: "Couldn't save. Please try again." }),
+          'error');
+        setInfoSaving(false);
+        return;
+      }
       logAdminAction('update_info', 'member', member.id);
       if (updates.membership_started_at !== undefined) {
         originalStartedAtRef.current = updates.membership_started_at ?? '';
@@ -634,7 +650,10 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
   };
 
   const handleConfirmDelete = async () => {
-    if (deleteConfirmText.trim().toUpperCase() !== 'DELETE') {
+    // The Spanish prompt asks for ELIMINAR; this used to compare against the
+    // literal 'DELETE', so the modal refused the exact word it had just asked
+    // for and a Spanish admin could not delete anyone.
+    if (!matchesConfirmWord(deleteConfirmText)) {
       setDeleteError(t('admin.memberDetail.deleteTypeMismatch', { defaultValue: 'Type DELETE to confirm.' }));
       return;
     }
@@ -657,13 +676,20 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
 
   const handleSendFollowup = async () => {
     setFollowupSending(true);
+    // El catch de abajo registra y SIGUE, así que un fallo llegaba igual a
+    // setFollowupSentAt: el seguimiento quedaba marcado como enviado sin
+    // haberse mandado. Esta bandera es lo único que separa las dos cosas.
+    let delivered = false;
     try {
       const { data: convoId } = await supabase.rpc('get_or_create_conversation', { p_other_user: member.id });
       if (convoId) {
         const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
         const seed = convo?.encryption_seed || convoId;
         const encrypted = await encryptMessage(followupMsg, convoId, seed);
-        await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: adminId, body: encrypted });
+        const { error: dmErr } = await supabase.from('direct_messages')
+          .insert({ conversation_id: convoId, sender_id: adminId, body: encrypted });
+        if (dmErr) throw dmErr;
+        delivered = true;
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
 
         // Push notification
@@ -675,6 +701,13 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
       }
     } catch (err) {
       logger.error('Followup DM failed:', err);
+    }
+    if (!delivered) {
+      showToast?.(t('admin.memberDetail.followupFailed', {
+        defaultValue: "Couldn't send the follow-up — nothing was recorded.",
+      }), 'error');
+      setFollowupSending(false);
+      return;
     }
     const now = new Date().toISOString();
     if (churnRowId) {
@@ -1340,7 +1373,7 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
               </button>
               <button
                 onClick={handleConfirmDelete}
-                disabled={deleting || deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+                disabled={deleting || !matchesConfirmWord(deleteConfirmText)}
                 className="flex-1 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap disabled:opacity-40" style={btnTone('dangerSolid')}
               >
                 {deleting

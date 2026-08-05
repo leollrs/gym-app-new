@@ -199,7 +199,8 @@
     "cardQueue": "Card Queue",
     "equipmentQr": "Equipment QR",
     "attention": "Needs Attention",
-    "notifications": "Alerts"
+    "notifications": "Alerts",
+    "swag": "Swag"
   },
   "platformLayout": {
     "skipToContent": "Skip to main content",

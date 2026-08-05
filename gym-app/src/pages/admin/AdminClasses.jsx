@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   Plus, Trash2, Clock, Users, CalendarDays, X, Save,
   ChevronDown, ChevronUp, ChevronLeft, Edit3, Upload,
@@ -38,6 +38,7 @@ import BookingsView from './components/BookingsView';
 import ClassDetailModal from './components/ClassDetailModal';
 import ScheduleView from './components/ScheduleView';
 import ClassesListView from './components/ClassesListView';
+import ClassProposalsPanel from './components/ClassProposalsPanel';
 import ClassRoutinesPanel from './components/ClassRoutinesPanel';
 
 // DAYS_OF_WEEK extracted to lib/admin/classScheduleHelpers
@@ -69,6 +70,28 @@ export default function AdminClasses() {
 
   const [activeTab, setActiveTab] = useState('classes');
   const [formModal, setFormModal] = useState(null);
+  // Qué propuesta abrió este formulario, si es que lo abrió una. Se marca
+  // aceptada cuando la clase se crea de verdad — no al pulsar "Crear clase",
+  // porque el admin puede cerrar el modal sin guardar.
+  const [pendingProposal, setPendingProposal] = useState(null);
+
+  // El entrenador ya escribió nombre, descripción, duración y un día/hora
+  // sugeridos. Todo eso entra prellenado: obligar al admin a teclearlo otra vez
+  // mirando una notificación es exactamente por lo que esta función no existía.
+  const handleCreateFromProposal = useCallback((p) => {
+    setPendingProposal(p);
+    setFormModal({
+      name: p.name,
+      description: p.description || '',
+      duration_minutes: p.duration_minutes || 60,
+      trainer_id: p.trainer_id,
+      // Sin `id`: handleSaveClass mira formModal?.id para decidir entre update
+      // e insert, así que esto se guarda como clase NUEVA.
+      __initialSlots: (p.suggested_day !== null && p.suggested_day !== undefined && p.suggested_time)
+        ? [{ day_of_week: p.suggested_day, start_time: String(p.suggested_time).slice(0, 5), trainer_id: p.trainer_id }]
+        : [],
+    });
+  }, []);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -283,6 +306,23 @@ export default function AdminClasses() {
 
         if (inserted?.id) await syncTrainers(inserted.id);
 
+        // Cierra el círculo: la propuesta pasa a 'accepted', queda enlazada a
+        // la clase que salió de ella, y el entrenador recibe el aviso — algo
+        // que hasta ahora nunca ocurría, proponía y no volvía a saber nada.
+        // Best-effort: la clase YA está creada y un fallo aquí no debe
+        // deshacerla ni parecer que la creación falló.
+        if (pendingProposal?.id && inserted?.id) {
+          const { data: decided, error: decideErr } = await supabase.rpc('decide_class_proposal', {
+            p_proposal_id: pendingProposal.id,
+            p_status: 'accepted',
+            p_class_id: inserted.id,
+          });
+          if (decideErr || !decided?.success) {
+            console.warn('[AdminClasses] proposal accept failed:', decideErr || decided);
+          }
+          queryClient.invalidateQueries({ queryKey: ['admin', 'class-proposals', gymId] });
+        }
+
         // Insert pending schedule slots for new class
         if (formData.pendingSlots?.length > 0 && inserted?.id) {
           const slots = formData.pendingSlots.map(s => ({
@@ -321,6 +361,7 @@ export default function AdminClasses() {
 
       await queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
       setFormModal(null);
+      setPendingProposal(null);
       showToast(tc('success'), 'success');
     } catch (err) {
       console.error('[AdminClasses] Save error:', err);
@@ -573,6 +614,16 @@ export default function AdminClasses() {
                 />
               );
               if (tabKey === 'classes') return (
+                <>
+                {/* Las propuestas de los entrenadores, arriba del listado. La
+                    notificación de 0535 ya enruta a /admin/classes, así que
+                    este es el sitio donde el admin ya iba a aterrizar. */}
+                <ClassProposalsPanel
+                  gymId={gymId}
+                  onCreateFromProposal={handleCreateFromProposal}
+                  t={t}
+                  tc={tc}
+                />
                 <ClassesListView
                   classes={classes}
                   onEdit={setFormModal}
@@ -586,6 +637,7 @@ export default function AdminClasses() {
                   tc={tc}
                   lang={i18n.language}
                 />
+                </>
               );
               if (tabKey === 'bookings') return (
                 <BookingsTabView
@@ -606,7 +658,10 @@ export default function AdminClasses() {
       {formModal && (
         <ClassFormModal
           classData={liveFormClass}
-          onClose={() => setFormModal(null)}
+          // El día y la hora que sugirió el entrenador entran ya como franja,
+          // así que aceptar una propuesta es un clic y no volver a teclearlo.
+          initialSlots={liveFormClass?.__initialSlots}
+          onClose={() => { setFormModal(null); setPendingProposal(null); }}
           onSave={handleSaveClass}
           saving={saving}
           gymId={gymId}

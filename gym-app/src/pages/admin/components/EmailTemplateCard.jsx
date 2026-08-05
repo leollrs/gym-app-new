@@ -1,4 +1,4 @@
-import { Pencil, Copy, Trash2, Sparkles, Send } from 'lucide-react';
+import { Pencil, Copy, Trash2, Sparkles, Send, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AdminCard } from '../../../components/admin';
 import { KindIconChip, KindPill } from './emailTemplateKinds';
@@ -65,6 +65,20 @@ export default function EmailTemplateCard({ template, onEdit, onDelete, onDuplic
           </div>
           <div className="flex items-center gap-2 mt-1.5 min-w-0">
             <KindPill type={template.type} t={t} />
+            {/* Only shown when the template is actually wired to an automatic
+                moment AND switched on (mig 0687). A template that merely HAS a
+                step_key is still manual — the pill would otherwise imply this
+                gym is sending mail it isn't. */}
+            {template.auto_enabled && template.step_key && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex-shrink-0"
+                style={{ background: 'var(--color-success-soft)', color: 'var(--color-success-ink)' }}
+                title={t('admin.emailTemplates.autoOnHint', 'Sends automatically at this moment')}
+              >
+                <Zap size={9} />
+                {t(`admin.emailTemplates.step.${template.step_key}`, template.step_key)}
+              </span>
+            )}
             {dateStr && <span className="text-[11.5px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>{dateStr}</span>}
           </div>
         </button>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Plus, Trash2, GripVertical, Dumbbell, Search, Calendar, Loader2, ChevronLeft, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Calendar, Loader2, ChevronLeft, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -162,7 +162,11 @@ function ExRow({ item, onChange, onRemove, onGripDown, isDragging, draggedTransl
 }
 
 // ── A day card (name + day-of-week + exercises with drag) ──
-function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, onChangeEx, onRemoveEx, reorderEx, usedDows, closedDows, t, lang, onShowInfo }) {
+// `slotBound` — this card is an even week of an A/B program. The weekday belongs
+// to week 1's slot (handleSave seeds workout_schedule from rotation A only), and
+// the slot count is week 1's too, so the day cannot be moved, added or removed
+// here. Its name and its exercises are genuinely its own.
+function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, onChangeEx, onRemoveEx, reorderEx, usedDows, closedDows, slotBound = false, t, lang, onShowInfo }) {
   const { dragId, draggedTranslate, start } = useDragSort(day.exercises.map(e => e._uid), reorderEx);
   const [open, setOpen] = useState(false); // collapsible day — default closed
   const dowLabel = t(`days.${DOW_SHORT_KEYS[day.dow]}`, { ns: 'common' });
@@ -186,16 +190,27 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
         {/* The weekday lived only inside the expanded card, so from the collapsed
             list there was no sign the day could be changed at all. This chip is
             the affordance: it reads as a control and opens straight to the picker. */}
-        <button
-          type="button" onClick={() => setOpen(true)}
-          aria-label={t('programBuilder.changeDay', 'Change day')}
-          className="h-8 px-2.5 rounded-lg text-[11.5px] font-bold shrink-0 flex items-center gap-1"
-          style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)' }}
-        >
-          {dowLabel}
-          <ChevronDown size={13} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .18s ease' }} />
-        </button>
-        {total > 1 && (
+        {slotBound ? (
+          // A plain label, not a control: nothing here can change the weekday,
+          // so it must not look like it can.
+          <span
+            className="h-8 px-2.5 rounded-lg text-[11.5px] font-bold shrink-0 flex items-center"
+            style={{ background: 'var(--color-surface-hover, rgba(0,0,0,0.04))', color: 'var(--color-text-muted)' }}
+          >
+            {dowLabel}
+          </span>
+        ) : (
+          <button
+            type="button" onClick={() => setOpen(true)}
+            aria-label={t('programBuilder.changeDay', 'Change day')}
+            className="h-8 px-2.5 rounded-lg text-[11.5px] font-bold shrink-0 flex items-center gap-1"
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)' }}
+          >
+            {dowLabel}
+            <ChevronDown size={13} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .18s ease' }} />
+          </button>
+        )}
+        {total > 1 && !slotBound && (
           <button type="button" onClick={onRemove} aria-label={t('programBuilder.removeDay', 'Remove day')} className="w-9 h-9 flex items-center justify-center shrink-0" style={{ color: 'var(--color-text-muted)' }}>
             <Trash2 size={16} />
           </button>
@@ -209,7 +224,14 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
         </button>
       )}
       {open && (<>
-      {/* Day of week selector */}
+      {/* Day of week selector — hidden entirely on a slot-bound card. A disabled
+          row of weekday pills reads as "you may pick one of these later"; the
+          truth is that this week never owns its weekdays at all. */}
+      {slotBound ? (
+        <div className="mt-3 mb-3 text-[11.5px] leading-snug" style={{ color: 'var(--color-text-subtle)' }}>
+          {t('programBuilder.dayFixedByWeekOne', { day: dowLabel, defaultValue: `Trains on ${dowLabel}, set by week 1.` })}
+        </div>
+      ) : (
       <div className="flex gap-1.5 mb-3 mt-3 flex-wrap">
         {DOW_KEYS.map((key, dow) => {
           const selected = day.dow === dow;
@@ -233,6 +255,7 @@ function DayCard({ day, index, total, onName, onDow, onRemove, onAddExercise, on
           );
         })}
       </div>
+      )}
       {/* Exercises (drag-reorder) */}
       <div className="flex flex-col gap-2.5" data-dragroot>
         {day.exercises.map((item) => (
@@ -277,13 +300,41 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
   // you edit here is exactly what that week will run.
   const [activeWeek, setActiveWeek] = useState(1);
   const swipeX = useRef(null);
-  const variantOfWeek = (w) => (w % 2 === 1 ? 'A' : 'B');
-  // Mirrors the save path's split verbatim (`variant !== 'B'` is rotation A) so
-  // a day can never render under one week and be saved into the other. Legacy
-  // single-week programs load with variant null and belong to A.
-  const daysForWeek = (w) => (variantOfWeek(w) === 'B'
-    ? days.filter(d => d.variant === 'B')
-    : days.filter(d => d.variant !== 'B'));
+  // Does this program actually HAVE a second rotation?
+  //
+  // A member-built program is one week that repeats: every day loads with
+  // variant null, and the save path writes `routine_ids_b: idsB.length ? idsB
+  // : idsA`, so both parities run the same routines. Only a generated program
+  // (or an adopted coach plan) carries a genuine B set.
+  //
+  // The pager used to split on week parity alone, so on a one-week program
+  // every even week rendered EMPTY — while the program itself trained that week
+  // exactly like week 1. Nothing was wrong with the plan; the builder was lying
+  // about it, and the fix for a lie is to stop telling it, not to grey it out.
+  const hasBRotation = useMemo(() => days.some(d => d.variant === 'B'), [days]);
+  const rotationOfWeek = (w) => (hasBRotation && w % 2 === 0 ? 'B' : 'A');
+  // Rotation A defines the SLOTS: routine_day_map, normal_dows and the
+  // workout_schedule seed all come from it, and the runtime resolves an even
+  // week by slot INDEX (Dashboard.jsx `resolveVariant`, Workouts.jsx
+  // `variantIds`). A B day therefore has no weekday of its own — it inherits
+  // the slot's. Sorted by weekday because that is the order the week is lived
+  // in, and the order handleSave assigns slots in.
+  const slotDays = useMemo(
+    () => days.filter(d => d.variant !== 'B').sort((a, b) => a.dow - b.dow), [days]);
+  const bDays = useMemo(
+    () => days.filter(d => d.variant === 'B').sort((a, b) => a.dow - b.dow), [days]);
+  // An even week shows rotation B where a B routine exists for that slot and
+  // falls back to A's where it doesn't — exactly what resolveVariant does at
+  // runtime. Every other week shows week 1's set, because that is what runs.
+  const daysForWeek = (w) => (rotationOfWeek(w) === 'B'
+    ? slotDays.map((a, i) => bDays[i] || a)
+    : slotDays);
+  // An even week of an A/B program cannot gain, lose or move a day: the slots
+  // belong to week 1. Only the workouts inside them differ. Letting the member
+  // set a weekday here was the second half of the lie — handleSave seeds
+  // workout_schedule from rotation A only, so the day they picked was read back
+  // off A's slot and silently thrown away.
+  const weekIsSlotBound = (w) => hasBRotation && w % 2 === 0;
   // Both memoized: AllExercisesModal keys its filter+sort useMemo on these
   // props, so a fresh arrow each render would re-filter the whole catalog on
   // every keystroke. There is no "recent" notion here, so that chip simply
@@ -486,7 +537,11 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
       // workout_schedule seed); `sortedB` fills the same slots for even weeks.
       // A single-week program has no B and behaves exactly as before.
       const sortedA = validDays.filter(d => d.variant !== 'B').sort((a, b) => a.dow - b.dow);
-      const sortedB = validDays.filter(d => d.variant === 'B').sort((a, b) => a.dow - b.dow);
+      // A B day only means something if rotation A trains that weekday — B fills
+      // A's slots, it doesn't add its own. One landing anywhere else used to be
+      // inserted as a routine the scheduler could never reach.
+      const aDows = new Set(sortedA.map(d => d.dow));
+      const sortedB = validDays.filter(d => d.variant === 'B' && aDows.has(d.dow)).sort((a, b) => a.dow - b.dow);
       // Snapshot old Auto: routines (the previous active program) for cleanup AFTER.
       const { data: oldAuto } = await supabase.from('routines').select('id').eq('created_by', user.id).like('name', 'Auto:%');
       const oldIds = (oldAuto || []).map(r => r.id);
@@ -574,7 +629,18 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
       }
 
       const idsA = madeA.map(r => r.id);
-      const idsB = madeB.map(r => r.id);
+      // routine_ids_b is read BY SLOT INDEX (Dashboard's resolveVariant,
+      // Workouts' variantIds), so it has to line up with idsA slot for slot.
+      // Taking madeB in its own order broke that as soon as ONE B day went
+      // missing — a day whose exercises were all removed is filtered out of
+      // validDays above, and a routine insert can fail — after which every later
+      // B routine shifted up a slot and the even weeks ran Wednesday's workout
+      // on Monday, permanently, with nothing on screen to hint at it. Pair on
+      // the weekday instead (unique within a rotation) and let a slot with no B
+      // day of its own reuse A's routine — the same fallback the runtime already
+      // applies when variantB[slot] is missing.
+      const madeBByDow = new Map(madeB.map(r => [r.dow, r.id]));
+      const idsB = madeB.length ? madeA.map(a => madeBByDow.get(a.dow) || a.id) : [];
       const dows = madeA.map(r => r.dow);
       const scheduleMap = {
         routine_day_map: dows.map((dow, i) => ({ routine_index: i, day_of_week: dow })),
@@ -621,17 +687,50 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
       // has to remain resumable. Mirrors the claim check in
       // `regenerateMemberProgram`, which already got this right.
       const newSet = new Set([...idsA, ...idsB]);
-      const { data: allUserPrograms } = await supabase
+      // FAIL CLOSED. The error was discarded, so a transient read failure gave
+      // `allUserPrograms = null` → an empty `claimed` → toDelete = EVERY old
+      // routine the member owns. Deleting nothing is always recoverable;
+      // deleting a routine is not.
+      const { data: allUserPrograms, error: claimErr } = await supabase
         .from('generated_programs').select('schedule_map').eq('profile_id', user.id);
+      if (claimErr) logger.error('programBuilder: skipping cleanup, claim read failed:', claimErr);
       const claimed = new Set();
       for (const p of allUserPrograms || []) {
-        for (const rid of p.schedule_map?.routine_ids || []) claimed.add(rid);
+        const m = p.schedule_map || {};
+        // All three id lists, not just `routine_ids`. Every A/B program stores
+        // its routines under routine_ids_a/_b, so reading only the flat list
+        // left those unclaimed and eligible for deletion.
+        for (const rid of [...(m.routine_ids || []), ...(m.routine_ids_a || []), ...(m.routine_ids_b || [])]) claimed.add(rid);
       }
-      const toDelete = oldIds.filter(id => !newSet.has(id) && !claimed.has(id));
+      let toDelete = claimErr ? [] : oldIds.filter(id => !newSet.has(id) && !claimed.has(id));
+      // A routine the member actually TRAINED must never be deleted:
+      // workout_sessions.routine_id is ON DELETE SET NULL (0001_initial_schema
+      // :336), so removing it permanently severs that session's link to what
+      // was performed — killing per-routine history, lastPerformedMap and the
+      // overload engine's lookback. Every sibling sweeper in this codebase
+      // already checks this (trainerPlanAdoption.js:286, releaseTrainerPlan,
+      // regenerateMemberProgram); this one did not, so an ordinary "Edit
+      // program → change a rep target → Save" wiped the member's history.
       if (toDelete.length) {
-        await supabase.from('routine_exercises').delete().in('routine_id', toDelete);
-        await supabase.from('workout_schedule').delete().in('routine_id', toDelete).then(() => {}, () => {});
-        await supabase.from('routines').delete().in('id', toDelete);
+        const { data: trainedRows, error: trainedErr } = await supabase
+          .from('workout_sessions').select('routine_id').in('routine_id', toDelete);
+        if (trainedErr) {
+          logger.error('programBuilder: sessions read failed, keeping all routines:', trainedErr);
+          toDelete = [];
+        } else {
+          const trained = new Set((trainedRows || []).map(r => r.routine_id));
+          toDelete = toDelete.filter(id => !trained.has(id));
+        }
+      }
+      if (toDelete.length) {
+        const { error: reErr } = await supabase.from('routine_exercises').delete().in('routine_id', toDelete);
+        if (reErr) logger.error('programBuilder: routine_exercises cleanup failed:', reErr);
+        // Was `.then(() => {}, () => {})` — a double no-op, since the builder
+        // resolves with { error } and never rejects.
+        const { error: wsErr } = await supabase.from('workout_schedule').delete().in('routine_id', toDelete);
+        if (wsErr) logger.error('programBuilder: workout_schedule cleanup failed:', wsErr);
+        const { error: rErr } = await supabase.from('routines').delete().in('id', toDelete);
+        if (rErr) logger.error('programBuilder: routines cleanup failed:', rErr);
       }
 
       try { window.dispatchEvent(new CustomEvent('tugympr:programs-changed')); } catch { /* ignore */ }
@@ -740,9 +839,20 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
               own thing. Editing week 3 IS editing week 1; hiding that would be
               the same lie as the old "6 weeks" picker that changed nothing. */}
           {(() => {
-            const variant = variantOfWeek(activeWeek);
+            const variant = rotationOfWeek(activeWeek);
             const groupDays = daysForWeek(activeWeek);
-            const mirrorOf = activeWeek > 2 ? (variant === 'A' ? 1 : 2) : null;
+            const slotBound = weekIsSlotBound(activeWeek);
+            // What this week actually is, said plainly:
+            //   · one-week program  → every week runs this
+            //   · A/B, week 2       → same days as week 1, different workouts
+            //   · A/B, week 3+      → a repeat of week 1 or week 2
+            const weekNote = !hasBRotation
+              ? (weeks > 1 ? t('programBuilder.everyWeekRunsThis', 'Every week of this program runs these days. Editing here changes all of them.') : null)
+              : activeWeek === 2
+                ? t('programBuilder.sameDaysNewWork', 'Same training days as week 1 — only the workouts change. The days themselves are set in week 1.')
+                : activeWeek > 2
+                  ? t('programBuilder.sameAsWeek', { n: variant === 'A' ? 1 : 2, defaultValue: `Same as week ${variant === 'A' ? 1 : 2}. Changes here apply to both.` })
+                  : null;
             return (
             <div
               onTouchStart={(e) => { swipeX.current = e.touches[0].clientX; }}
@@ -784,16 +894,16 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
                     style={{
                       width: w === activeWeek ? 20 : 7, height: 7,
                       background: w === activeWeek ? 'var(--color-accent)'
-                        : variantOfWeek(w) === variant ? 'color-mix(in srgb, var(--color-accent) 40%, transparent)'
+                        : rotationOfWeek(w) === variant ? 'color-mix(in srgb, var(--color-accent) 40%, transparent)'
                         : 'var(--color-border-default)',
                     }}
                   />
                 ))}
               </div>
-              {mirrorOf && (
+              {weekNote && (
                 <div className="rounded-xl px-3 py-2.5 mb-3 text-[12px] leading-snug"
                   style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)', color: 'var(--color-text-muted)' }}>
-                  {t('programBuilder.sameAsWeek', { n: mirrorOf, defaultValue: `Same as week ${mirrorOf}. Changes here apply to both.` })}
+                  {weekNote}
                 </div>
               )}
               <div className="flex flex-col gap-3">
@@ -814,19 +924,28 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
                     onRemoveEx={(exUid) => removeEx(day._uid, exUid)}
                     reorderEx={(orderedUids) => reorderEx(day._uid, orderedUids)}
                     usedDows={dowsFor(day.variant)}
+                    slotBound={slotBound}
                     t={t} lang={lang}
                     onShowInfo={setInfoExercise}
                   />
                 ))}
               </div>
-              <button
-                onClick={() => addDay(variant)}
-                className="w-full mt-3 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[14px] font-bold"
-                style={{ background: 'var(--color-bg-card)', border: '1px dashed var(--color-border-default)', color: 'var(--color-text-muted)' }}
-              >
-                <Calendar size={16} />
-                {t('programBuilder.addDayToThisWeek', { n: activeWeek, defaultValue: `Add a day to week ${activeWeek}` })}
-              </button>
+              {/* Adding a day means adding a SLOT, and slots are defined by
+                  rotation A. Offering it on an even week produced a routine the
+                  scheduler never reaches — or, if every A day was removed, a
+                  program with no week 1 at all. */}
+              {!slotBound && (
+                <button
+                  onClick={() => addDay(null)}
+                  className="w-full mt-3 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[14px] font-bold"
+                  style={{ background: 'var(--color-bg-card)', border: '1px dashed var(--color-border-default)', color: 'var(--color-text-muted)' }}
+                >
+                  <Calendar size={16} />
+                  {hasBRotation || weeks === 1
+                    ? t('programBuilder.addDayToThisWeek', { n: activeWeek, defaultValue: `Add a day to week ${activeWeek}` })
+                    : t('programBuilder.addTrainingDay', 'Add a training day')}
+                </button>
+              )}
             </div>
             );
           })()}
@@ -841,7 +960,10 @@ export default function MemberProgramBuilder({ onClose, onSaved, editProgram = n
         open={!!pickerDayUid}
         onClose={() => setPickerDayUid(null)}
         exercises={ALL_EXERCISES}
-        onExerciseTap={(ex) => { addExerciseToDay(pickerDayUid, ex); setPickerDayUid(null); }}
+        // Stays OPEN on tap, like the picker it replaced — building a day means
+        // adding several exercises, and closing after each one made that 8
+        // open/close cycles. Close with the sheet's own X.
+        onExerciseTap={(ex) => addExerciseToDay(pickerDayUid, ex)}
         chipDefs={pickerChips}
         filterByChip={pickerFilter}
       />

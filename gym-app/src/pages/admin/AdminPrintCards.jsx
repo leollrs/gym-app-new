@@ -8,6 +8,7 @@ import { adminKeys } from '../../lib/adminQueryKeys';
 import { AdminPageShell, PageHeader, FadeIn } from '../../components/admin';
 import PrintPreviewModal from '../../components/admin/PrintPreviewModal';
 import CardsToPrintPanel from './components/CardsToPrintPanel';
+import PendingSwagPanel from './components/PendingSwagPanel';
 import UpcomingCardsPanel from './components/UpcomingCardsPanel';
 import CardDeliveryBanner from './components/CardDeliveryBanner';
 
@@ -87,6 +88,12 @@ export default function AdminPrintCards() {
       </FadeIn>
       <FadeIn delay={10}>
         <CardDeliveryBanner gymId={gymId} />
+      </FadeIn>
+      {/* Gifts sit above the card queue: a physical item owed to a member who
+          may be in the building right now outranks a card waiting to print.
+          Renders nothing when nothing is pending. */}
+      <FadeIn delay={15}>
+        <PendingSwagPanel gymId={gymId} />
       </FadeIn>
       <FadeIn delay={20}>
         <UpcomingCardsPanel gymId={gymId} />

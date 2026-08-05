@@ -172,9 +172,14 @@ export function parseQRContent(text) {
 
   // Referral: gym-referral:{gymId}:{referrerId}:{referralCode}
   if (lower.startsWith('gym-referral:')) {
+    // El prefijo y los UUID se comparan en minúscula, pero el CÓDIGO se saca
+    // del texto original: se generan en mayúscula ('REF-' || upper(...),
+    // mig 0116:102), así que el lower.split() de antes producía un código que
+    // no podía coincidir con ninguna fila ni arreglando la consulta.
     const parts = lower.split(':');
-    if (parts.length >= 4 && parts[1] && parts[2] && parts[3]) {
-      return { type: 'referral', gymId: parts[1], referrerId: parts[2], referralCode: parts[3] };
+    const rawParts = text.split(':');
+    if (parts.length >= 4 && parts[1] && parts[2] && rawParts[3]) {
+      return { type: 'referral', gymId: parts[1], referrerId: parts[2], referralCode: rawParts[3].trim() };
     }
     return null;
   }

@@ -15,7 +15,8 @@
     "https://deno.land/std@0.177.0/async/retry.ts": "5efa3ba450ac0c07a40a82e2df296287b5013755d232049efd7ea2244f15b20f",
     "https://deno.land/std@0.177.0/async/tee.ts": "47e42d35f622650b02234d43803d0383a89eb4387e1b83b5a40106d18ae36757",
     "https://deno.land/std@0.177.0/http/server.ts": "cbb17b594651215ba95c01a395700684e569c165a567e4e04bba327f41197433",
-    "https://esm.sh/@supabase/supabase-js@2.100.0": "e3f8cd4f9df4df6e8dbf724810f5146414a7f4b4351d2403fa44a82d84dc8336"
+    "https://esm.sh/@supabase/supabase-js@2.100.0": "e3f8cd4f9df4df6e8dbf724810f5146414a7f4b4351d2403fa44a82d84dc8336",
+    "https://esm.sh/@supabase/supabase-js@2.39.7": "5361671c958daa350e504d9975da64b2d6dc9e81390b985ccdafb2e3572e24e7"
   },
   "workspace": {
     "packageJson": {
@@ -84,11 +85,14 @@
         "npm:react-window@^2.2.7",
         "npm:react@^19.2.0",
         "npm:recharts@^3.7.0",
+        "npm:selenium-webdriver@^4.46.0",
         "npm:sharp@~0.34.5",
+        "npm:source-map-js@^1.2.1",
         "npm:tailwind-merge@^3.5.0",
         "npm:tailwindcss@^4.2.1",
         "npm:vite-plugin-pwa@^1.2.0",
-        "npm:vite@^7.3.1"
+        "npm:vite@^7.3.1",
+        "npm:vitest@^3.2.4"
       ],
       "overrides": {
         "serialize-javascript": "^7.0.5"

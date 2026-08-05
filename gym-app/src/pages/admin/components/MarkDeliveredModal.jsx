@@ -47,7 +47,11 @@ export default function MarkDeliveredModal({ card, gymId, onClose }) {
 
   const deliverMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      // .select('id'): con el .eq('gym_id') un desajuste no matcha nada y
+      // resuelve con error:null — así que se disparaba onSuccess, se escribía
+      // la fila de auditoría, salía "Marcado como entregado", y la tarjeta
+      // reaparecía sin entregar en el siguiente refresco.
+      const { data, error } = await supabase
         .from('print_cards')
         .update({
           status: 'delivered',
@@ -57,8 +61,10 @@ export default function MarkDeliveredModal({ card, gymId, onClose }) {
           delivery_note: note.trim() || null,
         })
         .eq('id', card.id)
-        .eq('gym_id', gymId);
+        .eq('gym_id', gymId)
+        .select('id');
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error('no rows matched');
     },
     onSuccess: () => {
       logAdminAction('print_cards_delivered', 'print_card', card.id, {

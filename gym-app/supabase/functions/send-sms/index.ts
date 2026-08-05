@@ -122,10 +122,22 @@ Deno.serve(async (req) => {
       callerRole = hasPrimary ? callerProfile.role : staffFromAdditional;
     }
 
-    const { memberId, body, source, gymId: bodyGymId, mediaUrl, overridePhone } = await req.json();
+    const { memberId, prospectId, body, source, gymId: bodyGymId, mediaUrl, overridePhone } = await req.json();
 
-    if (!memberId || !body) {
-      return jsonResp({ error: 'memberId and body are required' }, 400);
+    // A prospect (gym_prospects, mig 0681) is a walk-in who is NOT a member and
+    // therefore has no `profiles` row at all. Before this, every path here
+    // required one — the profile lookup below 404s without it, and gym_id is
+    // derived from it — so the access code could never be texted to the person
+    // it was minted for. `overridePhone` did not help: it overrides the NUMBER,
+    // not the recipient lookup.
+    if (!body) {
+      return jsonResp({ error: 'body is required' }, 400);
+    }
+    if (!memberId && !prospectId) {
+      return jsonResp({ error: 'memberId or prospectId is required' }, 400);
+    }
+    if (memberId && prospectId) {
+      return jsonResp({ error: 'Pass either memberId or prospectId, not both' }, 400);
     }
     if (typeof body !== 'string' || body.length > 640) {
       return jsonResp({ error: 'Body must be 640 characters or fewer' }, 400);
@@ -151,34 +163,63 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get member profile with phone number
-    const { data: memberProfile } = await supabase
-      .from('profiles')
-      .select('id, full_name, phone_number, gym_id')
-      .eq('id', memberId)
-      .single();
+    // Resolve the recipient — a member profile or a prospect. Both paths must
+    // end with the same three facts: a gym_id (never taken from the caller), a
+    // phone on file, and a name.
+    let recipient: { id: string; full_name: string | null; phone_number: string | null; gym_id: string } | null = null;
 
-    if (!memberProfile) {
-      return jsonResp({ error: 'Member not found' }, 404);
+    if (prospectId) {
+      const { data: prospect } = await supabase
+        .from('gym_prospects')
+        .select('id, full_name, phone, gym_id')
+        .eq('id', prospectId)
+        .single();
+      if (!prospect) {
+        return jsonResp({ error: 'Prospect not found' }, 404);
+      }
+      recipient = {
+        id: prospect.id,
+        full_name: prospect.full_name,
+        phone_number: prospect.phone,
+        gym_id: prospect.gym_id,
+      };
+    } else {
+      const { data: memberProfile } = await supabase
+        .from('profiles')
+        .select('id, full_name, phone_number, gym_id')
+        .eq('id', memberId)
+        .single();
+      if (!memberProfile) {
+        return jsonResp({ error: 'Member not found' }, 404);
+      }
+      recipient = memberProfile;
     }
 
-    // Always derive gym_id from the member record — never trust the caller-supplied bodyGymId.
-    const effectiveGymId = memberProfile.gym_id;
+    // Narrows `recipient` for the type checker (both branches above either
+    // assign or return) and is a real backstop if that ever stops being true.
+    if (!recipient) {
+      return jsonResp({ error: 'Recipient not found' }, 404);
+    }
 
-    // If the caller supplied a gymId that doesn't match the member's actual gym, reject.
-    if (bodyGymId && bodyGymId !== memberProfile.gym_id) {
+    // Always derive gym_id from the recipient record — never trust the caller-supplied bodyGymId.
+    const effectiveGymId = recipient.gym_id;
+
+    // If the caller supplied a gymId that doesn't match the recipient's actual gym, reject.
+    if (bodyGymId && bodyGymId !== recipient.gym_id) {
       console.warn('send-sms gym_id mismatch:', {
         bodyGymId,
-        memberGymId: memberProfile.gym_id,
+        recipientGymId: recipient.gym_id,
         memberId,
+        prospectId,
         callerId,
       });
       return jsonResp({ error: 'gym_id_mismatch' }, 403);
     }
 
-    // Gym boundary check (non-super_admin can only SMS their own gym)
-    if (!isServiceRole && callerRole !== 'super_admin' && memberProfile.gym_id !== callerGymId) {
-      return jsonResp({ error: 'Member not in your gym' }, 403);
+    // Gym boundary check (non-super_admin can only SMS their own gym). Applies
+    // identically to prospects — a walk-in belongs to one gym like anyone else.
+    if (!isServiceRole && callerRole !== 'super_admin' && recipient.gym_id !== callerGymId) {
+      return jsonResp({ error: 'Recipient not in your gym' }, 403);
     }
 
     // ── GYM DAILY USAGE CAP CHECK — DISABLED ────────────────────
@@ -202,9 +243,9 @@ Deno.serve(async (req) => {
     };
     const finalPhone = overridePhone
       ? normalizePhone(String(overridePhone))
-      : memberProfile.phone_number;
+      : normalizePhone(String(recipient.phone_number ?? ''));
     if (!finalPhone) {
-      return jsonResp({ error: 'No phone number provided (member has none on file and no override given)' }, 400);
+      return jsonResp({ error: 'No phone number provided (recipient has none on file and no override given)' }, 400);
     }
     const phoneRegex = /^\+1\d{10}$/;
     if (!phoneRegex.test(finalPhone)) {
@@ -229,11 +270,17 @@ Deno.serve(async (req) => {
     const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
     let newCount: number | null = null;
     try {
-      const { data } = await supabase.rpc('increment_sms_usage', {
+      // El error se destructura. Antes solo se leía `data`: un rpc() de
+      // Supabase RESUELVE con {data:null, error} y nunca lanza, así que el
+      // catch no disparaba, newCount quedaba null, `newCount && …` era falso y
+      // EL ENVÍO SEGUÍA SIN TOPE. El tope diario ya está desactivado más
+      // arriba, así que esto era lo único que acotaba el gasto de Twilio.
+      const { data, error: usageErr } = await supabase.rpc('increment_sms_usage', {
         p_gym_id: effectiveGymId,
         p_month: currentMonth,
         p_count: 1,
       });
+      if (usageErr) throw usageErr;
       newCount = data;
 
       if (newCount && newCount > smsMonthlyCap) {
@@ -248,7 +295,10 @@ Deno.serve(async (req) => {
         }, 429);
       }
     } catch (e) {
-      console.warn('increment_sms_usage skipped:', e);
+      // Falla CERRADO. Si no se puede evaluar el tope, no se manda: esto gasta
+      // dinero real del fundador y un contador roto no puede ser barra libre.
+      console.error('increment_sms_usage failed — refusing to send:', e);
+      return jsonResp({ error: 'SMS usage could not be verified. Try again shortly.' }, 429);
     }
 
     // Get gym name and SMS phone number
@@ -307,21 +357,32 @@ Deno.serve(async (req) => {
     let twilioSid: string | null = null;
     try { twilioSid = (await twilioResp.json()).sid; } catch {}
 
-    // Insert SMS log (best-effort)
-    try {
-      await supabase.from('sms_log').insert({
-        gym_id: effectiveGymId,
-        member_id: memberId,
-        admin_id: callerId,
-        phone_number: memberProfile.phone_number,
-        body: smsBody,
-        twilio_sid: twilioSid,
-        status: 'sent',
-        source: source || 'manual',
-      });
-    } catch (e) {
-      console.warn('sms_log insert failed:', e);
-    }
+    // Insert SMS log (best-effort). member_id y phone_number eran NOT NULL
+    // (0257:62) — así que TODO SMS a un prospecto fallaba aquí con 23502, y
+    // como un insert de Supabase resuelve en vez de lanzar, el try/catch no lo
+    // veía: el mensaje salía, Twilio cobraba, y no quedaba fila. Mig 0689
+    // relaja las dos columnas y añade prospect_id.
+    const { error: logErr } = await supabase.from('sms_log').insert({
+      gym_id: effectiveGymId,
+      member_id: memberId ?? null,
+      // Condicional a propósito. `prospect_id` lo añade la 0689, que puede no
+      // estar aplicada cuando esta función se despliegue — y PostgREST rechaza
+      // una columna desconocida en el payload aunque el valor sea null
+      // (PGRST204). Mandarla siempre rompía el registro de TODOS los SMS,
+      // incluidos los de miembros, que hoy funcionan. Así degrada al
+      // comportamiento actual hasta que la migración entre.
+      ...(prospectId ? { prospect_id: prospectId } : {}),
+      admin_id: callerId,
+      // finalPhone, no recipient.phone_number: cuando se usa overridePhone el
+      // mensaje fue a OTRO número, y registrar el de la ficha hace que el log
+      // mienta sobre a quién se le mandó.
+      phone_number: finalPhone,
+      body: smsBody,
+      twilio_sid: twilioSid,
+      status: 'sent',
+      source: source || 'manual',
+    });
+    if (logErr) console.error('sms_log insert failed:', logErr.message);
 
     // Audit log (best-effort)
     try {
@@ -330,9 +391,18 @@ Deno.serve(async (req) => {
           gym_id: effectiveGymId,
           actor_id: callerId,
           action: 'send_sms',
-          entity_type: 'member',
-          entity_id: memberId,
-          details: { phone: memberProfile.phone_number, source: source || 'manual' },
+          entity_type: prospectId ? 'prospect' : 'member',
+          entity_id: memberId ?? prospectId,
+          // `overrode` deja rastro de cuándo el staff mandó a un número que NO
+          // es el de la ficha. Los dos usos legítimos (código de acceso a un
+          // miembro recién creado, panel de contacto) lo necesitan, así que no
+          // se puede quitar — pero sí se puede hacer visible.
+          details: {
+            phone: finalPhone,
+            on_file: recipient.phone_number ?? null,
+            overrode: !!overridePhone && finalPhone !== recipient.phone_number,
+            source: source || 'manual',
+          },
         });
       }
     } catch {}

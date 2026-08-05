@@ -16,6 +16,12 @@ import AdminTour from '../components/admin/AdminTour';
 import { isAdminSetupSeen } from '../lib/adminSetupSeen';
 
 const AdminOnboardingWizard = lazy(() => import('../components/admin/AdminOnboardingWizard'));
+// El "qué es esto y por qué" que faltaba. Estaba construido entero y sin montar
+// en ningún sitio — eslint no lo delata porque varsIgnorePattern exime los
+// nombres capitalizados, así que un componente definido y nunca renderizado no
+// produce ni un aviso. Va ANTES del wizard: primero se entiende para qué sirve
+// la herramienta, después se configura.
+const AdminWelcomeModal = lazy(() => import('../pages/admin/components/AdminWelcomeModal'));
 const ScanFeedback = lazy(() => import('../components/admin/ScanFeedback'));
 const GlobalSearch = lazy(() => import('../components/admin/GlobalSearch'));
 
@@ -132,6 +138,7 @@ export default function AdminLayout({ children }) {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef(null);
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [onlineAdmins, setOnlineAdmins] = useState([]);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({});
@@ -188,7 +195,16 @@ export default function AdminLayout({ children }) {
     // skip/complete sticks. Set by AdminOnboardingWizard on both paths.
     if (isAdminSetupSeen(profile?.gym_id)) return;
     setShowOnboardingWizard(true);
-  }, [isAdminEntitled, gymConfig.setupCompleted, profile?.gym_id]);
+    // El explicador va delante, con su propia marca de "ya visto" (por gimnasio
+    // Y por admin: en un gimnasio con varios administradores, cada persona
+    // merece la explicación una vez). En modo privado el getItem lanza, y en ese
+    // caso se prefiere no mostrarlo a mostrarlo en bucle.
+    try {
+      if (!localStorage.getItem(`admin_welcome_shown_${profile?.gym_id}_${profile?.id}`)) {
+        setShowWelcome(true);
+      }
+    } catch { /* almacenamiento no disponible — se salta */ }
+  }, [isAdminEntitled, gymConfig.setupCompleted, profile?.gym_id, profile?.id]);
 
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
 
@@ -324,8 +340,22 @@ export default function AdminLayout({ children }) {
       </div>
     )}
     <div className="min-h-screen admin-shell flex">
-      {/* Admin onboarding wizard for first-time gym setup */}
-      {showOnboardingWizard && (
+      {/* Primero el "qué es esto": tres paneles de ~10 segundos. */}
+      {showWelcome && (
+        <Suspense fallback={null}>
+          <AdminWelcomeModal
+            gymId={profile?.gym_id}
+            gymName={gymName}
+            profileId={profile?.id}
+            onClose={() => setShowWelcome(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Y después el wizard. Encadenados, no apilados: dos modales a la vez
+          sobre un dueño que acaba de entrar por primera vez es peor que
+          ninguno. */}
+      {!showWelcome && showOnboardingWizard && (
         <Suspense fallback={null}>
           <AdminOnboardingWizard onComplete={() => setShowOnboardingWizard(false)} />
         </Suspense>

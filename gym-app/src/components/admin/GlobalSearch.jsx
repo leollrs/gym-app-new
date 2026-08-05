@@ -122,7 +122,13 @@ export default function GlobalSearch({ open, onClose, onToggle, pageIndex = [] }
         id: m.id,
         label: m.full_name || m.username || '—',
         sub: m.username ? `@${m.username}` : '',
-        route: '/admin/members',
+        // Con el id: `activate()` navega a item.route y descartaba el id, así
+        // que buscar a alguien por su nombre y pulsar Enter aterrizaba en la
+        // lista sin filtrar. AdminMembers.jsx:160 ya sabe leer ?member= y hasta
+        // hace fetch-por-id si no está en la página cargada.
+        // (Clases, programas, segmentos y anuncios siguen sin parámetro: esas
+        // páginas no leen ninguno todavía.)
+        route: `/admin/members?member=${m.id}`,
         // Tokens we'll fuzzy-match against (lowercased once).
         haystack: `${m.full_name || ''} ${m.username || ''}`.toLowerCase(),
       }));

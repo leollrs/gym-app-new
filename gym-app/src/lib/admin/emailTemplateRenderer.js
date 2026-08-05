@@ -77,16 +77,34 @@ export function replaceVariables(text, gymName) {
 
 // ── Full HTML renderer ────────────────────────────────────────
 
-export function generateEmailHtml(template, gymName, logoUrl) {
+/**
+ * `unsubscribeUrl` is optional and, when absent, the footer link is OMITTED
+ * rather than rendered as `href="#"`.
+ *
+ * A dead unsubscribe is worse than none: it is a CAN-SPAM problem and a
+ * deliverability problem for noreply@tugympr.com, which is the shared envelope
+ * address for every gym on the platform. The editor preview passes nothing —
+ * there is no member to unsubscribe — and real sends pass a token URL built by
+ * migration 0685.
+ */
+export function generateEmailHtml(template, gymName, logoUrl, unsubscribeUrl = null) {
   const c = template.colors;
   const header = template.header;
   const hero = template.hero;
   const reward = template.reward;
+  // Acotados numéricamente: se interpolan sin escapar dentro de style="…" y son
+  // texto libre del admin. Mismo clamp que _shared/emailRenderer.ts — si uno
+  // cambia, el otro también, o la vista previa deja de predecir el envío.
   const typo = template.typography || {};
-  const fs = typo.fontSize || '15';
-  const br = typo.borderRadius || '12';
-  const pad = typo.padding || '40';
-  const hs = typo.headerStyle || 'gradient';
+  const clamp = (v, def, lo, hi) => {
+    const n = parseInt(String(v ?? ''), 10);
+    return String(Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : def);
+  };
+  const fs = clamp(typo.fontSize, 15, 10, 28);
+  const br = clamp(typo.borderRadius, 12, 0, 32);
+  const pad = clamp(typo.padding, 40, 0, 64);
+  const hs = ['gradient', 'solid', 'minimal'].includes(String(typo.headerStyle))
+    ? String(typo.headerStyle) : 'gradient';
   const body = template.body;
   const cta = template.cta;
   const footer = template.footer;
@@ -200,7 +218,7 @@ ${footer.enabled ? `<!-- Footer -->
 <tr><td style="padding:0 ${pad}px;"><div style="height:1px;background:#f0f0f0;"></div></td></tr>
 <tr><td style="padding:24px ${pad}px 28px;text-align:center;">
 <p style="margin:0 0 6px;font-size:12px;color:#9CA3AF;line-height:1.5;letter-spacing:0.01em;">${escHtml(replaceVariables(footer.text, gymName))}</p>
-${footer.unsubscribeText ? `<a href="#" style="font-size:11px;color:#D1D5DB;text-decoration:underline;">${escHtml(footer.unsubscribeText)}</a>` : ''}
+${footer.unsubscribeText && unsubscribeUrl ? `<a href="${escHtml(unsubscribeUrl)}" style="font-size:11px;color:#D1D5DB;text-decoration:underline;">${escHtml(footer.unsubscribeText)}</a>` : ''}
 </td></tr>` : ''}
 
 </table>
@@ -232,6 +250,12 @@ export function dbRowToTemplate(row) {
     reward: d.reward || { enabled: false, reward_id: '', title: '', description: '', code: '', expiry: '' },
     footer: d.footer || { enabled: true, text: '', unsubscribeText: 'Unsubscribe' },
     colors: d.colors || { primary: '#D4AF37', background: '#ffffff', text: '#333333' },
+    // Was never hydrated, so every saved template silently reverted to the
+    // 15/12/40/gradient fallback the moment it was reloaded — the editor's
+    // typography panel looked like it did nothing.
+    typography: d.typography || { fontSize: '15', borderRadius: '12', padding: '40', headerStyle: 'gradient' },
+    step_key: row.step_key ?? null,
+    auto_enabled: row.auto_enabled ?? false,
   };
 }
 
@@ -242,6 +266,11 @@ export function templateToDbPayload(tpl, gymId) {
     name: tpl.name,
     template_type: tpl.type,
     is_prebuilt: false,
+    // Which automated moment this template serves, and whether it's live.
+    // Both default to "manual only" (mig 0687) so nothing starts sending on its
+    // own just because a template exists.
+    step_key: tpl.step_key || null,
+    auto_enabled: !!tpl.auto_enabled,
     template_data: {
       header: tpl.header,
       hero: tpl.hero,
@@ -250,6 +279,9 @@ export function templateToDbPayload(tpl, gymId) {
       reward: tpl.reward,
       footer: tpl.footer,
       colors: tpl.colors,
+      // generateEmailHtml reads this and the editor has a full panel for it,
+      // but it was never persisted — so it was edit-only and lost on save.
+      typography: tpl.typography,
     },
   };
 }

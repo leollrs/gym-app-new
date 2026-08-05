@@ -6,12 +6,22 @@ export const PROD_WEB_URL = 'https://app.tugympr.com';
 
 export const PROD_RESET_URL = `${PROD_WEB_URL}/auth/reset-password`;
 
-// App store links for the "download the app" landing. Left empty until launch —
-// AppDownloadLanding shows a "coming soon" state while these are blank, and real
-// store buttons the moment they're filled in. Set both here and it updates
-// everywhere automatically.
-export const APP_STORE_URL = '';
-export const PLAY_STORE_URL = '';
+// App store links for the "download the app" landing. AppDownloadLanding shows
+// the real store badges when these are set and a "coming soon" pill when they
+// are blank, so emptying them is a safe kill switch.
+//
+// NOTE: this is only HALF the wiring. The invite/access emails read their store
+// links from `app_config` (the same row `get_app_version` serves the update
+// banner), because an edge function can't import from src/. Both have to be
+// filled in — super-admin → Settings → App Version covers the DB side.
+//
+// Live as of 2026-08-03. The Play link deliberately drops the
+// `&pcampaignid=web_share` that Google's share sheet appends — that parameter
+// attributes the install to "someone tapped share inside the Play app", which is
+// not where any of these links come from. Baking it in would misreport every
+// install we drive from an invite, an email or a shared poster.
+export const APP_STORE_URL = 'https://apps.apple.com/us/app/tugympr/id6761966829';
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.tugympr.app';
 
 // Public share link for a trainer profile. Smart link:
 //  • app installed → iOS/Android universal link opens the app on the profile

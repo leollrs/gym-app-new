@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MessageSquare, Mail, Phone, CheckCircle, Send, Gift, Smartphone, MessageCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
@@ -22,6 +22,23 @@ export default function ContactPanel({
 }) {
   const { t } = useTranslation('pages');
   const { showToast } = useToast();
+
+  // ── El idioma del MENSAJE, que no es el de la interfaz ──
+  //
+  // Las plantillas se construían con el `t` del admin, así que el idioma del
+  // texto que recibe el miembro dependía de en qué idioma estuviera el panel
+  // del gimnasio. Y peor: smsTplMissYou/CheckIn/NewClasses no existían en
+  // NINGÚN locale, así que siempre caían al defaultValue inglés del código —
+  // por eso salía en inglés incluso con el panel en español.
+  //
+  // Ahora arranca en el idioma del miembro y el admin puede cambiarlo: un
+  // mensaje de retención en el idioma equivocado se lee como un robot, que es
+  // exactamente lo contrario de lo que este panel intenta conseguir.
+  const [msgLang, setMsgLang] = useState(() =>
+    (member?.preferred_language || i18n.language || 'en').startsWith('es') ? 'es' : 'en');
+  // getFixedT ata la traducción a un idioma concreto, independiente del de la UI.
+  const tMsg = useMemo(() => i18n.getFixedT(msgLang, 'pages'), [msgLang]);
+  const memberLangKnown = !!member?.preferred_language;
   const [notifMsg, setNotifMsg] = useState('');
   const [notifSending, setNotifSending] = useState(false);
   const [notifSent, setNotifSent] = useState(false);
@@ -51,6 +68,10 @@ export default function ContactPanel({
   const [waTo, setWaTo] = useState('');
   const [waBody, setWaBody] = useState('');
   const [waSent, setWaSent] = useState(false);
+  // Tras abrir WhatsApp no sabemos si llegó — solo el admin lo sabe. Este
+  // estado sostiene la pregunta y la salida por SMS.
+  const [waAwaitingConfirm, setWaAwaitingConfirm] = useState(false);
+  const [waFallbackSending, setWaFallbackSending] = useState(false);
 
   // Email state (must be before useEffect that references setEmailTo)
   const [emailTo, setEmailTo] = useState(email || '');
@@ -145,11 +166,15 @@ export default function ContactPanel({
 
       // Encrypt and send as DM
       const encrypted = await encryptMessage(notifMsg.trim(), convoId, seed);
-      await supabase.from('direct_messages').insert({
+      // Destructurar el error, no confiar en el catch: el builder resuelve con
+      // {error} y nunca lanza, así que un DM que no se escribía igual llegaba
+      // al toast "¡Mensaje enviado!" de abajo.
+      const { error: dmErr } = await supabase.from('direct_messages').insert({
         conversation_id: convoId,
         sender_id: adminId,
         body: encrypted,
       });
+      if (dmErr) throw dmErr;
       await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
 
       // Also fire a push so the member's phone buzzes. AWAIT it and surface the
@@ -268,12 +293,68 @@ export default function ContactPanel({
       showToast(t('admin.churn.invalidPhone', 'Please enter a valid phone number'), 'error');
       return;
     }
-    logAdminAction('send_whatsapp', 'member', member.id);
+    // Abrir NO es enviar. `openWhatsApp` devuelve true si se pudo CONSTRUIR el
+    // enlace — nada más; y `hasWhatsApp()` solo comprueba que el número sea
+    // marcable, no que esté registrado en WhatsApp. wa.me abre la app o una
+    // página de "número no válido", y no hay ningún callback: el navegador no
+    // puede saber si se entregó. Antes se marcaba contactado igualmente, así
+    // que un miembro sin WhatsApp quedaba registrado como contactado y salía
+    // de la cola sin que nadie hubiera hablado con él.
+    //
+    // Se pregunta, que es lo único honesto, y se ofrece la salida por SMS.
+    logAdminAction('open_whatsapp', 'member', member.id);
+    setWaAwaitingConfirm(true);
+    showToast(t('admin.churn.whatsappOpened', 'Opening WhatsApp…'), 'info');
+  };
+
+  // "Sí, llegó" — el admin lo vio salir en su propio WhatsApp.
+  const confirmWhatsAppSent = () => {
+    setWaAwaitingConfirm(false);
     setWaSent(true);
     onMarkContacted(member.id, 'whatsapp', waBody.trim() || null);
     recordLocal('whatsapp', waBody.trim() || null);
-    showToast(t('admin.churn.whatsappOpened', 'Opening WhatsApp…'), 'success');
-    setTimeout(() => { setWaSent(false); setActiveChannel(null); setWaBody(''); }, 1500);
+    setTimeout(() => { setWaSent(false); setActiveChannel(null); setWaBody(''); }, 1200);
+  };
+
+  // "No tiene WhatsApp" — se manda el MISMO texto por el número de Twilio del
+  // gimnasio. Este es el fallback que faltaba: hasta ahora el admin se quedaba
+  // sin camino y el miembro sin mensaje.
+  const sendWhatsAppFallbackSms = async () => {
+    const body = waBody.trim();
+    if (!body) {
+      showToast(t('admin.churn.smsEmpty', 'Write a message first'), 'error');
+      return;
+    }
+    setWaFallbackSending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('No active session');
+      const payload = { memberId: member.id, body, source: 'manual' };
+      const norm = (s) => (s || '').replace(/[\s().-]/g, '');
+      if (waTo && norm(waTo) !== norm(memberPhone)) payload.overridePhone = waTo.trim();
+
+      const { data, error: fnError } = await supabase.functions.invoke('send-sms', {
+        body: payload,
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (fnError) throw fnError;
+      if (data?.error) { showToast(data.error, 'error'); return; }
+
+      if (data?.usage) setSmsUsage(data.usage);
+      logAdminAction('send_sms', 'member', member.id, { fallback_from: 'whatsapp' });
+      setWaAwaitingConfirm(false);
+      setWaSent(true);
+      // Se registra como SMS, que es lo que realmente salió.
+      onMarkContacted(member.id, 'sms', body);
+      recordLocal('sms', body);
+      showToast(t('admin.churn.waFallbackSent', 'Sent by SMS instead'), 'success');
+      setTimeout(() => { setWaSent(false); setActiveChannel(null); setWaBody(''); }, 1200);
+    } catch (err) {
+      logger.error('ContactPanel: WhatsApp→SMS fallback failed:', err);
+      showToast(t('admin.churn.smsSendFailed', 'Failed to send SMS. Please try again.'), 'error');
+    } finally {
+      setWaFallbackSending(false);
+    }
   };
 
   const smsSegments = smsBody.length <= 160 ? 1 : 2;
@@ -302,7 +383,9 @@ export default function ContactPanel({
     }
     setEmailSending(true);
     try {
-      const reqBody = { memberId: member.id, subject: emailSubject.trim(), body: emailBody.trim(), lang: i18n.language?.startsWith('es') ? 'es' : 'en' };
+      // msgLang, no i18n.language: el correo se envuelve en la plantilla del
+      // gimnasio en ESE idioma, y quien lo lee es el miembro, no el admin.
+      const reqBody = { memberId: member.id, subject: emailSubject.trim(), body: emailBody.trim(), lang: msgLang };
       // Only flag as override when the admin actually changed the
       // recipient. Compare on trimmed lowercase so cosmetic-only
       // differences don't trigger the spoofing-protection branch
@@ -432,6 +515,43 @@ export default function ContactPanel({
         </div>
 
         {/* Email compose */}
+        {/* Idioma del mensaje — gobierna las plantillas de TODOS los canales.
+            Arranca en el del miembro; el admin manda. Un mensaje de retención
+            en el idioma equivocado se lee como un robot, y eso es justo lo
+            contrario de lo que este panel intenta hacer. */}
+        {activeChannel && (
+          <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl"
+            style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-admin-border)' }}>
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--color-admin-text-muted)' }}>
+              {t('admin.churn.msgLanguage', 'Message language')}
+            </span>
+            <div className="flex items-center gap-1">
+              {['es', 'en'].map((lng) => {
+                const on = msgLang === lng;
+                // Se marca cuál es el idioma del propio miembro, para que
+                // cambiarlo sea una decisión y no un descuido.
+                const isTheirs = memberLangKnown
+                  && (member.preferred_language || '').startsWith(lng === 'es' ? 'es' : 'en');
+                return (
+                  <button
+                    key={lng}
+                    type="button"
+                    onClick={() => setMsgLang(lng)}
+                    className="px-2.5 py-1 rounded-lg text-[11.5px] font-bold transition-colors"
+                    style={{
+                      background: on ? 'var(--color-accent)' : 'var(--color-bg-card)',
+                      color: on ? 'var(--color-text-on-accent, #000)' : 'var(--color-admin-text-sub)',
+                      border: `1px solid ${on ? 'transparent' : 'var(--color-admin-border)'}`,
+                    }}
+                  >
+                    {lng.toUpperCase()}{isTheirs ? ' ·' : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {emailMode && email && (
           <div>
             <SectionLabel icon={Mail} className="mb-2">{t('admin.churn.composeEmail', 'Send Email')}</SectionLabel>
@@ -454,7 +574,7 @@ export default function ContactPanel({
               <div className="mb-3">
                 <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
                 <div className="flex flex-col gap-1.5">
-                  {getEmailTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
+                  {getEmailTemplates(tMsg, member.full_name.split(' ')[0]).map((tpl) => (
                     <button key={tpl.key} onClick={() => { setEmailSubject(tpl.subject); setEmailBody(tpl.body); }}
                       className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg text-left hover:border-[#60A5FA]/30 hover:bg-[#60A5FA]/5 transition-all">
                       <Mail size={12} className="text-[#60A5FA] flex-shrink-0" />
@@ -534,7 +654,7 @@ export default function ContactPanel({
               <div className="mb-3">
                 <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
                 <div className="flex flex-col gap-1.5">
-                  {getSmsTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
+                  {getSmsTemplates(tMsg, member.full_name.split(' ')[0]).map((tpl) => (
                     <button key={tpl.key} onClick={() => setSmsBody(tpl.body)}
                       className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg text-left hover:border-[#F59E0B]/30 hover:bg-[#F59E0B]/5 transition-all">
                       <Smartphone size={12} className="text-[#F59E0B] flex-shrink-0" />
@@ -617,7 +737,7 @@ export default function ContactPanel({
               <div className="mb-3">
                 <p className="text-[10px] font-semibold text-[var(--color-admin-text-faint)] uppercase tracking-wider mb-1.5">{t('admin.churn.quickTemplates', 'Quick templates')}</p>
                 <div className="flex flex-col gap-1.5">
-                  {getSmsTemplates(t, member.full_name.split(' ')[0]).map((tpl) => (
+                  {getSmsTemplates(tMsg, member.full_name.split(' ')[0]).map((tpl) => (
                     <button key={tpl.key} onClick={() => setWaBody(tpl.body)}
                       className="flex items-center gap-2 px-3 py-2 bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] rounded-lg text-left hover:border-[#25D366]/30 hover:bg-[#25D366]/5 transition-all">
                       <MessageCircle size={12} className="text-[#25D366] flex-shrink-0" />
@@ -640,6 +760,41 @@ export default function ContactPanel({
                 {t('admin.churn.whatsappNote', 'Opens WhatsApp with your message ready — sends from your own number.')}
               </p>
 
+              {/* Tras abrir WhatsApp: la pregunta y la salida por SMS. WhatsApp
+                  no devuelve ninguna señal de entrega, así que marcar
+                  automáticamente era inventarse un dato. */}
+              {waAwaitingConfirm ? (
+                <div className="rounded-xl p-3" style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-admin-border)' }}>
+                  <p className="text-[12.5px] font-semibold" style={{ color: 'var(--color-admin-text)' }}>
+                    {t('admin.churn.waConfirmTitle', 'Did it go through?')}
+                  </p>
+                  <p className="text-[10.5px] mt-0.5 mb-2.5" style={{ color: 'var(--color-admin-text-faint)' }}>
+                    {t('admin.churn.waConfirmHint', "WhatsApp can't tell us whether it was delivered — only you can.")}
+                  </p>
+                  {/* Fila 100 / 50-50: cada acción con su propia superficie de
+                      botón, ninguna como enlace pelado. */}
+                  <button onClick={confirmWhatsAppSent} disabled={waFallbackSending}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40 mb-2"
+                    style={{ background: '#25D366', color: '#ffffff', border: '1px solid transparent' }}>
+                    <CheckCircle size={14} /> {t('admin.churn.waConfirmYes', 'Yes, mark contacted')}
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={sendWhatsAppFallbackSms} disabled={waFallbackSending}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12.5px] font-semibold transition-colors disabled:opacity-40"
+                      style={{ background: 'var(--color-bg-card)', color: 'var(--color-admin-text)', border: '1px solid var(--color-admin-border)' }}>
+                      <Smartphone size={13} />
+                      {waFallbackSending
+                        ? t('admin.churn.smsSending', 'Sending…')
+                        : t('admin.churn.waNoWhatsapp', 'No WhatsApp — send SMS instead')}
+                    </button>
+                    <button onClick={() => { setWaAwaitingConfirm(false); setActiveChannel(null); setWaBody(''); }}
+                      disabled={waFallbackSending}
+                      className="px-3 py-2.5 rounded-xl text-[12px] font-medium text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] bg-[var(--color-bg-subtle)] border border-[var(--color-admin-border)] transition-colors disabled:opacity-40">
+                      {t('common:cancel', 'Cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="flex items-center gap-2">
                 <button onClick={handleOpenWhatsApp} disabled={waSent || (waTo && !isValidPhone(waTo))}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40"
@@ -651,6 +806,7 @@ export default function ContactPanel({
                   {t('common:cancel', 'Cancel')}
                 </button>
               </div>
+              )}
             </div>
           </div>
         )}

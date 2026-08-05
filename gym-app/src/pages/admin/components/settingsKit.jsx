@@ -7,7 +7,7 @@
    Ajustes sub-pages. Presentation only — all data/save logic stays in
    the page components.
    ============================================================ */
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { TK, FK, TONE, Ico, ICON, Card } from './retosKit';
 
 export { TK, FK, TONE, Ico, ICON, Card };
@@ -42,6 +42,7 @@ export const DIC = {
 /** Sub-page header: title + subtitle on the left, optional extra + a "back to
  *  Configuración" pill on the right. */
 export function SettingsHeader({ t, title, sub, extra }) {
+  const navigate = useNavigate();
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
       <div style={{ minWidth: 0 }}>
@@ -50,9 +51,22 @@ export function SettingsHeader({ t, title, sub, extra }) {
       </div>
       <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
         {extra}
-        <Link to="/admin/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 999, background: TK.surface, border: `1px solid ${TK.borderSolid}`, boxShadow: TK.shadow, fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.textSub, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+        {/* Pop, no push. Un <Link to="/admin/settings"> detrás de una flecha de
+            atrás EMPUJA una entrada nueva: el historial queda
+            [hub, branding, hub] y el botón Atrás del dispositivo devuelve a
+            branding — un bucle. `replace:true` tampoco lo arregla, porque
+            sigue siendo navegación hacia adelante. Se hace pop cuando hay algo
+            que popear, y solo se cae al hub cuando se entró por enlace directo
+            (idx 0), donde no hay atrás al que volver. */}
+        <button
+          type="button"
+          onClick={() => {
+            if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
+            else navigate('/admin/settings');
+          }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 999, background: TK.surface, border: `1px solid ${TK.borderSolid}`, boxShadow: TK.shadow, fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.textSub, whiteSpace: 'nowrap', cursor: 'pointer' }}>
           <Ico ch={DIC.back} size={15} color={TK.textSub} stroke={2.2} />{t('admin.settings.title', 'Settings')}
-        </Link>
+        </button>
       </div>
     </div>
   );

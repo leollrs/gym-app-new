@@ -423,7 +423,12 @@ async function checkClassReminders(
   today: string,
   when: 'today' | 'tomorrow',
 ) {
-  if (member.notif_workout_reminders === false) return;
+  // El guard de `notif_workout_reminders` NO va aquí arriba. Es una preferencia
+  // de PUSH — vive en la sección de push de los ajustes, bajo el maestro
+  // notif_push_enabled — y ponerla en la puerta mataba también el correo, que
+  // tiene su propio consentimiento (notif_email_classes). Un miembro con el
+  // push apagado y el correo encendido no recibía nada. Ahora cada canal decide
+  // por su cuenta, más abajo.
 
   // `today` is already the member's LOCAL calendar date (Intl, member.timezone),
   // so tomorrow is that date +1 day — computed on the date string, not on the
@@ -469,17 +474,73 @@ async function checkClassReminders(
       ? `${className} a las ${startTime}.${when === 'tomorrow' ? ' Si no puedes ir, cancela para liberar el cupo.' : ''}`
       : `${className} at ${startTime}.${when === 'tomorrow' ? " Can't make it? Cancel to free the spot." : ''}`;
 
-    const dedupKey = `class_${when}_${b.id}_${targetDate}`;
-    const inserted = await insertNotif(
-      supabase, member.id, member.gym_id, 'class_reminder', title, body, dedupKey,
-    );
-    if (inserted) {
-      await sendPush(
-        supabase, member.id, title, body,
-        { route: '/classes', type: 'class_reminder' },
-        isQuietHours(member.timezone),
+    // ── Canal 1+2: in-app y push, con la preferencia de push ──
+    // Comportamiento idéntico al de antes: quien tenga notif_workout_reminders
+    // apagado no ve la notificación ni recibe el push.
+    if (member.notif_workout_reminders !== false) {
+      const dedupKey = `class_${when}_${b.id}_${targetDate}`;
+      const inserted = await insertNotif(
+        supabase, member.id, member.gym_id, 'class_reminder', title, body, dedupKey,
       );
+      if (inserted) {
+        await sendPush(
+          supabase, member.id, title, body,
+          { route: '/classes', type: 'class_reminder' },
+          isQuietHours(member.timezone),
+        );
+      }
     }
+
+    // ── Canal 3: correo, independiente ──
+    //
+    // Ya no cuelga de que insertNotif haya creado fila. Su dedup vive en
+    // automated_email_log (0691), reclamado por clave dentro de
+    // send-automated-email, así que la clase se identifica por RESERVA y FECHA
+    // — no por `when`. Eso resuelve las dos cosas a la vez: el correo llega
+    // aunque el push esté apagado, y las dos pasadas del día (víspera y mañana)
+    // reclaman la MISMA clave, así que solo sale uno.
+    //
+    // Se dispara en las dos pasadas a propósito: si el miembro reserva el mismo
+    // día, la pasada de la víspera nunca corrió para esa reserva y la de la
+    // mañana es la única oportunidad. La clave impide el duplicado.
+    //
+    // send-automated-email re-comprueba consentimiento y supresión, y no hace
+    // nada si el gimnasio no tiene plantilla 'classes' encendida.
+    await fireAutomatedEmail(
+      supabase, member.id, 'classes', 'classes', `class_${b.id}_${targetDate}`,
+    );
+  }
+}
+
+/**
+ * Ask the automated-email sender to try this member. Deliberately silent on
+ * failure: the in-app notification and the push have already gone out, and a
+ * mail problem must not fail the reminder run for everyone behind this member.
+ */
+async function fireAutomatedEmail(
+  supabase: ReturnType<typeof createClient>,
+  profileId: string,
+  scope: string,
+  stepKey: string,
+  // Identifica ESTE envío. send-automated-email lo reclama contra el índice
+  // único de automated_email_log antes de mandar nada, así que dos pasadas con
+  // la misma clave producen un solo correo.
+  dedupKey?: string,
+) {
+  try {
+    const url = Deno.env.get('SUPABASE_URL');
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!url || !key) return;
+    await fetch(`${url}/functions/v1/send-automated-email`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profile_id: profileId, scope, step_key: stepKey,
+        ...(dedupKey ? { dedup_key: dedupKey } : {}),
+      }),
+    });
+  } catch (e) {
+    console.warn('fireAutomatedEmail skipped:', e);
   }
 }
 

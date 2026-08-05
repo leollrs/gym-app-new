@@ -18,13 +18,66 @@ export const TEMPLATE_TYPES = [
   { key: 'custom', icon: '\u{270F}\u{FE0F}' },
 ];
 
+/**
+ * Tokens que el editor ofrece.
+ *
+ * `auto: true` = solo los rellena el envío AUTOMÁTICO, vía member_email_context
+ * (mig 0686) + buildLinks (send-automated-email). El envío manual de Outreach
+ * no los conoce, así que no se ofrecen en una plantilla sin `step_key` — que es
+ * exactamente cómo se cuela un {{token}} literal en el buzón de un cliente.
+ *
+ * `scopes` limita el token al momento que le da sentido. Un correo de win-back
+ * va a alguien que CANCELÓ: no tiene plan de hoy, y ofrecer el token produce
+ * frases absurdas. El renderizador blanquea la línea entera si no resuelve, así
+ * que el daño está acotado, pero no ofrecerlo es mejor que blanquearlo.
+ */
 export const TEMPLATE_VARIABLES = [
+  // Disponibles siempre: los rellenan los dos caminos.
   { key: 'member_name', token: '{{member_name}}' },
+  { key: 'first_name', token: '{{first_name}}' },
   { key: 'gym_name', token: '{{gym_name}}' },
   { key: 'streak_count', token: '{{streak_count}}' },
   { key: 'workout_count', token: '{{workout_count}}' },
   { key: 'days_inactive', token: '{{days_inactive}}' },
+
+  // Solo automático — de member_email_context.
+  { key: 'gym_address', token: '{{gym_address}}', auto: true },
+  { key: 'today_plan_name', token: '{{today_plan_name}}', auto: true, scopes: ['lifecycle'] },
+  { key: 'next_class_name', token: '{{next_class_name}}', auto: true, scopes: ['lifecycle', 'classes'] },
+  { key: 'next_class_date', token: '{{next_class_date}}', auto: true, scopes: ['lifecycle', 'classes'] },
+  { key: 'next_class_time', token: '{{next_class_time}}', auto: true, scopes: ['lifecycle', 'classes'] },
+  { key: 'next_class_instructor', token: '{{next_class_instructor}}', auto: true, scopes: ['lifecycle', 'classes'] },
+  { key: 'last_class_name', token: '{{last_class_name}}', auto: true, scopes: ['winback'] },
+
+  // Solo automático — enlaces que abren la app (buildLinks).
+  { key: 'today_plan_url', token: '{{today_plan_url}}', auto: true, scopes: ['lifecycle'] },
+  { key: 'next_class_url', token: '{{next_class_url}}', auto: true, scopes: ['lifecycle', 'classes'] },
+  { key: 'classes_url', token: '{{classes_url}}', auto: true },
+  { key: 'checkin_url', token: '{{checkin_url}}', auto: true },
+  { key: 'app_url', token: '{{app_url}}', auto: true },
 ];
+
+/**
+ * La familia de un step_key. El prefijo `winback_` es lo único que separa un
+ * "te extrañamos" de un "bienvenido al equipo" cuando ambos flujos usan day_7
+ * (mig 0688).
+ */
+export function stepFamily(stepKey) {
+  if (!stepKey) return null;             // manual
+  if (stepKey.startsWith('winback_')) return 'winback';
+  if (stepKey === 'classes') return 'classes';
+  return 'lifecycle';
+}
+
+/** Los tokens que de verdad resuelven para el momento asignado a la plantilla. */
+export function variablesForStep(stepKey) {
+  const family = stepFamily(stepKey);
+  return TEMPLATE_VARIABLES.filter(v => {
+    if (!v.auto) return true;            // siempre disponible
+    if (!family) return false;           // plantilla manual: nada automático
+    return !v.scopes || v.scopes.includes(family);
+  });
+}
 
 export const defaultTemplate = (gymName, primaryColor, t) => ({
   id: crypto.randomUUID(),

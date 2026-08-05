@@ -11,7 +11,7 @@ import { format, subDays, subMonths } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
-import { selectInBatches } from '../../lib/churn/batchedSelect.js';
+import { selectAllInBatches } from '../../lib/churn/batchedSelect.js';
 import { encryptMessage } from '../../lib/messageEncryption';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -516,16 +516,32 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
       const ids = members.map(m => m.id);
       if (!ids.length) return {};
       // Segment can match all gym members — batch to avoid HTTP 414.
-      const { data } = await selectInBatches(
-        (chunk) => supabase
+      //
+      // selectInBatches trocea la lista de ids para la URL pero NO pagina: cada
+      // trozo seguía tapado en 1000 filas. Y churn_risk_scores lleva una fila
+      // por miembro POR DÍA, así que un trozo de 200 se saturaba en ~5 días y
+      // el reducer se quedaba con la ÚLTIMA fila vista — un nivel de riesgo
+      // histórico al azar. segmentFilters.js:183-208 hacía esto bien desde el
+      // principio, así que la lista de segmentos y el filtro de pertenencia se
+      // contradecían sobre el mismo miembro, en la misma pantalla, justo antes
+      // de pulsar "Mensajear a todos". Este es ese patrón, copiado.
+      const churnSince = new Date(Date.now() - 7 * 86400_000).toISOString();
+      const { data } = await selectAllInBatches(
+        (chunk, lo, hi) => supabase
           .from('churn_risk_scores')
-          .select('profile_id, risk_tier, score')
+          .select('profile_id, risk_tier, score, computed_at')
           .eq('gym_id', gymId)
-          .in('profile_id', chunk),
+          .in('profile_id', chunk)
+          .gte('computed_at', churnSince)
+          .order('computed_at', { ascending: false })
+          .order('profile_id', { ascending: true })
+          .range(lo, hi),
         ids
       );
+      // Llegan de más nuevo a más viejo: la primera fila que se ve de cada
+      // miembro es la vigente, y las posteriores se ignoran.
       const map = {};
-      (data || []).forEach(r => { map[r.profile_id] = r; });
+      (data || []).forEach(r => { if (!map[r.profile_id]) map[r.profile_id] = r; });
       return map;
     },
     enabled: !!members.length,
@@ -588,7 +604,13 @@ function SegmentDetailPanel({ segment, gymId, adminId, onEdit, t }) {
         const { data: convo } = await supabase.from('conversations').select('encryption_seed').eq('id', convoId).single();
         const seed = convo?.encryption_seed || convoId;
         const encrypted = await encryptMessage(message, convoId, seed);
-        await supabase.from('direct_messages').insert({ conversation_id: convoId, sender_id: adminId, body: encrypted });
+        // El error se destructura y se lanza: un builder de Supabase RESUELVE
+        // con {error} y nunca lanza, así que este try/catch no lo veía y
+        // `sent++` corría igual. Un fallo de RLS o de constraint producía
+        // "Enviado a 240 miembros" con cero filas escritas.
+        const { error: dmErr } = await supabase.from('direct_messages')
+          .insert({ conversation_id: convoId, sender_id: adminId, body: encrypted });
+        if (dmErr) throw dmErr;
         await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', convoId);
         sent++;
       } catch (err) {

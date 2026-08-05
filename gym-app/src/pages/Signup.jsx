@@ -10,6 +10,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { validateEmail, suggestEmailCorrection } from '../lib/validateEmail';
 import { titleCaseName } from '../lib/nameCase';
+// Shared with Onboarding + the admin Add Member modal. The local copy this
+// replaced capped input at 11 alphanumerics, which silently truncated every
+// referral code minted since mig 0653 widened them to 8 hex chars.
+import { formatReferralCode } from '../lib/referralCode';
 import DobPicker from '../components/DobPicker';
 
 // ─── Warm-paper design tokens (branded auth, pre-gym-theme) ───────────
@@ -465,8 +469,14 @@ const Signup = () => {
           ...((!f.firstName && !f.lastName1) ? splitFullName(gymLookup.full_name) : {}),
           email: f.email || gymLookup.email || '',
           gymSlug: gym?.slug || f.gymSlug,
+          // The referrer the admin attached when they created this invite
+          // (gym_invites.referral_code_id). `referral_code` is the join added in
+          // mig 0678 — before that this field arrived empty and the referrer was
+          // never credited. Only seeded when the user hasn't typed their own.
+          referralCode: f.referralCode || formatReferralCode(gymLookup.referral_code || ''),
         }));
         setGymName(gym?.name || '');
+        if (gymLookup.referral_code) validateReferralCode(formatReferralCode(gymLookup.referral_code));
         return;
       }
 
@@ -566,17 +576,6 @@ const Signup = () => {
       setReferralStatus('invalid');
       setReferralData(null);
     }
-  };
-
-  // Referral codes are stored as REF-XXXX-XXXX (3-4-4 alphanumeric, two dashes).
-  // Auto-format the input as the user types so they never have to type "-":
-  // strip non-alphanumerics, uppercase, then insert dashes at positions 3 and 7.
-  // Cap raw length at 11 so the formatted string maxes out at "REF-XXXX-XXXX" (13 chars).
-  const formatReferralCode = (raw) => {
-    const cleaned = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 11);
-    if (cleaned.length <= 3) return cleaned;
-    if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
-    return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
   };
 
   const handleReferralChange = (e) => {
@@ -1550,7 +1549,7 @@ const Signup = () => {
                     type="text"
                     value={form.referralCode}
                     onChange={handleReferralChange}
-                    placeholder="REF-XXXX-XXXX"
+                    placeholder="REF-XXXX-XXXXXXXX"
                     maxLength={13}
                     autoCapitalize="characters"
                     autoCorrect="off"

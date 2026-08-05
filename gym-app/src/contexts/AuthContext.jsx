@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase, recoverDeadSession } from '../lib/supabase';
+import { supabase, recoverDeadSession, purgePersistedAuthToken } from '../lib/supabase';
+import { clearDurable } from '../lib/durableStorage';
 import logger from '../lib/logger';
 import { titleCaseName } from '../lib/nameCase';
 import { applyBranding, cacheBranding } from '../lib/branding';
@@ -80,6 +81,16 @@ const clearPersistedUserData = () => {
   } catch { /* localStorage may be unavailable */ }
 
   try { sessionStorage.clear(); } catch {}
+
+  // localStorage is only HALF the story on native. durableStorage mirrors
+  // offline_profile / offline_gym / offline_branding / the query cache / every
+  // workout draft into @capacitor/preferences, which survives an app kill and
+  // an overwrite install — and re-hydrates them into localStorage on the next
+  // cold boot, BEFORE React mounts. Clearing only localStorage meant a logout
+  // held until the app was killed, then handed the previous member their
+  // account back. Returns the promise so callers that need it gone before they
+  // navigate (signOut) can await it.
+  return clearDurable();
 };
 
 export const AuthProvider = ({ children }) => {
@@ -737,6 +748,9 @@ export const AuthProvider = ({ children }) => {
     if (isSessionExpired(SESSION_MAX_AGE_MS)) {
       forcedSignOut = true;
       try { clearSessionCreatedAt(); } catch {}
+      // Not awaited — this runs inside a synchronous auth-event handler. The
+      // durable half never rejects (clearDurable swallows plugin errors), so
+      // there is no floating rejection; it just finishes a tick later.
       try { clearPersistedUserData(); } catch {}
       // CLEAR THE IN-MEMORY IDENTITY TOO. `user` and `profile` are hydrated
       // synchronously from `offline_profile` at mount (see useState above), and
@@ -1171,7 +1185,10 @@ export const AuthProvider = ({ children }) => {
   // the button looked broken.
   const signOut = useCallback(async () => {
     try { if (user?.id) await removePushTokens(user.id); } catch (err) { console.warn('[signOut] removePushTokens failed:', err); }
-    try { clearPersistedUserData(); } catch (err) { console.warn('[signOut] clearPersistedUserData failed:', err); }
+    // AWAITED. The durable half of this is async, and navigating to /login while
+    // offline_profile is still sitting in Preferences leaves the next cold start
+    // free to hydrate the account straight back.
+    try { await clearPersistedUserData(); } catch (err) { console.warn('[signOut] clearPersistedUserData failed:', err); }
     try { localStorage.removeItem('tugympr_active_view'); } catch { /* noop */ }
     try { localStorage.removeItem('tugympr_landing_hint'); } catch { /* noop */ }
     try { setActiveView(null); } catch { /* noop */ }
@@ -1180,16 +1197,12 @@ export const AuthProvider = ({ children }) => {
       await supabase.auth.signOut();
     } catch (err) {
       console.error('[signOut] supabase.auth.signOut failed:', err);
-      // Last resort: clear the auth-token from localStorage so the next
-      // session check sees a logged-out state.
-      try {
-        for (let i = 0; i < localStorage.length; i += 1) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
-            localStorage.removeItem(k);
-          }
-        }
-      } catch { /* noop */ }
+      // Last resort: clear the persisted token so the next session check sees a
+      // logged-out state. This used to sweep localStorage only — which on native
+      // is the one place the token is NEVER written (the Capacitor adapter in
+      // supabase.js stores it in @capacitor/preferences), so on a phone the
+      // fallback cleared nothing and a failed signOut left the member signed in.
+      try { await purgePersistedAuthToken(); } catch { /* noop */ }
     }
     // Always navigate explicitly. Without this, the success path relies on the
     // SIGNED_OUT auth event cascading through React Router, which races against
@@ -1205,7 +1218,7 @@ export const AuthProvider = ({ children }) => {
     const { error } = await supabase.rpc('delete_user_account');
     if (error) throw new Error(error.message || 'Failed to delete account. Please try again.');
 
-    clearPersistedUserData();
+    await clearPersistedUserData();
     await supabase.auth.signOut();
     safeNavigate('/login', { replace: true });
   }, []);

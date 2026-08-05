@@ -371,7 +371,41 @@ export default function MyGym() {
                   return (
                     <div
                       key={sched.id}
-                      onClick={() => navigate('/classes')}
+                      // Classes already knows how to focus one: `?class=<scheduleId>&d=<date>`
+                      // moves the day strip to that date and opens its detail sheet
+                      // (Classes.jsx:1082). This row just never passed anything, so every
+                      // upcoming class dropped you on today's generic list and you had to
+                      // find it again yourself.
+                      //
+                      // The date is built from LOCAL parts, not toISOString() — that is UTC,
+                      // and for anyone west of Greenwich an evening class lands on the
+                      // previous day, which is exactly the bug this is fixing.
+                      onClick={() => {
+                        // Derive the date from day_of_week, NOT from `daysAway`.
+                        // daysAway is computed once at fetch (:169) against that
+                        // day's todayDow, and `upcomingClasses` is useCachedState
+                        // — localStorage, surviving cold starts. Opening MyGym on
+                        // Monday cached "Wednesday = +2"; cold-starting on
+                        // Wednesday and tapping before the refetch landed gave
+                        // Wednesday+2 = Friday. That is not cosmetic: Classes
+                        // matches the schedule by id alone and books whatever
+                        // date it was handed, and book_class does not validate
+                        // the date against the schedule — so it wrote a real
+                        // booking on the wrong day.
+                        const dow = sched.day_of_week;
+                        if (typeof dow !== 'number' || dow < 0 || dow > 6) {
+                          // One-off schedules carry specific_date with a NULL
+                          // day_of_week (0182). This query selects neither, so
+                          // rather than invent a date, focus the class and let
+                          // Classes resolve its own day.
+                          navigate(`/classes?class=${encodeURIComponent(sched.id)}`);
+                          return;
+                        }
+                        const d = new Date();
+                        d.setDate(d.getDate() + ((dow - d.getDay() + 7) % 7));
+                        const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                        navigate(`/classes?class=${encodeURIComponent(sched.id)}&d=${ymd}`);
+                      }}
                       className="flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors active:scale-[0.98]"
                       style={{ backgroundColor: 'var(--color-bg-secondary)' }}
                     >
