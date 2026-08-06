@@ -68,6 +68,30 @@ export default function PlatformLayout({ children }) {
   // Landing on the platform tier means impersonation (if any) has ended — clear
   // it so a lingering "view as gym admin" can't bleed into the platform view.
   useEffect(() => { if (isImpersonating) stopImpersonating(); }, [isImpersonating, stopImpersonating]);
+
+  /**
+   * La consola de plataforma es SIEMPRE oscura, siga el tema que siga la app.
+   *
+   * No es capricho: 25 de sus 29 ficheros pintan con hex en `style` en línea
+   * (~2.000 colores), y un estilo en línea no lo alcanza ninguna regla de
+   * intercepción de index.css. Este armazón sí seguía el tema porque usa clases
+   * de Tailwind, así que en modo claro salía la barra lateral clara con todo el
+   * contenido negro — mitad y mitad. Esto lo hace coherente sin tocar las 25
+   * páginas.
+   *
+   * La clase va en <html> y no en un div para que la hereden también los
+   * modales que salgan por portal a document.body: dentro de un div se quedarían
+   * fuera y aparecerían claros sobre una página negra.
+   *
+   * La limpieza del `return` NO es opcional: sin ella, salir de /platform hacia
+   * el panel del gimnasio dejaría la app entera clavada en oscuro aunque el
+   * usuario tenga el tema claro, y el interruptor de Ajustes parecería roto.
+   */
+  useEffect(() => {
+    document.documentElement.classList.add('platform-dark');
+    return () => document.documentElement.classList.remove('platform-dark');
+  }, []);
+
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   // View switcher (P2-9): the platform tier had no way to flip into the admin

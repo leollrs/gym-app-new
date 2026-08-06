@@ -829,11 +829,24 @@ const ProtectedRoute = ({ children }) => {
   // Super admins always go to /platform — they don't have a member
   // experience even if technically `member` is in additional_roles.
   if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
-  if (!profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   // Route based on the user's chosen view, not their primary role. A
   // trainer who switched to member view stays here.
+  //
+  // ESTAS DOS VAN ANTES DEL MURO DE ONBOARDING, y el orden es el arreglo.
+  // Estaban DEBAJO, así que solo el super admin quedaba exento: el dueño de un
+  // gimnasio recién dado de alta se comía los trece pasos del onboarding de
+  // MIEMBRO —nivel de forma, objetivo, equipo, lesiones, métricas corporales,
+  // programa, nutrición— que existen para alimentar el generador de
+  // entrenamiento de alguien que va a entrenar. Un dueño no va a registrar una
+  // serie en su vida.
+  //
+  // Se decide por VISTA y no por rol a propósito: el mismo humano puede ser
+  // admin y miembro. Si se pasa a la vista de miembro sin haber hecho el
+  // onboarding, cae al muro de abajo y lo hace — que es lo correcto, porque
+  // entonces sí va a usar la app de miembro.
   if (isAdminView(activeView))   return <Navigate to="/admin" replace />;
   if (isTrainerView(activeView)) return <Navigate to="/trainer" replace />;
+  if (!profile.is_onboarded) return <Navigate to="/onboarding" replace />;
   return children;
 };
 
@@ -848,12 +861,16 @@ const OnboardingRoute = ({ children }) => {
   if (gymDeactivated) return <GymDeactivatedScreen />;
   if (memberBlocked) return <MemberBlockedScreen />;
   // No runtime age gate (see ProtectedRoute) — DOB is collected at signup only.
-  if (profile.is_onboarded) {
-    if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
-    if (isAdminView(activeView))      return <Navigate to="/admin" replace />;
-    if (isTrainerView(activeView))    return <Navigate to="/trainer" replace />;
-    return <Navigate to="/" replace />;
-  }
+  // El personal se va a su sitio ESTÉ O NO onboarded, y por eso estas tres
+  // salieron de dentro del `if`. Antes solo se aplicaban a quien ya había
+  // terminado, así que un admin sin onboarding que llegara aquí —un enlace
+  // viejo, el botón atrás— entraba a los trece pasos igualmente, que es
+  // justo lo que ProtectedRoute acaba de dejar de hacer. Un arreglo que solo
+  // tapa la puerta principal deja la de atrás abierta.
+  if (isSuperAdminView(activeView)) return <Navigate to="/platform/attention" replace />;
+  if (isAdminView(activeView))      return <Navigate to="/admin" replace />;
+  if (isTrainerView(activeView))    return <Navigate to="/trainer" replace />;
+  if (profile.is_onboarded) return <Navigate to="/" replace />;
   return children;
 };
 

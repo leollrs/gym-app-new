@@ -2375,9 +2375,22 @@ const Dashboard = () => {
                     <p className="text-[12px] text-[var(--color-text-muted)] mt-1.5 mb-5">
                       {t('dashboard.createRoutineOrProgram')}
                     </p>
+                    {/* CTA principal → color PRIMARIO de marca.
+                        Era `bg-[#10B981]`, que index.css:697 intercepta a
+                        `--color-success` — y `branding.js:116` hace
+                        `--color-success = secundario del gimnasio`. O sea que sí
+                        seguía la marca, pero la SECUNDARIA; y en un gimnasio que
+                        no ha configurado secundario eso cae al esmeralda por
+                        defecto de la plataforma y se ve ajeno al lado del resto.
+                        Un CTA principal va en primario.
+                        `--color-text-on-accent` lo calcula applyBranding() por
+                        luminancia WCAG, así que el texto sigue legible aunque la
+                        marca sea clara — lo que un `text-white` fijo no podía
+                        garantizar. */}
                     <Link
                       to="/workouts"
-                      className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-[#10B981] text-white font-bold text-[13px]"
+                      className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl font-bold text-[13px]"
+                      style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
                     >
                       <Play size={14} fill="currentColor" strokeWidth={0} />
                       {t('dashboard.goToWorkouts')}

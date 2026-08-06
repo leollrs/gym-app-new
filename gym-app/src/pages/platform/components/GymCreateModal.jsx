@@ -135,8 +135,16 @@ export default function GymCreateModal({ onClose, onCreated, t, showToast, profi
           created_by: profile?.id ?? null,
           email: ownerEmailLower,
           invite_code: code,
-          member_name: 'Owner',
-          role: 'member',
+          // `member_name` en NULL, no 'Owner'. Ese campo es para importaciones
+          // donde SE SABE el nombre; el signup lo usa para prerrellenar la
+          // casilla, así que meter un cargo ahí hacía que el dueño se llamara
+          // literalmente «Owner» hasta que se diera cuenta y lo corrigiera.
+          member_name: null,
+          // 'admin' y no 'member'. Antes el dueño entraba como miembro, se
+          // comía los trece pasos del onboarding de entrenamiento y había que
+          // ascenderlo a mano después. La mig 0704 concede este rol al reclamar
+          // SOLO si la invitación la creó un super_admin.
+          role: 'admin',
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         })
         .select('invite_code')
@@ -217,7 +225,10 @@ export default function GymCreateModal({ onClose, onCreated, t, showToast, profi
                   </button>
                 </div>
                 <p className="text-[11px] text-[#6B7280] mt-2">
-                  {t('platform.gyms.inviteCodeHint', 'Share this code with the owner — they enter it at signup. Expires in 30 days. Promote them to admin once they claim it.')}
+                  {/* «Promote them to admin once they claim it» se cae con la
+                      0704: ahora entran ya como admin. Dejar esa frase sería
+                      mandar al founder a hacer un paso que ya no existe. */}
+                  {t('platform.gyms.inviteCodeHint', 'Share this code with the owner — they enter it at signup and land straight in the admin dashboard. Expires in 30 days.')}
                 </p>
               </div>
             ) : created.inviteError ? (
@@ -282,7 +293,7 @@ export default function GymCreateModal({ onClose, onCreated, t, showToast, profi
                 className="w-full bg-[#111827] border border-white/6 rounded-lg px-3 py-2 text-[13px] text-[#E5E7EB] placeholder-[#4B5563] outline-none focus:border-[#D4AF37]/40 transition-colors"
               />
               <p className="text-[10px] text-[#4B5563] mt-1">
-                {t('platform.gyms.ownerInviteNote', 'An invite code will be generated for this email. Promote them to admin after they claim it.')}
+                {t('platform.gyms.ownerInviteNote', 'An invite code will be generated for this email. Claiming it makes them an admin — no manual promotion needed.')}
               </p>
             </div>
 

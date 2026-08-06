@@ -221,7 +221,34 @@
 }
 
 /* ── Dark theme (Matte Obsidian & Amber — luxury control room) ─────────── */
-html.dark {
+/*
+ * `html.platform-dark` va en el MISMO bloque, no en una copia.
+ *
+ * POR QUÉ EXISTE. La consola de super admin (/platform) se escribió con los
+ * colores metidos a mano: 25 de sus 29 ficheros no usan ni una variable CSS,
+ * unos 2.000 hex literales. El armazón (PlatformLayout) sí responde al tema,
+ * porque usa clases de Tailwind y las reglas de intercepción de más abajo las
+ * remapean a variables — pero un `style={{background:'#0F172A'}}` en línea NUNCA
+ * pasa por una hoja de estilos, así que ninguna regla puede alcanzarlo. Mismo
+ * color, resultado opuesto: en modo claro salía la barra lateral clara con todo
+ * el contenido negro.
+ *
+ * Forzar el tier entero a oscuro cuesta esta línea. Convertir los 2.000 colores
+ * a variables cuesta horas y solo lo vería el propio founder, que es el único
+ * que entra ahí. Una consola interna oscura además se distingue de un vistazo
+ * del panel del gimnasio, que es una propiedad útil cuando se trabaja con las
+ * dos abiertas.
+ *
+ * SE AÑADE EL SELECTOR, NO SE COPIAN LAS 49 VARIABLES. Una copia empieza igual
+ * y termina distinta: se toca un color aquí, se olvida allá, y el modo oscuro
+ * de la plataforma deriva del de la app sin que nadie lo note.
+ *
+ * La clase la pone y quita PlatformLayout al montar. Va en <html> y no en un
+ * div para que también la hereden los modales que salen por portal a
+ * document.body — si no, saldrían claros sobre una página negra.
+ */
+html.dark,
+html.platform-dark {
   /* Shell: near-black base, visible step darker than cards */
   --color-bg-primary:    #08080D;
   --color-bg-secondary:  #0C0C14;
@@ -762,7 +789,10 @@ html:not(.dark) [class*="bg-gradient"] .text-white {
 }
 
 /* ── text-slate-400 → muted text ─────────────────────────────────────── */
-html.dark .text-slate-400 { color: var(--color-text-muted) !important; }
+/* `platform-dark` también aquí: GymOps y GymImport usan esta clase, y sin el
+   selector quedarían con el gris claro de Tailwind sobre fondo negro. */
+html.dark .text-slate-400,
+html.platform-dark .text-slate-400 { color: var(--color-text-muted) !important; }
 html:not(.dark) .text-slate-400 { color: var(--color-text-muted) !important; }
 
 /* ── Status/semantic color adjustments for light mode ─────────────────── */
