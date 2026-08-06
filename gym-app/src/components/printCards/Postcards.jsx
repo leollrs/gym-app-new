@@ -75,7 +75,7 @@ export function WelcomeCard({ gym, member, headline, subline, note, qr, rewardLa
             </div>
             {qr && <QRBlock size={72} value={qr} label={rewardLabel} />}
           </div>
-          <SignBlock color={gym.primary} label={t('admin.printCards.card.signed', { defaultValue: 'signed' })} note={note} noteLines={qr ? 1 : 2} />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} label={t('admin.printCards.card.signed', { defaultValue: 'signed' })} note={note} noteLines={qr ? 1 : 2} />
         </div>
       </div>
     </PostcardScaffold>
@@ -133,7 +133,7 @@ export function HabitCard({ gym, member, headline, note, qr, rewardLabel, occasi
           <div>
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', marginBottom: 4 }}>{t('admin.printCards.card.bearer', { defaultValue: 'bearer' })}</div>
             <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 500, fontSize: 14, lineHeight: 1.1, color: '#111', marginBottom: 12, maxWidth: 180 }}>{member}</div>
-            <SignBlock color={gym.primary} label={t('admin.printCards.card.signedBy', { defaultValue: 'signed by' })} noteLines={1} note={note} compact />
+            <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} label={t('admin.printCards.card.signedBy', { defaultValue: 'signed by' })} noteLines={1} note={note} compact />
           </div>
           {qr ? <QRBlock size={84} value={qr} label={rewardLabel || t('admin.printCards.card.habit.redeemAtDesk', { defaultValue: 'redeem at desk' })} /> : null}
         </div>
@@ -172,7 +172,7 @@ export function Tenure30Card({ gym, member, headline, subline, note, qr, rewardL
             </div>
             {qr && <QRBlock size={68} value={qr} label={rewardLabel} />}
           </div>
-          <SignBlock color={gym.primary} note={note} noteLines={qr ? 1 : 2} />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} note={note} noteLines={qr ? 1 : 2} />
         </div>
       </div>
     </PostcardScaffold>
@@ -219,7 +219,7 @@ export function Tenure90Card({ gym, member, headline, subline, note, qr, rewardL
             </div>
             {qr && <QRBlock size={68} value={qr} label={rewardLabel || t('admin.printCards.card.tenure90.qrLabel', { defaultValue: 'juice / smoothie token' })} />}
           </div>
-          <SignBlock color={gym.primary} note={note} noteLines={1} compact />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} note={note} noteLines={1} compact />
         </div>
       </div>
     </PostcardShell>
@@ -260,7 +260,7 @@ export function Milestone100Card({ gym, member, headline, subline, note, qr, rew
             </div>
             {qr && <QRBlock size={72} value={qr} label={rewardLabel} />}
           </div>
-          <SignBlock color={gym.primary} note={note} noteLines={qr ? 1 : 2} />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} note={note} noteLines={qr ? 1 : 2} />
         </div>
       </div>
     </PostcardShell>
@@ -300,7 +300,7 @@ export function Milestone250Card({ gym, member, headline, note, qr, rewardLabel 
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: qr ? '1fr auto' : '1fr', gap: 14, alignItems: 'end' }}>
-          <SignBlock color={gym.primary} label={t('admin.printCards.card.inscribed', { defaultValue: 'inscribed' })} note={note} noteLines={qr ? 1 : 2} compact />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} label={t('admin.printCards.card.inscribed', { defaultValue: 'inscribed' })} note={note} noteLines={qr ? 1 : 2} compact />
           {qr && <QRBlock size={64} value={qr} label={rewardLabel} />}
         </div>
       </div>
@@ -339,7 +339,7 @@ export function ReturningCard({ gym, member, headline, subline, note, occasionDa
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)' }}>{t('admin.printCards.card.for', { defaultValue: 'for' })}</div>
             <div style={{ fontFamily: "'EB Garamond', serif", fontSize: 17, lineHeight: 1.05, color: '#111', fontWeight: 500, maxWidth: 280, marginTop: 2 }}>{member}</div>
           </div>
-          <SignBlock color={gym.primary} note={note} noteLines={2} />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} note={note} noteLines={2} />
         </div>
       </div>
     </PostcardScaffold>
@@ -381,7 +381,7 @@ export function BirthdayCard({ gym, member, headline, subline, note, qr, rewardL
             </div>
             {qr && <QRBlock size={72} value={qr} label={rewardLabel || t('admin.printCards.card.birthday.qrLabel', { defaultValue: 'drink on the house' })} />}
           </div>
-          <SignBlock color={gym.primary} note={note} noteLines={qr ? 1 : 2} />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} note={note} noteLines={qr ? 1 : 2} />
         </div>
       </div>
     </PostcardScaffold>
@@ -418,7 +418,7 @@ export function CustomCard({ gym, member, headline, subline, qr, rewardLabel }) 
             <div style={{ fontFamily: "'EB Garamond', serif", fontStyle: 'italic', fontSize: 17, color: '#111', lineHeight: 1.05 }}>{t('admin.printCards.card.for', { defaultValue: 'for' })} {member}</div>
             {qr && <QRBlock size={64} value={qr} label={rewardLabel} />}
           </div>
-          <SignBlock color={gym.primary} noteLines={0} compact />
+          <SignBlock color={gym.primary} signature={gym.signature} signatureName={gym.signatureLabel} noteLines={0} compact />
         </div>
       </div>
     </PostcardShell>

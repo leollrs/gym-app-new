@@ -13,10 +13,16 @@ import {
 import { getEmailTemplates, getSmsTemplates } from '../../lib/adminMessageTemplates';
 import { resolveOutreachAudience } from '../../lib/admin/outreachAudience';
 import { sendOutreach } from '../../lib/admin/outreachSender';
+import { enqueueOutreach, nudgeOutreachJob, fetchOutreachProgress, cancelOutreachJob } from '../../lib/admin/outreachQueue';
 import OutreachAudiencePicker from './components/OutreachAudiencePicker';
 import OutreachChannelPicker from './components/OutreachChannelPicker';
 import { getPrebuiltTemplates } from './components/emailTemplatePrebuilts';
+import { dbRowToTemplate } from '../../lib/admin/emailTemplateRenderer';
 import { renderDesignerEmail } from '../../lib/admin/emailDesignerTemplates';
+import OutreachTemplatePicker from './components/OutreachTemplatePicker';
+import { emailDoc } from '../../lib/admin/emailEngine';
+import { templateToCfg } from '../../lib/admin/emailCfg';
+import { pickVariant } from '../../lib/admin/emailVariants';
 
 // Read the gym's current brand colors so designer templates render on-brand.
 // branding.js sets these vars on :root (--accent-primary / --accent-secondary).
@@ -140,16 +146,46 @@ export default function AdminOutreach() {
   // When a designer template is in play, `designer.html` is the pre-rendered
   // email (with the {{first_name}} merge token still inside) that gets sent as
   // the email body verbatim. The body textarea then only feeds push/SMS/in-app.
-  const [designer, setDesigner] = useState(null); // { id, html, subject }
+  const [designer, setDesigner] = useState(null); // { id, html, subject, kind }
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // El trabajo de correo en curso. Sobrevive a que se cierre la pestaña; esto
+  // solo es la ventana para mirarlo mientras siga abierta.
+  const [activeJobId, setActiveJobId] = useState(null);
+  // La recompensa de la campaña: qué conceder, no el código. El código lo crea
+  // el enviador por miembro.
+  const [reward, setReward] = useState(null);
+
+  // Se sondea la VISTA de progreso, no el resultado de los empujones: así la
+  // cuenta es la del servidor y sigue siendo correcta aunque quien empuje sea el
+  // cron. `refetchInterval` se apaga solo al terminar.
+  const { data: jobProgress } = useQuery({
+    queryKey: ['outreach-job', activeJobId],
+    queryFn: () => fetchOutreachProgress(activeJobId),
+    enabled: !!activeJobId,
+    // Se para cuando el trabajo termina Y TAMBIÉN si el progreso no se puede
+    // leer. `fetchOutreachProgress` devuelve null ante un error o una fila que
+    // la RLS no deja ver, y con null la tarjeta ni se pinta: el sondeo seguía
+    // cada 2 s hasta desmontar la página, sin nada que lo detuviera.
+    refetchInterval: (q) => {
+      const st = q.state.data?.status;
+      if (st) return st === 'queued' || st === 'running' ? 2000 : false;
+      return q.state.dataUpdateCount >= 5 ? false : 2000;
+    },
+  });
   const [showRecipients, setShowRecipients] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   // null = default (most-recent month auto-expanded); otherwise an explicit Set of open month keys.
   const [openMonths, setOpenMonths] = useState(null);
 
-  // A rich designer email is an EMAIL by nature — its HTML can't ride push/SMS/
-  // in-app (those only carry the plain `body`). So whenever one is attached we
-  // lock the composer to the email channel. Removing the design unlocks it.
-  const emailLocked = !!designer;
+  // Un DISEÑO de la galería es un correo por naturaleza: su HTML no puede viajar
+  // por push/SMS/in-app, que solo llevan el `body` plano, y ahí `body` es una
+  // línea de vista previa. Por eso bloquea el compositor al canal email.
+  //
+  // Una plantilla de BLOQUES no bloquea: se adjunta su HTML para el correo Y se
+  // rellena el cuerpo con su texto de verdad, así que los otros canales tienen
+  // algo que decir. Bloquearla también habría convertido "escoger plantilla" en
+  // "renunciar a los demás canales", que no es lo que pediste.
+  const emailLocked = designer?.kind === 'design';
 
   useEffect(() => { document.title = `${t('admin.outreach.pageTitle', 'Outreach')} | ${window.__APP_NAME || 'TuGymPR'}`; }, [t]);
 
@@ -197,52 +233,10 @@ export default function AdminOutreach() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gymId, gymName, gymLogoUrl]);
 
-  useEffect(() => {
-    const templateId = searchParams.get('template');
-    const prebuiltKey = searchParams.get('prebuilt');
-    if (!templateId && !prebuiltKey) return;
 
-    let cancelled = false;
-
-    const applyTemplate = ({ name, header, body: bodyData, hero }) => {
-      // gym_email_templates stores rich blocks; for Outreach we just need
-      // a subject + plain-text body. Subject falls back to the template
-      // name; body pulls from body.text (with optional hero headline).
-      const subj = header?.text || name || '';
-      const headline = hero?.enabled && hero?.headline ? `${hero.headline}\n\n` : '';
-      const txt = `${headline}${bodyData?.text || ''}`.trim();
-      if (cancelled) return;
-      if (subj) setSubject(subj);
-      if (txt) setBody(txt);
-      setChannels(prev => ({ ...prev, email: true }));
-    };
-
-    if (templateId && gymId) {
-      (async () => {
-        const { data } = await supabase
-          .from('gym_email_templates')
-          .select('name, template_data')
-          .eq('id', templateId)
-          .eq('gym_id', gymId)
-          .maybeSingle();
-        if (!data || cancelled) return;
-        const td = data.template_data || {};
-        applyTemplate({ name: data.name, ...td });
-      })();
-    } else if (prebuiltKey) {
-      // Prebuilt list is generated dynamically — use gymName from auth and
-      // a stub primary color (only used for CTA styling, not surfaced here).
-      const list = getPrebuiltTemplates(gymName, '#D4AF37', t);
-      const match = list.find(p => p.id === `prebuilt-${prebuiltKey}` || p.id === prebuiltKey);
-      if (match) applyTemplate(match);
-    }
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gymId]);
-
-  // Templates (use the shared catalog; first_name is templated per-recipient
-  // at send time, so the picker uses a generic "member" placeholder here).
+  // Las frases rápidas siguen existiendo para SMS —donde no hay maqueta que
+  // valga— y como fila de acceso directo. El catálogo completo vive en el
+  // selector.
   const emailTemplates = useMemo(() => getEmailTemplates(t, '{{first_name}}'), [t]);
   const smsTemplates = useMemo(() => getSmsTemplates(t, '{{first_name}}'), [t]);
   const activeTemplates = channels.email ? emailTemplates : smsTemplates;
@@ -255,6 +249,148 @@ export default function AdminOutreach() {
     if (tpl.subject) setSubject(tpl.subject);
     setBody(tpl.body);
   };
+
+  /**
+   * El texto plano de una plantilla de bloques — para push, SMS y notificación.
+   * El correo va con su maqueta; los otros canales solo llevan texto.
+   */
+  const plainOf = (tpl) => {
+    const head = tpl.hero?.headline ? `${tpl.hero.headline}\n\n` : '';
+    return `${head}${tpl.body?.text || ''}`.trim();
+  };
+
+  /**
+   * Lo que se escogió en el selector, aplicado al compositor.
+   *
+   * La diferencia con el prellenado viejo: una plantilla de bloques se
+   * RENDERIZA ENTERA con el motor y se adjunta como `html`. Antes se aplanaba a
+   * asunto + texto plano, o sea que la plantilla que habías diseñado —maqueta,
+   * recompensa con su QR, botón, pie, portada— llegaba al buzón desvestida y
+   * reenvuelta en la plantilla genérica de send-admin-email. Nadie lo notaba
+   * porque para verlo había que comparar con la vista previa del editor.
+   */
+  const applyPicked = (picked) => {
+    setPickerOpen(false);
+    if (!picked) return;
+
+    if (picked.kind === 'quick') {
+      setReward(null);
+      handleTemplate(picked.template.key);
+      return;
+    }
+
+    const { primary, secondary } = readBrandColors();
+    const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
+
+    if (picked.kind === 'design') {
+      const r = renderDesignerEmail(picked.id, {
+        lang, gymName, logoUrl: gymLogoUrl,
+        primaryColor: primary, secondaryColor: secondary,
+        coachName: gymName,
+        name: '{{first_name}}',
+        vars: {
+          streak_count: '{{streak_count}}',
+          workout_count: '{{workout_count}}',
+          days_inactive: '{{days_inactive}}',
+        },
+      });
+      if (!r) return;
+      setReward(null);
+      setDesigner({ id: picked.id, html: r.html, subject: r.subject, kind: 'design' });
+      setSubject(r.subject);
+      setBody(prev => prev || r.preview);
+      setTemplateKey('');
+      setChannels(prev => ({ ...prev, email: true }));
+      return;
+    }
+
+    const tpl = picked.template;
+    // Una plantilla guardada DESDE la galería ya viene renderizada: no tiene
+    // bloques que montar, y pasarla por el motor la dejaría en blanco.
+    if (tpl.designer_id && tpl.designer_html) {
+      setReward(null);
+      setDesigner({ id: tpl.designer_id, html: tpl.designer_html, subject: tpl.designer_subject || tpl.name, kind: 'design' });
+      setSubject(tpl.designer_subject || tpl.name || '');
+      setBody(prev => prev || tpl.designer_preview || '');
+      setTemplateKey('');
+      setChannels(prev => ({ ...prev, email: true }));
+      return;
+    }
+
+    // `sampleCode` y `allowPlaceholder` se quedan en false a propósito: el
+    // código de muestra con su QR y el marcador a rayas de la portada existen
+    // SOLO para la vista previa del editor. Aquí esto sale a un buzón.
+    // `pickVariant` PRIMERO: el envío manual se saltaba las variantes de idioma
+    // enteras, así que traducías la plantilla al inglés y a todo el mundo le
+    // salía el texto base. El único que las aplicaba era el envío automático.
+    //
+    // `keepTokens`: los merge tags tienen que llegar LITERALES. outreachSender
+    // los sustituye por destinatario justo antes de enviar; si el motor los
+    // rellenara aquí, lo haría con sus valores de MUESTRA y a toda la lista le
+    // llegaría el mismo «Hola José Rivera».
+    // La recompensa solo se puede conceder contra una plantilla GUARDADA:
+    // `grant_email_campaign_reward` valida `p_template_id` contra el gimnasio,
+    // y una prefabricada no tiene fila. Sin id no se adjunta y el bloque no sale
+    // — mejor eso que una tarjeta con un código que no existe.
+    const savedId = tpl.id && !String(tpl.id).startsWith('prebuilt-') ? tpl.id : null;
+    const withReward = !!(tpl.reward?.enabled && tpl.reward?.title && savedId);
+    setReward(withReward ? {
+      template_id: savedId,
+      label: tpl.reward.title,
+      reward_id: tpl.reward.reward_id || null,
+      expires_at: /^\d{4}-\d{2}-\d{2}$/.test(tpl.reward.expiry || '') ? tpl.reward.expiry : null,
+    } : null);
+
+    const html = emailDoc({
+      ...templateToCfg(pickVariant(tpl, lang), {
+        lang, gymName, gymLogoUrl, accent: primary,
+        // El código como token: se sustituye por miembro al enviar.
+        codeToken: withReward,
+      }),
+      keepTokens: true,
+    });
+    setDesigner({ id: tpl.id, html, subject: tpl.header?.text || tpl.name || '', kind: 'template' });
+    setSubject(tpl.header?.text || tpl.name || '');
+    // `|| prev`: una plantilla sin titular ni cuerpo dejaba `body` vacío, y
+    // `canSend` lo exige — el botón se apagaba sin explicación. Las otras dos
+    // ramas ya conservaban lo escrito.
+    const plain = plainOf(pickVariant(tpl, lang));
+    setBody(prev => plain || prev);
+    setTemplateKey('');
+    setChannels(prev => ({ ...prev, email: true }));
+  };
+
+  // El deep-link desde Plantillas de Email (?template / ?prebuilt) sigue
+  // funcionando, pero YA NO APLANA. Antes traía solo `header.text` de asunto y
+  // `hero.headline + body.text` de cuerpo, tirando la maqueta, la recompensa con
+  // su QR, el botón, el pie y la portada: la plantilla que habías diseñado
+  // llegaba al buzón desvestida. Ahora entra por el mismo camino que el selector.
+  useEffect(() => {
+    const templateId = searchParams.get('template');
+    const prebuiltKey = searchParams.get('prebuilt');
+    if (!templateId && !prebuiltKey) return;
+    let cancelled = false;
+
+    if (templateId && gymId) {
+      (async () => {
+        const { data } = await supabase
+          .from('gym_email_templates')
+          .select('id, name, template_type, template_data, step_key, auto_enabled, is_prebuilt, created_at, updated_at')
+          .eq('id', templateId)
+          .eq('gym_id', gymId)
+          .maybeSingle();
+        if (!data || cancelled) return;
+        applyPicked({ kind: 'template', template: dbRowToTemplate(data) });
+      })();
+    } else if (prebuiltKey) {
+      const list = getPrebuiltTemplates(gymName, readBrandColors().primary || '#D4AF37', t);
+      const match = list.find(p => p.id === `prebuilt-${prebuiltKey}` || p.id === prebuiltKey);
+      if (match) applyPicked({ kind: 'template', template: match });
+    }
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gymId]);
 
   // ── Audience label for audit log + UI summary
   const audienceLabel = useMemo(() => {
@@ -288,7 +424,7 @@ export default function AdminOutreach() {
         .from('admin_audit_log')
         .select('id, created_at, details')
         .eq('gym_id', gymId)
-        .eq('action', 'outreach_send')
+        .in('action', ['outreach_send', 'outreach_enqueue'])
         .order('created_at', { ascending: false })
         .limit(5);
       return data || [];
@@ -305,7 +441,7 @@ export default function AdminOutreach() {
         .from('admin_audit_log')
         .select('id, created_at, details')
         .eq('gym_id', gymId)
-        .eq('action', 'outreach_send')
+        .in('action', ['outreach_send', 'outreach_enqueue'])
         .order('created_at', { ascending: false })
         .limit(1000);
       return data || [];
@@ -324,7 +460,13 @@ export default function AdminOutreach() {
   });
 
   const anyChannelOn = channels.push || channels.inApp || channels.email || channels.sms;
-  const canSend = !!gymId && anyChannelOn && body.trim().length > 0 && !sending;
+  // `!jobRunning`: la rama de correo NO espera al empujón —a propósito, para que
+  // cerrar la pestaña no importe—, así que `sending` volvía a false en cuanto la
+  // RPC devolvía y un segundo clic creaba OTRA campaña sobre la misma audiencia.
+  // `UNIQUE (job_id, profile_id)` deduplica DENTRO de un trabajo, no entre dos.
+  // Y `setActiveJobId` pisaba el anterior, dejando la primera sin poder mirarla.
+  const jobRunning = jobProgress?.status === 'queued' || jobProgress?.status === 'running';
+  const canSend = !!gymId && anyChannelOn && body.trim().length > 0 && !sending && !jobRunning;
 
   // Send a one-off test of the current designer email to the admin's own
   // address — same edge function as the broadcast, just an audience of one.
@@ -368,53 +510,78 @@ export default function AdminOutreach() {
         setSending(false);
         return;
       }
-      // resolveOutreachAudience leaves email null (it lives on auth.users, not
-      // profiles). Hydrate addresses in one batch RPC when the email channel is
-      // on — otherwise sendOutreach skips every recipient as "no email".
-      if (channels.email) {
-        try {
-          const { data: emailRows } = await supabase.rpc('admin_get_member_emails', {
-            p_member_ids: recipients.map((r) => r.id),
-          });
-          const emailById = new Map((emailRows || []).map((e) => [e.member_id, e.email]));
-          recipients.forEach((r) => { r.email = emailById.get(r.id) || null; });
-        } catch { /* non-fatal — senders tally recipients with no email */ }
-      }
-      const results = await sendOutreach({
-        gymId,
-        recipients,
-        channels,
-        subject,
-        body,
-        html: designer?.html || null,
-        // Gym-level constants for designer-template tokens. Per-recipient stats
-        // are fetched inside the sender when their tokens appear in the copy.
-        personalize: { gymName, coachName: gymName },
-        templateKey: designer ? `designer:${designer.id}` : templateKey,
-        audienceLabel,
-      });
-      setLastResult({ recipients: recipients.length, results });
-      // Surface real delivery outcomes — `sendOutreach` tallies per-channel
-      // failures instead of throwing, so a wholly-failed batch must NOT be
-      // reported as an unqualified success (that's what hid the missing-auth-
-      // header email failures behind a green "Sent to N" toast).
-      const sent = (results.email?.sent || 0) + (results.sms?.sent || 0)
-        + (results.push?.sent || 0) + (results.inApp?.sent || 0);
-      const failed = (results.email?.failed || 0) + (results.sms?.failed || 0)
-        + (results.push?.failed || 0) + (results.inApp?.failed || 0);
-      if (sent > 0) {
-        posthogClient?.capture('admin_outreach_email_sent', {
-          sent,
-          failed,
-          channels: Object.entries(channels).filter(([, v]) => v).map(([k]) => k),
+
+      // ── El correo va por la COLA; los demás canales, directos.
+      //
+      // Push, SMS y notificación son rápidos y no dependen de un proveedor que
+      // limite por segundo, así que mandarlos desde aquí sigue siendo correcto.
+      // El correo no: es el que tarda, el que topa y el que se perdía a mitad al
+      // cerrar la pestaña. Ese se encola (mig 0695) y lo remata el servidor.
+      const others = { ...channels, email: false };
+      const anyOther = others.push || others.sms || others.inApp;
+
+      let results = null;
+      if (anyOther) {
+        results = await sendOutreach({
+          gymId, recipients, channels: others, subject, body,
+          personalize: { gymName, coachName: gymName },
+          templateKey: designer ? `designer:${designer.id}` : templateKey,
+          audienceLabel,
         });
       }
-      if (sent === 0 && failed > 0) {
-        showToast(t('admin.outreach.allFailed', { count: failed, defaultValue: 'All {{count}} send(s) failed — nothing was delivered' }), 'error');
-      } else if (failed > 0) {
-        showToast(t('admin.outreach.partialSent', { sent, failed, defaultValue: 'Sent {{sent}}, {{failed}} failed' }), 'error');
-      } else {
-        showToast(t('admin.outreach.sentToast', { count: recipients.length, defaultValue: 'Sent to {{count}} member(s)' }), 'success');
+
+      if (channels.email) {
+        // Ya no hace falta hidratar direcciones aquí: el procesador las resuelve
+        // en servidor con `member_email_context`, que además trae el token de
+        // baja y las estadísticas del miembro de una sola vez.
+        const { jobId } = await enqueueOutreach({
+          recipients, subject,
+          body,
+          html: designer?.html || null,
+          personalize: { gymName, coachName: gymName },
+          templateKey: designer ? `designer:${designer.id}` : templateKey,
+          audienceLabel,
+          reward,
+        });
+        setActiveJobId(jobId);
+        showToast(
+          t('admin.outreach.queued', { count: recipients.length, defaultValue: 'En cola para {{count}} miembro(s). Puedes cerrar esta página.' }),
+          'success',
+        );
+        // Sin `await`: los empujones aceleran mientras la pestaña esté abierta,
+        // y si se cierra a mitad el cron sigue. Bloquear aquí volvería a atar la
+        // campaña a la pestaña, que es justo lo que se está quitando.
+        nudgeOutreachJob(jobId).catch(() => {});
+      }
+
+      if (results) {
+        setLastResult({ recipients: recipients.length, results });
+        const sent = (results.sms?.sent || 0) + (results.push?.sent || 0) + (results.inApp?.sent || 0);
+        const failed = (results.sms?.failed || 0) + (results.push?.failed || 0) + (results.inApp?.failed || 0);
+        if (sent > 0) {
+          posthogClient?.capture('admin_outreach_email_sent', {
+            sent, failed,
+            channels: Object.entries(channels).filter(([, v]) => v).map(([k]) => k),
+          });
+        }
+        if (results.aborted) {
+          const why = results.aborted.reason === 'admin_hourly_limit_exceeded'
+            ? t('admin.outreach.abortedRateLimit', 'llegaste al tope de envíos por hora')
+            : t('admin.outreach.abortedSession', 'la sesión caducó');
+          showToast(t('admin.outreach.aborted', {
+            sent, pending: results.pending.length, why,
+            defaultValue: 'Se detuvo el envío: {{why}}. Enviados {{sent}}, faltan {{pending}}.',
+          }), 'error');
+        } else if (failed > 0) {
+          const reasons = { ...(results.sms?.reasons || {}) };
+          const top = Object.entries(reasons).sort((a, b) => b[1] - a[1])[0];
+          showToast(t('admin.outreach.partialSentWhy', {
+            sent, failed, why: top ? top[0] : '',
+            defaultValue: 'Enviados {{sent}}, {{failed}} fallaron ({{why}})',
+          }), 'error');
+        } else if (!channels.email) {
+          showToast(t('admin.outreach.sentToast', { count: recipients.length, defaultValue: 'Sent to {{count}} member(s)' }), 'success');
+        }
       }
       refetchRecent();
     } catch (err) {
@@ -514,10 +681,27 @@ export default function AdminOutreach() {
 
                 {activeTemplates.length > 0 && (
                   <div>
-                    <p className="text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                      <Sparkles size={11} className="inline mr-1" />
-                      {t('admin.outreach.useTemplate', 'Start from a template')}
-                    </p>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <p className="flex-1 text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                        <Sparkles size={11} className="inline mr-1" />
+                        {t('admin.outreach.useTemplate', 'Start from a template')}
+                      </p>
+                      {/* El catálogo COMPLETO, aquí dentro. Antes había que ir a
+                          Plantillas de Email, buscarla y pulsar un avión de papel
+                          que te devolvía a esta misma pantalla. */}
+                      <button
+                        type="button"
+                        onClick={() => setPickerOpen(true)}
+                        className="px-3 py-1.5 rounded-[9px] text-[11.5px] font-bold min-h-[36px]"
+                        style={{
+                          color: 'var(--color-accent)',
+                          background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                          border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                        }}
+                      >
+                        {t('admin.outreach.browseTemplates', 'Ver todas mis plantillas')}
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
                       {activeTemplates.map(tpl => (
                         <button
@@ -784,6 +968,81 @@ export default function AdminOutreach() {
           </div>
         )}
       </AdminModal>
+
+      {/* ══ La campaña en curso ══════════════════════════════════════════
+          Existe para decir una cosa: esto ya no depende de esta pestaña. */}
+      {activeJobId && jobProgress && (
+        <FadeIn>
+          <AdminCard className="mt-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex-1 min-w-[220px]">
+                <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                  {jobProgress.status === 'done'
+                    ? t('admin.outreach.jobDone', 'Campaña terminada')
+                    : jobProgress.status === 'cancelled'
+                      ? t('admin.outreach.jobCancelled', 'Campaña cancelada')
+                      : t('admin.outreach.jobRunning', 'Enviando…')}
+                </p>
+                <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.outreach.jobCounts', {
+                    sent: jobProgress.sent, total: jobProgress.total,
+                    failed: jobProgress.failed, skipped: jobProgress.skipped,
+                    defaultValue: '{{sent}} de {{total}} · {{failed}} fallidos · {{skipped}} omitidos',
+                  })}
+                </p>
+                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-deep)' }}>
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.round(((jobProgress.total - jobProgress.remaining) / Math.max(1, jobProgress.total)) * 100)}%`,
+                      background: 'var(--color-accent)',
+                      transition: 'width 400ms ease',
+                    }}
+                  />
+                </div>
+              </div>
+              {(jobProgress.status === 'queued' || jobProgress.status === 'running') ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try { await cancelOutreachJob(activeJobId); }
+                    catch (e) { showToast(e.message || 'Failed', 'error'); }
+                  }}
+                  className="px-3 py-2 rounded-[9px] text-[12px] font-bold min-h-[40px]"
+                  style={{ color: 'var(--color-danger)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  {t('admin.outreach.jobCancel', 'Detener')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setActiveJobId(null)}
+                  className="px-3 py-2 rounded-[9px] text-[12px] font-bold min-h-[40px]"
+                  style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-subtle)' }}
+                >
+                  {t('common.close', 'Cerrar')}
+                </button>
+              )}
+            </div>
+            {/* Lo único que de verdad importa saber. */}
+            {(jobProgress.status === 'queued' || jobProgress.status === 'running') && (
+              <p className="mt-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.outreach.jobSafeToLeave', 'Sigue en el servidor. Puedes cerrar esta página.')}
+              </p>
+            )}
+          </AdminCard>
+        </FadeIn>
+      )}
+
+      {pickerOpen && (
+        <OutreachTemplatePicker
+          gymId={gymId}
+          gymName={gymName}
+          primaryColor={readBrandColors().primary || '#D4AF37'}
+          onPick={applyPicked}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </AdminPageShell>
   );
 }

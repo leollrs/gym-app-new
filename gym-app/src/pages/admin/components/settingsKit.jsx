@@ -8,6 +8,7 @@
    the page components.
    ============================================================ */
 import { useNavigate } from 'react-router-dom';
+import { canGoBackInApp } from '../../../lib/navigationRef';
 import { TK, FK, TONE, Ico, ICON, Card } from './retosKit';
 
 export { TK, FK, TONE, Ico, ICON, Card };
@@ -56,12 +57,25 @@ export function SettingsHeader({ t, title, sub, extra }) {
             [hub, branding, hub] y el botón Atrás del dispositivo devuelve a
             branding — un bucle. `replace:true` tampoco lo arregla, porque
             sigue siendo navegación hacia adelante. Se hace pop cuando hay algo
-            que popear, y solo se cae al hub cuando se entró por enlace directo
-            (idx 0), donde no hay atrás al que volver. */}
+            que popear, y solo se cae al hub cuando se entró por enlace directo.
+
+            La condición sale de `canGoBackInApp()` (lib/navigationRef), que es
+            la MISMA fuente que ya alimenta el botón atrás físico de Android:
+            un contador de profundidad basado en `useNavigationType`, así que
+            se comporta igual bajo BrowserRouter y bajo MemoryRouter.
+
+            Dos intentos anteriores fallaron y conviene no repetirlos:
+            `window.history.state.idx` no existe en nativo — MemoryRouter no
+            toca `window.history` jamás, así que la rama del pop no corría
+            NUNCA en el teléfono. Y `location.key !== 'default'` se
+            desincroniza: react-router acuña una clave nueva en cada `replace`
+            sin mover el índice, así que una pantalla que entra como entrada 0
+            y luego hace cualquier `navigate(…, {replace:true})` cumple la
+            condición sin tener nada que popear. */}
         <button
           type="button"
           onClick={() => {
-            if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
+            if (canGoBackInApp()) navigate(-1);
             else navigate('/admin/settings');
           }}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 999, background: TK.surface, border: `1px solid ${TK.borderSolid}`, boxShadow: TK.shadow, fontFamily: FK.body, fontSize: 13.5, fontWeight: 700, color: TK.textSub, whiteSpace: 'nowrap', cursor: 'pointer' }}>

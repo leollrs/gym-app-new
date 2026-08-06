@@ -258,19 +258,28 @@ export default function AdminChallenges() {
           .select('*')
           .eq('gym_id', gymId)
           .order('start_date', { ascending: false }),
+        // Ordenado por la CLAVE PRIMARIA, no por challenge_id. Paginar con
+        // `.range()` sin un orden TOTAL es lo mismo que no ordenar: Postgres no
+        // garantiza que dos consultas sucesivas devuelvan las filas empatadas
+        // en el mismo sitio, así que entre página y página se repiten unas y se
+        // pierden otras. Aquí no había orden ninguno y el conteo de
+        // participantes salía mal en cualquier gimnasio con más de 1000
+        // participaciones.
         selectAllRows((from, to) => supabase
           .from('challenge_participants')
           .select('challenge_id')
           .eq('gym_id', gymId)
+          .order('id', { ascending: true })
           .range(from, to)),
         // Paginado como su hermano de participaciones justo encima. Truncado,
         // `awardedSet` perdía retos ya premiados y la interfaz volvía a ofrecer
-        // "Premiar" sobre premios que ya se pagaron.
+        // "Premiar" sobre premios que ya se pagaron. `challenge_id` tampoco
+        // desempata — un reto tiene tres premios — así que también va por id.
         selectAllRows((from, to) => supabase
           .from('challenge_prizes')
           .select('challenge_id')
           .eq('gym_id', gymId)
-          .order('challenge_id', { ascending: true })
+          .order('id', { ascending: true })
           .range(from, to)),
       ]);
       // Attach participant counts and prize status to each challenge

@@ -1,20 +1,13 @@
 /**
- * Renderer + helpers for the AdminEmailTemplates surfaces.
+ * Adaptadores de fila para las pantallas de plantillas de correo.
  *
- * Pure functions, no React. The renderer (`generateEmailHtml`) emits a
- * production-quality HTML email — table-based layout for Outlook + media
- * queries for mobile, with all dynamic strings HTML-escaped at the
- * boundary. Used by:
+ * `dbRowToTemplate` / `templateToDbPayload` traducen entre la fila de
+ * `gym_email_templates` y la forma que maneja el editor. Funciones puras, sin
+ * React.
  *
- *   - LivePreview (sandboxed iframe in the editor)
- *   - The composer's "Send test" path (when wired to a server)
- *   - Any backend job that wants to render a saved template
- *
- * `dbRowToTemplate` / `templateToDbPayload` convert between the wire
- * format on `email_templates` and the local in-editor shape.
+ * AQUÍ NO SE RENDERIZA NADA. El renderizador que vivía en este archivo se borró
+ * —ver la nota más abajo—: el único motor es `lib/admin/emailEngine.js`.
  */
-
-import QRCode from 'qrcode';
 
 // ── XSS helpers ───────────────────────────────────────────────
 
@@ -27,40 +20,37 @@ export function safeColor(c) {
   return /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '#000000';
 }
 
-// ── QR helpers ────────────────────────────────────────────────
-// The reward block ships a QR for the redemption code. We render the QR as
-// an inline SVG wrapped in a data-URI <img> so it survives every email client
-// we care about — modern clients render the SVG, Outlook desktop (which mangles
-// SVG) shows the `alt` text with the actual code as a graceful fallback.
-
 /**
- * Build the QR payload for a reward block. Uses the `earned-reward:` prefix
- * so a scan at the front desk routes through the existing redemption pipeline
- * (RewardAttachModal + handleEarnedRewardScan).
+ * Caducidad legible. Acepta la fecha ISO que escribe el selector nuevo y, si
+ * no lo es, devuelve el texto tal cual: las plantillas guardadas antes de que
+ * el campo fuera un calendario tienen ahí frases sueltas ("Caduca el 31 de
+ * diciembre") y perderlas al renderizar sería peor que no formatearlas.
  */
-export function rewardQrPayload(reward) {
-  if (!reward) return '';
-  const raw = reward.code || reward.reward_id || (reward.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reward';
-  return `earned-reward:${raw}`;
-}
-
-/** Sync SVG-string QR. Returns '' on any failure so the caller can no-op. */
-export function rewardQrSvg(payload, size = 160) {
+export function formatExpiry(value, lang = 'es') {
+  const raw = String(value ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  // Se parte a mano en vez de `new Date(raw)`: esa forma interpreta el ISO
+  // corto como UTC y en Puerto Rico (UTC-4) retrocede un día.
+  const [y, m, d] = raw.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (Number.isNaN(dt.getTime())) return raw;
   try {
-    const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
-    const n = qr.modules.size;
-    const data = qr.modules.data;
-    let rects = '';
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        if (data[y * n + x]) rects += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
-      }
-    }
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" style="display:block;background:#fff;"><rect width="${n}" height="${n}" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
+    return dt.toLocaleDateString(lang === 'en' ? 'en-US' : 'es', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
   } catch {
-    return '';
+    return raw;
   }
 }
+
+// ── QR helpers ────────────────────────────────────────────────
+// El QR salió de aquí. Se generaba como SVG en data-URI y NUNCA llegaba a
+// verse: Gmail, Outlook y Yahoo bloquean SVG, y Gmail además tira toda imagen
+// en `data:`. Lo que recibía el miembro era el texto alternativo dentro de un
+// recuadro vacío. `rewardQrPayload` y `rewardQrSvg` se borraron con él —
+// nadie más los usaba — y con ellos la dependencia de `qrcode` en este módulo.
+// El bloque de recompensa manda ahora el código en texto y un botón a
+// Recompensas de la app, donde el QR sí se ve y se escanea en recepción.
 
 // ── Template-variable substitution ────────────────────────────
 // Preview uses fake but plausible values so the admin can see how the
@@ -78,161 +68,17 @@ export function replaceVariables(text, gymName) {
 // ── Full HTML renderer ────────────────────────────────────────
 
 /**
- * `unsubscribeUrl` is optional and, when absent, the footer link is OMITTED
- * rather than rendered as `href="#"`.
+ * `generateEmailHtml` VIVIÓ AQUÍ Y SE BORRÓ. ~190 líneas.
  *
- * A dead unsubscribe is worse than none: it is a CAN-SPAM problem and a
- * deliverability problem for noreply@tugympr.com, which is the shared envelope
- * address for every gym on the platform. The editor preview passes nothing —
- * there is no member to unsubscribe — and real sends pass a token URL built by
- * migration 0685.
+ * Era un SEGUNDO renderizador de correo, con maqueta propia, sin un solo
+ * llamador en todo el repo — y su docblock seguía afirmando que lo usaba la
+ * vista previa. Justo la situación que `emailEngineSync.test.js` existe para
+ * impedir: dos renderizadores vivos que divergen mientras las dos suites siguen
+ * en verde. El único motor es `lib/admin/emailEngine.js`, y su copia de Deno la
+ * genera un script con un test que las compara byte a byte.
+ *
+ * Este archivo se queda con los dos adaptadores de fila, que sí se usan.
  */
-export function generateEmailHtml(template, gymName, logoUrl, unsubscribeUrl = null) {
-  const c = template.colors;
-  const header = template.header;
-  const hero = template.hero;
-  const reward = template.reward;
-  // Acotados numéricamente: se interpolan sin escapar dentro de style="…" y son
-  // texto libre del admin. Mismo clamp que _shared/emailRenderer.ts — si uno
-  // cambia, el otro también, o la vista previa deja de predecir el envío.
-  const typo = template.typography || {};
-  const clamp = (v, def, lo, hi) => {
-    const n = parseInt(String(v ?? ''), 10);
-    return String(Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : def);
-  };
-  const fs = clamp(typo.fontSize, 15, 10, 28);
-  const br = clamp(typo.borderRadius, 12, 0, 32);
-  const pad = clamp(typo.padding, 40, 0, 64);
-  const hs = ['gradient', 'solid', 'minimal'].includes(String(typo.headerStyle))
-    ? String(typo.headerStyle) : 'gradient';
-  const body = template.body;
-  const cta = template.cta;
-  const footer = template.footer;
-
-  const bodyHtml = replaceVariables(body.text, gymName)
-    .split('\n')
-    .map(line => {
-      if (line.startsWith('---') && line.endsWith('---')) {
-        const inner = line.replace(/^-+\s*/, '').replace(/\s*-+$/, '');
-        return `<h3 style="font-size:${parseInt(fs)+1}px;font-weight:700;color:${safeColor(c.primary)};margin:28px 0 10px;letter-spacing:-0.01em;">${escHtml(inner)}</h3>`;
-      }
-      if (line.startsWith('- ')) return `<li style="margin:6px 0;color:${safeColor(c.text)};font-size:${fs}px;line-height:1.7;padding-left:4px;">${escHtml(line.slice(2))}</li>`;
-      if (!line.trim()) return '<div style="height:12px;"></div>';
-      return `<p style="margin:0 0 10px;line-height:1.75;color:${safeColor(c.text)};font-size:${fs}px;letter-spacing:0.01em;">${escHtml(line)}</p>`;
-    })
-    .join('');
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta name="color-scheme" content="light"/>
-<meta name="supported-color-schemes" content="light"/>
-<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
-<style>
-  body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
-  table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
-  img{-ms-interpolation-mode:bicubic;border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}
-  body{margin:0;padding:0;width:100%!important;}
-  @media only screen and (max-width:620px){
-    .email-container{width:100%!important;max-width:100%!important;}
-    .stack-column{display:block!important;width:100%!important;}
-    .hero-pad{padding:40px 24px!important;}
-    .body-pad{padding:28px 24px!important;}
-  }
-</style>
-</head>
-<body style="margin:0;padding:0;background:${safeColor(c.background)};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${safeColor(c.background)};">
-<tr><td align="center" style="padding:32px 16px;">
-<table role="presentation" class="email-container" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:${br}px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06),0 1px 4px rgba(0,0,0,0.04);">
-
-${header.enabled && hs === 'gradient' ? `<!-- Header: Gradient -->
-<tr><td style="background:linear-gradient(135deg,${safeColor(c.primary)},${safeColor(c.primary)}cc);padding:28px ${pad}px 24px;text-align:center;">
-${header.showLogo && logoUrl ? `<img src="${escHtml(logoUrl)}" alt="${escHtml(gymName)}" style="max-height:44px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;" />` : ''}
-${header.text ? `<h1 style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;line-height:1.3;">${escHtml(replaceVariables(header.text, gymName))}</h1>` : ''}
-</td></tr>` : ''}
-${header.enabled && hs === 'solid' ? `<!-- Header: Solid -->
-<tr><td style="background:${safeColor(c.primary)};padding:28px ${pad}px 24px;text-align:center;">
-${header.showLogo && logoUrl ? `<img src="${escHtml(logoUrl)}" alt="${escHtml(gymName)}" style="max-height:44px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;" />` : ''}
-${header.text ? `<h1 style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;line-height:1.3;">${escHtml(replaceVariables(header.text, gymName))}</h1>` : ''}
-</td></tr>` : ''}
-${header.enabled && hs === 'minimal' ? `<!-- Header: Minimal -->
-<tr><td style="padding:28px ${pad}px 24px;text-align:center;">
-${header.showLogo && logoUrl ? `<img src="${escHtml(logoUrl)}" alt="${escHtml(gymName)}" style="max-height:44px;margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;" />` : ''}
-${header.text ? `<h1 style="margin:0;font-size:22px;font-weight:700;color:${safeColor(c.primary)};letter-spacing:-0.02em;line-height:1.3;">${escHtml(replaceVariables(header.text, gymName))}</h1>` : ''}
-</td></tr>
-<tr><td style="padding:0 ${pad}px;"><div style="height:1px;background:linear-gradient(90deg,transparent,${safeColor(c.primary)}40,transparent);"></div></td></tr>` : ''}
-
-${hero.enabled ? (() => { const safeImageUrl = hero.imageUrl && /^https:\/\//i.test(hero.imageUrl) ? escHtml(hero.imageUrl) : ''; return `<!-- Hero -->
-<tr><td style="padding:0;">
-${safeImageUrl
-  ? `<img src="${safeImageUrl}" alt="Email hero image" style="width:100%;display:block;max-height:280px;object-fit:cover;" />`
-  : `<div class="hero-pad" style="background:linear-gradient(135deg,${safeColor(c.primary)} 0%,${safeColor(c.primary)}cc 50%,${safeColor(c.primary)}99 100%);padding:56px ${pad}px;text-align:center;">
-<h2 style="margin:0 0 10px;font-size:32px;font-weight:800;color:#ffffff;letter-spacing:-0.03em;line-height:1.15;">${escHtml(replaceVariables(hero.headline, gymName))}</h2>
-${hero.subtitle ? `<p style="margin:0;font-size:17px;color:rgba(255,255,255,0.88);line-height:1.5;font-weight:400;">${escHtml(replaceVariables(hero.subtitle, gymName))}</p>` : ''}
-</div>`}
-</td></tr>`; })() : ''}
-
-<!-- Body -->
-<tr><td class="body-pad" style="padding:36px ${pad}px 20px;">
-${bodyHtml}
-</td></tr>
-
-${reward?.enabled && reward?.title ? (() => {
-  // QR is auto-generated from the code (or a slug fallback). Outlook desktop
-  // mangles inline SVG, so we embed it as a data-URI image with an `alt` that
-  // includes the code — degrades to readable text if the image is stripped.
-  const payload = rewardQrPayload(reward);
-  const svg = rewardQrSvg(payload, 160);
-  // btoa is universal (browser + Node 16+). Our SVG is ASCII-only.
-  const b64 = svg ? (typeof btoa === 'function' ? btoa(svg) : '') : '';
-  const qrImg = b64
-    ? `<img src="data:image/svg+xml;base64,${b64}" width="160" height="160" alt="${escHtml(reward.code || 'Reward code')}" style="display:block;margin:18px auto 0;width:160px;height:160px;border:8px solid #ffffff;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.06);" />`
-    : '';
-  return `<!-- Reward -->
-<tr><td style="padding:8px ${pad}px 24px;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,${safeColor(c.primary)}08,${safeColor(c.primary)}15);border:2px dashed ${safeColor(c.primary)}40;border-radius:${Math.min(parseInt(br), 16)}px;overflow:hidden;">
-<tr><td style="padding:24px;text-align:center;">
-<p style="margin:0 0 4px;font-size:11px;font-weight:700;color:${safeColor(c.primary)};text-transform:uppercase;letter-spacing:2px;">🎁 ${escHtml(reward.title)}</p>
-${reward.description ? `<p style="margin:8px 0 0;font-size:14px;color:${safeColor(c.text)};line-height:1.5;">${escHtml(reward.description)}</p>` : ''}
-${qrImg}
-${reward.code ? `<p style="margin:10px 0 0;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;color:${safeColor(c.text)};letter-spacing:3px;">${escHtml(reward.code)}</p>` : ''}
-<p style="margin:6px 0 0;font-size:11px;color:#9CA3AF;">${escHtml(reward.expiry || '')}</p>
-</td></tr>
-</table>
-</td></tr>`;
-})() : ''}
-
-${cta.enabled ? `<!-- CTA -->
-<tr><td style="padding:8px ${pad}px ${pad}px;text-align:center;">
-<a href="${escHtml(cta.url || '#')}" style="display:inline-block;padding:16px 40px;background:${safeColor(cta.color)};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:50px;letter-spacing:0.02em;box-shadow:0 4px 14px ${safeColor(cta.color)}44,0 2px 6px rgba(0,0,0,0.08);mso-padding-alt:0;text-align:center;">
-<!--[if mso]><i style="letter-spacing:40px;mso-font-width:-100%;mso-text-raise:30pt">&nbsp;</i><![endif]-->
-<span style="mso-text-raise:15pt;">${escHtml(replaceVariables(cta.text, gymName))}</span>
-<!--[if mso]><i style="letter-spacing:40px;mso-font-width:-100%">&nbsp;</i><![endif]-->
-</a>
-</td></tr>` : ''}
-
-${footer.enabled ? `<!-- Footer -->
-<tr><td style="padding:0 ${pad}px;"><div style="height:1px;background:#f0f0f0;"></div></td></tr>
-<tr><td style="padding:24px ${pad}px 28px;text-align:center;">
-<p style="margin:0 0 6px;font-size:12px;color:#9CA3AF;line-height:1.5;letter-spacing:0.01em;">${escHtml(replaceVariables(footer.text, gymName))}</p>
-${footer.unsubscribeText && unsubscribeUrl ? `<a href="${escHtml(unsubscribeUrl)}" style="font-size:11px;color:#D1D5DB;text-decoration:underline;">${escHtml(footer.unsubscribeText)}</a>` : ''}
-</td></tr>` : ''}
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
-}
-
-// ── DB row ↔ local template shape ─────────────────────────────
-// The wire format on `email_templates` keeps the renderable bits inside
-// `template_data` JSONB so we can evolve the structure without altering
-// columns; the local shape flattens them for direct binding in the
-// editor's controlled inputs.
 
 export function dbRowToTemplate(row) {
   const d = row.template_data || {};
@@ -256,6 +102,25 @@ export function dbRowToTemplate(row) {
     typography: d.typography || { fontSize: '15', borderRadius: '12', padding: '40', headerStyle: 'gradient' },
     step_key: row.step_key ?? null,
     auto_enabled: row.auto_enabled ?? false,
+    // La maqueta del motor v2. Vive dentro de template_data (JSONB), sin
+    // columna nueva. Sin esta línea el paso 1 del editor era un no-op: se
+    // escogía, la vista previa cambiaba, y al recargar volvía a 'editorial'.
+    preset: d.preset || null,
+    density: d.density || null,
+    // Idioma de los campos de arriba, y la traducción del texto al otro. Una
+    // plantilla vieja no trae ninguno de los dos: es español base sin traducir,
+    // que es justo lo que es. Ver lib/admin/emailVariants.js.
+    lang: d.lang === 'en' ? 'en' : 'es',
+    i18n: d.i18n && typeof d.i18n === 'object' ? d.i18n : {},
+    // Plantillas guardadas desde la galería de diseños. `designer_id` es la
+    // marca: cuando está, la fila NO es de bloques y no debe abrirse en el
+    // editor de bloques (no hay nada que editar ahí, y guardar desde él
+    // pisaría el HTML con bloques vacíos).
+    designer_id: d.designer_id || null,
+    designer_html: d.designer_html || null,
+    designer_lang: d.designer_lang || null,
+    designer_subject: d.designer_subject || '',
+    designer_preview: d.designer_preview || '',
   };
 }
 
@@ -272,6 +137,15 @@ export function templateToDbPayload(tpl, gymId) {
     step_key: tpl.step_key || null,
     auto_enabled: !!tpl.auto_enabled,
     template_data: {
+      // `preset` y `density` PRIMERO para que se vean: son lo que decide la
+      // maqueta, y estuvieron fuera de esta lista blanca desde el principio.
+      ...(tpl.preset ? { preset: tpl.preset } : {}),
+      ...(tpl.density ? { density: tpl.density } : {}),
+      // El idioma base y la traducción. Van en esta lista blanca desde el
+      // primer día a propósito: quedarse fuera de ella es exactamente lo que
+      // hizo que `preset` y `typography` fueran de solo-edición durante meses.
+      lang: tpl.lang === 'en' ? 'en' : 'es',
+      ...(tpl.i18n && Object.keys(tpl.i18n).length ? { i18n: tpl.i18n } : {}),
       header: tpl.header,
       hero: tpl.hero,
       body: tpl.body,
@@ -279,9 +153,20 @@ export function templateToDbPayload(tpl, gymId) {
       reward: tpl.reward,
       footer: tpl.footer,
       colors: tpl.colors,
-      // generateEmailHtml reads this and the editor has a full panel for it,
-      // but it was never persisted — so it was edit-only and lost on save.
+      // El tamaño de letra y el radio de esquina que lee `templateToCfg`. No se
+      // persistía, así que el panel de tipografía era de solo-edición.
       typography: tpl.typography,
+      // Un diseño de la galería se guarda ya renderizado. Hay que devolverlo
+      // tal cual al guardar de nuevo (cambiar nombre, momento o interruptor) o
+      // la plantilla se convertiría en una de bloques vacía — y como los
+      // bloques están todos deshabilitados, el correo saldría en blanco.
+      ...(tpl.designer_id ? {
+        designer_id: tpl.designer_id,
+        designer_html: tpl.designer_html,
+        designer_lang: tpl.designer_lang,
+        designer_subject: tpl.designer_subject,
+        designer_preview: tpl.designer_preview,
+      } : {}),
     },
   };
 }

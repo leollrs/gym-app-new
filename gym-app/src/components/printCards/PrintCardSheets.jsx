@@ -90,7 +90,7 @@ const PrintCardSheets = forwardRef(function PrintCardSheets(
     queryKey: ['print-cards-gym-extras', gymId],
     queryFn: async () => {
       if (!gymId) return null;
-      const [brandingRes, gymRes] = await Promise.all([
+      const [brandingRes, gymRes, sigRes] = await Promise.all([
         supabase
           .from('gym_branding')
           .select('primary_color, accent_color, logo_url, custom_app_name')
@@ -101,13 +101,34 @@ const PrintCardSheets = forwardRef(function PrintCardSheets(
           .select('name, cup_noun, founded_year')
           .eq('id', gymId)
           .maybeSingle(),
+        // La firma. Consulta APARTE y con el error tragado a propósito: las
+        // columnas llegan con la 0702, y si no está aplicada un `select` que
+        // las nombra devuelve 42703 para TODA la fila. Metido en la consulta de
+        // gimnasio, tumbaría también `cup_noun` y `founded_year` — o sea que
+        // una migración pendiente dejaría las tarjetas sin marca en vez de sin
+        // firma.
+        supabase
+          .from('gym_card_settings')
+          .select('signature_strokes, signature_width, signature_height, signature_label, print_signature')
+          .eq('gym_id', gymId)
+          .maybeSingle(),
       ]);
+
+      const sig = sigRes.data;
+      // Se pinta SOLO si el dueño lo encendió Y hay trazos. El interruptor a
+      // solas dejaría el hueco y la línea descolocada.
+      const signature = sig?.print_signature && Array.isArray(sig.signature_strokes) && sig.signature_strokes.length
+        ? { strokes: sig.signature_strokes, width: sig.signature_width, height: sig.signature_height }
+        : null;
+
       return {
         primary: brandingRes.data?.primary_color || brandingRes.data?.accent_color || '#111111',
         cupNoun: gymRes.data?.cup_noun || null,
         est: gymRes.data?.founded_year || null,
         name: brandingRes.data?.custom_app_name || gymRes.data?.name || null,
         logo: brandingRes.data?.logo_url || null,
+        signature,
+        signatureLabel: (sig?.print_signature && sig?.signature_label) || null,
       };
     },
     enabled: !!gymId,
@@ -123,6 +144,8 @@ const PrintCardSheets = forwardRef(function PrintCardSheets(
       primary: gymExtras?.primary || '#111111',
       cupNoun: gymExtras?.cupNoun,
       est: gymExtras?.est,
+      signature: gymExtras?.signature || null,
+      signatureLabel: gymExtras?.signatureLabel || null,
     }),
     [overrideGymId, gymName, gymLogoUrl, gymExtras]
   );

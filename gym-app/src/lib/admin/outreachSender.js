@@ -3,6 +3,7 @@ import { sendNotification } from '../notifications';
 import logger from '../logger';
 import { logAdminAction } from '../adminAudit';
 import { fetchMemberStats, tokensNeeded } from './outreachPersonalization';
+import { renderOutreachTokens } from './outreachTokens';
 
 // ── Batch dispatch tuning ──────────────────────────────────────────────────
 // Email/SMS each go out as one edge-function invoke per recipient. Firing the
@@ -14,6 +15,53 @@ import { fetchMemberStats, tokensNeeded } from './outreachPersonalization';
 const OUTREACH_CONCURRENCY = 4;   // max recipients processed simultaneously
 const OUTREACH_PACE_MS = 150;     // gap between sends within a single worker
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ── Reintento ──────────────────────────────────────────────────────────────
+// Un 429 del PROVEEDOR es pasajero por definición: significa "vas muy rápido".
+// Antes se contaba como fallo y ese miembro no recibía nada nunca — sin cola,
+// sin reintento y sin dejar rastro de por qué, porque `logger.warn` es no-op en
+// producción. Tres intentos con espera creciente cubren de sobra un pico.
+const RETRY_MAX = 3;
+const RETRY_BASE_MS = 1200;
+
+/**
+ * Qué ha pasado de verdad, leyendo el cuerpo del error UNA sola vez.
+ *
+ * `err.context` es un Response y `.json()` lo consume, así que hay que sacar
+ * todo de una pasada: el estado de la función y el del proveedor, que NO son el
+ * mismo. Un límite de Resend llega como 502 con `providerStatus: 429` dentro
+ * (send-admin-email:800-803); el tope horario del admin llega como 429 con
+ * `error: 'admin_hourly_limit_exceeded'`.
+ */
+async function readFailure(err) {
+  const out = { status: err?.context?.status ?? 0, code: '', providerStatus: 0 };
+  try {
+    const ctx = err?.context;
+    if (ctx && typeof ctx.json === 'function') {
+      const body = await ctx.json();
+      out.code = body?.error || body?.message || '';
+      out.providerStatus = Number(body?.providerStatus) || 0;
+    }
+  } catch { /* sin cuerpo, ya consumido, o no es JSON */ }
+  if (!out.code) out.code = err?.message || 'unknown';
+  return out;
+}
+
+/** Pasajero: reintentar tiene sentido. */
+const isTransient = (f) => f.providerStatus === 429 || f.status === 503 || f.status === 502;
+
+/**
+ * Fatal para TODO el lote, no solo para este destinatario.
+ *
+ * El tope horario por admin y una sesión muerta van a fallar exactamente igual
+ * en los 400 que quedan. Seguir adelante no envía ni uno más: solo convierte un
+ * problema legible («llegaste al tope, faltan 400») en 400 fallos mudos.
+ */
+const isBatchFatal = (f) => (
+  f.code === 'admin_hourly_limit_exceeded'
+  || f.status === 401
+  || f.code === 'Unauthorized'
+);
 
 /**
  * Single send pipeline used by the unified Outreach composer. Given a resolved
@@ -48,10 +96,18 @@ export async function sendOutreach({
 }) {
   const results = {
     push: { sent: 0, failed: 0 },
-    email: { sent: 0, failed: 0 },
-    sms: { sent: 0, failed: 0 },
+    // `reasons` agrupa los fallos por causa. Sin esto el resumen decía "12
+    // fallidos" y nada más: un tope de envío, un buzón rebotado y una sesión
+    // caducada se veían idénticos, y como `logger.warn` es no-op en producción
+    // no quedaba rastro en ningún sitio.
+    email: { sent: 0, failed: 0, retried: 0, reasons: {} },
+    sms: { sent: 0, failed: 0, retried: 0, reasons: {} },
     inApp: { sent: 0, failed: 0 },
     skipped: { noEmail: 0, noPhone: 0, optedOut: 0 },
+    // Se rellena si el lote se corta: qué pasó y a quién NO le llegó, para
+    // poder reintentar solo con esos en vez de volver a mandarle a todos.
+    aborted: null,
+    pending: [],
   };
 
   if (!recipients?.length) return results;
@@ -76,57 +132,65 @@ export async function sendOutreach({
   const gymNameToken = personalize.gymName || '';
   const coachNameToken = personalize.coachName || personalize.gymName || '';
 
-  // HTML-escape member-controlled values before they're substituted into the
-  // pre-rendered designer HTML. The designer renderer escapes its own literals
-  // but leaves merge tokens (e.g. {{first_name}}) intact for per-recipient
-  // substitution here — without escaping, a member whose name contains markup
-  // (`<img onerror=…>`) would inject active HTML into the email they receive.
-  const escapeHtml = (s) => String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  // La sustitución vive en `outreachTokens.js` y se copia LITERAL a Deno
+  // (scripts/sync-email-engine.mjs). La hacen dos sitios —este y la cola en
+  // servidor— y tenerla escrita dos veces es justo la divergencia que ya nos
+  // costó un día entre la vista previa y el enviador.
+  const renderTokens = (recipient, raw, { escape = false } = {}) => renderOutreachTokens(raw, {
+    fullName: recipient.full_name || '',
+    stats: statsMap[recipient.id] || {},
+    gymName: gymNameToken,
+    coachName: coachNameToken,
+    escape,
+  });
 
-  // Personalize text for each recipient. Order matters for `full_name` vs
-  // `name` — replace the longer token first so it doesn't get clipped.
-  // `escape` is set ONLY for the HTML email path (plain push/SMS/in-app text
-  // must NOT be HTML-escaped).
-  const renderTokens = (recipient, raw, { escape = false } = {}) => {
-    if (!raw) return '';
-    const first = (recipient.full_name || '').split(' ')[0] || '';
-    const s = statsMap[recipient.id] || {};
-    const v = (x) => (escape ? escapeHtml(x) : x);
-    return raw
-      // `member_name` is the token the template editor actually documents
-      // (emailTemplatePrebuilts.js:22) and every prebuilt body uses it — but it
-      // was missing here, so a template written with the UI's own advertised
-      // token arrived in the inbox with the literal {{member_name}} in it.
-      .replace(/\{\{member_name\}\}/g, v(recipient.full_name || ''))
-      .replace(/\{\{full_name\}\}/g, v(recipient.full_name || ''))
-      .replace(/\{\{first_name\}\}/g, v(first))
-      .replace(/\{\{name\}\}/g, v(recipient.full_name || ''))
-      .replace(/\{\{gym_name\}\}/g, v(gymNameToken))
-      .replace(/\{\{coach_name\}\}/g, v(coachNameToken))
-      .replace(/\{\{streak_count\}\}/g, v(s.streak_count ?? '0'))
-      .replace(/\{\{workout_count\}\}/g, v(s.workout_count ?? '0'))
-      .replace(/\{\{days_inactive\}\}/g, v(s.days_inactive ?? '—'));
+  // EL FILTRADO DE LÍNEAS VIVE AHORA EN `outreachTokens.js`, y es DISTINTO del
+  // que hay aquí escrito antes.
+  //
+  // Lo que decía este comentario —que no se filtra nada porque "aquí no hay
+  // conocimiento de qué token resuelve"— era buen razonamiento sobre una premisa
+  // falsa: `KNOWN_TOKENS` es exactamente ese conocimiento. Así que se tira la
+  // línea cuando lleva un token CONOCIDO sin valor, y se respetan intactas las
+  // llaves que escribiera el admin. Sobre el HTML no se tira nada, porque el
+  // motor lo emite en una sola línea y filtrar borraría el correo entero.
+
+  // Se levanta cuando un fallo condena al resto del lote. Los obreros la miran
+  // antes de coger el siguiente destinatario.
+  let fatal = null;
+  // Quién está en vuelo AHORA MISMO. Al cortar el lote, esos ya salieron de la
+  // cola con `shift()` pero fallarán con la misma causa: sin esto se quedaban
+  // fuera de `pending` —hasta tres personas— y el aviso decía "faltan N" con N
+  // corto. Invisibles en el toast y en el registro.
+  const inFlight = new Set();
+
+  /**
+   * Invoca una función de envío con reintento acotado, y clasifica el fallo.
+   * Devuelve `{ ok, data, failure }` — nunca lanza.
+   */
+  const invokeWithRetry = async (fn, payload, tally) => {
+    for (let attempt = 0; ; attempt++) {
+      const { data, error } = await supabase.functions.invoke(fn, { headers: batchAuthHeader, body: payload });
+      if (!error) return { ok: true, data };
+      const failure = await readFailure(error);
+      if (isBatchFatal(failure)) return { ok: false, failure, fatal: true };
+      if (isTransient(failure) && attempt < RETRY_MAX - 1) {
+        tally.retried++;
+        // Espera creciente: 1,2 s, luego 2,4 s. Suficiente para que pase un
+        // pico del proveedor sin dejar el lote parado un minuto.
+        await sleep(RETRY_BASE_MS * (attempt + 1));
+        continue;
+      }
+      return { ok: false, failure };
+    }
   };
 
-  // NO se filtran líneas aquí. Lo intenté como "red de seguridad" copiando la
-  // regla de _shared/emailRenderer.ts, y estaba mal por dos razones:
-  //
-  //   • Allí el renderizador SABE qué valores tiene y solo tira la línea cuando
-  //     el token no resuelve. Aquí no hay ese conocimiento, así que se borraba
-  //     cualquier línea con llaves — incluido texto que el admin escribió a
-  //     mano — de correo, SMS, push e in-app a la vez, y sin que la vista
-  //     previa lo delatara.
-  //   • Corría también sobre el `html` prerenderizado, donde tirar una línea
-  //     se lleva por delante un <tr>/<td> y rompe la maqueta.
-  //
-  // Borrar contenido del mensaje de alguien es peor que dejar pasar un token
-  // literal. El editor ya solo ofrece tokens que este camino rellena
-  // (variablesForStep), que es donde corresponde resolverlo.
+  const note = (tally, failure) => {
+    tally.failed++;
+    const key = failure.providerStatus === 429 ? 'rate_limited'
+      : failure.status === 401 ? 'session_expired'
+        : (failure.code || 'unknown').slice(0, 60);
+    tally.reasons[key] = (tally.reasons[key] || 0) + 1;
+  };
 
   const processRecipient = async (r) => {
     const personalizedBody = renderTokens(r, body);
@@ -171,40 +235,37 @@ export async function sendOutreach({
       if (!r.email) {
         results.skipped.noEmail++;
       } else {
-        try {
-          // The edge function requires `memberId` (it looks up the member, verifies
-          // they belong to the caller's gym, resolves the stored email, audits, and
-          // rate-limits). When a designer template is attached we pass the
-          // pre-rendered, token-substituted `html`; otherwise we send `body` and the
-          // function wraps it in the gym's branded template.
-          const { data, error } = await supabase.functions.invoke('send-admin-email', {
-            headers: batchAuthHeader,
-            body: {
-              memberId: r.id,
-              subject: personalizedSubject || 'Message from your gym',
-              body: personalizedBody || personalizedSubject || ' ',
-              ...(personalizedHtml ? { html: personalizedHtml } : {}),
-              // Marca esto como envío COMERCIAL. La función consulta entonces
-              // email_allowed_for (interruptor maestro + lista de supresión) y
-              // emite List-Unsubscribe. Sin este campo, la campaña salía
-              // esquivando todo el aparato de consentimiento de 0685 y sin
-              // enlace de baja — desde el remitente que comparte toda la
-              // plataforma, así que las quejas de un gimnasio le caen a todos.
-              scope: 'marketing',
-            },
-          });
-          if (error) throw error;
+        // The edge function requires `memberId` (it looks up the member, verifies
+        // they belong to the caller's gym, resolves the stored email, audits, and
+        // rate-limits). When a designer template is attached we pass the
+        // pre-rendered, token-substituted `html`; otherwise we send `body` and the
+        // function wraps it in the gym's branded template.
+        const res = await invokeWithRetry('send-admin-email', {
+          memberId: r.id,
+          subject: personalizedSubject || 'Message from your gym',
+          body: personalizedBody || personalizedSubject || ' ',
+          ...(personalizedHtml ? { html: personalizedHtml } : {}),
+          // Marca esto como envío COMERCIAL. La función consulta entonces
+          // email_allowed_for (interruptor maestro + lista de supresión) y
+          // emite List-Unsubscribe. Sin este campo, la campaña salía
+          // esquivando todo el aparato de consentimiento de 0685 y sin
+          // enlace de baja — desde el remitente que comparte toda la
+          // plataforma, así que las quejas de un gimnasio le caen a todos.
+          scope: 'marketing',
+        }, results.email);
+        if (res.ok) {
           // El miembro se dio de baja o está en la lista de supresión: no es un
           // fallo, pero tampoco un envío. Contarlo como enviado hacía que el
           // resumen mintiera sobre el alcance real.
-          if (data?.sent === false && data?.reason === 'opted_out') {
+          if (res.data?.sent === false && res.data?.reason === 'opted_out') {
             results.skipped.optedOut++;
           } else {
             results.email.sent++;
           }
-        } catch (err) {
-          logger.warn('outreach email failed', r.id, err);
-          results.email.failed++;
+        } else {
+          logger.warn('outreach email failed', r.id, res.failure.code);
+          note(results.email, res.failure);
+          if (res.fatal) fatal = { channel: 'email', ...res.failure };
         }
       }
     }
@@ -213,18 +274,15 @@ export async function sendOutreach({
       if (!r.phone) {
         results.skipped.noPhone++;
       } else {
-        try {
-          // send-sms derives the recipient phone + gym from the member record
-          // server-side; it requires `{ memberId, body }` (a raw `to` is ignored).
-          const { error } = await supabase.functions.invoke('send-sms', {
-            headers: batchAuthHeader,
-            body: { memberId: r.id, body: personalizedBody },
-          });
-          if (error) throw error;
+        // send-sms derives the recipient phone + gym from the member record
+        // server-side; it requires `{ memberId, body }` (a raw `to` is ignored).
+        const res = await invokeWithRetry('send-sms', { memberId: r.id, body: personalizedBody }, results.sms);
+        if (res.ok) {
           results.sms.sent++;
-        } catch (err) {
-          logger.warn('outreach sms failed', r.id, err);
-          results.sms.failed++;
+        } else {
+          logger.warn('outreach sms failed', r.id, res.failure.code);
+          note(results.sms, res.failure);
+          if (res.fatal) fatal = { channel: 'sms', ...res.failure };
         }
       }
     }
@@ -237,15 +295,34 @@ export async function sendOutreach({
   const queue = recipients.slice();
   const runWorker = async () => {
     while (queue.length) {
+      // Un fallo que condena al lote PARA la piscina. Antes se seguía adelante
+      // fallando uno por uno hasta el final: cuatrocientos fallos mudos en vez
+      // de un mensaje que dice qué pasó y a quién le falta.
+      if (fatal) return;
       const r = queue.shift();
+      inFlight.add(r.id);
       try { await processRecipient(r); }
-      catch (err) { logger.warn('outreach recipient failed', r?.id, err); }
-      if (queue.length) await sleep(OUTREACH_PACE_MS);
+      catch (err) {
+        logger.warn('outreach recipient failed', r?.id, err);
+        // Un destinatario que revienta aquí no lo contaba NADIE: ni enviado, ni
+        // fallido, ni omitido. Desaparecía del resumen.
+        if (channels.email) note(results.email, { status: 0, code: 'unexpected', providerStatus: 0 });
+      } finally {
+        inFlight.delete(r.id);
+      }
+      if (queue.length && !fatal) await sleep(OUTREACH_PACE_MS);
     }
   };
   await Promise.all(
     Array.from({ length: Math.min(OUTREACH_CONCURRENCY, recipients.length) }, runWorker),
   );
+
+  if (fatal) {
+    results.aborted = { reason: fatal.code, channel: fatal.channel };
+    // A quién NO le llegó: los que quedan en cola MÁS los que iban en vuelo
+    // cuando se cortó. Sin duplicados — sirve para reintentar tal cual.
+    results.pending = [...new Set([...inFlight, ...queue.map((r) => r.id)])];
+  }
 
   // Single audit-log row covering the whole batch.
   await logAdminAction('outreach_send', 'outreach', null, {
@@ -256,6 +333,9 @@ export async function sendOutreach({
     subject: subject || null,
     bodyPreview: body?.slice(0, 200) || '',
     results,
+    // El lote cortado queda en el registro con su causa: si un gimnasio dice
+    // "no le llegó a la mitad", la respuesta está aquí y no hay que adivinarla.
+    ...(results.aborted ? { aborted: results.aborted, notSent: results.pending.length } : {}),
   });
 
   return results;

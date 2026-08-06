@@ -15,6 +15,8 @@ import { useToast } from '../../contexts/ToastContext';
 import { adminKeys } from '../../lib/adminQueryKeys';
 import { FadeIn, CardSkeleton, AdminPageShell } from '../../components/admin';
 import { TK, FK, Card, DIC, SettingsHeader, CardHd, Fld, Help, Toggle, TextField, SaveBar } from './components/settingsKit';
+import SignaturePad from './components/SignaturePad';
+import { strokesAreValid, hasSignature } from '../../lib/admin/signature';
 
 const OCCASIONS = [
   { key: 'welcome', enableKey: 'enable_welcome' },
@@ -34,6 +36,9 @@ const DEFAULTS = {
   habit_window_days: 42, habit_target_count: 9, habit_dedup_days: 90,
   returning_silence_days: 21, birthday_lookahead_days: 3,
   default_rewards: {},
+  // `signature` es null o { strokes, width, height }. Se guarda como trazos y no
+  // como imagen para que la Cricut pueda DIBUJARLA con bolígrafo (ver mig 0702).
+  signature: null, signature_label: '', print_signature: false,
   enable_welcome: true, enable_habit_9in6: true, enable_tenure_30: true, enable_tenure_90: true,
   enable_tenure_365: true, enable_milestone_100: true, enable_milestone_250: true,
   enable_milestone_500: true, enable_returning: true, enable_birthday: true,
@@ -102,6 +107,18 @@ export default function AdminSettingsCards() {
         returning_silence_days: loaded.settings.returning_silence_days ?? DEFAULTS.returning_silence_days,
         birthday_lookahead_days: loaded.settings.birthday_lookahead_days ?? DEFAULTS.birthday_lookahead_days,
         default_rewards: loaded.settings.default_rewards || {},
+        // Las tres columnas llegan con la 0702. `?.` y no acceso directo: si la
+        // migración aún no está aplicada, `settings` no las trae y el formulario
+        // se queda con los valores por defecto en vez de romper la página.
+        signature: Array.isArray(loaded.settings.signature_strokes) && loaded.settings.signature_strokes.length
+          ? {
+              strokes: loaded.settings.signature_strokes,
+              width: loaded.settings.signature_width,
+              height: loaded.settings.signature_height,
+            }
+          : null,
+        signature_label: loaded.settings.signature_label || '',
+        print_signature: loaded.settings.print_signature ?? false,
         enable_welcome: loaded.settings.enable_welcome ?? true,
         enable_habit_9in6: loaded.settings.enable_habit_9in6 ?? true,
         enable_tenure_30: loaded.settings.enable_tenure_30 ?? true,
@@ -129,6 +146,17 @@ export default function AdminSettingsCards() {
       }
       const cleanRewards = Object.fromEntries(Object.entries(form.default_rewards).filter(([, v]) => v && v.trim().length > 0));
 
+      // Se comprueba ANTES de mandar. El CHECK de la 0702 rechazaría lo mismo,
+      // pero devolvería un 23514 crudo, y «new row violates check constraint»
+      // no le dice nada a nadie.
+      if (form.signature && !strokesAreValid(form.signature.strokes)) {
+        throw new Error(t('admin.settings.signatureInvalid', { defaultValue: 'That signature could not be saved. Clear it and sign again.' }));
+      }
+      // Imprimir una firma que no existe dejaría la tarjeta con un hueco y la
+      // línea desplazada, así que el interruptor no puede quedarse encendido a
+      // solas.
+      const printSig = form.print_signature && hasSignature(form.signature);
+
       const { error: gymErr } = await supabase.from('gyms').update({
         cup_noun: form.cup_noun.trim() || null,
         founded_year: form.founded_year.trim() || null,
@@ -143,6 +171,12 @@ export default function AdminSettingsCards() {
         returning_silence_days: form.returning_silence_days,
         birthday_lookahead_days: form.birthday_lookahead_days,
         default_rewards: cleanRewards,
+        signature_strokes: form.signature?.strokes ?? null,
+        signature_width: form.signature?.width ?? null,
+        signature_height: form.signature?.height ?? null,
+        signature_label: form.signature_label.trim() || null,
+        print_signature: printSig,
+        signature_updated_at: form.signature ? new Date().toISOString() : null,
         enable_welcome: form.enable_welcome,
         enable_habit_9in6: form.enable_habit_9in6,
         enable_tenure_30: form.enable_tenure_30,
@@ -210,7 +244,57 @@ export default function AdminSettingsCards() {
               </div>
             </Card>
 
-            {/* Section 3: occasions */}
+            {/* Section 3: la firma */}
+            <Card style={{ padding: '22px 24px', marginTop: 16 }}>
+              <CardHd icon={DIC.printer}>{t('admin.settings.signatureSection', { defaultValue: 'Your signature' })}</CardHd>
+              <Help>
+                {t('admin.settings.signatureHelp', {
+                  defaultValue: 'Sign once. It is stored as pen strokes, not a picture — so a Cricut can draw it on the cards in real ink. Download the SVG and pick “Draw” (not “Cut”) in Design Space.',
+                })}
+              </Help>
+
+              <div style={{ marginTop: 14 }}>
+                <SignaturePad
+                  value={form.signature}
+                  onChange={set('signature')}
+                  label={t('admin.settings.signaturePad', { defaultValue: 'Signature' })}
+                />
+              </div>
+
+              <div style={{ marginTop: 16 }}>
+                <Field
+                  label={t('admin.settings.signatureLabel', { defaultValue: 'Printed under the line' })}
+                  hint={t('admin.settings.signatureLabelHint', { defaultValue: 'Name and role, e.g. “Leo Llorens · Owner”. This is typed text, not your signature.' })}
+                  value={form.signature_label}
+                  onChange={set('signature_label')}
+                  placeholder="Leo Llorens · Owner"
+                  maxLength={80}
+                />
+              </div>
+
+              {/* Nace apagado a propósito. La línea en blanco existe para que la
+                  firme una mano — o la Cricut, que también es tinta de verdad.
+                  Imprimirla es la opción que MENOS señal personal manda. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0 0', borderTop: `1px solid ${TK.divider}`, marginTop: 16, flexWrap: 'wrap' }}>
+                <Toggle
+                  on={form.print_signature}
+                  onClick={() => set('print_signature')(!form.print_signature)}
+                  disabled={!hasSignature(form.signature)}
+                />
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <span style={{ fontFamily: FK.body, fontSize: 14.5, fontWeight: 700, color: TK.text }}>
+                    {t('admin.settings.signaturePrint', { defaultValue: 'Print the signature on cards' })}
+                  </span>
+                  <Help style={{ margin: '4px 0 0' }}>
+                    {hasSignature(form.signature)
+                      ? t('admin.settings.signaturePrintHint', { defaultValue: 'Off by default. A hand-signed card — or one drawn by a Cricut pen — reads as personal; a printed one reads as mail.' })
+                      : t('admin.settings.signaturePrintNeedsSig', { defaultValue: 'Sign above first.' })}
+                  </Help>
+                </div>
+              </div>
+            </Card>
+
+            {/* Section 4: occasions */}
             <Card style={{ padding: '22px 24px', marginTop: 16 }}>
               <CardHd icon={DIC.printer}>{t('admin.settings.cardsOccasionsSection', { defaultValue: 'Occasions' })}</CardHd>
               <Help>{t('admin.settings.cardsOccasionsHelp', { defaultValue: 'Toggle which cards the system generates. Optional default reward label pre-fills the attach modal.' })}</Help>

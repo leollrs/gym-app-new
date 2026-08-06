@@ -32,6 +32,23 @@ function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Gemelo del `headerSafe` de send-automated-email. Todo lo que acaba en una
+// cabecera del correo tiene que pasar por aquí; escHtml NO sirve para eso —
+// escapa para el cuerpo HTML, no para una cabecera.
+//
+// `gymName` sale de gyms.name, que cualquier admin puede escribir sin
+// restricción de columna (0013:5-9), y se interpola directo en
+// `From: ${gymName} <noreply@tugympr.com>`. Un nombre con CR/LF o con
+// `<...>` rompe la estructura de la cabecera: `Gym <quien@sea.com>` produce
+// dos direcciones y deja que el intermediario escoja. El remitente es
+// noreply@tugympr.com, compartido por TODA la plataforma, así que lo que
+// salga mal de aquí le cae a todos los gimnasios.
+function headerSafe(s: unknown, max: number): string {
+  return String(s ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+}
+const fromDisplayName = (s: unknown, fallback: string): string =>
+  headerSafe(s, 64).replace(/["<>]/g, '').trim() || fallback;
+
 const i18nStrings: Record<string, Record<string, string>> = {
   en: { greeting: 'Hey', team: 'Your team', poweredBy: 'Powered by', showQr: 'Show this QR code at the front desk', manualCode: 'Manual code', accessCode: 'Your access code', openApp: 'Get started' },
   es: { greeting: 'Hola', team: 'Tu equipo', poweredBy: 'Powered by', showQr: 'Muestra este código QR en recepción', manualCode: 'Código manual', accessCode: 'Tu código de acceso', openApp: 'Empezar' },
@@ -395,7 +412,7 @@ Deno.serve(async (req) => {
 
       const { data: gymRow } = await supabase
         .from('gyms').select('name').eq('id', callerProfile.gym_id).single();
-      const fromName = gymRow?.name || 'Your Gym';
+      const fromName = fromDisplayName(gymRow?.name, 'Your Gym');
 
       const resp = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -406,7 +423,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           from: `${fromName} <noreply@tugympr.com>`,
           to: [to],
-          subject,
+          subject: headerSafe(subject, 200),
           html,
         }),
       });
@@ -750,9 +767,9 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `${gymName} <noreply@tugympr.com>`,
+        from: `${fromDisplayName(gymName, 'TuGymPR')} <noreply@tugympr.com>`,
         to: [finalEmail],
-        subject,
+        subject: headerSafe(subject, 200),
         html: finalHtml,
         // Obligatorio en Gmail/Yahoo para remitentes masivos desde feb-2024.
         // Se emite SOLO en comercial: el correo transaccional no lleva baja.

@@ -42,6 +42,12 @@ export async function fetchCurrentKPIs(gymId) {
     // ~1000-row max_rows cap, so on any active gym the six headline KPIs
     // (retention / active / avg-workouts / churn) were computed off a
     // truncated sample. check_ins in particular crosses 1000 within weeks.
+    // `.order('id')` en las tres: paginar con `.range()` sin un orden TOTAL
+    // deja que Postgres devuelva las filas en distinto sitio entre página y
+    // página, así que unas se repiten y otras se pierden. Estas tres alimentan
+    // los KPI de cabecera del panel — miembros, activos, visitas — y en
+    // cualquier gimnasio que pase de 1000 filas los números salían mal sin que
+    // nada lo delatara.
     selectAllRows((from, to) => supabase
       .from('profiles')
       .select('id, created_at, membership_status')
@@ -50,6 +56,7 @@ export async function fetchCurrentKPIs(gymId) {
       // Imported-archived members are history-only — they feed the
       // retention diagnostic but must never appear in live KPIs.
       .eq('imported_archived', false)
+      .order('id', { ascending: true })
       .range(from, to)),
     selectAllRows((from, to) => supabase
       .from('workout_sessions')
@@ -57,12 +64,18 @@ export async function fetchCurrentKPIs(gymId) {
       .eq('gym_id', gymId)
       .eq('status', 'completed')
       .gte('started_at', thirtyDaysAgoIso)
+      .order('id', { ascending: true })
       .range(from, to)),
     selectAllRows((from, to) => supabase
       .from('check_ins')
       .select('checked_in_at')
       .eq('gym_id', gymId)
       .gte('checked_in_at', thirtyDaysAgoIso)
+      // Por la columna indexada PRIMERO y el id solo como desempate: ordenar
+      // por un UUID aleatorio a secas tira el índice (gym_id, checked_in_at
+      // DESC) y obliga a un sort completo en cada página.
+      .order('checked_in_at', { ascending: false })
+      .order('id', { ascending: true })
       .range(from, to)),
   ]), 12_000, 'fetchCurrentKPIs');
 

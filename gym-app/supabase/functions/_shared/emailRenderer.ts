@@ -47,6 +47,39 @@ export function safeColor(c: unknown): string {
   return /^#[0-9a-fA-F]{3,8}$/.test(String(c)) ? String(c) : '#000000';
 }
 
+/**
+ * Destino admisible para un `href` del correo. Devuelve '' cuando no lo es, y
+ * el llamador esconde el botón entero (`&& ctaUrl`) — mejor sin botón que con
+ * un botón que va a cualquier parte.
+ *
+ * Aquí NO había ninguna comprobación: `cta.url` es texto libre que escribe el
+ * admin y se metía en el href tal cual. Eso vale para tres cosas distintas:
+ *
+ *   • `javascript:` / `data:` — inertes en clientes de correo serios, pero no
+ *     en las previsualizaciones web, y no hay razón para dejarlos pasar.
+ *   • `http://` a secas — degrada un correo de marca a texto en claro.
+ *   • `https://app.tugympr.com@evil.example/` — el truco clásico: todo lo
+ *     anterior a la `@` es userinfo, o sea decoración. El lector ve el dominio
+ *     bueno; el navegador va al malo. Por eso se rechaza cualquier userinfo.
+ *
+ * Deliberadamente NO es una lista blanca de dominios: el gimnasio enlaza su
+ * propia web, su Instagram o su página de reservas, y eso es legítimo. Lo que
+ * se cierra es la forma del enlace, no su destino.
+ */
+export function safeLinkUrl(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s || s.length > 500) return '';
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return ''; // relativo o basura: en un correo no hay base contra la que resolver
+  }
+  if (u.protocol !== 'https:') return '';
+  if (u.username || u.password) return '';
+  return u.toString();
+}
+
 const TOKEN_RE = /\{\{\s*([a-z0-9_]+)\s*\}\}/gi;
 
 /**
@@ -89,15 +122,105 @@ export function applyTokensInline(text: string, values: Record<string, string | 
   return text.replace(TOKEN_RE, (_m, key: string) => String(values[key.toLowerCase()] ?? ''));
 }
 
+/**
+ * Sustituir tokens dentro de HTML YA RENDERIZADO (los diseños de la galería,
+ * guardados como HTML fijo con los tokens sin resolver).
+ *
+ * Dos diferencias con applyTokens, y las dos importan:
+ *
+ *  1. Los valores se ESCAPAN como HTML. En el camino de bloques no hace falta
+ *     porque renderEmailHtml escapa al insertar; aquí el valor entra crudo en
+ *     el documento, así que un `full_name` con marcado inyectaría HTML activo
+ *     en el correo del miembro.
+ *  2. NO se borra la línea cuando un token no resuelve. Esa regla existe para
+ *     bloques de texto; sobre HTML una "línea" puede ser medio `<tr>`, y
+ *     tirarla rompe la maqueta. Un token sin valor se sustituye por vacío.
+ */
+export function applyTokensToHtml(
+  html: string,
+  values: Record<string, string | null | undefined>,
+): string {
+  if (!html) return '';
+  return html.replace(TOKEN_RE, (_m, key: string) => {
+    const v = values[key.toLowerCase()];
+    return v === undefined || v === null ? '' : escHtml(String(v));
+  });
+}
+
+/**
+ * Pie de cumplimiento para el HTML de un diseño: baja real + dirección postal.
+ *
+ * Los diseños del catálogo traen su propio pie visual, pero con
+ * `href="#"` — un enlace de baja muerto es peor que ninguno, y CAN-SPAM exige
+ * además una dirección física en el correo comercial. Se añade un bloque
+ * propio antes de `</body>` en vez de intentar reescribir el suyo: sustituir a
+ * ciegas dentro de HTML ajeno es justo como se rompen las maquetas.
+ */
+export function appendComplianceFooter(
+  html: string,
+  opts: { unsubscribeUrl?: string | null; postalAddress?: string | null; gymName?: string | null },
+): string {
+  const bits: string[] = [];
+  if (opts.postalAddress) {
+    bits.push(`<div style="margin-bottom:6px;">${escHtml(opts.postalAddress)}</div>`);
+  }
+  if (opts.unsubscribeUrl) {
+    const safe = safeLinkUrl(opts.unsubscribeUrl);
+    if (safe) {
+      bits.push(`<a href="${escHtml(safe)}" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>`);
+    }
+  }
+  if (!bits.length) return html;
+
+  const block = `<div style="max-width:600px;margin:0 auto;padding:18px 24px 28px;text-align:center;`
+    + `font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:1.6;color:#9CA3AF;">`
+    + bits.join('') + `</div>`;
+
+  // El `(?![\s\S]*<\/body>)` ancla al ÚLTIMO </body>: un diseño con una tabla
+  // fantasma de MSO puede llevar más de uno.
+  return html.includes('</body>')
+    ? html.replace(/<\/body>(?![\s\S]*<\/body>)/, `${block}</body>`)
+    : html + block;
+}
+
+/** Adonde manda el botón de canjear: Recompensas dentro de la app. */
+const REWARDS_DEEP_LINK = 'https://app.tugympr.com/invite/go/rewards';
+
+/**
+ * Caducidad legible. Gemela de `formatExpiry` en
+ * src/lib/admin/emailTemplateRenderer.js — si una cambia, la otra también, o
+ * la vista previa del editor deja de predecir lo que se envía.
+ *
+ * Acepta la fecha ISO del selector nuevo y devuelve tal cual cualquier otra
+ * cosa: las plantillas anteriores tienen ahí texto libre y perderlo sería
+ * peor que no formatearlo.
+ */
+export function formatExpiry(value: unknown, lang = 'es'): string {
+  const raw = String(value ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  // A mano y no `new Date(raw)`: esa forma lee el ISO corto como UTC y en
+  // Puerto Rico (UTC-4) retrocede un día.
+  const [y, m, d] = raw.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (Number.isNaN(dt.getTime())) return raw;
+  try {
+    return dt.toLocaleDateString(lang === 'en' ? 'en-US' : 'es', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+  } catch {
+    return raw;
+  }
+}
+
 export interface RenderOptions {
   gymName: string;
   logoUrl?: string | null;
-  /** Pre-rendered `data:image/svg+xml;base64,…`. Omitted → no QR block. */
-  rewardQrDataUri?: string | null;
   /** Real, working unsubscribe URL. Required for anything automated. */
   unsubscribeUrl?: string | null;
   /** Physical postal address — CAN-SPAM requires one on commercial mail. */
   postalAddress?: string | null;
+  /** Idioma del envío — decide el texto fijo del bloque de recompensa. */
+  lang?: string;
   values: Record<string, string | null | undefined>;
 }
 
@@ -105,6 +228,16 @@ export function renderEmailHtml(template: EmailTemplate, opts: RenderOptions): s
   const c = template.colors;
   const { header, hero, body, cta, footer } = template;
   const reward = template.reward;
+  // `rewardQrDataUri` se cayó de RenderOptions. Se pasaba un QR en data-URI
+  // que NUNCA llegaba a verse: Gmail, Outlook y Yahoo bloquean SVG, y Gmail
+  // además tira toda imagen en `data:`. Lo que recibía el miembro era un
+  // recuadro vacío. Ahora el bloque manda el código en texto —que siempre se
+  // ve— y un botón a Recompensas de la app, donde el QR sí existe y recepción
+  // lo escanea.
+  const lang = opts.lang === 'en' ? 'en' : 'es';
+  const rewardCopy = lang === 'en'
+    ? { eyebrow: 'Your reward', code: 'Your code', redeem: 'Redeem in the app', expires: 'Valid through' }
+    : { eyebrow: 'Tu recompensa', code: 'Tu código', redeem: 'Canjear en la app', expires: 'Válido hasta el' };
   // Estos cuatro se interpolan SIN escapar dentro de style="…" en 13 sitios, y
   // salen de campos de texto libre del admin guardados verbatim en JSONB y
   // parcheables por PostgREST. Un padding de
@@ -123,7 +256,7 @@ export function renderEmailHtml(template: EmailTemplate, opts: RenderOptions): s
   const pad = clamp(typo.padding, 40, 0, 64);
   const hs  = ['gradient', 'solid', 'minimal'].includes(String(typo.headerStyle))
     ? String(typo.headerStyle) : 'gradient';
-  const { gymName, logoUrl, rewardQrDataUri, unsubscribeUrl, postalAddress, values } = opts;
+  const { gymName, logoUrl, unsubscribeUrl, postalAddress, values } = opts;
 
   const tk = (s: string) => applyTokensInline(s, values);
 
@@ -155,7 +288,7 @@ export function renderEmailHtml(template: EmailTemplate, opts: RenderOptions): s
   // botón apuntando a {{next_class_url}} emitía href="{{next_class_url}}"
   // literal — la regla de blanqueo no lo salva porque solo mira bloques de
   // texto. El `&& ctaUrl` de abajo esconde el botón entero si no resuelve.
-  const ctaUrl = tk(cta?.url || '');
+  const ctaUrl = safeLinkUrl(tk(cta?.url || ''));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -197,7 +330,11 @@ ${headerText ? `<h1 style="margin:0;font-size:22px;font-weight:700;color:${safeC
 <tr><td style="padding:0 ${pad}px;"><div style="height:1px;background:linear-gradient(90deg,transparent,${safeColor(c.primary)}40,transparent);"></div></td></tr>` : ''}
 
 ${hero?.enabled ? (() => {
-  const img = hero.imageUrl && /^https:\/\//i.test(hero.imageUrl) ? escHtml(hero.imageUrl) : '';
+  // Misma regla que el CTA. El `^https://` que había dejaba pasar userinfo
+  // (`https://cdn.gimnasio.com@evil.example/x.png`), que en una imagen no
+  // engaña a nadie pero sí manda la IP y el User-Agent del lector al host que
+  // el atacante quiera.
+  const img = escHtml(safeLinkUrl(hero.imageUrl));
   // A hero whose headline was dropped for an unresolved token would render an
   // empty coloured slab. Skip the whole block instead.
   if (!img && !heroHeadline) return '';
@@ -216,13 +353,18 @@ ${bodyHtml}
 </td></tr>
 
 ${reward?.enabled && reward?.title ? `<tr><td style="padding:8px ${pad}px 24px;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,${safeColor(c.primary)}08,${safeColor(c.primary)}15);border:2px dashed ${safeColor(c.primary)}40;border-radius:${Math.min(parseInt(br), 16)}px;overflow:hidden;">
-<tr><td style="padding:24px;text-align:center;">
-<p style="margin:0 0 4px;font-size:11px;font-weight:700;color:${safeColor(c.primary)};text-transform:uppercase;letter-spacing:2px;">${escHtml(reward.title)}</p>
-${reward.description ? `<p style="margin:8px 0 0;font-size:14px;color:${safeColor(c.text)};line-height:1.5;">${escHtml(reward.description)}</p>` : ''}
-${rewardQrDataUri ? `<img src="${escHtml(rewardQrDataUri)}" width="160" height="160" alt="${escHtml(reward.code || 'Reward code')}" style="display:block;margin:18px auto 0;width:160px;height:160px;border:8px solid #ffffff;border-radius:8px;" />` : ''}
-${reward.code ? `<p style="margin:10px 0 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;color:${safeColor(c.text)};letter-spacing:3px;">${escHtml(reward.code)}</p>` : ''}
-${reward.expiry ? `<p style="margin:6px 0 0;font-size:11px;color:#9CA3AF;">${escHtml(reward.expiry)}</p>` : ''}
+<table width="100%" cellpadding="0" cellspacing="0" style="background:${safeColor(c.primary)}0d;border:1px solid ${safeColor(c.primary)}2b;border-radius:${Math.min(parseInt(br), 16)}px;overflow:hidden;">
+<tr><td style="padding:26px 24px;text-align:center;">
+<p style="margin:0 0 6px;font-size:10px;font-weight:700;color:${safeColor(c.primary)};text-transform:uppercase;letter-spacing:2px;">${escHtml(rewardCopy.eyebrow)}</p>
+<p style="margin:0;font-size:19px;font-weight:800;color:${safeColor(c.text)};letter-spacing:-0.02em;line-height:1.25;">${escHtml(reward.title)}</p>
+${reward.description ? `<p style="margin:7px 0 0;font-size:14px;color:${safeColor(c.text)};opacity:0.72;line-height:1.55;">${escHtml(reward.description)}</p>` : ''}
+${reward.code ? `<img src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&amp;margin=0&amp;data=${encodeURIComponent('earned-reward:' + reward.code)}" width="150" height="150" alt="${escHtml(reward.code)}" style="display:block;width:150px;height:150px;margin:16px auto 0;border:0;border-radius:6px;background:#ffffff;padding:10px;" />
+<div style="margin:13px auto 0;display:inline-block;background:#ffffff;border:1px solid ${safeColor(c.primary)}33;border-radius:${Math.min(parseInt(br), 14)}px;padding:14px 22px;">
+<p style="margin:0 0 4px;font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:1.5px;">${escHtml(rewardCopy.code)}</p>
+<p style="margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:22px;font-weight:700;color:${safeColor(c.text)};letter-spacing:4px;line-height:1.2;">${escHtml(reward.code)}</p>
+</div>` : ''}
+<div style="margin:16px 0 0;"><a href="${escHtml(REWARDS_DEEP_LINK)}" style="display:inline-block;padding:12px 28px;background:${safeColor(c.primary)};color:#ffffff;font-size:13.5px;font-weight:700;text-decoration:none;border-radius:50px;">${escHtml(rewardCopy.redeem)}</a></div>
+${reward.expiry ? `<p style="margin:12px 0 0;font-size:11.5px;color:#9CA3AF;">${escHtml(rewardCopy.expires)} ${escHtml(formatExpiry(reward.expiry, lang))}</p>` : ''}
 </td></tr>
 </table>
 </td></tr>` : ''}

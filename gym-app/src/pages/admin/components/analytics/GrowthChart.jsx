@@ -26,7 +26,14 @@ async function fetchGrowthData(gymId, dateFnsLocale, span) {
     .eq('role', 'member')
     .eq('imported_archived', false)
     .gte('created_at', from)
+    // `created_at` NO desempata: una importación masiva inserta a todos los
+    // miembros en la misma transacción, y `DEFAULT NOW()` les da a todos el
+    // MISMO sello. Con 1500 filas empatadas el paginado las baraja entre
+    // páginas — unas se repiten, otras se caen — y la curva de crecimiento (y
+    // el CSV que sale de ella) sale mal justo en los gimnasios grandes, que
+    // son los que la miran.
     .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
     .range(lo, hi));
   if (error) throw error;
 

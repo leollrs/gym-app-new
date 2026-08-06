@@ -23,7 +23,13 @@
  * gym's postal address.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { renderEmailHtml, applyTokensInline } from '../_shared/emailRenderer.ts';
+import { applyTokensInline, applyTokensToHtml, appendComplianceFooter } from '../_shared/emailRenderer.ts';
+// El MISMO motor que dibuja la vista previa del editor. Es una copia generada
+// (scripts/sync-email-engine.mjs) y un test de contrato la compara byte a byte
+// con la del navegador, porque tenerlas escritas por separado ya nos costó que
+// el editor enseñara una maqueta y al miembro le llegara otra.
+import { emailDoc, PRESET_IDS } from '../_shared/emailEngine.ts';
+import { pickVariant } from '../_shared/emailVariants.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -149,7 +155,14 @@ Deno.serve(async (req) => {
 
     if (!tplRow) return jsonResp({ sent: false, reason: 'no_template' });
 
-    const d = tplRow.template_data || {};
+    // La plantilla EN EL IDIOMA DEL MIEMBRO.
+    //
+    // Una plantilla guarda su texto en los dos idiomas (base + `i18n`), con la
+    // maqueta y los enlaces compartidos. `pickVariant` superpone el texto que
+    // toque; un campo sin traducir cae al base, así que media traducción sale
+    // media traducida y nunca en blanco. Si la plantilla no tiene variante
+    // —todas las de antes— esto devuelve la misma fila y no cambia nada.
+    const d = pickVariant(tplRow.template_data || {}, ctx.language === 'en' ? 'en' : 'es');
     const template = {
       header: d.header || { enabled: true, showLogo: true, text: '' },
       hero: d.hero || { enabled: false, imageUrl: '', headline: '', subtitle: '' },
@@ -176,6 +189,75 @@ Deno.serve(async (req) => {
     const unsubscribeUrl = ctx.unsub_token ? `${APP_ORIGIN}/u/${ctx.unsub_token}` : null;
     values.unsubscribe_url = unsubscribeUrl;
 
+    // El corte de `dry_run` va AQUÍ, antes de conceder nada.
+    //
+    // Estaba después: una prueba en seco creaba una fila real en
+    // earned_rewards, quemaba el dedup key —así que el envío de verdad ya no
+    // podía conceder— y disparaba el trigger que le manda un push al miembro
+    // diciéndole que recoja un premio. Todo eso mientras el llamante recibía
+    // `{ sent: false, reason: 'dry_run' }`.
+    // Sin excepciones. La condición llevaba `&& !(reward.enabled && reward.title)`,
+    // o sea que eximía JUSTO el caso que el comentario de arriba dice estar
+    // arreglando: con recompensa no cortaba, caía en 4b, creaba la fila real en
+    // earned_rewards y disparaba el push al miembro. El arreglo estaba escrito
+    // en el comentario y desmentido por la línea siguiente.
+    if (dry_run) {
+      return jsonResp({ sent: false, reason: 'dry_run', values });
+    }
+
+    // ── 4b. Recompensa: un código PROPIO para este miembro ──
+    //
+    // El `code` que el admin escribió en la plantilla es un único string para
+    // toda la campaña. Mandarlo tal cual significa que quien lo reenvíe al
+    // grupo de WhatsApp lo regala a todo el mundo, y que no hay forma de saber
+    // quién canjeó ni de cerrar la promoción.
+    //
+    // grant_email_campaign_reward (0694) crea una fila en `earned_rewards`
+    // —la tabla que el escáner de recepción y la pantalla de recompensas del
+    // miembro YA usan— y devuelve un código único. Es idempotente por
+    // dedup_key, así que un reintento del cron devuelve el mismo código en vez
+    // de regalar dos veces.
+    if (template.reward?.enabled && template.reward?.title) {
+      const { data: grant, error: grantErr } = await supabase.rpc('grant_email_campaign_reward', {
+        p_profile_id: profile_id,
+        p_template_id: tplRow.id,
+        p_label: template.reward.title,
+        p_label_es: template.reward.title_es ?? null,
+        p_reward_id: template.reward.reward_id || null,
+        p_expires_at: /^\d{4}-\d{2}-\d{2}$/.test(String(template.reward.expiry || ''))
+          ? `${template.reward.expiry}T23:59:59Z`
+          : null,
+      });
+      // La función llega con la migración 0694. Si aún no se aplicó, PostgREST
+      // responde PGRST202 — y tratarlo como fatal significaba CERO entrega para
+      // toda plantilla con recompensa, en silencio: `fire_automated_email`
+      // (0687:74) dispara por `net.http_post` y nunca lee la respuesta.
+      //
+      // Es la misma regla que ya aplica el reclamo de `automated_email_log`
+      // treinta líneas más abajo: mandar de más es recuperable, no mandar nada
+      // no lo es. Se manda el correo sin bloque de recompensa antes que no
+      // mandar nada.
+      const grantMissing = grantErr
+        && (grantErr.code === 'PGRST202' || grantErr.code === '42883'
+            || /could not find the function|does not exist/i.test(grantErr.message || ''));
+      if (grantErr && !grantMissing) {
+        console.error('grant_email_campaign_reward failed:', grantErr);
+        return jsonResp({ error: 'reward_grant_failed', detail: grantErr.message }, 500);
+      }
+      if (grantMissing) {
+        console.warn('grant_email_campaign_reward missing (mig 0694 no aplicada) — se envía sin recompensa');
+        template.reward = { ...template.reward, enabled: false };
+      }
+      // `granted:false` con motivo 'already_granted' NO es un error: trae el
+      // código que ya tenía, que es justo lo que hay que volver a enseñarle.
+      template.reward = { ...template.reward, code: grant?.code || '' };
+      // También como token. El camino de las plantillas de la galería renderiza
+      // HTML fijo con `applyTokensToHtml` y NO mira `template.reward`, así que
+      // sin esto se concedía el regalo, el trigger le empujaba "recoge tu
+      // recompensa" y el correo llegaba sin el código.
+      values.reward_code = grant?.code || '';
+    }
+
     // ── 5. Logo: a bucket path, not a URL ──
     // Email clients can't authenticate, so a private-bucket ref has to be
     // signed. One year, matching send-invite:250-258.
@@ -191,13 +273,102 @@ Deno.serve(async (req) => {
     }
 
     const gymName = ctx.gym?.name || 'Your Gym';
-    const html = renderEmailHtml(template as never, {
-      gymName,
-      logoUrl,
-      unsubscribeUrl,
-      postalAddress: ctx.gym?.address ?? null,
-      values,
-    });
+
+    // Dos clases de plantilla comparten esta tabla:
+    //
+    //   • BLOQUES — cabecera/hero/cuerpo/botón; las arma renderEmailHtml.
+    //   • DISEÑO  — uno de los quince layouts editoriales del catálogo,
+    //     guardado ya renderizado desde la galería con los tokens intactos.
+    //     Es HTML fijo: aquí solo se sustituyen los tokens.
+    //
+    // Los valores se escapan como HTML en este camino y NO en el de bloques,
+    // donde renderEmailHtml ya escapa al insertar. Un miembro cuyo nombre
+    // lleve marcado (`<img onerror=…>`) inyectaría HTML activo en el correo
+    // que recibe — el mismo escape que hace outreachSender al sustituir sobre
+    // HTML prerenderizado.
+    const designerHtml = typeof d.designer_html === 'string' ? d.designer_html : '';
+    let html: string;
+    if (designerHtml) {
+      html = applyTokensToHtml(designerHtml, values);
+      html = appendComplianceFooter(html, {
+        unsubscribeUrl,
+        postalAddress: ctx.gym?.address ?? null,
+        gymName,
+      });
+    } else {
+      // El MISMO motor que la vista previa. Antes esto llamaba a
+      // `renderEmailHtml`, que no sabe qué es una maqueta: las seis opciones
+      // del paso 1 producían HTML idéntico al enviar, y de paso arrastraba dos
+      // bugs que la copia del navegador ya tenía arreglados —el hero con foto
+      // descartaba el titular, y el separador de sección esperaba
+      // `---Título---` cuando el editor documenta `--Título--`.
+      // `primary_color`, NO `accent`: member_email_context (0688:220-226) devuelve
+      // {name, address, logo_ref, primary_color, secondary_color}. Leer `accent`
+      // fallaba el test SIEMPRE y caía al teal por defecto — en silencio, porque
+      // `ctx` es `any` y nadie se queja de una propiedad que no existe.
+      const gymAccent = /^#[0-9a-fA-F]{3,8}$/.test(String(ctx.gym?.primary_color || ''))
+        ? ctx.gym.primary_color : (d.colors?.primary || '#19B8B8');
+      html = emailDoc({
+        lang: ctx.language === 'en' ? 'en' : 'es',
+        preset: PRESET_IDS.includes(d.preset) ? d.preset : 'editorial',
+        density: ['compacto', 'comodo', 'espacioso'].includes(d.density) ? d.density : 'comodo',
+        fontScale: Number(d.typography?.fontScale) || Number(d.typography?.fontSize) || 15,
+        brand: {
+          name: gymName,
+          monogram: (gymName || '??').replace(/[^A-Za-zÁÉÍÓÚÑ]/g, '').slice(0, 2).toUpperCase() || '??',
+          accent: gymAccent,
+          logoUrl: logoUrl || '',
+        },
+        subject: '',
+        preheader: d.preheader || '',
+        header: {
+          on: template.header?.enabled !== false,
+          showLogo: template.header?.showLogo !== false,
+          text: template.header?.text || '',
+        },
+        // `on` derivado del contenido, igual que en el editor: el interruptor
+        // solo significa "quiero foto", y un titular escrito tiene que salir.
+        hero: {
+          on: !!(template.hero?.headline || template.hero?.subtitle
+                 || template.hero?.eyebrow || template.hero?.imageUrl),
+          imageUrl: template.hero?.imageUrl || '',
+          imagePlaceholder: false,   // el marcador a rayas es SOLO del editor
+          eyebrow: template.hero?.eyebrow || '',
+          title: template.hero?.headline || '',
+          subtitle: template.hero?.subtitle || '',
+        },
+        body: { on: true, text: template.body?.text || '' },
+        reward: {
+          on: !!template.reward?.enabled,
+          label: template.reward?.label || '',
+          title: template.reward?.title || '',
+          desc: template.reward?.description || '',
+          code: template.reward?.code || '',
+          // Solo canjeable si `grant_email_campaign_reward` creó la fila. Si la
+          // 0694 no está aplicada el bloque ya viene apagado, así que aquí
+          // basta con que haya código concedido.
+          scannable: !!values.reward_code,
+          expires: template.reward?.expiry || '',
+        },
+        cta: {
+          on: !!template.cta?.enabled,
+          label: template.cta?.text || '',
+          dest: template.cta?.dest || 'app',
+          url: template.cta?.url || '',
+          color: template.cta?.color || '',
+        },
+        footer: {
+          on: template.footer?.enabled !== false,
+          text: template.footer?.text || '',
+          address: ctx.gym?.address || '',
+          unsub: template.footer?.unsubscribeText || (ctx.language === 'en' ? 'Unsubscribe' : 'Cancelar suscripción'),
+          unsubUrl: unsubscribeUrl || '',
+        },
+        // Los valores REALES del miembro. El motor los usa en vez de la tabla
+        // de muestra que alimenta la vista previa.
+        values,
+      });
+    }
 
     // Subject from the header text, falling back to the template name. Uses the
     // inline rule: an unresolved token blanks it rather than shipping

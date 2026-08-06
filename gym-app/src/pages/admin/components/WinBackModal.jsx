@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RotateCcw, CheckCircle, FlaskConical, Bell, Mail, Smartphone, Gift } from 'lucide-react';
 import { supabase, authHeader } from '../../../lib/supabase';
@@ -52,6 +52,8 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
   const [selectedRewardId, setSelectedRewardId] = useState(null); // gym_rewards.id
   const [channel, setChannel] = useState('push'); // push, email, sms
   const [sending, setSending] = useState(false);
+  // Recuerda la redención ya concedida para que un reintento no regale otra.
+  const giftedRef = useRef(null);
   const [sent, setSent] = useState(false);
 
   // When campaign variant is assigned, pre-fill the offer
@@ -70,8 +72,19 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
     setSending(true);
     try {
       // If a reward is selected, gift it to the member (creates pending redemption with QR)
-      let redemptionId = null;
-      if (selectedReward) {
+      //
+      // SE REGALA UNA SOLA VEZ POR APERTURA DEL MODAL.
+      //
+      // El regalo tiene que ir ANTES del envío porque su QR y su enlace van
+      // DENTRO del mensaje. Pero el envío puede fallar o resolverse en
+      // `opted_out`, y entonces el admin cambia de canal y le da otra vez —
+      // que es lo normal, porque `opted_out` es determinista. Sin este guardado
+      // cada reintento creaba una redención pendiente MÁS con su propio QR, y
+      // el miembro acumulaba regalos que nadie concedió.
+      //
+      // No hay RPC para revocar una redención, así que reusar la anterior es
+      // la única forma correcta sin una migración nueva.
+      if (selectedReward && !giftedRef.current) {
         const { data: giftResult, error: giftErr } = await supabase.rpc('admin_gift_reward', {
           p_member_id: member.id,
           p_gym_id: gymId,
@@ -79,8 +92,12 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           p_reward_name: selectedReward.name,
         });
         if (giftErr) logger.error('Win-back gift reward failed:', giftErr);
-        else redemptionId = giftResult?.redemption_id;
+        else giftedRef.current = { rewardId: String(selectedReward.id), redemptionId: giftResult?.redemption_id };
       }
+      // Si cambió de recompensa entre reintentos, la anterior ya no aplica.
+      const redemptionId = giftedRef.current?.rewardId === String(selectedReward?.id ?? '')
+        ? giftedRef.current.redemptionId
+        : null;
 
       // Build message with offer
       const offerLine = rewardName
@@ -137,16 +154,46 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           headers: reqHeaders,
         }).catch(err => logger.warn('WinBack: push failed:', err));
       } else if (channel === 'email') {
-        const { error: emailErr } = await supabase.functions.invoke('send-admin-email', {
+        const { data: emailData, error: emailErr } = await supabase.functions.invoke('send-admin-email', {
           headers: reqHeaders,
           body: {
             memberId: member.id,
             subject: t('admin.churn.weWantYouBack', 'We want you back!'),
             body: fullMsg,
             lang,
+            // Esto es contenido COMERCIAL: le escribe a alguien que ya se fue
+            // para que vuelva. Sin `scope`, la función lo trataba como
+            // transaccional y saltaba ENTERO el aparato de consentimiento de
+            // 0685 — interruptor maestro, lista de supresión y enlace de baja.
+            // O sea: el único correo que un ex-miembro tiene motivos para no
+            // querer era justo el que ignoraba que se hubiera dado de baja, y
+            // salía sin forma de volver a darse. Desde noreply@tugympr.com,
+            // que comparte toda la plataforma.
+            //
+            // 'marketing' y NO 'winback' a propósito. `email_allowed_for`
+            // (0685:220) exige para el scope 'winback' la columna
+            // notif_email_winback, que es opt-in con DEFAULT FALSE porque está
+            // pensada para el cron desatendido. Ponerla aquí bloquearía
+            // prácticamente todos los envíos de este botón — y peor, la función
+            // devuelve `{sent:false, reason:'opted_out'}` con HTTP 200, así que
+            // el admin vería "enviado" sin que saliera nada. Un scope
+            // desconocido comprueba interruptor maestro + supresión + emite la
+            // baja, que es lo que corresponde a un envío puntual que un humano
+            // decide, uno a uno. Mismo criterio que Outreach.
+            scope: 'marketing',
           },
         });
         if (emailErr) throw emailErr;
+        // El envío puede resolverse con 200 y NO haber salido. Decirlo.
+        if (emailData?.sent === false) {
+          showToast(
+            emailData.reason === 'opted_out'
+              ? t('admin.churn.emailOptedOut', 'That member unsubscribed from emails — try another channel.')
+              : t('admin.churn.emailNotSent', 'The email was not sent.'),
+            'error',
+          );
+          return; // el `finally` de abajo suelta `sending`
+        }
       } else if (channel === 'sms') {
         const smsText = fullMsg.length > 320 ? fullMsg.slice(0, 317) + '...' : fullMsg;
         const smsPayload = { memberId: member.id, body: smsText, source: 'win_back' };

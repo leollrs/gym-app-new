@@ -15,7 +15,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import useSignedQR from '../hooks/useSignedQR';
 import logger from '../lib/logger';
-import { RewardSymbol } from '../lib/rewardSymbols';
+import { RewardSymbol, sourceSymbolKey } from '../lib/rewardSymbols';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import Skeleton from '../components/Skeleton';
@@ -614,11 +614,10 @@ const EarnedRewardsBanner = ({ rewards, onClaim, onShowQr, t, isEs, claiming }) 
     }
   };
 
-  const sourceEmoji = (source) => {
-    if (source === 'birthday') return '🎂';
-    if (source === 'referral_milestone') return '🎉';
-    return '🎁';
-  };
+  // sourceEmoji devolvía '🎂'/'🎉'/'🎁'. Era el último sitio que volvía a meter
+  // emojis en esta lista: aunque el admin eligiera un icono de línea, toda
+  // recompensa sin icono propio caía aquí y salía un emoji al lado de los que
+  // no lo son. Ahora es una CLAVE de símbolo y lo pinta RewardSymbol.
 
   return (
     <FadeIn>
@@ -639,7 +638,9 @@ const EarnedRewardsBanner = ({ rewards, onClaim, onShowQr, t, isEs, claiming }) 
                 className="relative rounded-2xl overflow-hidden border border-[var(--color-accent)]/20 bg-gradient-to-r from-[var(--color-accent)]/[0.06] to-transparent"
               >
                 <div className="px-4 py-4 flex items-center gap-3">
-                  <div className="text-[28px] flex-shrink-0">{er.reward_emoji || sourceEmoji(er.source)}</div>
+                  <div className="flex-shrink-0" style={{ color: 'var(--color-accent)' }}>
+                    <RewardSymbol value={er.reward_emoji || sourceSymbolKey(er.source)} size={28} />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-extrabold text-[var(--color-text-primary)] truncate" style={{ fontFamily: FONT_DISPLAY }}>
                       {label}
@@ -698,9 +699,13 @@ const EarnedRewardQRModal = ({ reward, onClose, t, isEs }) => {
   }, []);
 
   const label = (isEs && reward.reward_label_es) ? reward.reward_label_es : reward.reward_label;
-  // reward_emoji is sometimes a plain word ("gift") rather than an emoji glyph —
-  // only show it if it's a real (non-ASCII) emoji, else fall back to 🎁.
-  const emoji = (reward.reward_emoji && [...String(reward.reward_emoji)].some((c) => c.codePointAt(0) > 0x7F)) ? reward.reward_emoji : '🎁';
+  // Este apaño —«solo lo enseño si tiene algún carácter no-ASCII»— existía
+  // porque reward_emoji ya venía guardando palabras ('gift') desde el catálogo,
+  // y pintarlas en crudo sacaba la palabra al lado del nombre. Se descartaba la
+  // clave BUENA para caer en un emoji. Ahora la clave es lo correcto y
+  // RewardSymbol se encarga: clave → icono, emoji antiguo → ese emoji, vacío →
+  // el regalo por defecto.
+  const symbol = reward.reward_emoji || sourceSymbolKey(reward.source);
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ fontFamily: FONT_BODY }}>
@@ -721,13 +726,13 @@ const EarnedRewardQRModal = ({ reward, onClose, t, isEs }) => {
           <X size={17} />
         </button>
 
-        {/* Header — emoji badge + reward name */}
+        {/* Header — símbolo + nombre de la recompensa */}
         <div className="flex flex-col items-center text-center pt-9 pb-6 px-7">
           <div
             className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3"
             style={{ background: 'color-mix(in srgb, var(--color-accent) 16%, transparent)' }}
           >
-            <span className="text-[30px]" aria-hidden="true">{emoji}</span>
+            <RewardSymbol value={symbol} size={30} color="var(--color-accent)" />
           </div>
           <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: 'var(--color-accent)' }}>
             {t('rewards.rewardLabel', 'Reward')}

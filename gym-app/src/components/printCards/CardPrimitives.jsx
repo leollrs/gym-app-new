@@ -77,7 +77,44 @@ export function QRBlock({ size = 72, value, label }) {
   );
 }
 
-export function SignBlock({ label, note, noteLines = 2, width = '100%', compact = false }) {
+/**
+ * La firma del dueño, pintada SOBRE la línea.
+ *
+ * SVG en línea y no una imagen, a propósito: la vista de impresión llama a
+ * `window.print()` en cuanto monta, y una imagen que todavía no ha cargado sale
+ * en blanco — no se descubre hasta tener las tarjetas en la mano. Un SVG
+ * incrustado ya está ahí cuando se pinta el nodo.
+ *
+ * `preserveAspectRatio` con `xMidYMax`: la rúbrica se APOYA en la línea, que es
+ * donde se apoya una firma de verdad. Centrada en vertical quedaría flotando.
+ */
+export function InkSignature({ signature, height }) {
+  if (!signature?.strokes?.length) return null;
+  const w = Number(signature.width) || 400;
+  const h = Number(signature.height) || 140;
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="xMidYMax meet"
+      style={{
+        position: 'absolute',
+        left: 0,
+        bottom: 1,
+        width: '100%',
+        height,
+        pointerEvents: 'none',
+        overflow: 'visible',
+      }}
+    >
+      <g fill="none" stroke="rgba(17,17,17,0.82)" strokeWidth={Math.max(1.5, w / 190)}
+        strokeLinecap="round" strokeLinejoin="round">
+        {signature.strokes.map((d, i) => <path key={i} d={d} />)}
+      </g>
+    </svg>
+  );
+}
+
+export function SignBlock({ label, note, noteLines = 2, width = '100%', compact = false, signature = null, signatureName = null }) {
   const { t } = useTranslation('pages');
   const resolvedLabel = label ?? t('admin.printCards.card.signed', { defaultValue: 'signed' });
   const lineColor = 'rgba(17,17,17,0.18)';
@@ -104,9 +141,12 @@ export function SignBlock({ label, note, noteLines = 2, width = '100%', compact 
           ) : null}
         </div>
       ))}
-      {/* Signature line — intentionally LEFT BLANK so the gym owner signs it
-          by hand. A printed-in signature defeats the personal-touch retention
-          signal this card exists for. The label + rule below are the line. */}
+      {/* Línea de firma. POR DEFECTO SIGUE EN BLANCO: una firma impresa manda
+          menos señal personal que una a mano, y esa señal es para lo que la
+          tarjeta existe. `signature` solo llega cuando el dueño encendió
+          `print_signature` a conciencia en /admin/settings/cards (mig 0702).
+          El camino preferido sigue siendo tinta de verdad — de su mano o del
+          bolígrafo de la Cricut, que dibuja estos mismos trazos. */}
       <div
         style={{
           display: 'flex',
@@ -115,8 +155,10 @@ export function SignBlock({ label, note, noteLines = 2, width = '100%', compact 
           borderBottom: `0.5px solid ${lineColor}`,
           paddingBottom: 3,
           height: compact ? 22 : 26,
+          position: 'relative',
         }}
       >
+        <InkSignature signature={signature} height={compact ? 30 : 38} />
         <span
           style={{
             fontFamily: "'JetBrains Mono', monospace",
@@ -131,6 +173,24 @@ export function SignBlock({ label, note, noteLines = 2, width = '100%', compact 
           {resolvedLabel}
         </span>
       </div>
+      {/* El nombre y el cargo, DEBAJO de la raya. Es texto tecleado, no la
+          rúbrica: una firma manuscrita se lee mal a propósito, y quien recibe
+          la tarjeta tiene que poder saber de quién es. Solo sale si el dueño
+          escribió algo — sin él, la tarjeta queda exactamente como estaba. */}
+      {signatureName ? (
+        <div
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 7.5,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'rgba(17,17,17,0.42)',
+            marginTop: 3,
+          }}
+        >
+          {signatureName}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -12,6 +12,7 @@
 import { generateProgram } from './workoutGenerator';
 import { generateProgramName, generateRoutineName } from './programNaming';
 import { getExercises } from './exerciseStore';
+import logger from './logger';
 const exerciseLibrary = getExercises();
 
 const getExerciseById = (id) => exerciseLibrary.find((e) => e.id === id);
@@ -274,24 +275,73 @@ export async function generateAndSavePersonalProgram({ supabase, user, gymId, sn
   }
 
   // 4. Per-day workout_schedule (canonical mapping for the week) ─────────
-  // Wipe stale rows first. Without this, days from a prior program that
-  // aren't in the new pickedDows survive and the dashboard's "My Plan"
-  // keeps suggesting routines from the expired program on those DOWs.
-  // Upsert alone can't clear DOWs that the new program no longer covers.
-  await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
-
-  // Only seed variant A here. The Workouts page resolves the correct variant
-  // per week from schedule_map.routine_ids_a/_b. Dashboard / notifications
-  // that read workout_schedule directly will show variant A for that DOW,
-  // which is still a valid program routine for that slot.
-  for (let i = 0; i < createdRoutineIdsA.length; i++) {
-    await supabase.from('workout_schedule').upsert({
+  // ORDEN: primero escribir, después limpiar. Al revés — que es como estaba —
+  // el borrado se llevaba la semana entera y, si el upsert que venía detrás
+  // fallaba, el miembro se quedaba SIN horario y nadie se enteraba: ninguno de
+  // los dos comprobaba `error` y el builder de Supabase resuelve con
+  // `{ error }` en vez de lanzar. Escribiendo primero, un fallo deja el
+  // horario anterior intacto en lugar de dejar el hueco.
+  //
+  // Solo se siembra la variante A. La página de Workouts resuelve la variante
+  // correcta por semana desde schedule_map.routine_ids_a/_b. Dashboard y
+  // notificaciones, que leen workout_schedule directo, verán la A para ese
+  // día — que sigue siendo una rutina válida del programa para ese hueco.
+  //
+  // Se DEDUPLICA por día y se descartan los días no numéricos antes del
+  // upsert. Al pasar del bucle fila-a-fila a un solo upsert, esto dejó de ser
+  // cosmético y pasó a ser todo-o-nada:
+  //
+  //   • Dos rutinas cayendo en el mismo día —posible si
+  //     `preferred_training_days` trae un día repetido, una columna que YA
+  //     tuvo deriva de datos (mig 0673)— hacen que Postgres lance 21000
+  //     "ON CONFLICT DO UPDATE cannot affect row a second time", y con el
+  //     `throw` de abajo se cae la generación entera. El bucle viejo
+  //     simplemente sobrescribía y el miembro se quedaba con un horario válido.
+  //   • Un `day_of_week: undefined` (si el relleno de huecos no llegó a
+  //     completar N) lo elimina `JSON.stringify`, y PostgREST responde 400
+  //     "All object keys must match" — otra vez fallo total.
+  //
+  // Degradar a un horario con un día menos es aceptable. No generar el
+  // programa no lo es.
+  const seenDow = new Set();
+  const scheduleRows = createdRoutineIdsA.reduce((rows, routineId, i) => {
+    const dow = pickedDows[i];
+    if (typeof dow !== 'number' || Number.isNaN(dow) || seenDow.has(dow)) return rows;
+    seenDow.add(dow);
+    rows.push({
       profile_id:  user.id,
       gym_id:      gymId,
-      day_of_week: pickedDows[i],
-      routine_id:  createdRoutineIdsA[i],
+      day_of_week: dow,
+      routine_id:  routineId,
       updated_at:  new Date().toISOString(),
-    }, { onConflict: 'profile_id,day_of_week' });
+    });
+    return rows;
+  }, []);
+
+  if (scheduleRows.length) {
+    const { error: schedErr } = await supabase
+      .from('workout_schedule')
+      .upsert(scheduleRows, { onConflict: 'profile_id,day_of_week' });
+    if (schedErr) throw schedErr;
+  }
+
+  // Ahora sí, tirar los días que el programa nuevo ya no cubre. Un upsert solo
+  // no puede limpiarlos, pero acotando el DELETE a los DOW sobrantes nunca se
+  // toca lo que acabamos de escribir.
+  const keptDows = scheduleRows.map((r) => r.day_of_week);
+  const staleDows = [0, 1, 2, 3, 4, 5, 6].filter((d) => !keptDows.includes(d));
+  if (staleDows.length) {
+    const { error: wipeErr } = await supabase
+      .from('workout_schedule')
+      .delete()
+      .eq('profile_id', user.id)
+      .in('day_of_week', staleDows);
+    // No es fatal: el programa ya está escrito y es correcto. Un día viejo
+    // colgando es un defecto visible, no una pérdida de datos — pero SÍ hay
+    // que enterarse, porque deja la semana mezclada entre dos programas.
+    // `logger.error` y no `.warn`: warn es un no-op en producción
+    // (lib/logger.js), así que este aviso no llegaba a error_logs.
+    if (wipeErr) logger.error('workout_schedule stale wipe failed', wipeErr);
   }
 
   posthog?.capture?.('program_generated', {
@@ -516,24 +566,49 @@ export async function reactivatePersonalProgram({ supabase, user, sourceProgram,
     .single();
   if (insErr) throw insErr;
 
-  // Wipe stale workout_schedule rows for this profile so getRoutinesForWeek
-  // doesn't mix the just-expired program's days into the reactivated one.
-  // The previously-active program's schedule rows would otherwise survive
-  // under different DOWs and double up the week.
-  await supabase.from('workout_schedule').delete().eq('profile_id', user.id);
-
-  // Insert workout_schedule for these routines on their original DOWs.
+  // Escribir primero, limpiar después — igual que en la generación. El borrado
+  // por delante dejaba al miembro sin horario si el upsert siguiente fallaba, y
+  // ninguno de los dos miraba `error`.
   const dayMap = Array.isArray(schedMap.routine_day_map) ? schedMap.routine_day_map : [];
-  for (const entry of dayMap) {
-    const routineId = routineIds[entry.routine_index];
-    if (!routineId || !existingIds.has(routineId)) continue;
-    await supabase.from('workout_schedule').upsert({
+  // Mismo blindaje que en la generación: un `schedule_map` guardado con un día
+  // repetido —o sin `day_of_week`— tumbaría la reactivación entera.
+  const seenReactDow = new Set();
+  const reactRows = dayMap
+    .map((entry) => ({ entry, routineId: routineIds[entry.routine_index] }))
+    .filter(({ entry, routineId }) => {
+      if (!routineId || !existingIds.has(routineId)) return false;
+      const dow = entry?.day_of_week;
+      if (typeof dow !== 'number' || Number.isNaN(dow) || seenReactDow.has(dow)) return false;
+      seenReactDow.add(dow);
+      return true;
+    })
+    .map(({ entry, routineId }) => ({
       profile_id:  user.id,
       gym_id:      currentGymId,
       day_of_week: entry.day_of_week,
       routine_id:  routineId,
       updated_at:  new Date().toISOString(),
-    }, { onConflict: 'profile_id,day_of_week' });
+    }));
+
+  if (reactRows.length) {
+    const { error: schedErr } = await supabase
+      .from('workout_schedule')
+      .upsert(reactRows, { onConflict: 'profile_id,day_of_week' });
+    if (schedErr) throw schedErr;
+  }
+
+  // Tirar los días del programa recién expirado que el reactivado no cubre —
+  // sin ellos getRoutinesForWeek mezclaba las dos semanas y los días salían
+  // duplicados.
+  const reactKept = reactRows.map((r) => r.day_of_week);
+  const reactStale = [0, 1, 2, 3, 4, 5, 6].filter((d) => !reactKept.includes(d));
+  if (reactStale.length) {
+    const { error: wipeErr } = await supabase
+      .from('workout_schedule')
+      .delete()
+      .eq('profile_id', user.id)
+      .in('day_of_week', reactStale);
+    if (wipeErr) logger.error('workout_schedule stale wipe failed (reactivate)', wipeErr);
   }
 
   posthog?.capture?.('program_reactivated', {

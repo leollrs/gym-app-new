@@ -2,15 +2,19 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Eye, Send, X, Mail, Loader2, Users, BarChart3, Activity, Flame, Trophy, CalendarDays } from 'lucide-react';
+import { Eye, Send, X, Mail, Loader2, Users, BarChart3, Activity, Flame, Trophy, CalendarDays, BookmarkPlus } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AdminCard } from '../../../components/admin';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { supabase, ensureFreshSession, isSessionError, readFunctionError } from '../../../lib/supabase';
 import logger from '../../../lib/logger';
+import { adminKeys } from '../../../lib/adminQueryKeys';
+import { logAdminAction } from '../../../lib/adminAudit';
 import { DESIGNER_CAMPAIGNS, renderDesignerEmail } from '../../../lib/admin/emailDesignerTemplates';
 import DesignerEmail from './designerEmailComponents';
 import { ToneIconChip } from './emailTemplateKinds';
+import SaveDesignAsTemplateDialog from './SaveDesignAsTemplateDialog';
 import { useScrollLock } from '../../../hooks/useScrollLock';
 
 // Section header icon + tone per designer campaign (replaces the old emoji).
@@ -463,11 +467,16 @@ function FullPreviewModal({ entry, html, subject, preview /* eslint-disable-line
 export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
   const { t, i18n } = useTranslation('pages');
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const gymId = profile?.gym_id;
   const lang = i18n.language?.startsWith('es') ? 'es' : 'en';
   const [active, setActive] = useState(null);
   const [sendingTest, setSendingTest] = useState(false);
+  // Diseño que el diálogo de "guardar como plantilla" está a punto de guardar.
+  const [saveTarget, setSaveTarget] = useState(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   // When set, the SendTestDialog opens to confirm the destination email for
   // the given designer id. `null` means closed.
   const [testTarget, setTestTarget] = useState(null);
@@ -501,6 +510,89 @@ export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
 
   const handleUse = (id) => {
     navigate(`/admin/outreach?channel=email&designer=${encodeURIComponent(id)}`);
+  };
+
+  // ── Guardar un diseño como plantilla del gimnasio ─────────────────────
+  //
+  // Esto es lo que conecta la galería con el correo automático. Antes los
+  // quince diseños solo sabían ir a Outreach: servían para un envío puntual y
+  // no se podían guardar, así que no podían llevar `step_key` — y por tanto
+  // TODO el correo automático estaba condenado al editor de bloques.
+  //
+  // Se guarda el HTML YA RENDERIZADO con los tokens intactos, más el id del
+  // diseño. El HTML es lo que envía la edge function; el id queda para poder
+  // re-renderizar el día que el catálogo se porte a Deno.
+  //
+  // La consecuencia de congelar el HTML hay que decirla: si el gimnasio cambia
+  // sus colores después, la plantilla guardada conserva la paleta vieja hasta
+  // que se vuelva a guardar. Es un intercambio consciente — la alternativa era
+  // portar 1.347 líneas a Deno y quedarse con dos copias que divergen.
+  const handleSaveAsTemplate = async ({ name, stepKey, autoEnabled }) => {
+    if (!saveTarget?.id || !gymId) return;
+    setSavingTemplate(true);
+    try {
+      // Con los tokens SIN sustituir: `name: '{{first_name}}'` y las estadísticas
+      // como tokens, para que el enviador los rellene por destinatario.
+      const r = renderDesignerEmail(saveTarget.id, {
+        lang, gymName, logoUrl: gymLogoUrl,
+        primaryColor: primary, secondaryColor: secondary,
+        coachName: gymName,
+        name: '{{first_name}}',
+        vars: {
+          streak_count: '{{streak_count}}',
+          workout_count: '{{workout_count}}',
+          days_inactive: '{{days_inactive}}',
+        },
+      });
+      if (!r?.html) throw new Error('Render returned no HTML');
+
+      const { error } = await supabase.from('gym_email_templates').insert({
+        gym_id: gymId,
+        name,
+        template_type: 'custom',
+        is_prebuilt: false,
+        step_key: stepKey,
+        auto_enabled: autoEnabled,
+        template_data: {
+          // Marca de "esto es un diseño, no bloques". Todo lo que lea plantillas
+          // se ramifica por aquí.
+          designer_id: saveTarget.id,
+          designer_html: r.html,
+          designer_lang: lang,
+          designer_subject: r.subject || '',
+          designer_preview: r.preview || '',
+          // El asunto vive en header.text porque es de ahí de donde lo saca
+          // send-automated-email. Sin esto el asunto sería el nombre de la fila.
+          header: { enabled: false, showLogo: false, text: r.subject || '' },
+          body: { text: '' },
+          cta: { enabled: false, text: '', url: '', color: '#D4AF37' },
+          footer: { enabled: false, text: '', unsubscribeText: 'Unsubscribe' },
+          colors: { primary, background: '#ffffff', text: '#333333' },
+        },
+      });
+      if (error) throw error;
+
+      logAdminAction('create_email_template', 'gym_email_template', null, {
+        kind: 'designer', designer_id: saveTarget.id, step_key: stepKey, auto_enabled: autoEnabled,
+      });
+      queryClient.invalidateQueries({ queryKey: adminKeys.emailTemplates(gymId) });
+      showToast(t('admin.emailTemplates.designSaved', 'Design saved to My Templates'), 'success');
+      setSaveTarget(null);
+    } catch (err) {
+      logger.error('save designer template failed', err);
+      // El índice único (gym_id, step_key) WHERE auto_enabled (0687:40-42) es la
+      // causa más probable, y "ya hay otra encendida en ese momento" es
+      // accionable; "no se pudo guardar" no lo es.
+      const dup = err?.code === '23505';
+      showToast(
+        dup
+          ? t('admin.emailTemplates.stepTaken', 'Another template is already sending at that moment — turn it off first.')
+          : t('admin.emailTemplates.saveFailed', 'Could not save'),
+        'error',
+      );
+    } finally {
+      setSavingTemplate(false);
+    }
   };
 
   // Two-step send-test: clicking "Send test to me" opens a small dialog asking
@@ -596,13 +688,25 @@ export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
                       <Eye size={14} className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }} />
                     </div>
                   </button>
-                  <div className="mt-2.5 flex items-center gap-2">
+                  {/* Dos destinos distintos y ambos con superficie de botón
+                      propia: guardarlo como plantilla (que es lo que lo hace
+                      servir al correo automático) y mandarlo ahora mismo a una
+                      audiencia. Guardar va primero porque es lo que convierte
+                      el diseño en algo permanente. */}
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setSaveTarget({ id: item.id, label })}
+                      className="flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-bold transition-colors"
+                      style={{ background: 'var(--color-accent)', color: '#fff' }}
+                    >
+                      <BookmarkPlus size={13} /> {t('admin.emailTemplates.saveAsTemplate', 'Save')}
+                    </button>
                     <button
                       onClick={() => handleUse(item.id)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
+                      className="flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
                       style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 22%, transparent)' }}
                     >
-                      <Send size={13} /> {t('admin.emailTemplates.useInOutreach', 'Use in Outreach')}
+                      <Send size={13} /> {t('admin.emailTemplates.sendNow', 'Send now')}
                     </button>
                   </div>
                 </AdminCard>
@@ -636,6 +740,18 @@ export default function EmailDesignerGallery({ gymName, gymLogoUrl }) {
         sending={sendingTest}
         onCancel={() => !sendingTest && setTestTarget(null)}
         onSend={performSendTest}
+        t={t}
+      />
+      <SaveDesignAsTemplateDialog
+        // `key` para que el diálogo remonte por diseño: sin él conserva el
+        // nombre y el momento tecleados para el anterior.
+        key={saveTarget?.id || 'none'}
+        open={!!saveTarget}
+        designLabel={saveTarget?.label || ''}
+        defaultName={saveTarget?.label || ''}
+        saving={savingTemplate}
+        onCancel={() => setSaveTarget(null)}
+        onSave={handleSaveAsTemplate}
         t={t}
       />
     </div>

@@ -155,6 +155,7 @@ const AdminSettingsHours        = lazy(() => import('./pages/admin/AdminSettings
 const AdminSettingsCards        = lazy(() => import('./pages/admin/AdminSettingsCards'));
 const AdminSettingsRegistration = lazy(() => import('./pages/admin/AdminSettingsRegistration'));
 const AdminSettingsGymInfo      = lazy(() => import('./pages/admin/AdminSettingsGymInfo'));
+const AdminSettingsPricing      = lazy(() => import('./pages/admin/AdminSettingsPricing'));
 const AdminAnalytics     = lazy(() => import('./pages/admin/AdminAnalytics'));
 const AdminModeration    = lazy(() => import('./pages/admin/AdminModeration'));
 const AdminChurn         = lazy(() => import('./pages/admin/AdminChurn'));
@@ -1961,6 +1962,7 @@ function App() {
                 <Route path="/settings/cards"        element={<AdminSettingsCards />} />
                 <Route path="/settings/registration" element={<AdminSettingsRegistration />} />
                 <Route path="/settings/gym-info"     element={<AdminSettingsGymInfo />} />
+                <Route path="/settings/pricing"      element={<AdminSettingsPricing />} />
                 <Route path="/settings/digest"       element={<AdminDigestConfig />} />
                 <Route path="*"            element={<Navigate to="/admin" replace />} />
               </Routes>

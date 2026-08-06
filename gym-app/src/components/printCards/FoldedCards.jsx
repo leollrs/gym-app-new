@@ -13,7 +13,7 @@
  * single-sided postcard would be undersized.
  */
 import { useTranslation } from 'react-i18next';
-import { FoldedShell, GymMark, QRBlock, Stamp } from './CardPrimitives.jsx';
+import { FoldedShell, GymMark, QRBlock, Stamp, InkSignature } from './CardPrimitives.jsx';
 
 // ── TENURE_365 — outside cover ─────────────────────────────────────────
 export function Tenure365Outside({ gym, member, headline, year, foundedYear }) {
@@ -132,7 +132,12 @@ export function Tenure365Inside({ gym, member, note, qr, rewardLabel, occasionDa
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '0.5px solid rgba(17,17,17,0.18)', paddingBottom: 4, height: 26 }}>
+          {/* Esta tarjeta lleva su propia línea de firma en vez de <SignBlock>,
+              así que la firma hay que ponerla también AQUÍ. Se le escapó a la
+              búsqueda de "<SignBlock" — y la de un año es justo la que más
+              sentido tiene firmar. */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, borderBottom: '0.5px solid rgba(17,17,17,0.18)', paddingBottom: 4, height: 26, position: 'relative' }}>
+            <InkSignature signature={gym.signature} height={38} />
             <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(17,17,17,0.5)', paddingBottom: 4 }}>{t('admin.printCards.card.signed', { defaultValue: 'signed' })}</span>
           </div>
         </div>

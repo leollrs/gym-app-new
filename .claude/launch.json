@@ -25,6 +25,18 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["/Users/leollorens/robotic-arm-simulator/serve.py", "4610"],
       "port": 4610
+    },
+    {
+      "name": "box-studio",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4620", "--directory", "/Users/leollorens/box-studio"],
+      "port": 4620
+    },
+    {
+      "name": "maxfit",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4630", "--directory", "/Users/leollorens/MaxFitness-Demo"],
+      "port": 4630
     }
   ]
 }

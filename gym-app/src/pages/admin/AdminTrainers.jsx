@@ -6,6 +6,7 @@ import {
   ArrowLeft, AlertTriangle, TrendingUp, TrendingDown, Minus, ChevronRight, MoreHorizontal, MessageSquare,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import logger from '../../lib/logger';
 import { selectAllRows } from '../../lib/churn/batchedSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -352,16 +353,34 @@ export default function AdminTrainers() {
       if (rpcErr) {
         const rpcMissing = (rpcErr.code === '42883' || rpcErr.code === 'PGRST202' || /does not exist/i.test(rpcErr.message || ''));
         if (!rpcMissing) throw rpcErr;
-        let deactivatedTrainerClients = false;
+        // Se apunta QUÉ filas estaban activas antes de tocarlas. El rollback
+        // ponía is_active=true en TODAS las del entrenador, así que los
+        // clientes que ya estaban desasignados de antes se le re-asignaban
+        // solos. Antes no se notaba porque el rollback nunca llegaba a correr
+        // (el `.catch()` sobre el builder lanzaba TypeError primero).
+        let reactivateIds = null;
         try {
+          const { data: wereActive } = await supabase
+            .from('trainer_clients').select('id')
+            .eq('trainer_id', trainerId).eq('gym_id', gymId).eq('is_active', true);
           const { error: deactivateErr } = await supabase.from('trainer_clients').update({ is_active: false }).eq('trainer_id', trainerId).eq('gym_id', gymId);
           if (deactivateErr) throw deactivateErr;
-          deactivatedTrainerClients = true;
+          reactivateIds = (wereActive || []).map((r) => r.id);
           const { error: demoteErr } = await supabase.from('profiles').update({ role: 'member' }).eq('id', trainerId).eq('gym_id', gymId);
           if (demoteErr) throw demoteErr;
         } catch (innerErr) {
-          if (deactivatedTrainerClients) {
-            await supabase.from('trainer_clients').update({ is_active: true }).eq('trainer_id', trainerId).eq('gym_id', gymId).catch(() => {});
+          if (reactivateIds?.length) {
+            // `.catch()` NO existe en el builder de Supabase (es un thenable con
+            // `then` a secas), así que la línea anterior lanzaba TypeError antes
+            // de mandar la petición: el rollback nunca corría — los clientes se
+            // quedaban desactivados con el entrenador todavía como entrenador —
+            // y el TypeError suplantaba a `innerErr`, así que el admin veía un
+            // mensaje que no tenía nada que ver con el fallo real.
+            const { error: rollbackErr } = await supabase
+              .from('trainer_clients')
+              .update({ is_active: true })
+              .in('id', reactivateIds);
+            if (rollbackErr) logger.error('demote rollback failed', rollbackErr);
           }
           throw innerErr;
         }

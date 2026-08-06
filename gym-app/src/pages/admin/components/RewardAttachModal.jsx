@@ -23,8 +23,11 @@ import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { useScrollLock } from '../../../hooks/useScrollLock';
-
-const EMOJI_PRESETS = ['🎁', '☕', '🥤', '🍪', '🏋️', '⭐', '💪', '🎯'];
+// Iconos de línea, NO emojis. Este modal se quedó fuera cuando el resto de las
+// recompensas migró a `rewardSymbols` (RewardPicker, Rewards, Referrals), y por
+// eso pintaba en crudo lo que guarda la columna: una recompensa del catálogo con
+// `emoji_icon = 'gift'` salía con la PALABRA «gift» al lado del nombre.
+import { RewardSymbol, CARD_REWARD_SYMBOLS, DEFAULT_REWARD_SYMBOL } from '../../../lib/rewardSymbols';
 
 export default function RewardAttachModal({ card, gymId, onClose }) {
   const queryClient = useQueryClient();
@@ -75,7 +78,9 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
   });
 
   const [label, setLabel] = useState('');
-  const [emoji, setEmoji] = useState('🎁');
+  // Se guarda la CLAVE del símbolo ('gift'), no un glifo. La columna sigue
+  // llamándose reward_emoji por compatibilidad; lo que lleva dentro ya no lo es.
+  const [emoji, setEmoji] = useState(DEFAULT_REWARD_SYMBOL);
   const [expiresDays, setExpiresDays] = useState(30);
 
   // Hydrate label from gym defaults once they arrive (skip if user typed already).
@@ -251,7 +256,9 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
                             border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-default)'}`,
                           }}
                         >
-                          <span className="text-[16px] leading-none flex-shrink-0">{r.emoji_icon || '🎁'}</span>
+                          <span className="flex-shrink-0" style={{ color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)' }}>
+                            <RewardSymbol value={r.emoji_icon} size={16} />
+                          </span>
                           <span className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
                             {rewardName(r)}
                           </span>
@@ -288,20 +295,28 @@ export default function RewardAttachModal({ card, gymId, onClose }) {
                   {t('admin.printCards.rewardEmojiField', { defaultValue: 'Icon' })}
                 </label>
                 <div className="flex gap-1 flex-wrap">
-                  {EMOJI_PRESETS.map((e) => (
-                    <button
-                      key={e}
-                      type="button"
-                      onClick={() => setEmoji(e)}
-                      className="w-9 h-9 rounded-lg flex items-center justify-center text-[16px] transition"
-                      style={{
-                        background: emoji === e ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-bg-input)',
-                        border: `1px solid ${emoji === e ? 'var(--color-accent)' : 'var(--color-border-default)'}`,
-                      }}
-                    >
-                      {e}
-                    </button>
-                  ))}
+                  {CARD_REWARD_SYMBOLS.map((key) => {
+                    const active = emoji === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setEmoji(key)}
+                        aria-pressed={active}
+                        className="w-9 h-9 rounded-lg flex items-center justify-center transition"
+                        style={{
+                          background: active ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'var(--color-bg-input)',
+                          border: `1px solid ${active ? 'var(--color-accent)' : 'var(--color-border-default)'}`,
+                        }}
+                      >
+                        <RewardSymbol
+                          value={key}
+                          size={18}
+                          color={active ? 'var(--color-accent)' : 'var(--color-text-secondary)'}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -16,7 +16,7 @@
  */
 
 import { supabase } from '../supabase';
-import { selectInBatches } from '../churn/batchedSelect.js';
+import { selectInBatches, selectAllInBatches } from '../churn/batchedSelect.js';
 import logger from '../logger';
 
 const STAT_TOKENS = ['streak_count', 'workout_count', 'days_inactive'];
@@ -84,18 +84,36 @@ export async function fetchMemberStats(gymId, recipientIds, needed = STAT_TOKENS
   // designs, and Outreach is rate-limited by recipient cardinality anyway.
   if (wantWorkouts) {
     try {
-      const { data } = await selectInBatches(
-        (ids) => supabase
+      // selectAllInBatches, NO selectInBatches. El troceado por ids solo
+      // resuelve el largo de la URL; cada trozo sigue topando en las ~1000
+      // filas que devuelve PostgREST. Un trozo son 200 miembros, y 200
+      // miembros con historial real son decenas de miles de sesiones: se
+      // contaban las primeras mil y ya. El correo le decía "llevas 4
+      // entrenamientos" a alguien con 180 — el token de personalización
+      // convertido en el detalle que delata que el mensaje es automático.
+      const { data, error } = await selectAllInBatches(
+        (ids, from, to) => supabase
           .from('workout_sessions')
           .select('profile_id')
           .eq('status', 'completed')
-          .in('profile_id', ids),
+          .in('profile_id', ids)
+          .order('id', { ascending: true })
+          .range(from, to),
         recipientIds,
       );
-      const tally = new Map();
-      for (const r of (data || [])) tally.set(r.profile_id, (tally.get(r.profile_id) || 0) + 1);
-      for (const id of recipientIds) {
-        if (out[id]) out[id].workout_count = String(tally.get(id) || 0);
+      // Si la consulta falla, NO se sustituye nada: se deja el token sin
+      // resolver. Antes `data` venía null, el tally salía vacío y TODOS los
+      // destinatarios recibían un rotundo "0 entrenamientos" — una cifra falsa
+      // y segura de sí misma en un correo real. Y esta llamada hace muchas más
+      // peticiones que la anterior, así que fallar es más probable, no menos.
+      if (error) {
+        logger.error('outreach stats: workout count query failed', error);
+      } else {
+        const tally = new Map();
+        for (const r of (data || [])) tally.set(r.profile_id, (tally.get(r.profile_id) || 0) + 1);
+        for (const id of recipientIds) {
+          if (out[id]) out[id].workout_count = String(tally.get(id) || 0);
+        }
       }
     } catch (err) { logger.warn('outreach stats: workout count failed', err); }
   }

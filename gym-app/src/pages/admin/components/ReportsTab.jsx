@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../../lib/supabase';
+import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { Skeleton, ErrorCard } from '../../../components/admin';
@@ -29,6 +30,7 @@ const PAGE_SIZE = 10;
  */
 export default function ReportsTab({ gymId }) {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
@@ -65,28 +67,70 @@ export default function ReportsTab({ gymId }) {
 
   const handleUpdateStatus = async (report, newStatus) => {
     setActing(report.id);
-    await supabase
+    // Las tres escrituras cuentan FILAS DEVUELTAS, no solo `error`.
+    //
+    // Comprobar `error` no basta y mi versión anterior lo daba por hecho: un
+    // UPDATE cuyas filas excluye una cláusula RLS `USING` afecta a 0 filas y
+    // devuelve ÉXITO con `error: null`. Solo un `WITH CHECK` violado da 42501.
+    // Sin contar filas, un cierre rechazado se pintaba como aplicado.
+    //
+    // Lo grave sigue siendo el segundo paso: cerrar el reporte y que el borrado
+    // del contenido falle deja el post publicado con el reporte cerrado — o
+    // sea, invisible para siempre en la cola de moderación.
+    const { data: reportRows, error: reportErr } = await supabase
       .from('content_reports')
       .update({ status: newStatus, reviewed_at: new Date().toISOString() })
       .eq('id', report.id)
-      .eq('gym_id', gymId); // defense-in-depth: scope to this gym, not RLS alone
+      .eq('gym_id', gymId) // defense-in-depth: scope to this gym, not RLS alone
+      .select('id');
+    if (reportErr || !reportRows?.length) {
+      showToast(t('admin.moderation.actionFailed', 'Could not apply that — try again'), 'error');
+      setActing(null);
+      return;
+    }
 
     // If actioned, soft-delete the underlying content based on its type.
     if (newStatus === 'actioned') {
       const ct = report.content_type || 'activity';
+      let contentErr = null;
+      let contentRows = null;
       if (ct === 'activity' && report.feed_item_id) {
-        await supabase
+        ({ data: contentRows, error: contentErr } = await supabase
           .from('activity_feed_items')
           .update({ is_deleted: true })
           .eq('id', report.feed_item_id)
-          .eq('gym_id', gymId); // defense-in-depth
+          .eq('gym_id', gymId) // defense-in-depth
+          .select('id'));
       } else if (ct === 'comment' && report.content_id) {
-        await supabase
+        ({ data: contentRows, error: contentErr } = await supabase
           .from('feed_comments')
           .update({ is_deleted: true })
-          .eq('id', report.content_id);
+          .eq('id', report.content_id)
+          .select('id'));
+      } else {
+        // message / profile: no hay borrado automático, así que no hay nada
+        // que verificar — se marca como "hecho" para no disparar el rollback.
+        contentRows = [null];
       }
-      // message / profile : no automatic delete.
+      if (contentErr || !contentRows?.length) {
+        // Reabrir el reporte: dejarlo cerrado con el contenido vivo es el peor
+        // de los dos estados posibles. Si ni siquiera el rollback pasa, hay que
+        // decirlo — ahí sí quedamos en ese estado y el admin tiene que saberlo.
+        const { data: undoRows } = await supabase
+          .from('content_reports')
+          .update({ status: report.status, reviewed_at: report.reviewed_at ?? null })
+          .eq('id', report.id)
+          .eq('gym_id', gymId)
+          .select('id');
+        showToast(
+          undoRows?.length
+            ? t('admin.moderation.contentDeleteFailed', 'The report was not closed — the content could not be removed')
+            : t('admin.moderation.rollbackFailed', 'The content could not be removed AND the report stayed closed — reopen it by hand.'),
+          'error',
+        );
+        setActing(null);
+        return;
+      }
     }
 
     // Audit trail — fire-and-forget.

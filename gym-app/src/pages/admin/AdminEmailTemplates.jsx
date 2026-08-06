@@ -13,8 +13,10 @@ import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import { dbRowToTemplate, templateToDbPayload } from '../../lib/admin/emailTemplateRenderer';
 import { defaultTemplate, getPrebuiltTemplates } from './components/emailTemplatePrebuilts';
 import EmailTemplateEditor from './components/EmailTemplateEditor';
+import DesignerTemplateModal from './components/DesignerTemplateModal';
 import EmailTemplateCard, { PrebuiltCard } from './components/EmailTemplateCard';
 import EmailDesignerGallery from './components/EmailDesignerGallery';
+import EmailCampaignsTab from './components/EmailCampaignsTab';
 import { listDesignerTemplateIds } from '../../lib/admin/emailDesignerTemplates';
 
 export default function AdminEmailTemplates() {
@@ -121,14 +123,23 @@ export default function AdminEmailTemplates() {
   const handleSave = useCallback((tpl) => saveMutation.mutate(tpl), [saveMutation]);
   const handleDelete = useCallback((id) => deleteMutation.mutate(id), [deleteMutation]);
 
+  // El idioma BASE se sella al CREAR, con el de la interfaz.
+  //
+  // `defaultTemplate` y las prefabricadas se rellenan con `t(...)`, o sea que su
+  // texto sale en el idioma que tenga puesto quien las crea. Sin sellarlo, una
+  // plantilla escrita en inglés quedaba etiquetada como española y el enviador
+  // se la mandaba en inglés a un miembro que pidió español. Ver emailVariants.js.
+  const uiLang = i18n.language?.startsWith('en') ? 'en' : 'es';
+
   const handleUsePrebuilt = useCallback((prebuilt) => {
     setEditing({
       ...prebuilt,
+      lang: uiLang,
       id: 'prebuilt-' + crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
-  }, []);
+  }, [uiLang]);
 
   const handleDuplicate = useCallback((tpl) => {
     setEditing({
@@ -147,15 +158,20 @@ export default function AdminEmailTemplates() {
   }, []);
 
   const handleNewTemplate = useCallback(() => {
-    setEditing(defaultTemplate(gymName, primaryColor, t));
-  }, [gymName, primaryColor, t]);
+    setEditing({ ...defaultTemplate(gymName, primaryColor, t), lang: uiLang });
+  }, [gymName, primaryColor, t, uiLang]);
 
   const sortedTemplates = useMemo(() =>
     [...templates].sort((a, b) => new Date(b.updatedAt || b.updated_at || 0) - new Date(a.updatedAt || a.updated_at || 0)),
     [templates],
   );
 
-  if (editing) {
+  // Ojo con el orden: una plantilla de la galería NO entra en esta rama. Es
+  // HTML fijo, no tiene bloques que editar, y guardarla desde el editor de
+  // bloques la dejaría en blanco. Se atiende con su propio modal, montado
+  // abajo junto a los demás para que la lista siga detrás en vez de quedar la
+  // página vacía.
+  if (editing && !editing.designer_id) {
     return (
       <div className="min-h-screen">
         <EmailTemplateEditor
@@ -174,6 +190,9 @@ export default function AdminEmailTemplates() {
     { key: 'designer', label: t('admin.emailTemplates.tabDesigner', 'Designs'), count: listDesignerTemplateIds().length },
     { key: 'mine', label: t('admin.emailTemplates.tabMine', 'My Templates'), count: templates.length },
     { key: 'prebuilt', label: t('admin.emailTemplates.tabPrebuilt', 'Prebuilt'), count: prebuiltTemplates.length },
+    // Sin `count`: es actividad, no un inventario, y un número al lado del
+    // nombre invitaría a leerlo como "cuántas campañas hay".
+    { key: 'activity', label: t('admin.emailTemplates.tabActivity', 'Activity') },
   ];
 
   return (
@@ -238,6 +257,7 @@ export default function AdminEmailTemplates() {
                         onDuplicate={handleDuplicate}
                         t={t}
                         lang={i18n.language}
+                        gymName={gymName}
                       />
                     ))}
                   </div>
@@ -255,13 +275,25 @@ export default function AdminEmailTemplates() {
           if (tabKey === 'prebuilt') return (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {prebuiltTemplates.map(tpl => (
-                <PrebuiltCard key={tpl.id} template={tpl} onUse={handleUsePrebuilt} t={t} />
+                <PrebuiltCard key={tpl.id} template={tpl} onUse={handleUsePrebuilt} t={t} gymName={gymName} />
               ))}
             </div>
           );
+          if (tabKey === 'activity') return <EmailCampaignsTab gymId={gymId} />;
           return null;
         }}
       </SwipeableTabContent>
+
+      {editing?.designer_id && (
+        <DesignerTemplateModal
+          template={editing}
+          saving={saveMutation.isPending}
+          onSave={handleSave}
+          onClose={() => setEditing(null)}
+          onDelete={(id) => { setEditing(null); setDeleteConfirm(id); }}
+          t={t}
+        />
+      )}
 
       {deleteConfirm && (
         <AdminModal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>

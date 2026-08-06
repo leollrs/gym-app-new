@@ -428,6 +428,16 @@ verify_jwt = false
 [functions.unsubscribe-oneclick]
 verify_jwt = false
 
+# Los eventos de entrega de Resend (rebote, queja, entregado). Resend no manda
+# JWT: firma con Svix, y esa firma ES la autenticación — la función rechaza con
+# 401 todo lo que no la traiga válida, así que la puerta abierta no es un agujero
+# mientras RESEND_WEBHOOK_SECRET esté puesto. Si esta entrada falta, un
+# `supabase functions deploy` lo re-gatea y los rebotes dejan de llegar en
+# silencio, que es el estado del que venimos: direcciones muertas a las que se
+# les sigue escribiendo en cada campaña.
+[functions.resend-webhook]
+verify_jwt = false
+
 # [experimental.pgdelta]
 # When enabled, pg-delta becomes the active engine for supported schema flows.
 # enabled = false

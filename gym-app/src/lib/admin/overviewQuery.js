@@ -35,8 +35,14 @@ export async function fetchOverviewData(gymId) {
     // Page the full sets — .limit(N) is clamped to the ~1000-row max_rows cap,
     // so member count / retention / active-rate and the churn histogram were
     // wrong for any gym over ~1000 members or 1000 recent sessions.
-    selectAllRows((from, to) => supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).range(from, to)),
-    selectAllRows((from, to) => supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).range(from, to)),
+    // Paginar sin un orden TOTAL reintroduce por la puerta de atrás justo lo
+    // que `selectAllRows` vino a arreglar: entre página y página las filas
+    // empatadas cambian de sitio, así que unas se repiten y otras se caen.
+    // `started_at` solo no desempata (los importes masivos comparten sello),
+    // por eso lleva `id` detrás — igual que la consulta de churn de abajo, que
+    // ya lo hacía bien con score + profile_id.
+    selectAllRows((from, to) => supabase.from('profiles').select('id, full_name, username, role, created_at, gym_id, last_active_at, membership_status, avatar_url').eq('gym_id', gymId).eq('role', 'member').eq('imported_archived', false).order('id', { ascending: true }).range(from, to)),
+    selectAllRows((from, to) => supabase.from('workout_sessions').select('profile_id, started_at, total_volume_lbs').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', twentyEightDaysAgo).order('started_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
     selectAllRows((from, to) => supabase.from('churn_risk_scores').select('profile_id, score, risk_tier, key_signals, computed_at').eq('gym_id', gymId).gte('computed_at', subDays(now, 7).toISOString()).order('score', { ascending: false }).order('profile_id', { ascending: true }).range(from, to)),
     // Name + avatar, not just the id — "Needs your attention" names the members
     // who stalled in onboarding so the owner knows who to chase without
@@ -46,7 +52,7 @@ export async function fetchOverviewData(gymId) {
     // in the activity feed even when its profile is outside the members query's
     // filters (e.g. archived imports) or otherwise not in memberMap. The weekly
     // pulse uses this same array and just ignores the extra columns.
-    selectAllRows((from, to) => supabase.from('check_ins').select('profile_id, checked_in_at, profiles(full_name, avatar_url)').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).range(from, to)),
+    selectAllRows((from, to) => supabase.from('check_ins').select('profile_id, checked_in_at, profiles(full_name, avatar_url)').eq('gym_id', gymId).gte('checked_in_at', subDays(now, 30).toISOString()).order('checked_in_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
   ]), 25_000, 'fetchOverviewData:primary');   // 15s -> 25s: this wraps the same
   // loadGymChurnScores that memberQueries.js already had raised for. That helper
   // now pages the gym's 60-day check-ins and sessions instead of issuing two

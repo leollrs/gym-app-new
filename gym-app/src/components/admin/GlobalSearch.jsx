@@ -89,6 +89,10 @@ export default function GlobalSearch({ open, onClose, onToggle, pageIndex = [] }
           .select('id, full_name, username')
           .eq('gym_id', gymId)
           .eq('role', 'member')
+          // Orden total, o el paginado pierde miembros entre página y página —
+          // y aquí eso significa que buscar a alguien por su nombre no lo
+          // encuentra, sin ningún síntoma de que falte.
+          .order('id', { ascending: true })
           .range(from, to)),
         supabase.from('gym_classes')
           .select('id, name, description')

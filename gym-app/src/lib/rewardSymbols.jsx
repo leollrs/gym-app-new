@@ -25,7 +25,10 @@ export const REWARD_SYMBOLS = [
   { key: 'ticket',   ch: <><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2 2 2 0 0 0 0 4 2 2 0 0 1-2 2 2 2 0 0 1-2 2H5a2 2 0 0 1-2-2 2 2 0 0 0 0-4Z" /><path d="M15 6v12" strokeDasharray="2 2" /></> },
   { key: 'tag',      ch: <><path d="M3 7v5.5a2 2 0 0 0 .6 1.4l7 7a2 2 0 0 0 2.8 0l5.5-5.5a2 2 0 0 0 0-2.8l-7-7A2 2 0 0 0 12.5 3H7a4 4 0 0 0-4 4Z" /><circle cx="8" cy="8" r="1.4" /></> },
   { key: 'percent',  ch: <><path d="M19 5 5 19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></> },
-  { key: 'dumbbell', ch: <><path d="M6.5 6.5 17.5 17.5M3 7v10M21 7v10M6 4v16M18 4v16M2 12h2M20 12h2" /></> },
+  // La barra va HORIZONTAL. Era `M6.5 6.5 17.5 17.5`, una diagonal que cruzaba
+  // de esquina a esquina entre dos pilas de discos verticales: no leía como una
+  // mancuerna, leía como un glifo roto.
+  { key: 'dumbbell', ch: <><path d="M6.5 12h11M3 8.5v7M21 8.5v7M6.5 6v12M17.5 6v12" /></> },
   { key: 'bolt',     ch: <path d="M13 2 4 14h7l-2 8 9-12h-7l2-8Z" /> },
   { key: 'flame',    ch: <path d="M12 2c1 3.5 4 5.2 4 9a4 4 0 0 1-8 0c0-1.4.5-2.4 1-3 .2 1 .8 1.7 1.6 1.9C10 8 11 5 12 2Z" /> },
   { key: 'heart',    ch: <path d="M12 20s-7-4.6-9.3-9C1.2 8 2.6 4.8 5.8 4.8c2 0 3.2 1.3 4.2 2.6 1-1.3 2.2-2.6 4.2-2.6 3.2 0 4.6 3.2 3.1 6.2C19 15.4 12 20 12 20Z" /> },
@@ -58,4 +61,28 @@ export function RewardSymbol({ value, size = 20, color = 'currentColor', stroke 
 export function rewardLabelText(value, name) {
   if (!value || isRewardSymbol(value)) return name;
   return `${value} ${name}`;
+}
+
+/**
+ * Los ocho que se ofrecen al adjuntar una recompensa a una tarjeta impresa.
+ *
+ * Un subconjunto y no los dieciséis: esto se elige de un tirón en un modal
+ * pequeño, y una rejilla larga convierte una decisión de dos segundos en una
+ * de veinte. Salen los que un gimnasio regala de verdad.
+ */
+export const CARD_REWARD_SYMBOLS = ['gift', 'cup', 'cake', 'shirt', 'ticket', 'star', 'dumbbell', 'percent'];
+
+/**
+ * Símbolo por defecto según DE DÓNDE viene la recompensa, para las filas que
+ * nunca eligieron uno.
+ *
+ * Devuelve CLAVES, no emojis. Antes esto devolvía '🎂'/'🎉'/'🎁' directamente y
+ * era la última fuente de emojis de la cartera del miembro: aunque el admin
+ * eligiera un icono de línea, cualquier recompensa sin icono propio volvía a
+ * meter un emoji al lado de los que no lo son.
+ */
+export function sourceSymbolKey(source) {
+  if (source === 'birthday') return 'cake';
+  if (source === 'referral_milestone') return 'star';
+  return DEFAULT_REWARD_SYMBOL;
 }

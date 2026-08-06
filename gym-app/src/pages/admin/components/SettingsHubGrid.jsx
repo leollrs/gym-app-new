@@ -4,7 +4,7 @@ import { FadeIn } from '../../../components/admin';
 import { TK, FK, TONE, Ico, Card } from './retosKit';
 
 /**
- * Settings hub: 6 cards, one per focused sub-page. Each card routes to a
+ * Settings hub: 7 cards, one per focused sub-page. Each card routes to a
  * distinct destination (`/admin/settings/<slug>`). Restyled onto retosKit
  * per the "Configuración Restyle" design (2-col grid of icon-box cards).
  */
@@ -16,6 +16,7 @@ const CIC = {
   shield: <><path d="M12 3 5 6v5c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V6l-7-3Z" /><path d="m9 12 2 2 4-4" /></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3.5 6.5 8.5 6 8.5-6" /></>,
   printer: <><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2M6 14h12v7H6v-7Z" /></>,
+  dollar: <><path d="M12 2v20M16.5 6.5C16.5 4.6 14.5 3.5 12 3.5S7.5 4.7 7.5 6.8 9.5 9.8 12 10.2s4.5 1.4 4.5 3.5-2 3.3-4.5 3.3-4.5-1.1-4.5-3" /></>,
   qr: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M20 17v4M17 20h4" /></>,
   chevR: <path d="m9 18 6-6-6-6" />,
 };
@@ -44,6 +45,7 @@ export default function SettingsHubGrid() {
   const cards = [
     { icon: CIC.building, tone: 'neutral', title: t('admin.settingsHub.gymInfo', 'Gym info'), desc: t('admin.settingsHub.gymInfoDesc', 'Name, slug, language'), onClick: () => navigate('/admin/settings/gym-info') },
     { icon: CIC.palette, tone: 'accent', title: t('admin.settingsHub.branding', 'Branding'), desc: t('admin.settingsHub.brandingDesc', 'Logo, welcome, palette, colors'), onClick: () => navigate('/admin/settings/branding') },
+    { icon: CIC.dollar, tone: 'accent', title: t('admin.settingsHub.pricing', 'Precios y ofertas'), desc: t('admin.settingsHub.pricingDesc', 'Tarifas y promociones — lo que sale en tu web'), onClick: () => navigate('/admin/settings/pricing') },
     { icon: CIC.clock, tone: 'neutral', title: t('admin.settingsHub.hours', 'Gym hours'), desc: t('admin.settingsHub.hoursDesc', 'Daily hours + holiday closures'), onClick: () => navigate('/admin/settings/hours') },
     { icon: CIC.shield, tone: 'neutral', title: t('admin.settingsHub.registration', 'Registration & classes'), desc: t('admin.settingsHub.registrationDesc', 'How members join, class booking, birthdays'), onClick: () => navigate('/admin/settings/registration') },
     { icon: CIC.mail, tone: 'neutral', title: t('admin.settingsHub.digest', 'Email digest'), desc: t('admin.settingsHub.digestDesc', 'Weekly summary sent to you'), onClick: () => navigate('/admin/settings/digest') },

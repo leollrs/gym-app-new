@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
   Image, Type, MousePointerClick, FileText, Loader2,
-  Save, Send, Copy, ArrowLeft, Eye, Gift, Zap,
+  Save, Send, Copy, ArrowLeft, Eye, Gift, Zap, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
@@ -11,7 +11,18 @@ import { supabase, ensureFreshSession, isSessionError, readFunctionError } from 
 import logger from '../../../lib/logger';
 import { rewardLabelText } from '../../../lib/rewardSymbols';
 import { AdminCard, Toggle } from '../../../components/admin';
-import { generateEmailHtml } from '../../../lib/admin/emailTemplateRenderer';
+// `emailDoc`, no `generateEmailHtml`: la prueba que el admin se manda a sí
+// mismo y el HTML que copia tienen que salir del MISMO motor que la vista
+// previa y que el envío real. Eran tres renderizadores distintos desde una
+// sola pantalla — y la prueba, que existe justo para dar confianza, no
+// validaba ninguno de los otros dos.
+
+import { normalizeHex } from '../../../lib/admin/emailThemes';
+import { emailDoc, PRESETS, PRESET_IDS } from '../../../lib/admin/emailEngine';
+import { templateToCfg } from '../../../lib/admin/emailCfg';
+import { LANGS, baseLang, pathFor, pickVariant, seedVariantFromBase, variantProgress } from '../../../lib/admin/emailVariants';
+import EmailPresetGallery from './EmailPresetGallery';
+import { AUTO_STEPS } from '../../../lib/admin/emailAutoSteps';
 import { appDeepLink, gymShareUrl } from '../../../lib/appUrls';
 import { TEMPLATE_TYPES, variablesForStep } from './emailTemplatePrebuilts';
 
@@ -22,6 +33,7 @@ import { TEMPLATE_TYPES, variablesForStep } from './emailTemplatePrebuilts';
 const CTA_SECTIONS = ['home', 'workout', 'classes', 'checkin', 'rewards', 'challenges', 'progress', 'nutrition', 'social', 'leaderboard', 'messages'];
 import { kindMeta, toneStyles } from './emailTemplateKinds';
 import EmailLivePreview from './EmailLivePreview';
+import EmailImagePicker from './EmailImagePicker';
 
 const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
 const inputClass = 'w-full rounded-[10px] px-3 py-2.5 text-[13.5px] outline-none transition-colors bg-[var(--color-bg-deep)] border border-[var(--color-admin-border)] text-[var(--color-admin-text)] placeholder:text-[var(--color-admin-text-faint)] focus:border-[var(--color-accent)]';
@@ -65,15 +77,77 @@ function SectionBlock({ title, icon: Icon, enabled, onToggle, children, toggleAr
   );
 }
 
-// The automated moments a template can serve. Lifecycle steps are the ones
-// run_lifecycle_messages_daily actually fires (0420: day_1…day_60); win-back is
-// winback_steps() (0402:77-87); 'classes' is the reminder pair sent by
-// scheduled-reminders. A step with no generator would never send.
-const AUTO_STEPS = [
-  'day_1', 'day_3', 'day_5', 'day_7', 'day_14', 'day_21', 'day_30', 'day_60',
-  'winback_day_7', 'winback_day_30', 'winback_day_60',
-  'classes',
-];
+/** Cabecera de un paso numerado. La IA "Guiado": tres decisiones, en orden. */
+function StepHead({ n, title, sub }) {
+  return (
+    <div className="mb-3.5 flex items-center gap-2.5">
+      <span className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-full text-[12px] font-extrabold"
+        style={{ background: 'var(--color-admin-text)', color: 'var(--color-bg-card)', fontFamily: DISPLAY_FONT }}>{n}</span>
+      <div className="min-w-0">
+        <div className="text-[14px] font-extrabold" style={{ fontFamily: DISPLAY_FONT, color: 'var(--color-admin-text)', letterSpacing: '-0.35px' }}>{title}</div>
+        {sub && <div className="text-[11.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>{sub}</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Los tres extras opcionales, como chips en fila.
+ *
+ * Antes cada uno era una tarjeta plegable con su interruptor dentro, lo que
+ * hacia que la pagina fuera una lista larga de secciones donde el paso
+ * importante y el opcional pesaban igual. Como chips se ve de un vistazo que
+ * son opcionales y cuales estan puestos.
+ */
+// Recibe el icono YA RENDERIZADO: pasarlo como componente dispara un falso
+// `no-unused-vars` — eslint no cuenta un nombre usado solo como etiqueta JSX.
+function ExtraChip({ icon, label, on, onClick }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors"
+      style={{
+        background: on ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'var(--color-admin-panel)',
+        // 2px cuando está puesto: el estado no puede distinguirse SOLO por
+        // color (WCAG 1.4.1). El Toggle al que sustituye además movía la
+        // perilla, así que había una señal de forma que aquí se había perdido.
+        border: `${on ? 2 : 1}px solid ${on ? 'var(--color-accent)' : 'var(--color-admin-border)'}`,
+        paddingBlock: on ? 9 : 10,
+      }}
+    >
+      <span className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-lg"
+        style={{
+          background: on ? 'color-mix(in srgb, var(--color-accent) 18%, transparent)' : 'var(--color-bg-deep)',
+          // `color` aqui y no en el icono: el icono llega ya renderizado con
+          // `currentColor`, asi que hereda de este contenedor.
+          color: on ? 'var(--color-accent)' : 'var(--color-admin-text-muted)',
+        }}>
+        {icon}
+      </span>
+      <span className="truncate text-[12.5px] font-bold" style={{ color: on ? 'var(--color-accent)' : 'var(--color-admin-text-sub)' }}>{label}</span>
+    </button>
+  );
+}
+
+// AUTO_STEPS vive en lib/admin/emailAutoSteps.js: ahora hay dos pantallas que
+// asignan un momento (esta y el guardado desde la galería de diseños) y dos
+// copias de la lista acaban divergiendo.
+
+/**
+ * El color de marca del gimnasio — lo único que un tema inyecta. Sale del CSS
+ * var que branding.js pinta al arrancar; si no está, o no es un hex usable, se
+ * cae al dorado por defecto. Nunca devuelve `var(--…)`: ese valor terminaría
+ * escrito en la BD como si fuera un color, que es lo que ya rompió el asistente
+ * de alta una vez.
+ */
+function readAccentHex() {
+  if (typeof document === 'undefined') return '#D4AF37';
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim();
+  return normalizeHex(raw, '#D4AF37');
+}
 
 function Field({ label, children }) {
   return (
@@ -111,16 +185,6 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
   const gymWebsite = gymLinks?.website_url || '';
   const gymLanding = gymLinks?.slug ? gymShareUrl(gymLinks.slug) : '';
 
-  // El modo se DERIVA de la URL guardada, no se guarda aparte: así una
-  // plantilla vieja con un enlace pegado a mano abre en "Personalizado" sin
-  // migración ni columna nueva.
-  const ctaUrl = template?.cta?.url || '';
-  const appMatch = ctaUrl.match(/\/invite\/go\/([a-z]+)$/i);
-  const ctaSection = appMatch ? appMatch[1] : '';
-  const ctaMode = appMatch ? 'app'
-    : (ctaUrl && (ctaUrl === gymWebsite || ctaUrl === gymLanding)) ? 'gym'
-    : 'custom';
-
   // The gym's own rewards catalog — what the admin already configured under
   // /admin/rewards. We surface these as a picker inside the Reward section so
   // the email can attach to a real listed reward instead of free-form copy.
@@ -138,22 +202,73 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
     enabled: !!gymId,
     staleTime: 5 * 60_000,
   });
-  const rewardName = (r) => (isEs ? (r.name_es || r.name) : r.name);
-  const rewardDesc = (r) => (isEs ? (r.description_es || r.description) : r.description);
   const [template, setTemplate] = useState(initial);
   const bodyRef = useRef(null);
+
+  // OJO CON EL ORDEN: esto va DESPUÉS de `template`, no antes.
+  //
+  // Estaba arriba del todo, veintiséis líneas por encima de su propia
+  // declaración, y `const` no se iza como `var`: leer `template` ahí dentro cae
+  // en la zona muerta temporal y revienta con "Cannot access 'template' before
+  // initialization" NADA MÁS montar. O sea que el editor de plantillas entero
+  // no abría — cada "Editar" caía en el ErrorBoundary.
+  //
+  // No lo cazó nada de lo estático: `no-undef` no se queja porque `template` SÍ
+  // existe en el ámbito (solo que más abajo), y el build compila igual. Solo
+  // aparece pulsando el botón.
+  //
+  // El modo se DERIVA de la URL guardada, no se guarda aparte: así una
+  // plantilla vieja con un enlace pegado a mano abre en "Personalizado" sin
+  // migración ni columna nueva.
+  const ctaUrl = template?.cta?.url || '';
+  const appMatch = ctaUrl.match(/\/invite\/go\/([a-z]+)$/i);
+  const ctaSection = appMatch ? appMatch[1] : '';
+  const ctaMode = appMatch ? 'app'
+    : (ctaUrl && (ctaUrl === gymWebsite || ctaUrl === gymLanding)) ? 'gym'
+    : 'custom';
+
   const [testEmail, setTestEmail] = useState(user?.email || '');
   const [sendingTest, setSendingTest] = useState(false);
   // Mobile preview drawer — desktop has the side panel; below `lg` we surface
   // a fullscreen preview behind a button so admins can actually see what they're editing.
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  // Las perillas crudas de estilo, plegadas por defecto. Arrancan ABIERTAS si
+  // la plantilla ya viene fuera de todos los temas: a quien la retocó a mano no
+  // se le pueden esconder los controles que explican por qué se ve así. El
+  // inicializador es perezoso a propósito — solo se evalúa al montar, así que
+  // aplicar un tema después no vuelve a plegar el panel bajo los dedos.
+  const [showAdvancedStyle, setShowAdvancedStyle] = useState(false);
+
+  // ── Idioma que se está editando ──────────────────────────────────────
+  //
+  // Una plantilla, dos idiomas. Los campos de siempre son el idioma BASE; el
+  // otro vive en `i18n[lang]` y solo guarda TEXTO — maqueta, colores, enlaces e
+  // interruptores son compartidos. Ver lib/admin/emailVariants.js.
+  const [editLang, setEditLang] = useState(() => baseLang(initial));
+
+  // Lo que se LEE en pantalla. Idéntico a `template` salvo en los campos de
+  // texto, que vienen del idioma en edición. `template` sigue siendo la verdad
+  // que se guarda.
+  const view = useMemo(() => pickVariant(template, editLang), [template, editLang]);
+  const tradProgress = useMemo(() => variantProgress(template, editLang), [template, editLang]);
+
+  // Por `editLang`, no por el idioma de la INTERFAZ. Con `isEs` un admin que
+  // tuviera la app en inglés metía copy inglés dentro de la versión española.
+  const rewardName = (r) => (editLang === 'es' ? (r.name_es || r.name) : r.name);
+  const rewardDesc = (r) => (editLang === 'es' ? (r.description_es || r.description) : r.description);
 
   // Dotted-path setter. Auto-creates missing intermediates — older templates
   // (rows from before `reward` was part of the schema) don't have every nested
   // object seeded, and writing `set('reward.enabled', true)` was crashing in
   // Safari with "undefined is not an object (evaluating 'obj[parts[…]] = …')".
-  const set = useCallback((path, value) => {
+  //
+  // Y desvía la escritura al idioma en edición: `pathFor` devuelve
+  // `i18n.en.hero.headline` en vez de `hero.headline` cuando toca. Solo para los
+  // campos de texto — todo lo demás va siempre al base, para que no puedan
+  // existir dos maquetas ni dos enlaces por plantilla.
+  const set = useCallback((rawPath, value) => {
     setTemplate(prev => {
+      const path = pathFor(prev, editLang, rawPath);
       const parts = path.split('.');
       const copy = JSON.parse(JSON.stringify(prev));
       let obj = copy;
@@ -166,21 +281,53 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
       copy.updatedAt = new Date().toISOString();
       return copy;
     });
+  }, [editLang]);
+
+  // ── Temas ────────────────────────────────────────────────────────────
+  const accentHex = useMemo(() => readAccentHex(), []);
+
+  // ── Motor v2 ────────────────────────────────────────────────────────
+  // La plantilla guardada se traduce a la forma que el motor entiende. Se hace
+  // aquí y no al guardar para que las plantillas que YA existen se rendericen
+  // con la maqueta nueva sin migrar nada.
+  //
+  // Se le pasa `view`, no `template`: la previa —y la prueba que se envía— son
+  // del idioma que se está editando. Y `lang` es ese idioma y no el de la
+  // interfaz del admin: las frases que pone el motor (etiqueta del botón, aviso
+  // de "abre la app si la tienes", baja) tienen que ir en el idioma en el que le
+  // va a llegar al miembro, no en el que tenga puesto quien lo escribe.
+  const engineCfg = useMemo(() => templateToCfg(view, {
+    lang: editLang,
+    gymName,
+    gymLogoUrl,
+    accent: accentHex,
+    gymUrl: gymWebsite || gymLanding,
+    // El marcador a rayas de la portada existe SOLO en el editor: sirve para
+    // ver la composición antes de subir la foto. Nunca sale a un buzón.
+    allowPlaceholder: true,
+    // Código de muestra con su QR, solo para ver el bloque completo. El real
+    // lo genera el enviador, uno por miembro.
+    sampleCode: true,
+  }), [view, editLang, gymName, gymLogoUrl, accentHex, gymWebsite, gymLanding]);
+
+  const setPreset = useCallback((preset) => {
+    setTemplate(prev => ({ ...prev, preset, updatedAt: new Date().toISOString() }));
   }, []);
+
 
   const insertVariable = useCallback((token) => {
     const el = bodyRef.current;
     if (!el) return;
     const start = el.selectionStart;
     const end = el.selectionEnd;
-    const text = template.body.text;
+    const text = view.body.text;
     const newText = text.substring(0, start) + token + text.substring(end);
     set('body.text', newText);
     requestAnimationFrame(() => {
       el.focus();
       el.selectionStart = el.selectionEnd = start + token.length;
     });
-  }, [template.body.text, set]);
+  }, [view.body.text, set]);
 
   const handleSave = () => {
     if (!template.name.trim()) {
@@ -191,7 +338,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
   };
 
   const handleExportHtml = async () => {
-    const html = generateEmailHtml(template, gymName, gymLogoUrl);
+    const html = emailDoc(engineCfg);
     try {
       await navigator.clipboard.writeText(html);
       showToast(t('admin.emailTemplates.htmlCopied'), 'success');
@@ -207,7 +354,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
     }
     setSendingTest(true);
     try {
-      const html = generateEmailHtml(template, gymName, gymLogoUrl);
+      const html = emailDoc(engineCfg);
       // Attach a freshly-refreshed token (the fn's gateway is verify_jwt=on, so a
       // stale/missing session is bounced before the function runs).
       const session = await ensureFreshSession();
@@ -265,6 +412,61 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
             <Eye size={14} /> {t('admin.emailTemplates.preview', 'Preview')}
           </button>
         </div>
+
+        {/* ══ Idioma ═══════════════════════════════════════════════════════
+            Una plantilla, dos idiomas. Va ARRIBA DEL TODO y fuera de los tres
+            pasos a propósito: no es un paso más, es el modo en el que estás
+            escribiendo — afecta a todo lo que se teclee debajo. */}
+        <AdminCard>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-admin-text-faint)' }}>
+              {t('admin.emailTemplates.writingIn', 'Escribiendo en')}
+            </span>
+            {LANGS.map((lg) => {
+              const on = editLang === lg;
+              const isBase = lg === baseLang(template);
+              const prog = variantProgress(template, lg);
+              return (
+                <button
+                  key={lg}
+                  type="button"
+                  onClick={() => setEditLang(lg)}
+                  className="px-3 py-1.5 rounded-lg text-[12px] font-semibold min-h-[36px]"
+                  style={{
+                    color: on ? 'var(--color-accent)' : 'var(--color-admin-text-sub)',
+                    background: on ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
+                    border: `${on ? 2 : 1}px solid ${on ? 'var(--color-accent)' : 'var(--color-admin-border)'}`,
+                  }}
+                >
+                  {lg === 'es' ? 'Español' : 'English'}
+                  {isBase
+                    ? <span className="ml-1.5 opacity-60">· {t('admin.emailTemplates.langBase', 'base')}</span>
+                    : prog.total > 0 && !prog.done
+                      ? <span className="ml-1.5 opacity-60">· {prog.filled}/{prog.total}</span>
+                      : null}
+                </button>
+              );
+            })}
+            {/* Traducir sobre un formulario en blanco es lo que hace que nadie
+                traduzca. Esto copia el texto base para editar encima, y NUNCA
+                pisa lo que ya esté traducido. */}
+            {editLang !== baseLang(template) && tradProgress.filled < tradProgress.total && (
+              <button
+                type="button"
+                onClick={() => setTemplate(prev => ({ ...seedVariantFromBase(prev, editLang), updatedAt: new Date().toISOString() }))}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-semibold min-h-[36px]"
+                style={{ color: 'var(--color-admin-text-sub)', border: '1px dashed var(--color-admin-border)' }}
+              >
+                {t('admin.emailTemplates.copyFromBase', 'Copiar el texto base')}
+              </button>
+            )}
+          </div>
+          <p className="mt-2 text-[11.5px] leading-snug" style={{ color: 'var(--color-admin-text-faint)' }}>
+            {editLang === baseLang(template)
+              ? t('admin.emailTemplates.langBaseHelp', 'Solo cambia el texto. La maqueta, los colores, los enlaces y la recompensa son los mismos en los dos idiomas. A cada miembro le llega el suyo; si falta, le llega este.')
+              : t('admin.emailTemplates.langAltHelp', 'Solo cambia el texto. Un campo que dejes vacío sale en el idioma base, no en blanco.')}
+          </p>
+        </AdminCard>
 
         {/* Name & Type */}
         <AdminCard>
@@ -351,45 +553,29 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </div>
         </AdminCard>
 
-        {/* Header Section */}
-        <SectionBlock
-          title={t('admin.emailTemplates.headerSection')}
-          icon={Type}
-          enabled={template.header.enabled}
-          onToggle={v => set('header.enabled', v)}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[12px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.emailTemplates.showLogo')}</span>
-            <Toggle value={template.header.showLogo} onChange={v => set('header.showLogo', v)} label={t('admin.emailTemplates.showLogo')} />
-          </div>
-          <Field label={t('admin.emailTemplates.headerText')}>
-            <input
-              value={template.header.text}
-              onChange={e => set('header.text', e.target.value)}
-              placeholder={t('admin.emailTemplates.headerTextPlaceholder')}
-              className={inputClass}
-            />
-          </Field>
-        </SectionBlock>
+        {/* ══ PASO 1 · La maqueta ══════════════════════════════════
+            Cada miniatura es el correo real renderizado por el motor y
+            escalado, no un dibujo. El selector anterior ensenaba rayas grises
+            sobre una maqueta que no cambiaba nunca. */}
+        <AdminCard>
+          <StepHead n="1"
+            title={t('admin.emailTemplates.step1Title', 'Pick a style')}
+            sub={t('admin.emailTemplates.step1Sub', 'Changes the whole layout — type, header, button and spacing.')}/>
+          <EmailPresetGallery cfg={engineCfg} value={engineCfg.preset} onChange={setPreset} lang={isEs ? 'es' : 'en'} />
+        </AdminCard>
 
-        {/* Hero Section */}
-        <SectionBlock
-          title={t('admin.emailTemplates.heroSection')}
-          icon={Image}
-          enabled={template.hero.enabled}
-          onToggle={v => set('hero.enabled', v)}
-        >
-          <Field label={t('admin.emailTemplates.heroImageUrl')}>
-            <input
-              value={template.hero.imageUrl}
-              onChange={e => set('hero.imageUrl', e.target.value)}
-              placeholder={t('admin.emailTemplates.urlPlaceholder', 'https://...')}
-              className={inputClass}
-            />
-          </Field>
+        {/* ══ PASO 2 · El mensaje ══════════════════════════════════
+            Titular, bajada, cuerpo y boton en una sola tarjeta. Estaban
+            repartidos en cuatro secciones plegables distintas, asi que
+            escribir un correo era abrir y cerrar cajas. */}
+        <AdminCard>
+          <StepHead n="2"
+            title={t('admin.emailTemplates.step2Title', 'Write the message')}
+            sub={t('admin.emailTemplates.step2Sub', 'The layout takes care of the rest.')}/>
+          <div className="space-y-3">
           <Field label={t('admin.emailTemplates.heroHeadline')}>
             <input
-              value={template.hero.headline}
+              value={view.hero.headline}
               onChange={e => set('hero.headline', e.target.value)}
               placeholder={t('admin.emailTemplates.heroHeadlinePlaceholder')}
               className={inputClass}
@@ -397,16 +583,13 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </Field>
           <Field label={t('admin.emailTemplates.heroSubtitle')}>
             <input
-              value={template.hero.subtitle}
+              value={view.hero.subtitle}
               onChange={e => set('hero.subtitle', e.target.value)}
               placeholder={t('admin.emailTemplates.heroSubtitlePlaceholder')}
               className={inputClass}
             />
           </Field>
-        </SectionBlock>
 
-        {/* Body Section */}
-        <SectionBlock title={t('admin.emailTemplates.bodySection')} icon={FileText} enabled={true}>
           <div className="flex flex-wrap gap-1.5 mb-2">
             <span className="text-[10px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mr-1 self-center">
               {t('admin.emailTemplates.insertVariable')}
@@ -426,25 +609,18 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </div>
           <textarea
             ref={bodyRef}
-            value={template.body.text}
+            value={view.body.text}
             onChange={e => set('body.text', e.target.value)}
             rows={10}
             placeholder={t('admin.emailTemplates.bodyPlaceholder')}
             className={`${inputClass} resize-y min-h-[160px]`}
           />
           <p className="text-[10px] text-[var(--color-admin-text-muted)]">{t('admin.emailTemplates.bodyHint')}</p>
-        </SectionBlock>
 
-        {/* CTA Section */}
-        <SectionBlock
-          title={t('admin.emailTemplates.ctaSection')}
-          icon={MousePointerClick}
-          enabled={template.cta.enabled}
-          onToggle={v => set('cta.enabled', v)}
-        >
+            <div className="pt-1" style={{ borderTop: '1px solid var(--color-admin-border)' }} />
           <Field label={t('admin.emailTemplates.ctaText')}>
             <input
-              value={template.cta.text}
+              value={view.cta.text}
               onChange={e => set('cta.text', e.target.value)}
               placeholder={t('admin.emailTemplates.ctaTextPlaceholder')}
               className={inputClass}
@@ -532,15 +708,70 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
               />
             </div>
           </Field>
-        </SectionBlock>
+          </div>
+        </AdminCard>
 
-        {/* Reward Section */}
-        <SectionBlock
-          title={t('admin.emailTemplates.rewardSection', 'Reward / Offer')}
-          icon={Gift}
-          enabled={template.reward?.enabled || false}
-          onToggle={v => set('reward.enabled', v)}
-        >
+        {/* ══ PASO 3 · La marca ════════════════════════════════════
+            El color y el logo NO se editan aqui: salen de Ajustes → Marca y
+            valen para todas las plantillas. Repetirlos por plantilla es como
+            se acaba con seis correos de seis colores distintos. */}
+        <AdminCard>
+          <StepHead n="3"
+            title={t('admin.emailTemplates.step3Title', 'Your brand')}
+            sub={t('admin.emailTemplates.step3Sub', 'Applies to every template — you only set it once.')}/>
+          <div className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--color-admin-panel)' }}>
+            <span className="h-7 w-7 flex-shrink-0 rounded-lg" style={{ background: accentHex, border: '1px solid var(--color-admin-border)' }} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12.5px] font-bold" style={{ color: 'var(--color-admin-text)' }}>{gymName}</div>
+              <div className="text-[11px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                {t('admin.emailTemplates.brandFromSettings', 'Colour and logo come from your gym settings.')}
+              </div>
+            </div>
+          </div>
+          {/* Los dos interruptores de la cabecera. `header.enabled` perdió el
+              suyo al reestructurar y quedó solo legible: una plantilla guardada
+              con la cabecera apagada —como las que salen de la galería de
+              diseños— no se podía volver a encender desde ningún sitio. */}
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[12px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.emailTemplates.headerSection')}</span>
+            <Toggle value={template.header.enabled} onChange={v => set('header.enabled', v)} label={t('admin.emailTemplates.headerSection')} />
+          </div>
+          {template.header.enabled && (
+            <div className="mt-2.5 flex items-center justify-between">
+              <span className="text-[12px]" style={{ color: 'var(--color-admin-text-sub)' }}>{t('admin.emailTemplates.showLogo')}</span>
+              <Toggle value={template.header.showLogo} onChange={v => set('header.showLogo', v)} label={t('admin.emailTemplates.showLogo')} />
+            </div>
+          )}
+        </AdminCard>
+
+        {/* ══ Extras opcionales ════════════════════════════════════ */}
+        <div className="flex flex-wrap gap-2">
+          <ExtraChip icon={<Image size={13} strokeWidth={2.2} style={{ color: 'currentColor' }} />} label={t('admin.emailTemplates.extraPhoto', 'Cover photo')}
+            on={!!template.hero.enabled} onClick={() => set('hero.enabled', !template.hero.enabled)} />
+          <ExtraChip icon={<Gift size={13} strokeWidth={2.2} style={{ color: 'currentColor' }} />} label={t('admin.emailTemplates.extraReward', 'Reward')}
+            on={!!template.reward?.enabled} onClick={() => set('reward.enabled', !template.reward?.enabled)} />
+          <ExtraChip icon={<MousePointerClick size={13} strokeWidth={2.2} style={{ color: 'currentColor' }} />} label={t('admin.emailTemplates.extraCta', 'Button')}
+            on={!!template.cta.enabled} onClick={() => set('cta.enabled', !template.cta.enabled)} />
+          <ExtraChip icon={<FileText size={13} strokeWidth={2.2} style={{ color: 'currentColor' }} />} label={t('admin.emailTemplates.extraFooter', 'Footer')}
+            on={!!template.footer.enabled} onClick={() => set('footer.enabled', !template.footer.enabled)} />
+        </div>
+
+        {template.hero.enabled && (
+          <SectionBlock title={t('admin.emailTemplates.extraPhoto', 'Cover photo')} icon={Image} enabled>
+          {/* Subir, no pegar una URL. Ver EmailImagePicker para el porqué. */}
+          <Field label={t('admin.emailTemplates.heroImage', 'Image')}>
+            <EmailImagePicker
+              value={template.hero.imageUrl}
+              onChange={(url) => set('hero.imageUrl', url)}
+              gymId={gymId}
+              t={t}
+            />
+          </Field>
+          </SectionBlock>
+        )}
+
+        {template.reward?.enabled && (
+          <SectionBlock title={t('admin.emailTemplates.rewardSection', 'Reward / Offer')} icon={Gift} enabled>
           {/* Catalog picker — pulls from the gym's configured rewards
               (/admin/rewards). Picking one prefills title + description; the
               fields below stay editable so admins can tweak the copy. */}
@@ -550,18 +781,18 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
               onChange={e => {
                 const id = e.target.value;
                 const picked = gymRewards.find(r => r.id === id);
-                setTemplate(prev => ({
-                  ...prev,
-                  reward: {
-                    ...(prev.reward || {}),
-                    reward_id: id || '',
-                    ...(picked ? {
-                      title: rewardLabelText(picked.emoji_icon, rewardName(picked)),
-                      description: rewardDesc(picked) || prev.reward?.description || '',
-                    } : {}),
-                  },
-                  updatedAt: new Date().toISOString(),
-                }));
+                // `set()`, NO `setTemplate` directo.
+                //
+                // Era el único sitio del editor que escribía a pelo, y por eso
+                // se saltaba `pathFor`: editando en inglés, el título y la
+                // descripción se escribían en el ESPAÑOL base. El campo visible
+                // no cambiaba (parecía roto) y de paso te pisaba la otra versión
+                // sin decir nada.
+                set('reward.reward_id', id || '');
+                if (picked) {
+                  set('reward.title', rewardLabelText(picked.emoji_icon, rewardName(picked)));
+                  set('reward.description', rewardDesc(picked) || view.reward?.description || '');
+                }
               }}
               className={inputClass}
             >
@@ -580,7 +811,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </Field>
           <Field label={t('admin.emailTemplates.rewardTitle', 'Reward Title')}>
             <input
-              value={template.reward?.title || ''}
+              value={view.reward?.title || ''}
               onChange={e => set('reward.title', e.target.value)}
               placeholder={t('admin.emailTemplates.rewardTitlePlaceholder', 'e.g. Free PT Session, 50% Off')}
               className={inputClass}
@@ -588,7 +819,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </Field>
           <Field label={t('admin.emailTemplates.rewardDescription', 'Description')}>
             <input
-              value={template.reward?.description || ''}
+              value={view.reward?.description || ''}
               onChange={e => set('reward.description', e.target.value)}
               placeholder={t('admin.emailTemplates.rewardDescPlaceholder', 'Show this email at the front desk')}
               className={inputClass}
@@ -602,21 +833,82 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
               className={inputClass}
             />
           </Field>
-          <Field label={t('admin.emailTemplates.rewardExpiry', 'Expiry Text (optional)')}>
+          {/* Fecha real, no texto libre. Escrita a mano se quedaba desfasada
+              en cuanto pasaba la fecha (correos automáticos prometiendo una
+              oferta caducada), no se podía comparar contra nada y cada quien
+              la escribía en un formato distinto. El renderizador la formatea
+              en el idioma del envío, y `formatExpiry` sigue devolviendo tal
+              cual el texto de las plantillas viejas para no perderlo. */}
+          <Field label={t('admin.emailTemplates.rewardExpiryDate', 'Valid through (optional)')}>
             <input
-              value={template.reward?.expiry || ''}
+              type="date"
+              value={/^\d{4}-\d{2}-\d{2}$/.test(template.reward?.expiry || '') ? template.reward.expiry : ''}
+              min={new Date().toISOString().slice(0, 10)}
               onChange={e => set('reward.expiry', e.target.value)}
-              placeholder={t('admin.emailTemplates.rewardExpiryPlaceholder', 'Valid until Dec 31')}
+              className={inputClass}
+            />
+            {template.reward?.expiry && !/^\d{4}-\d{2}-\d{2}$/.test(template.reward.expiry) && (
+              <p className="mt-1.5 text-[11.5px]" style={{ color: 'var(--color-admin-text-faint)' }}>
+                {t('admin.emailTemplates.rewardExpiryLegacy', 'Currently set to free text: “{{value}}”. Pick a date to replace it.', { value: template.reward.expiry })}
+              </p>
+            )}
+          </Field>
+          </SectionBlock>
+        )}
+
+        {template.footer.enabled && (
+          <SectionBlock title={t('admin.emailTemplates.footerSection')} icon={FileText} enabled>
+          <Field label={t('admin.emailTemplates.footerText')}>
+            <input
+              value={view.footer.text}
+              onChange={e => set('footer.text', e.target.value)}
               className={inputClass}
             />
           </Field>
-        </SectionBlock>
+          <Field label={t('admin.emailTemplates.unsubscribeText')}>
+            <input
+              value={view.footer.unsubscribeText}
+              onChange={e => set('footer.unsubscribeText', e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          </SectionBlock>
+        )}
 
-        {/* Typography & Layout */}
-        <AdminCard>
-          <p className="text-[12px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mb-3">
-            {t('admin.emailTemplates.typography', 'Typography & Layout')}
-          </p>
+        {/* ══ Ajustes finos ════════════════════════════════════════
+            Densidad, tipografia, etiqueta de cabecera y colores. Plegado por
+            defecto a proposito: nadie necesita abrirlo para mandar un correo
+            que se vea bien, y esa es justamente la promesa. */}
+        <AdminCard padding="p-0">
+          <button
+            type="button"
+            onClick={() => setShowAdvancedStyle(v => !v)}
+            className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left"
+            style={{ background: 'var(--color-bg-deep)', border: 'none', cursor: 'pointer' }}
+          >
+            <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg" style={{ background: 'var(--color-admin-panel)' }}>
+              <Type size={14} strokeWidth={2} style={{ color: 'var(--color-admin-text-muted)' }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-extrabold" style={{ fontFamily: DISPLAY_FONT, color: 'var(--color-admin-text)', letterSpacing: '-0.2px' }}>
+                {t('admin.emailTemplates.advancedStyle', 'Advanced')}
+              </div>
+              <div className="text-[10.5px]" style={{ color: 'var(--color-admin-text-muted)' }}>
+                {t('admin.emailTemplates.advancedSub', 'Spacing, type size, header label. Nobody needs to open this.')}
+              </div>
+            </div>
+            {showAdvancedStyle ? <ChevronUp size={16} style={{ color: 'var(--color-admin-text-muted)' }} /> : <ChevronDown size={16} style={{ color: 'var(--color-admin-text-muted)' }} />}
+          </button>
+          {showAdvancedStyle && (
+            <div className="space-y-3 p-[18px]" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+              <Field label={t('admin.emailTemplates.headerText')}>
+                <input
+                  value={view.header.text}
+                  onChange={e => set('header.text', e.target.value)}
+                  placeholder={t('admin.emailTemplates.headerTextPlaceholder')}
+                  className={inputClass}
+                />
+              </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('admin.emailTemplates.fontSize', 'Body Font Size')}>
               <select
@@ -643,80 +935,31 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
                 <option value="20">{t('admin.emailTemplates.cornersExtra', 'Extra Round')} (20px)</option>
               </select>
             </Field>
+            {/* TRES opciones, no cuatro: el motor tiene tres densidades. Ofrecer
+                una cuarta era prometer una diferencia que no existe. */}
             <Field label={t('admin.emailTemplates.padding', 'Content Padding')}>
               <select
-                value={template.typography?.padding || '40'}
-                onChange={e => set('typography.padding', e.target.value)}
+                value={engineCfg.density}
+                onChange={e => set('density', e.target.value)}
                 className={inputClass}
               >
-                <option value="24">{t('admin.emailTemplates.paddingTight', 'Tight')} (24px)</option>
-                <option value="32">{t('admin.emailTemplates.paddingNormal', 'Normal')} (32px)</option>
-                <option value="40">{t('admin.emailTemplates.paddingSpacious', 'Spacious')} (40px)</option>
-                <option value="48">{t('admin.emailTemplates.paddingExtra', 'Extra')} (48px)</option>
-              </select>
-            </Field>
-            <Field label={t('admin.emailTemplates.headerStyle', 'Header Style')}>
-              <select
-                value={template.typography?.headerStyle || 'gradient'}
-                onChange={e => set('typography.headerStyle', e.target.value)}
-                className={inputClass}
-              >
-                <option value="gradient">{t('admin.emailTemplates.headerGradient', 'Gradient')}</option>
-                <option value="solid">{t('admin.emailTemplates.headerSolid', 'Solid Color')}</option>
-                <option value="minimal">{t('admin.emailTemplates.headerMinimal', 'Minimal (Logo Only)')}</option>
-                <option value="none">{t('admin.emailTemplates.headerNone', 'None')}</option>
+                <option value="compacto">{t('admin.emailTemplates.paddingTight', 'Tight')}</option>
+                <option value="comodo">{t('admin.emailTemplates.paddingNormal', 'Normal')}</option>
+                <option value="espacioso">{t('admin.emailTemplates.paddingSpacious', 'Spacious')}</option>
               </select>
             </Field>
           </div>
-        </AdminCard>
 
-        {/* Footer Section */}
-        <SectionBlock
-          title={t('admin.emailTemplates.footerSection')}
-          icon={FileText}
-          enabled={template.footer.enabled}
-          onToggle={v => set('footer.enabled', v)}
-        >
-          <Field label={t('admin.emailTemplates.footerText')}>
-            <input
-              value={template.footer.text}
-              onChange={e => set('footer.text', e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label={t('admin.emailTemplates.unsubscribeText')}>
-            <input
-              value={template.footer.unsubscribeText}
-              onChange={e => set('footer.unsubscribeText', e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-        </SectionBlock>
-
-        {/* Color Scheme */}
-        <AdminCard>
-          <p className="text-[12px] font-semibold text-[var(--color-admin-text-muted)] uppercase tracking-wider mb-3">
-            {t('admin.emailTemplates.colorScheme')}
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            {['primary', 'background', 'text'].map(key => (
-              <Field key={key} label={t(`admin.emailTemplates.colors.${key}`)}>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={template.colors[key]}
-                    onChange={e => set(`colors.${key}`, e.target.value)}
-                    className="w-7 h-7 rounded border border-[var(--color-admin-border)] cursor-pointer bg-transparent flex-shrink-0"
-                  />
-                  <input
-                    value={template.colors[key]}
-                    onChange={e => set(`colors.${key}`, e.target.value)}
-                    className={`${inputClass} text-[11px]`}
-                  />
-                </div>
-              </Field>
-            ))}
-          </div>
+          {/* Los tres selectores de color se fueron. El motor v2 toma UN acento y
+              es el del gimnasio: su docblock dice que del gimnasio solo entran
+              logo, nombre, dirección y ese color, y que el resto es la maqueta.
+              Fondo y tinta salen del preset. Los tres se guardaban, se
+              recargaban intactos y no pintaban NADA — y `colors.primary` además
+              lo pisaba siempre el acento de la marca. Guardar la paleta dentro
+              de cada plantilla es justo lo que dejaba plantillas viejas con los
+              colores de antes al recolorear el gimnasio. */}
+            </div>
+          )}
         </AdminCard>
 
         {/* Send Test Email */}
@@ -768,7 +1011,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
 
       {/* Right: Live Preview (desktop) — dark "stage" backdrop, per the design */}
       <div className="hidden lg:flex flex-col w-[460px] flex-shrink-0" style={{ borderLeft: '1px solid var(--color-admin-border)', background: '#0b0b12' }}>
-        <EmailLivePreview template={template} gymName={gymName} gymLogoUrl={gymLogoUrl} />
+        <EmailLivePreview cfg={engineCfg} />
       </div>
 
       {/* Mobile preview overlay — fullscreen drawer slides in from the right */}
@@ -789,7 +1032,7 @@ export default function EmailTemplateEditor({ initial, onSave, onCancel, gymName
           </div>
           <div className="flex-1 overflow-y-auto"
             style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
-            <EmailLivePreview template={template} gymName={gymName} gymLogoUrl={gymLogoUrl} />
+            <EmailLivePreview cfg={engineCfg} />
           </div>
         </div>
       )}

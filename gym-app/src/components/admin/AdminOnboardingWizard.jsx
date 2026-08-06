@@ -6,6 +6,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
+import logger from '../../lib/logger';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { validateImageFile } from '../../lib/validateImage';
@@ -542,7 +543,13 @@ export default function AdminOnboardingWizard({ onComplete }) {
   // Save progress to DB on each step change
   const saveStepProgress = useCallback(async (currentStep) => {
     if (!gymId) return;
-    await supabase.from('gyms').update({ setup_step: currentStep }).eq('id', gymId);
+    // Solo es el marcador de "por dónde iba" para retomar en otro dispositivo.
+    // No merece un toast, pero sí quedar en el log: si esto falla siempre, el
+    // asistente reaparece desde el paso 0 y no hay forma de saber por qué.
+    const { error } = await supabase.from('gyms').update({ setup_step: currentStep }).eq('id', gymId);
+    // logger.error y no .warn: `warn` es un no-op en produccion (logger.js),
+    // asi que el motivo que dice el comentario de arriba no se cumplia.
+    if (error) logger.error('onboarding step progress not saved', error);
   }, [gymId]);
 
   const handleNext = useCallback(async () => {
@@ -550,42 +557,32 @@ export default function AdminOnboardingWizard({ onComplete }) {
       // Final step — complete setup
       setSaving(true);
       try {
+        // ORDEN: primero el GIMNASIO, después la marca.
+        //
+        // Estaba al revés y era peor que el bug que vino a arreglar. La marca
+        // lanzaba, el `finally` llamaba a markAdminSetupSeen() —que descarta el
+        // asistente para siempre en ese navegador— y el UPDATE de `gyms` no
+        // llegaba a correr. Resultado: un fallo al guardar el color dejaba al
+        // dueño sin nombre, sin horario, sin funciones y sin forma de volver a
+        // abrir el asistente. La escritura menos importante bloqueaba la más
+        // importante.
+        //
+        // Ahora el gimnasio se guarda primero y la marca NO lanza: si falla, se
+        // avisa y se sigue, igual que la rama de horarios. El logo y el color se
+        // pueden poner luego desde Ajustes; el nombre y el horario del gimnasio
+        // no tienen segunda oportunidad.
+        let brandFailed = false;
         // Never let a non-hex (e.g. in-flight 'var(--…)' state) reach the DB.
         const safeColor = normalizeHexColor(primaryColor);
-        // Upload logo if selected
-        if (logoFile && gymId) {
-          setUploading(true);
-          const compressed = await compressImage(logoFile);
-          const ext = 'jpg';
-          const path = `${gymId}/logo.${ext}`;
-          await supabase.storage.from('gym-logos').upload(path, compressed, {
-            // Short TTL, NOT a long one: this path is `${gymId}/logo.jpg` and is
-            // overwritten in place with upsert. A long max-age would freeze the
-            // OLD logo on every member's device until it expired — the one asset
-            // where staleness is most visible. Uploads that write a unique path
-            // (avatars, progress photos, exercise videos: all `${id}/${Date.now()}`)
-            // use 31536000 instead, since a new file always means a new URL.
-            cacheControl: '60',
-            upsert: true,
-            contentType: 'image/jpeg',
-          });
-          await supabase.from('gym_branding').upsert({
-            gym_id: gymId,
-            logo_url: path,
-            primary_color: safeColor,
-          }, { onConflict: 'gym_id' });
-          setUploading(false);
-        } else if (gymId) {
-          // Save color even without logo
-          await supabase.from('gym_branding').upsert({
-            gym_id: gymId,
-            primary_color: safeColor,
-          }, { onConflict: 'gym_id' });
-        }
 
         // Save gym settings
         if (gymId) {
-          await supabase.from('gyms').update({
+          // Ésta es la escritura que define el gimnasio — nombre, horario, qué
+          // funciones existen — y su `error` se tiraba. Si fallaba, el asistente
+          // se cerraba igual, el dueño creía haber configurado su gimnasio y se
+          // quedaba con los valores por defecto sin ningún aviso. Ahora lanza y
+          // el catch de abajo lo enseña.
+          const { error: gymErr } = await supabase.from('gyms').update({
             name: gymName,
             open_time: openTime,
             close_time: closeTime,
@@ -595,6 +592,7 @@ export default function AdminOnboardingWizard({ onComplete }) {
             setup_completed: true,
             setup_step: TOTAL_STEPS,
           }).eq('id', gymId);
+          if (gymErr) throw gymErr;
 
           // Upsert gym hours
           const hoursRows = openDays.map((d) => ({
@@ -615,7 +613,69 @@ export default function AdminOnboardingWizard({ onComplete }) {
               is_closed: true,
             });
           });
-          await supabase.from('gym_hours').upsert(hoursRows, { onConflict: 'gym_id,day_of_week' });
+          // No es fatal — el gimnasio ya quedó guardado arriba — pero sin horas
+          // el miembro ve el gimnasio "cerrado" siempre y la racha se protege
+          // mal. Se avisa en vez de tragárselo.
+          const { error: hoursErr } = await supabase
+            .from('gym_hours')
+            .upsert(hoursRows, { onConflict: 'gym_id,day_of_week' });
+          if (hoursErr) {
+            showToast(t('adminOnboarding.hoursSaveFailed', 'Your gym was saved, but the opening hours were not — set them in Settings.'), 'error');
+          }
+        }
+
+        // Upload logo if selected
+        if (logoFile && gymId) {
+          setUploading(true);
+          const compressed = await compressImage(logoFile);
+          const ext = 'jpg';
+          const path = `${gymId}/logo.${ext}`;
+          // Storage tampoco lanza: devuelve `{ data, error }`. Sin mirarlo se
+          // grababa `logo_url` apuntando a un objeto que no llegó a subir, y el
+          // logo salía roto en toda la app.
+          const { error: upErr } = await supabase.storage.from('gym-logos').upload(path, compressed, {
+            // Short TTL, NOT a long one: this path is `${gymId}/logo.jpg` and is
+            // overwritten in place with upsert. A long max-age would freeze the
+            // OLD logo on every member's device until it expired — the one asset
+            // where staleness is most visible. Uploads that write a unique path
+            // (avatars, progress photos, exercise videos: all `${id}/${Date.now()}`)
+            // use 31536000 instead, since a new file always means a new URL.
+            cacheControl: '60',
+            upsert: true,
+            contentType: 'image/jpeg',
+          });
+          setUploading(false);
+          if (upErr) {
+            // El color sí se guarda; el logo se queda para Ajustes.
+            const { error: colorErr } = await supabase.from('gym_branding').upsert({
+              gym_id: gymId,
+              primary_color: safeColor,
+            }, { onConflict: 'gym_id' });
+            if (colorErr) brandFailed = true;
+            showToast(t('adminOnboarding.logoUploadFailed', 'Your logo could not be uploaded — add it from Settings.'), 'error');
+          } else {
+            const { error: brandErr } = await supabase.from('gym_branding').upsert({
+              gym_id: gymId,
+              logo_url: path,
+              primary_color: safeColor,
+            }, { onConflict: 'gym_id' });
+            if (brandErr) brandFailed = true;
+          }
+        } else if (gymId) {
+          // Save color even without logo
+          const { error: brandErr } = await supabase.from('gym_branding').upsert({
+            gym_id: gymId,
+            primary_color: safeColor,
+          }, { onConflict: 'gym_id' });
+          if (brandErr) brandFailed = true;
+        }
+
+
+        if (brandFailed) {
+          // Copia distinta a la del paso 2: allí sí queda un reintento al
+          // final, aquí ya no. Decirle "lo intentamos luego" cuando no hay
+          // luego es peor que no decir nada.
+          showToast(t('adminOnboarding.brandingSaveFailedFinal', 'Your gym is set up, but the logo and colour were not saved — add them in Settings.'), 'error');
         }
 
         await refreshProfile();
@@ -642,7 +702,7 @@ export default function AdminOnboardingWizard({ onComplete }) {
           setUploading(true);
           const compressed = await compressImage(logoFile);
           const path = `${gymId}/logo.jpg`;
-          await supabase.storage.from('gym-logos').upload(path, compressed, {
+          const { error: upErr } = await supabase.storage.from('gym-logos').upload(path, compressed, {
             // Short TTL, NOT a long one: this path is `${gymId}/logo.jpg` and is
             // overwritten in place with upsert. A long max-age would freeze the
             // OLD logo on every member's device until it expired — the one asset
@@ -653,24 +713,34 @@ export default function AdminOnboardingWizard({ onComplete }) {
             upsert: true,
             contentType: 'image/jpeg',
           });
-          await supabase.from('gym_branding').upsert({
-            gym_id: gymId,
-            logo_url: path,
-            primary_color: safeColor,
-          }, { onConflict: 'gym_id' });
           setUploading(false);
-          setLogoFile(null); // Prevent re-upload on final step
+          // Solo se apunta `logo_url` si el objeto subió de verdad, y solo se
+          // suelta `logoFile` en ese caso — así el paso final lo reintenta en
+          // lugar de dar el logo por puesto.
+          const { error: brandErr } = await supabase.from('gym_branding').upsert(
+            upErr
+              ? { gym_id: gymId, primary_color: safeColor }
+              : { gym_id: gymId, logo_url: path, primary_color: safeColor },
+            { onConflict: 'gym_id' },
+          );
+          if (brandErr) throw brandErr;
+          if (!upErr) setLogoFile(null); // Prevent re-upload on final step
         } else {
-          await supabase.from('gym_branding').upsert({
+          const { error: brandErr } = await supabase.from('gym_branding').upsert({
             gym_id: gymId,
             primary_color: safeColor,
           }, { onConflict: 'gym_id' });
+          if (brandErr) throw brandErr;
         }
         if (gymName) {
-          await supabase.from('gyms').update({ name: gymName }).eq('id', gymId);
+          const { error: nameErr } = await supabase.from('gyms').update({ name: gymName }).eq('id', gymId);
+          if (nameErr) throw nameErr;
         }
-      } catch {
-        // Non-blocking — we continue to next step
+      } catch (brandingErr) {
+        // Sigue sin bloquear — el asistente no debe atrapar al dueño — pero
+        // ahora se le dice. El paso final vuelve a intentar todo esto.
+        logger.error('onboarding branding step failed', brandingErr);
+        showToast(t('adminOnboarding.brandingSaveFailed', 'Your branding was not saved yet — we will try again at the end.'), 'error');
       }
     }
 
@@ -692,20 +762,22 @@ export default function AdminOnboardingWizard({ onComplete }) {
 
     // Create first challenge on step 4 completion
     if (step === 4 && gymId && challengeType) {
-      try {
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + 30);
-        await supabase.from('challenges').insert({
-          gym_id: gymId,
-          created_by: profile?.id,
-          name: challengeType === 'consistency' ? '30-Day Consistency Challenge' : '30-Day Volume Challenge',
-          type: challengeType,
-          start_date: startDate.toISOString(),
-          end_date: endDate.toISOString(),
-        });
-      } catch {
-        // Non-blocking
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 30);
+      // El `catch` era inalcanzable, así que el reto que el dueño acababa de
+      // escoger podía no crearse nunca sin una sola señal. Sigue sin bloquear.
+      const { error: challErr } = await supabase.from('challenges').insert({
+        gym_id: gymId,
+        created_by: profile?.id,
+        name: challengeType === 'consistency' ? '30-Day Consistency Challenge' : '30-Day Volume Challenge',
+        type: challengeType,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+      });
+      if (challErr) {
+        logger.error('onboarding first challenge failed', challErr);
+        showToast(t('adminOnboarding.challengeCreateFailed', 'The first challenge was not created — you can create one from Challenges.'), 'error');
       }
     }
 
@@ -713,7 +785,7 @@ export default function AdminOnboardingWizard({ onComplete }) {
     setDirection(1);
     setStep(nextStep);
     saveStepProgress(nextStep);
-  }, [step, gymId, gymName, primaryColor, logoFile, openTime, closeTime, openDays, features, challengeType, profile, refreshProfile, onComplete, showToast, saveStepProgress]);
+  }, [step, gymId, gymName, primaryColor, logoFile, openTime, closeTime, openDays, features, challengeType, profile, refreshProfile, onComplete, showToast, t, saveStepProgress]);
 
   const handleBack = useCallback(() => {
     if (step <= 0) return;

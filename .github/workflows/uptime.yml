@@ -7,12 +7,26 @@ name: Uptime
 # Alerts: GitHub emails you on a failed run by default. For a dedicated alert
 # email, add a `RESEND_API_KEY` repo secret (reuses your existing Resend setup).
 #
-# ⚠️ GitHub runs `schedule:` ONLY from the DEFAULT branch (main). On a feature
-# branch this won't tick yet — use "Run workflow" (workflow_dispatch) to test it,
-# and it begins running every ~10 min once this file is on main. GitHub may also
-# delay scheduled runs under load, and disables schedules after 60 days of repo
-# inactivity — fine for active projects, but UptimeRobot is more reliable if you
-# later want sub-5-min checks or SMS.
+# ⚠️ EL CRON DICE 10 MINUTOS Y ES MENTIRA. Medido sobre 25 corridas reales el
+# 06-08-2026: intervalo MEDIANO de 107 minutos, mínimo 60, máximo 206. Los 24
+# huecos pasaban de una hora, sin una sola excepción.
+#
+# GitHub estrangula los `schedule:` con dureza y no lo anuncia; el cron es una
+# petición, no una promesa. En la práctica esto detecta una caída con entre 1 y
+# 3,5 horas de retraso, así que sirve de red de seguridad barata — NO de monitor
+# de caídas. Para detección de verdad hace falta un servicio externo (UptimeRobot
+# gratis hace 5 min y admite monitor por palabra clave, que puede exigir
+# '"db":"up"' en la respuesta del health-check).
+#
+# También: GitHub corre `schedule:` SOLO desde la rama por defecto (main) — en
+# una rama de trabajo no se dispara, usa "Run workflow". Y desactiva los
+# programados tras 60 días sin actividad en el repo.
+#
+# 📌 Si ves una corrida "cancelled" que duró varios minutos con `steps: []` y la
+# anotación "job was not acquired by Runner of type hosted": es GitHub sin
+# máquinas libres, no una caída tuya. El paso de alerta lleva `if: failure()` y
+# una cancelación NO lo dispara, así que ese correo es la notificación por
+# defecto de GitHub, no tu alerta. Pasó el 06-08-2026 (run 31119854882).
 #
 # Setup (Repo → Settings → Secrets and variables → Actions):
 #   • Variable HEALTHCHECK_URL = https://<your-ref>.supabase.co/functions/v1/health-check

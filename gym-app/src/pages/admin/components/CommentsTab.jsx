@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { es as esLocale } from 'date-fns/locale/es';
 import { supabase } from '../../../lib/supabase';
+import { useToast } from '../../../contexts/ToastContext';
 import { adminKeys } from '../../../lib/adminQueryKeys';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { sanitize } from '../../../lib/sanitize';
@@ -23,6 +24,7 @@ const PAGE_SIZE = 10;
  */
 export default function CommentsTab({ gymId }) {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const { t, i18n } = useTranslation('pages');
   const dateFnsOpts = i18n.language?.startsWith('es') ? { locale: esLocale } : undefined;
   const [filter, setFilter] = useState('all');
@@ -39,10 +41,24 @@ export default function CommentsTab({ gymId }) {
   const handleToggleDelete = async (comment) => {
     setActing(comment.id);
     const nextDeleted = !comment.is_deleted;
-    await supabase
+    // `.select('id')` y cero filas, NO solo `error`.
+    //
+    // Mi arreglo anterior comprobaba `error` y decía cazar el rechazo por RLS.
+    // No lo caza: un UPDATE cuyas filas excluye una cláusula USING afecta a 0
+    // filas y devuelve ÉXITO con `error: null` — solo un WITH CHECK violado da
+    // 42501. Así que el bug seguía intacto: el admin veía el contenido como
+    // retirado y seguía publicado. Contar las filas devueltas es lo único que
+    // distingue "se aplicó" de "no tocó nada".
+    const { data: modRows, error: modErr } = await supabase
       .from('feed_comments')
       .update({ is_deleted: nextDeleted })
-      .eq('id', comment.id);
+      .eq('id', comment.id)
+      .select('id');
+    if (modErr || !modRows?.length) {
+      showToast(t('admin.moderation.actionFailed', 'Could not apply that — try again'), 'error');
+      setActing(null);
+      return;
+    }
     logAdminAction('moderation', 'feed_comment', comment.id, {
       action: nextDeleted ? 'soft_delete' : 'restore',
       author_id: comment.profile_id,

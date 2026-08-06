@@ -76,8 +76,12 @@ export default function NotificationSettings() {
     notif_email_enabled: true,
     notif_email_lifecycle: true,
     notif_email_classes: true,
-    // Opt-in, matching the column default: win-back is promotional.
-    notif_email_winback: false,
+    // Opt-OUT since 0699, matching the column default. Win-back is commercial
+    // mail, and CAN-SPAM asks for a working unsubscribe — this switch — not for
+    // prior consent. Starting it off made the automated cadence unreachable:
+    // nobody who cancels goes into the app they're leaving to enable "email me
+    // to come back".
+    notif_email_winback: true,
   });
   const [saving, setSaving] = useState(false);
 
@@ -98,7 +102,10 @@ export default function NotificationSettings() {
       notif_email_enabled:      profile.notif_email_enabled      ?? true,
       notif_email_lifecycle:    profile.notif_email_lifecycle    ?? true,
       notif_email_classes:      profile.notif_email_classes      ?? true,
-      notif_email_winback:      profile.notif_email_winback      ?? false,
+      // `?? true` y no `?? false`: el fallback se usa cuando la columna no vino
+      // en el perfil, y pintar el interruptor apagado mientras la base dice que
+      // sí es un interruptor que miente sobre lo que va a recibir.
+      notif_email_winback:      profile.notif_email_winback      ?? true,
       notif_weekly_summary:     profile.notif_weekly_summary     ?? true,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
