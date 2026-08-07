@@ -168,7 +168,7 @@ const ParticipantList = ({ challengeId, t, refreshKey }) => {
     <div className="mt-4 space-y-2">
       <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest mb-2">{t('challenges.signedUp')} · {names.length}</p>
       {visible.map((name, i) => (
-        <div key={`${name}-${i}`} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border)]">
+        <div key={`${name}-${i}`} className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)]">
           <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
             <span className="text-[12px] font-bold text-[var(--color-accent,#2EC4C4)]">{name[0]}</span>
           </div>
@@ -625,7 +625,7 @@ const Leaderboard = ({ challenge, myId, t, refreshKey }) => {
                 className={`relative flex items-center gap-4 px-4 py-4 rounded-2xl overflow-hidden transition-colors ${
                   isMe
                     ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30'
-                    : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
+                    : 'bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)]'
                 }`}
               >
                 {/* Score bar background */}
@@ -775,7 +775,7 @@ const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
             return (
               <div key={team.team_id}
                 className={`rounded-2xl overflow-hidden transition-colors ${
-                  isMyTeam ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
+                  isMyTeam ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)]'
                 }`}>
                 <button type="button" onClick={() => setExpandedTeam(isExpanded ? null : team.team_id)}
                   className="w-full flex items-center gap-4 px-4 py-4 text-left">
@@ -797,7 +797,7 @@ const TeamLeaderboard = ({ challenge, myId, t, refreshKey }) => {
                   <ChevronDown size={16} className={`text-[var(--color-text-muted)] flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                 </button>
                 {isExpanded && team.members && (
-                  <div className="px-4 pb-4 space-y-2 border-t border-[var(--color-border)]">
+                  <div className="px-4 pb-4 space-y-2 border-t border-[var(--color-border-subtle)]">
                     {team.members.map(m => (
                       <div key={m.profile_id} className="flex items-center gap-3 px-3 py-2">
                         <div className="w-7 h-7 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
@@ -932,7 +932,7 @@ const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
             return (
               <div key={e.id}
                 className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-colors ${
-                  isMe ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border)]'
+                  isMe ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)]'
                 }`}>
                 <div className="flex-shrink-0 w-8 text-center">
                   {i < 3 ? <span className="text-[22px]">{MEDAL[i]}</span> : <span className="text-[16px] font-bold text-[var(--color-text-muted)]">{i + 1}</span>}
@@ -1133,7 +1133,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                     {t('challenges.team.accept', 'Accept')}
                   </button>
                   <button type="button" onClick={() => handleDeclineInvite(inv)}
-                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border)]">
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] border border-[var(--color-border-default)]">
                     {t('challenges.team.decline', 'Decline')}
                   </button>
                 </div>
@@ -1163,7 +1163,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
               <label className="block text-[12px] font-medium text-[var(--color-text-muted)] mb-1.5">{t('challenges.team.teamName', 'Team Name')}</label>
               <input value={teamName} onChange={e => setTeamName(e.target.value)} maxLength={30}
                 placeholder={t('challenges.team.teamNamePlaceholder', 'e.g. Iron Warriors')}
-                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent,#2EC4C4)]/40" />
+                className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] rounded-xl px-4 py-2.5 text-[14px] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent,#2EC4C4)]/40" />
             </div>
             <div>
               <label className="block text-[12px] font-medium text-[var(--color-text-muted)] mb-1.5">
@@ -1179,7 +1179,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
                     <button key={f.id} type="button" disabled={isFull}
                       onClick={() => setSelectedFriends(prev => isSelected ? prev.filter(id => id !== f.id) : [...prev, f.id])}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left ${
-                        isSelected ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-secondary)]'
+                        isSelected ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)] hover:bg-[var(--color-bg-secondary)]'
                       } ${isFull ? 'opacity-40' : ''}`}>
                       <div className="w-8 h-8 rounded-full bg-[var(--color-accent,#2EC4C4)]/10 flex items-center justify-center flex-shrink-0">
                         {f.avatar_url ? <SafeImg src={f.avatar_url} alt={`${f.full_name || t('challenges.team.member', 'Team member')} avatar`} className="w-8 h-8 rounded-full object-cover" /> : <span className="text-[11px] font-bold text-[var(--color-accent,#2EC4C4)]">{(f.full_name || '?')[0]}</span>}
@@ -1193,7 +1193,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
             </div>
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setStep('choose')}
-                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] border border-[var(--color-border)]">
+                className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)]">
                 {t('common:back', 'Back')}
               </button>
               <button type="button" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}

@@ -30,7 +30,7 @@ export default function MuscleFigure({ readiness, sex, accent = '#19B8B8', maxWi
       <button key={v} type="button" onClick={() => setView(v)}
         style={{
           padding: '6px 16px', borderRadius: 999, fontSize: 12, fontWeight: 800, cursor: 'pointer',
-          border: on ? 'none' : '1px solid var(--color-border)',
+          border: on ? 'none' : '1px solid var(--color-border-default)',
           background: on ? accent : 'transparent',
           // Theme-aware: hardcoded near-black was invisible on dark.
           color: on ? '#fff' : 'var(--color-text-secondary)',
@@ -49,7 +49,7 @@ export default function MuscleFigure({ readiness, sex, accent = '#19B8B8', maxWi
       <div style={{
         position: 'relative', width: '100%', maxWidth, margin: '0 auto',
         borderRadius: 18, background: 'var(--color-surface)',
-        border: '1px solid var(--color-border)', padding: 8, overflow: 'hidden',
+        border: '1px solid var(--color-border-subtle)', padding: 8, overflow: 'hidden',
       }}>
         <div style={{ position: 'relative', width: '100%', aspectRatio: `${dim.w} / ${dim.h}` }}>
           <img
