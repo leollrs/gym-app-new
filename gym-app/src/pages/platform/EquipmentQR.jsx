@@ -9,9 +9,13 @@
 //   2. Las máquinas. El mockup lista 16 inventadas; aquí van las 36 reales de
 //      equipmentStations.js, que es lo que el escáner sabe resolver.
 //   3. El nombre. El mockup trae "Atlas Strength" fijo; aquí sale el gimnasio de
-//      la sesión. Es el punto entero de la pantalla: la etiqueta lleva la marca
-//      del gimnasio, no la nuestra. La versión anterior estampaba "TUGYMPR" en
-//      cada pegatina, que es justo lo contrario de un producto de marca blanca.
+//      la sesión. La versión anterior estampaba "TUGYMPR" en cada pegatina, que
+//      es justo lo contrario de un producto de marca blanca: el socio está en SU
+//      gimnasio mirando SU máquina.
+//
+//      PENDIENTE: esta pantalla es de plataforma y un super admin no tiene
+//      gym_id, así que `gymName` llega vacío y la etiqueta sale sin esa línea.
+//      Para que lleve la marca del gimnasio hay que poder elegirlo o escribirlo.
 //
 // La paleta es clara y fija, no la del tema. Lo que se ve en pantalla es PAPEL:
 // tiene que parecerse a lo que sale de la impresora, y en oscuro mentiría.
@@ -42,7 +46,7 @@ const invCode = (i) => 'M-' + String(i + 1).padStart(2, '0');
 
 const FONTS = 'https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400&family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap';
 
-export default function EquipmentTags() {
+export default function EquipmentQR() {
   const navigate = useNavigate();
   const { i18n } = useTranslation();
   const { gymName } = useAuth();

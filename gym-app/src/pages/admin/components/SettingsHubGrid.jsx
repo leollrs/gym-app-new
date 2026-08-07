@@ -4,9 +4,8 @@ import { FadeIn } from '../../../components/admin';
 import { TK, FK, TONE, Ico, Card } from './retosKit';
 
 /**
- * Settings hub: 8 cards, one per focused sub-page. Most route to
- * `/admin/settings/<slug>`; equipment tags is a printable sheet and lives one
- * level up at `/admin/equipment-tags`. Restyled onto retosKit
+ * Settings hub: 7 cards, one per focused sub-page. Each card routes to a
+ * distinct destination (`/admin/settings/<slug>`). Restyled onto retosKit
  * per the "Configuración Restyle" design (2-col grid of icon-box cards).
  */
 
@@ -51,7 +50,6 @@ export default function SettingsHubGrid() {
     { icon: CIC.shield, tone: 'neutral', title: t('admin.settingsHub.registration', 'Registration & classes'), desc: t('admin.settingsHub.registrationDesc', 'How members join, class booking, birthdays'), onClick: () => navigate('/admin/settings/registration') },
     { icon: CIC.mail, tone: 'neutral', title: t('admin.settingsHub.digest', 'Email digest'), desc: t('admin.settingsHub.digestDesc', 'Weekly summary sent to you'), onClick: () => navigate('/admin/settings/digest') },
     { icon: CIC.printer, tone: 'neutral', title: t('admin.settingsHub.cards', 'Print cards'), desc: t('admin.settingsHub.cardsDesc', 'Tune what fires, when, and default rewards'), onClick: () => navigate('/admin/settings/cards') },
-    { icon: CIC.qr, tone: 'accent', title: t('admin.settingsHub.equipmentTags', 'Etiquetas de equipo'), desc: t('admin.settingsHub.equipmentTagsDesc', 'Una por máquina — el socio escanea y ve los ejercicios'), onClick: () => navigate('/admin/equipment-tags') },
   ];
 
   return (
