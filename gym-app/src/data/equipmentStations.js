@@ -4,6 +4,8 @@
 // the DB `exercises.station` column and this client util stay in sync. Sports/activities
 // return null (not scannable equipment). Reference list is tiny (36 rows) — safe to bundle.
 
+import { equipmentQrUrl } from '../lib/appUrls';
+
 export const STATION_GROUPS = [
   { key: 'free_weights', label: 'Free Weights', label_es: 'Pesos Libres' },
   { key: 'cables',       label: 'Cables',       label_es: 'Poleas' },
@@ -62,18 +64,30 @@ const BY_SLUG = Object.fromEntries(STATIONS.map(s => [s.slug, s]));
 export const stationBySlug = (slug) => BY_SLUG[slug] || null;
 export const stationByName = (name) => BY_NAME[name] || null;
 
-/** The QR payload a printed equipment sticker encodes. */
-export const equipmentDeepLink = (slug) => `tugympr://equipment/${slug}`;
+/**
+ * The QR payload a printed equipment sticker encodes. See equipmentQrUrl for
+ * why this is an https link and not the `tugympr://` scheme it used to be.
+ */
+export const equipmentDeepLink = (slug) => equipmentQrUrl(slug);
 
 /**
  * Parse a scanned equipment QR (or deep link) into a known station slug.
- * Accepts `tugympr://equipment/<slug>`, `https://…/equipment/<slug>`, or a bare
- * `<slug>`. Returns the slug only if it maps to a real station, else null.
+ *
+ * Accepts every shape that can reach us, because stickers printed at different
+ * times encode different ones and they all stay on walls:
+ *   • `https://app.tugympr.com/invite/e/<slug>`  ← what we print now
+ *   • `tugympr://equipment/<slug>`               ← older printed stickers
+ *   • `https://…/equipment/<slug>`               ← in-app links
+ *   • a bare `<slug>`
+ *
+ * Returns the slug only if it maps to a real station, else null. The `/e/` arm
+ * is deliberately anchored to the `/invite/e/` prefix rather than a loose `e/`,
+ * so a slug that merely contains "e/" can't be mistaken for a path segment.
  */
 export function parseEquipmentSlug(raw) {
   if (!raw) return null;
   const s = String(raw).trim();
-  const m = s.match(/equipment\/([a-z0-9-]+)/i);
+  const m = s.match(/(?:\/invite\/e|equipment)\/([a-z0-9-]+)/i);
   const slug = (m ? m[1] : s).toLowerCase();
   return BY_SLUG[slug] ? slug : null;
 }

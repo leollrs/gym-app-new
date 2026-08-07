@@ -25,6 +25,20 @@ import { supabase } from '../lib/supabase';
 
 let splashPlayed = false;
 
+// Routes where the splash must NOT play. A scanned machine sticker lands someone
+// on /invite/e/<slug> while they are STANDING AT THE MACHINE holding their phone,
+// wanting one answer: what can I do on this thing. Making them watch a ~2s brand
+// animation first is friction at the worst possible moment — and it's the logo of
+// an app they don't even have yet. The splash earns its beat when the app boots;
+// it earns nothing here.
+//
+// Web-only check on purpose: native runs MemoryRouter, so window.location is not
+// the app route there (see project_native_memoryrouter_no_url_nav). It doesn't
+// matter — if the app is installed the OS swallows this URL and no browser ever
+// renders it, so this path is reached only on the web.
+const isPublicScanLanding = () =>
+  typeof window !== 'undefined' && /^\/invite\/e\//i.test(window.location?.pathname || '');
+
 const MIN_MS = 1900;          // default-path: deliberate beat even on instant boots
 const MAX_MS = 8000;          // hard backstop (covers a late-starting custom video)
 const VIDEO_START_MS = 3000;  // window for the video to actually start, else → default
@@ -105,7 +119,7 @@ export default function LaunchSplash() {
   const videoKey = gymId ? `splash_video_${gymId}` : null;
   const logoKey = gymId ? `splash_logo_${gymId}` : null;
 
-  const [show, setShow] = useState(!splashPlayed);
+  const [show, setShow] = useState(!splashPlayed && !isPublicScanLanding());
   const [minElapsed, setMinElapsed] = useState(false);
   const [videoUrl, setVideoUrl] = useState(() => {
     try { return (videoKey && localStorage.getItem(videoKey)) || ''; } catch { return ''; }

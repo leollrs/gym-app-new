@@ -825,6 +825,15 @@ if (isNative) {
         if (goMatch) {
           window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: resolveAppSection(goMatch[1].toLowerCase()) } }));
         }
+        // /invite/e/SLUG → a printed equipment QR, scanned with the phone's own
+        // camera (which is how people actually scan things — not from inside the
+        // app). Rides /invite/* so it opens installed apps without waiting on
+        // Apple's AASA re-crawl; see equipmentQrUrl. Someone WITHOUT the app
+        // loads the same URL in a browser and gets the public station page.
+        const equipMatch = path.match(/^\/invite\/e\/([a-z0-9-]+)$/i);
+        if (equipMatch) {
+          window.dispatchEvent(new CustomEvent('deeplink', { detail: { path: `/equipment/${equipMatch[1].toLowerCase()}` } }));
+        }
         // Custom-scheme fallback: tugympr://t/ID. The /t/:id download landing
         // hands off to the app via this scheme when the universal link doesn't
         // fire (e.g. Apple's AASA CDN is still serving a stale copy missing

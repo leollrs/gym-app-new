@@ -116,6 +116,7 @@ const Classes          = lazy(() => import('./pages/Classes'));
 const MySessions       = lazy(() => import('./pages/MySessions'));
 const PublicTrainerProfile = lazy(() => import('./pages/PublicTrainerProfile'));
 const AppDownloadLanding = lazy(() => import('./pages/AppDownloadLanding'));
+const PublicEquipment = lazy(() => import('./pages/PublicEquipment'));
 const ReferralLanding  = lazy(() => import('./pages/ReferralLanding'));
 const Unsubscribe      = lazy(() => import('./pages/Unsubscribe'));
 
@@ -1796,6 +1797,24 @@ function App() {
           <ErrorBoundary>
             <Suspense fallback={<Skeleton variant="page" />}>
               <AppDownloadLanding />
+            </Suspense>
+          </ErrorBoundary>
+        }
+      />
+      {/* /invite/e/:slug — a printed machine sticker, scanned with the phone's
+          camera. Rides the same CDN-propagated /invite/* applink, and two
+          segments keep it clear of /invite/:code. Unlike /t/:id this does NOT
+          land on AppDownloadLanding: the visitor came to find out what to do on
+          the machine in front of them, so the page answers that first and offers
+          the app second. Bare route (no auth wrapper) — /equipment/:slug is
+          behind ProtectedRoute and would bounce a stranger to the login screen,
+          which is the bug this whole path exists to fix. */}
+      <Route
+        path="/invite/e/:slug"
+        element={
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton variant="page" />}>
+              <PublicEquipment />
             </Suspense>
           </ErrorBoundary>
         }

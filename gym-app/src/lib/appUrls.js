@@ -39,6 +39,27 @@ export function trainerShareUrl(id) {
   return `${PROD_WEB_URL}/invite/t/${id || ''}`;
 }
 
+// What a printed equipment sticker's QR encodes.
+//
+// This used to be `tugympr://equipment/<slug>`, and that was the wrong shape for
+// how these are actually used. Nobody opens the app to scan a machine — they
+// point the PHONE CAMERA at it, the way everyone scans everything. A custom
+// scheme in a camera-scanned QR is a dead end: with the app missing there is no
+// page to fall back to, so the sticker does *nothing at all*. Not a broken link
+// — no result. An https URL costs nothing when the app IS installed (the OS
+// hands it straight over) and degrades into a real web page when it isn't.
+//
+// Rides `/invite/*` for the same reason trainerShareUrl does: that prefix is
+// already in Apple's AASA CDN and in the Android intent-filter, so it opens
+// installed apps today. A fresh `/e/*` prefix would need a new AASA, a new
+// manifest, a store release AND Apple's re-crawl — and Android only re-verifies
+// on install/update, so existing installs would ignore it until they updated.
+// The `/e/` segment keeps it clear of the single-segment `/invite/:code`
+// handler, exactly like `/invite/t/` and `/invite/go/`.
+export function equipmentQrUrl(slug) {
+  return `${PROD_WEB_URL}/invite/e/${slug || ''}`;
+}
+
 // Member invite link. Rides the `/invite/:code` universal link + web fallback,
 // both served from app.tugympr.com — the ONLY host in the app's iOS
 // associated-domains and Android assetlinks. Earlier builds hardcoded a dead

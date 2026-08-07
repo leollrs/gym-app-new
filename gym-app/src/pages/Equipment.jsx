@@ -402,7 +402,13 @@ function StationDetail({ station, scanned = false, onScan }) {
 }
 
 /* ── Route entry ────────────────────────────────────────────────────────── */
-export default function Equipment() {
+// `publicMode` renders the same screens for a visitor with no session (the
+// /invite/e/:slug landing a scanned sticker reaches when the app isn't
+// installed). Nothing here reads auth or the network — the station taxonomy is
+// bundled and exerciseStore starts from the static list — so the only thing that
+// has to change is where a scan navigates: /equipment/* is behind ProtectedRoute
+// and would bounce a logged-out visitor to the login screen.
+export default function Equipment({ publicMode = false }) {
   const { slug } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -424,7 +430,7 @@ export default function Equipment() {
   // when consumed so the web scanner modal knows to close.
   const routeScannedSlug = (raw) => {
     const s = parseEquipmentSlug(raw);
-    if (s) { setScanOpen(false); navigate(`/equipment/${s}`, { state: { scanned: true } }); return true; }
+    if (s) { setScanOpen(false); navigate(`${publicMode ? '/invite/e' : '/equipment'}/${s}`, { state: { scanned: true } }); return true; }
     return false;
   };
 
