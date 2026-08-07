@@ -150,7 +150,7 @@ const AdminLeaderboard   = lazy(() => import('./pages/admin/AdminLeaderboard'));
 const AdminAnnouncements = lazy(() => import('./pages/admin/AdminAnnouncements'));
 const AdminOutreach      = lazy(() => import('./pages/admin/AdminOutreach'));
 const AdminSettings      = lazy(() => import('./pages/admin/AdminSettings'));
-const PlatformEquipmentQR = lazy(() => import('./pages/platform/EquipmentQR'));
+const EquipmentTags       = lazy(() => import('./pages/admin/EquipmentTags'));
 const AdminSettingsBranding     = lazy(() => import('./pages/admin/AdminSettingsBranding'));
 const AdminSettingsHours        = lazy(() => import('./pages/admin/AdminSettingsHours'));
 const AdminSettingsCards        = lazy(() => import('./pages/admin/AdminSettingsCards'));
@@ -1909,7 +1909,9 @@ function App() {
                 <Route path="/audit-log"    element={<AuditLog />} />
                 <Route path="/error-logs"   element={<ErrorLogs />} />
                 <Route path="/custom-meals" element={<CustomMeals />} />
-                <Route path="/equipment-qr" element={<PlatformEquipmentQR />} />
+                {/* Misma pantalla que en admin. El super admin la abre cuando
+                    monta un gimnasio; el dueño, cuando repone una pegatina. */}
+                <Route path="/equipment-qr" element={<EquipmentTags />} />
                 <Route path="*"             element={<Navigate to="/platform/attention" replace />} />
               </Routes>
               </Suspense>
@@ -1989,6 +1991,11 @@ function App() {
                 <Route path="/email-templates" element={<AdminEmailTemplates />} />
                 <Route path="/message-templates" element={<AdminMessageTemplates />} />
                 <Route path="/print-cards"         element={<AdminPrintCards />} />
+                {/* Las etiquetas de máquina las imprime el DUEÑO, no solo el
+                    super admin: llevan su marca y se pegan durante su montaje.
+                    Vivía únicamente en /platform, así que un gimnasio no podía
+                    reponer una pegatina arrancada sin pedírnosla. */}
+                <Route path="/equipment-tags"      element={<EquipmentTags />} />
                 <Route path="/rewards"     element={<AdminRewards />} />
                 <Route path="/profile"     element={<AdminProfile />} />
                 <Route path="/notifications" element={<AdminNotifications />} />
