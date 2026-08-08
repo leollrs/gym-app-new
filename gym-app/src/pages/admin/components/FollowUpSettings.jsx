@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = {
   enabled: false,
   threshold: 55,
   cooldown_days: 7,
+  holdout_pct: 0,
   message_template: "Hey! We noticed you haven't been in lately. We miss you — come back and crush your goals. Your progress is waiting!",
   last_run_at: null,
   last_run_count: 0,
@@ -127,6 +128,7 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
       enabled: fupDraft.enabled,
       threshold: fupDraft.threshold,
       cooldown_days: fupDraft.cooldown_days,
+      holdout_pct: fupDraft.holdout_pct ?? 0,
       message_template: steps[0]?.message_template || fupDraft.message_template,
       digest_enabled: fupDraft.digest_enabled,
       digest_day: fupDraft.digest_day,
@@ -218,6 +220,31 @@ export default function FollowUpSettings({ gymId, initialSettings, initialSteps,
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* ── Grupo de control ──────────────────────────────────────
+                  El A/B de abajo compara mensaje A contra mensaje B: dice cuál
+                  funciona mejor, no si escribir sirve de algo. Este porcentaje
+                  se queda en silencio para poder compararlo con el silencio.
+                  Arranca apagado a propósito: retener una intervención a los
+                  socios del gimnasio es decisión del dueño, no nuestra. */}
+              <div className="mb-4">
+                <label className="block text-[11px] font-medium text-[var(--color-admin-text-muted)] mb-1.5">
+                  {t('adminChurn.followUp.holdout', { defaultValue: 'Grupo de control' })}
+                </label>
+                <div className="flex gap-2">
+                  {[0, 10, 20, 30].map(pct => (
+                    <button key={pct} onClick={() => setFupDraft(d => ({ ...d, holdout_pct: pct }))}
+                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-colors border ${(fupDraft.holdout_pct ?? 0) === pct ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/30 text-[var(--color-accent)]' : 'border-[var(--color-admin-border)] text-[var(--color-admin-text-faint)] hover:text-[var(--color-admin-text-muted)]'}`}>
+                      {pct === 0 ? t('adminChurn.followUp.holdoutOff', { defaultValue: 'Apagado' }) : `${pct}%`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10.5px] mt-1.5 leading-relaxed text-[var(--color-admin-text-faint)]">
+                  {(fupDraft.holdout_pct ?? 0) === 0
+                    ? t('adminChurn.followUp.holdoutOffHint', { defaultValue: 'Todos reciben el seguimiento. Sin un grupo de control no se puede saber si el seguimiento sirve de algo.' })
+                    : t('adminChurn.followUp.holdoutOnHint', { pct: fupDraft.holdout_pct, defaultValue: 'A {{pct}}% de los socios en riesgo no se les escribe, elegidos al azar. Es la única forma de medir cuánta gente vuelve GRACIAS al mensaje — comparando contra los que no lo recibieron.' })}
+                </p>
               </div>
 
               {/* Weekly Digest Section */}

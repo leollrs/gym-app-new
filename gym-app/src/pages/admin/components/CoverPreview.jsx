@@ -6,20 +6,25 @@ import { Flame, Zap, Wind, Bike, Swords, Heart, Dumbbell, Music, Footprints, Mou
  * popularity of class types we see in production.
  *
  * Exported so the ClassFormModal picker grid can iterate over them.
+ *
+ * `dur` y `cap` son los valores TÍPICOS de cada tipo. No son reglas: solo
+ * prellenan el formulario al escoger el tipo, y el admin los cambia si quiere.
+ * Existen porque teclear «Spinning, 45 min, 24 personas» tres veces al mes es
+ * exactamente el trabajo que esta pantalla debería estar quitando.
  */
 export const CLASS_COVERS = [
-  { key: 'hiit',      labelKey: 'admin.classes.cover.hiit',       icon: Flame,      gradient: 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)' },
-  { key: 'crossfit',  labelKey: 'admin.classes.cover.crossfit',   icon: Zap,        gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' },
-  { key: 'yoga',      labelKey: 'admin.classes.cover.yoga',       icon: Wind,       gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' },
-  { key: 'spinning',  labelKey: 'admin.classes.cover.spinning',   icon: Bike,       gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' },
-  { key: 'boxing',    labelKey: 'admin.classes.cover.boxing',     icon: Swords,     gradient: 'linear-gradient(135deg, #EF4444 0%, #991B1B 100%)' },
-  { key: 'pilates',   labelKey: 'admin.classes.cover.pilates',    icon: Heart,      gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)' },
-  { key: 'strength',  labelKey: 'admin.classes.cover.strength',   icon: Dumbbell,   gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)' },
-  { key: 'dance',     labelKey: 'admin.classes.cover.dance',      icon: Music,      gradient: 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)' },
-  { key: 'cardio',    labelKey: 'admin.classes.cover.cardio',     icon: Footprints, gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)' },
-  { key: 'functional',labelKey: 'admin.classes.cover.functional', icon: Mountain,   gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)' },
-  { key: 'aqua',      labelKey: 'admin.classes.cover.aqua',       icon: Waves,      gradient: 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)' },
-  { key: 'mindBody',  labelKey: 'admin.classes.cover.mindBody',   icon: Brain,      gradient: 'linear-gradient(135deg, #A78BFA 0%, #7C3AED 100%)' },
+  { key: 'hiit',      labelKey: 'admin.classes.cover.hiit',       icon: Flame,      dur: 45, cap: 20, gradient: 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)' },
+  { key: 'crossfit',  labelKey: 'admin.classes.cover.crossfit',   icon: Zap,        dur: 60, cap: 16, gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' },
+  { key: 'yoga',      labelKey: 'admin.classes.cover.yoga',       icon: Wind,       dur: 60, cap: 20, gradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' },
+  { key: 'spinning',  labelKey: 'admin.classes.cover.spinning',   icon: Bike,       dur: 45, cap: 24, gradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)' },
+  { key: 'boxing',    labelKey: 'admin.classes.cover.boxing',     icon: Swords,     dur: 60, cap: 14, gradient: 'linear-gradient(135deg, #EF4444 0%, #991B1B 100%)' },
+  { key: 'pilates',   labelKey: 'admin.classes.cover.pilates',    icon: Heart,      dur: 55, cap: 14, gradient: 'linear-gradient(135deg, #EC4899 0%, #BE185D 100%)' },
+  { key: 'strength',  labelKey: 'admin.classes.cover.strength',   icon: Dumbbell,   dur: 75, cap: 12, gradient: 'linear-gradient(135deg, #D4AF37 0%, #92751E 100%)' },
+  { key: 'dance',     labelKey: 'admin.classes.cover.dance',      icon: Music,      dur: 50, cap: 30, gradient: 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)' },
+  { key: 'cardio',    labelKey: 'admin.classes.cover.cardio',     icon: Footprints, dur: 45, cap: 25, gradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)' },
+  { key: 'functional',labelKey: 'admin.classes.cover.functional', icon: Mountain,   dur: 60, cap: 18, gradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)' },
+  { key: 'aqua',      labelKey: 'admin.classes.cover.aqua',       icon: Waves,      dur: 45, cap: 16, gradient: 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)' },
+  { key: 'mindBody',  labelKey: 'admin.classes.cover.mindBody',   icon: Brain,      dur: 60, cap: 18, gradient: 'linear-gradient(135deg, #A78BFA 0%, #7C3AED 100%)' },
 ];
 
 /** Render a cover preset as a visual element */

@@ -49,9 +49,13 @@ export default function InviteModal({ gymId, onClose }) {
   // — via the admin-gated send-invite edge function, instead of opening the
   // device's mailto:/sms: composer. Falls back to a toast on failure so the
   // admin can still copy/share the code manually.
-  const sendInvite = async (channel, codeArg, urlArg) => {
+  const sendInvite = async (channel, codeArg, urlArg, idArg) => {
     const code = codeArg ?? inviteCode;
     const url = urlArg ?? inviteUrl;
+    // `result` aún no está puesto cuando el alta llama a esto en el mismo tick,
+    // así que el id viaja como argumento y `result` solo cubre los reenvíos
+    // manuales de la pantalla de resultado.
+    const inviteId = idArg ?? result?.id ?? null;
     const target = channel === 'email' ? email.trim() : phone.trim();
     if (!code || !target) return;
     setSending(channel);
@@ -69,6 +73,10 @@ export default function InviteModal({ gymId, onClose }) {
         },
       });
       if (fnError || data?.error) throw new Error(data?.error || fnError?.message || 'send_failed');
+      // El primer envío no quedaba registrado en ningún sitio, así que el
+      // historial del detalle empezaba en el primer REenvío y parecía que la
+      // invitación nunca había salido.
+      if (inviteId) logAdminAction('send_invite', 'invite', inviteId, { channel: channel === 'phone' ? 'sms' : 'email' });
       setSentVia(channel);
       showToast(channel === 'email' ? k('emailSent') : k('smsSent'), 'success');
     } catch (err) {
@@ -109,7 +117,7 @@ export default function InviteModal({ gymId, onClose }) {
       const autoChannel = (sendMethod === 'email' && email.trim()) || (sendMethod === 'phone' && phone.trim())
         ? sendMethod
         : (email.trim() ? 'email' : (phone.trim() ? 'phone' : null));
-      if (autoChannel) sendInvite(autoChannel, code, url);
+      if (autoChannel) sendInvite(autoChannel, code, url, data?.id);
     } catch (err) {
       logger.error('InviteModal: generate failed:', err);
       setError(err.message || t('common:somethingWentWrong', 'Something went wrong'));

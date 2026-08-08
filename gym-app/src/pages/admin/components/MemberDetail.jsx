@@ -811,8 +811,12 @@ export default function MemberDetail({ member, gymId, onClose, onNoteSaved, onSt
             const on = tb.key === tab;
             const Icon = tb.icon;
             return (
+              // flex-1 + justify-center reparte las cinco por igual en vez de
+              // amontonarlas a la izquierda. `whitespace-nowrap` les pone suelo
+              // en su ancho de contenido, así que en pantallas estrechas dejan
+              // de encogerse y vuelve a entrar el scroll horizontal de la tira.
               <button key={tb.key} role="tab" aria-selected={on} onClick={() => setTab(tb.key)}
-                className="relative inline-flex items-center gap-1.5 px-2.5 py-3 text-[12.5px] font-semibold whitespace-nowrap transition-colors"
+                className="relative flex-1 justify-center inline-flex items-center gap-1.5 px-2.5 py-3 text-[12.5px] font-semibold whitespace-nowrap transition-colors"
                 style={{ color: on ? 'var(--color-accent)' : 'var(--color-admin-text-sub)', fontWeight: on ? 800 : 600 }}>
                 {Icon && <Icon size={14} style={{ color: on ? 'var(--color-accent)' : 'var(--color-admin-text-muted)' }} />}
                 {tb.label}

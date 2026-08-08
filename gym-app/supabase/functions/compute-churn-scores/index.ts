@@ -33,244 +33,271 @@ const corsHeaders = ALLOWED_ORIGIN
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-// ── Model parameters (mirror riskScoring.js) ──
+// ── Parámetros del modelo (refleja src/lib/churn/riskScoring.js + rhythm.js) ──
+//
+// v4: cada socio contra sí mismo. Fuera el ancla de 3×/semana con su
+// amortiguador y su cuartil, fuera el multiplicador por antigüedad (que le
+// ponía techo 69 al veterano, o sea inmunidad matemática) y fuera los overrides
+// de 30/60 días como PUNTUACIÓN — siguen como estado, para ordenar la cola.
 const ONBOARDING_DAYS = 75;
-const GRACE_DAYS = 14;
-const GRACE_MIN_EVENTS = 4;
+const GRACE_DAYS = 21;
+const ACTIVATION_DEADLINE_DAYS = 21;
+const LOST_DAYS = 60;
 const DORMANT_DAYS = 30;
-const CHURNED_DAYS = 60;
-const GATE_THRESHOLD = 18;
-const MEDIUM_CAP = 54;
-const ACTIVATION_DEADLINE_DAYS = 21;   // enrolled ≥ this (since created_at) with ZERO footprint → failed activation
+const BAND_CRITICAL = 70, BAND_HIGH = 45, BAND_MEDIUM = 25;
+
+const CLASS_A_MIN_VISITS = 8, CLASS_A_MIN_SPAN = 42;
+const G90_MIN = 3, G90_MAX = 21;
+
+// Techos: cada señal aporta como mucho esta fracción, y se combinan con un
+// OR-ruidoso `1 − Π(1 − señal)`. Suma normalizada NO: con ella, el socio de
+// asistencia perfecta que desaparece tenía una sola señal encendida y su techo
+// quedaba en 44 — no podía ser Crítico. Mismo error que el multiplicador de v3.
+const CEIL_GAP = 0.85, CEIL_DROP = 0.45, CEIL_FLOOR = 0.30, CEIL_APP = 0.10;
+const CEIL_HABIT = 0.60, CEIL_ONB_RECENCY = 0.55, CEIL_ACTIVATION = 0.40;
 
 const DEFAULT_WEIGHTS: Record<string, number> = {
-  recency: 1.0, frequency: 1.0, trend: 1.0, streak: 1.0,
-  habit_formation: 1.0, activation: 1.0,
-  app_decline: 1.0, challenge_decline: 1.0, logging_decline: 1.0,
-  rewards_decline: 1.0, social_decline: 1.0, goals_decline: 1.0,
+  gap: 1.0, drop: 1.0, floor: 1.0,
+  habit: 1.0, onboarding_recency: 1.0, activation: 1.0, app_withdrawal: 1.0,
 };
 
-type Sig = { score: number; maxPts: number; label: string; dir?: string };
+// `maxPts` además de `frac`: las barras de AdminChurn / MemberDetailPanel
+// calculan `score / maxPts`. Sin él pintaban 0% y el panel enseñaba
+// «42.5/undefined» — un build verde no ve eso.
+type Sig = { frac: number; ceil: number; score: number; maxPts: number; label: string };
+const sig = (frac: number, ceil: number, label: string): Sig =>
+  ({ frac, ceil, score: pct1(frac), maxPts: pct1(ceil), label });
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+const pct1 = (n: number) => Math.round(n * 1000) / 10;
+const dayOf = (t: string | number | Date) => Math.floor(new Date(t).getTime() / MS_PER_DAY);
 
-// ── Layer A ──
-function sigRecency(d: number | null, MAX = 25, tau = 18): Sig {
-  if (d == null) return { score: MAX, maxPts: MAX, label: 'No recent activity' };
-  const dd = Math.max(0, d);
-  return { score: round1(MAX * (1 - Math.exp(-dd / tau))), maxPts: MAX, label: dd < 4 ? 'Active recently' : `${Math.round(dd)} days since last visit` };
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 1) return sorted[0];
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
-function sigFrequency(avgWeekly: number, goal: number, cohortPct: number | null, MAX = 18): Sig {
-  const anchor = Math.max(goal || 3, 3);
-  const r = anchor > 0 ? avgWeekly / anchor : 0;
-  let base: number;
-  if (r >= 1.0) base = 0;
-  else if (r >= 0.66) base = Math.round(MAX * 0.22);
-  else if (r >= 0.5) base = Math.round(MAX * 0.39);
-  else if (r >= 0.33) base = Math.round(MAX * 0.61);
-  else if (r >= 0.16) base = Math.round(MAX * 0.78);
-  else base = MAX;
-  if (cohortPct != null) {
-    if (cohortPct <= 0.25) base = Math.min(MAX, base + 2);
-    else if (cohortPct >= 0.75) base = Math.max(0, base - 2);
+
+type Rhythm = {
+  klass: 'A' | 'B' | 'C' | 'none'; visits: number; spanDays: number;
+  g90: number | null; daysSinceLastVisit: number | null;
+  weeklyRate: number; drop: number | null;
+};
+
+function buildRhythm(visitDays: number[], todayDay: number): Rhythm {
+  const days = [...new Set(visitDays)].sort((a, b) => a - b);
+  if (days.length === 0) {
+    return { klass: 'none', visits: 0, spanDays: 0, g90: null, daysSinceLastVisit: null, weeklyRate: 0, drop: null };
   }
-  return { score: base, maxPts: MAX, label: base === 0 ? 'Meeting visit goal' : `Visiting ${avgWeekly.toFixed(1)}×/week` };
+  const first = days[0], last = days[days.length - 1];
+  const spanDays = last - first;
+  const daysSinceLastVisit = todayDay - last;
+  const observedDays = Math.max(14, Math.min(90, todayDay - first + 1));
+  const weeklyRate = (days.length / observedDays) * 7;
+
+  // Caída medida HASTA LA ÚLTIMA VISITA, no hasta hoy: si no, el hueco actual se
+  // come la ventana reciente y la caída dispara por la misma razón que la
+  // brecha. Dos términos leyendo el mismo hecho es el pecado de v3.
+  const cut = last;
+  const recentN = days.filter((d) => d > cut - 21 && d <= cut).length;
+  const baseN = days.filter((d) => d <= cut - 21).length;
+  const baseSpan = Math.max(0, Math.min(69, cut - 21 - first + 1));
+  const baseWeekly = baseSpan >= 21 ? (baseN / baseSpan) * 7 : 0;
+  // Con menos de 1 visita/semana de base, 21 días esperan <3 visitas y el ratio
+  // es ruido: al de 1×/mes le salía caída del 100% por saltarse UNA visita.
+  // Sin recortar a 0: en negativo = venía más que antes, que es lo que hace
+  // alcanzable `trend: 'improving'`. `sigDrop` manda los negativos a cero.
+  const drop = baseWeekly >= 1 ? 1 - ((recentN / 21) * 7) / baseWeekly : null;
+
+  const gaps: number[] = [];
+  for (let i = 1; i < days.length; i++) gaps.push(days[i] - days[i - 1]);
+  gaps.sort((a, b) => a - b);
+
+  if (days.length >= CLASS_A_MIN_VISITS && spanDays >= CLASS_A_MIN_SPAN) {
+    return { klass: 'A', visits: days.length, spanDays, daysSinceLastVisit, weeklyRate, drop,
+      g90: Math.max(G90_MIN, Math.min(G90_MAX, percentile(gaps, 0.9))) };
+  }
+  // Clase B: con 3+ intervalos ya se sabe cuánto es mucho PARA ESTA PERSONA. Se
+  // usa el más largo visto (conservador). Sin esto, el de 1×/3 semanas caía a la
+  // curva genérica y salía Crítico a los 30 días sin haber faltado a nada.
+  if (gaps.length >= 3) {
+    return { klass: 'B', visits: days.length, spanDays, daysSinceLastVisit, weeklyRate, drop,
+      g90: Math.max(G90_MIN, Math.min(G90_MAX, gaps[gaps.length - 1])) };
+  }
+  return { klass: 'C', visits: days.length, spanDays, daysSinceLastVisit, weeklyRate, drop: null, g90: null };
 }
-function sigTrend(recentRate: number, baselineRate: number | null, MAX = 17): Sig {
-  if (baselineRate == null || baselineRate < 0.25) return { score: 0, maxPts: MAX, label: 'Not enough history', dir: 'stable' };
-  const v = baselineRate > 0 ? recentRate / baselineRate : 1;
-  let score: number, dir: string;
-  if (v >= 1.0) { score = 0; dir = recentRate > baselineRate * 1.1 ? 'up' : 'stable'; }
-  else if (v >= 0.75) { score = Math.round(MAX * 0.24); dir = 'down'; }
-  else if (v >= 0.5) { score = Math.round(MAX * 0.53); dir = 'down'; }
-  else if (v >= 0.25) { score = Math.round(MAX * 0.76); dir = 'down'; }
-  else { score = MAX; dir = 'down'; }
-  const pct = Math.round((1 - v) * 100);
-  return { score, maxPts: MAX, label: score === 0 ? (dir === 'up' ? 'Attendance trending up' : 'Attendance stable') : `Visits down ${pct}% vs usual`, dir };
+
+const confidenceOf = (r: Rhythm) => (r.klass === 'A' ? 'high' : r.klass === 'B' ? 'medium' : 'low');
+
+// ── Señales ──
+function sigGap(d: number | null, g90: number | null): Sig {
+  if (d == null || !g90) return sig(CEIL_GAP, CEIL_GAP, 'No recent activity');
+  // Satura a 4× su ritmo: con 3× el socio regular de 1×/semana llegaba al máximo
+  // a los 21 días (dos visitas perdidas) y salía Crítico.
+  const frac = CEIL_GAP * clamp01((d / g90 - 1) / 3);
+  return sig(frac, CEIL_GAP, frac === 0 ? 'On their usual rhythm' : `${Math.round(d)} days out — usually never past ${Math.round(g90)}`);
 }
-function sigStreak(active: boolean, brokenLen: number, MAX = 10): Sig {
-  if (active) return { score: 0, maxPts: MAX, label: 'Streak active' };
-  if (!brokenLen || brokenLen < 7) return { score: 0, maxPts: MAX, label: 'No active streak' };
-  return { score: round1(MAX * Math.min(brokenLen / 30, 1)), maxPts: MAX, label: `Broke a ${Math.round(brokenLen)}-day streak` };
+function sigDrop(drop: number | null): Sig | null {
+  if (drop == null) return null;
+  const frac = CEIL_DROP * clamp01((drop - 0.15) / 0.55);
+  return sig(frac, CEIL_DROP, frac === 0 ? 'Holding their rate' : `Was coming ${Math.round(drop * 100)}% less`);
 }
-function sigHabitFormation(visits: number, tenureDays: number, MAX = 30): Sig {
-  const weeks = Math.max(tenureDays / 7, 0.5);
+function sigFloor(weeklyRate: number): Sig {
+  const frac = CEIL_FLOOR * clamp01((2 - (weeklyRate || 0)) / 2);
+  return sig(frac, CEIL_FLOOR, frac === 0 ? 'Good visit volume' : `${(weeklyRate || 0).toFixed(1)} visits/week`);
+}
+function sigGapGeneric(d: number | null): Sig {
+  if (d == null) return sig(CEIL_GAP, CEIL_GAP, 'No recent activity');
+  const frac = CEIL_GAP * clamp01((d - 10) / 25);
+  return sig(frac, CEIL_GAP, frac === 0 ? 'Came recently' : `${Math.round(d)} days since last visit`);
+}
+function sigHabit(visits: number, accountAgeDays: number): Sig {
+  const weeks = Math.max(accountAgeDays / 7, 0.5);
   const expected = Math.min(weeks * 3, 18);
-  if (expected <= 0) return { score: 0, maxPts: MAX, label: 'Too early to tell' };
-  const gap = Math.max(0, Math.min((expected - (visits || 0)) / expected, 1));
-  return { score: round1(MAX * gap), maxPts: MAX, label: gap <= 0.15 ? 'Building a routine' : `Not building a routine (${visits || 0} visits in ${Math.round(weeks)}w)` };
+  const gap = clamp01((expected - (visits || 0)) / expected);
+  const frac = CEIL_HABIT * gap;
+  return sig(frac, CEIL_HABIT, gap <= 0.15 ? 'Building a routine' : `Not building a routine (${visits || 0} visits in ${Math.round(weeks)}w)`);
 }
-function sigActivation(firstLogged: boolean, tenureDays: number, MAX = 12): Sig {
-  if (firstLogged) return { score: 0, maxPts: MAX, label: 'Completed first workout' };
-  if (tenureDays < 7) return { score: Math.round(MAX * 0.4), maxPts: MAX, label: 'No first workout yet' };
-  return { score: MAX, maxPts: MAX, label: 'No workout in first week' };
+function sigOnboardingRecency(d: number | null): Sig {
+  const dd = d == null ? 14 : d;
+  const frac = CEIL_ONB_RECENCY * clamp01(dd / 14);
+  return sig(frac, CEIL_ONB_RECENCY, frac === 0 ? 'Came recently' : `${Math.round(dd)} days since last visit`);
 }
-// ── Layer B (signed decline) ──
-function declineScore(baseline: number | null, recent: number, MAX: number, minBaseline: number): number {
-  if (baseline == null || baseline < minBaseline) return 0;
-  if ((recent || 0) >= baseline) return 0;
-  return round1(MAX * Math.min((baseline - (recent || 0)) / baseline, 1));
+// Activación = TRES VISITAS AL GIMNASIO, no «registró un entreno en la app».
+// v3 le quitaba 12 puntos a quien entrenaba a diario y no tocaba el móvil.
+function sigActivation(visitsIn21d: number, accountAgeDays: number): Sig | null {
+  if (accountAgeDays < 21) return null;
+  const frac = CEIL_ACTIVATION * clamp01((3 - (visitsIn21d || 0)) / 3);
+  return sig(frac, CEIL_ACTIVATION, frac === 0 ? 'Started well' : `Only ${visitsIn21d || 0} visits in their first weeks`);
 }
-const sigAppDecline = (b: number | null, r: number, MAX = 8): Sig => ({ score: declineScore(b, r, MAX, 4), maxPts: MAX, label: declineScore(b, r, MAX, 4) > 0 ? 'App activity dropped off' : 'Active in app' });
-const sigChallengeDecline = (b: number | null, r: number, MAX = 6): Sig => ({ score: declineScore(b, r, MAX, 1), maxPts: MAX, label: declineScore(b, r, MAX, 1) > 0 ? 'Stopped joining challenges' : 'Challenge engagement ok' });
-const sigLoggingDecline = (b: number | null, r: number, MAX = 6): Sig => ({ score: declineScore(b, r, MAX, 3), maxPts: MAX, label: declineScore(b, r, MAX, 3) > 0 ? 'Stopped logging workouts' : 'Logging workouts' });
-const sigRewardsDecline = (b: number | null, r: number, MAX = 4): Sig => ({ score: declineScore(b, r, MAX, 2), maxPts: MAX, label: declineScore(b, r, MAX, 2) > 0 ? 'Stopped using rewards' : 'Rewards engaged' });
-const sigSocialDecline = (b: number | null, r: number, MAX = 3): Sig => ({ score: declineScore(b, r, MAX, 2), maxPts: MAX, label: declineScore(b, r, MAX, 2) > 0 ? 'Pulled back socially' : 'Socially engaged' });
-const sigGoalsDecline = (b: number | null, r: number, MAX = 3): Sig => ({ score: declineScore(b, r, MAX, 1), maxPts: MAX, label: declineScore(b, r, MAX, 1) > 0 ? 'Goal/PR activity stalled' : 'Hitting milestones' });
+// La app corrobora, nunca constituye. Sin base propia el término NO EXISTE.
+function sigAppWithdrawal(baseline: number | null, recent: number): Sig | null {
+  if (baseline == null || baseline < 6) return null;
+  const drop = clamp01(1 - (recent || 0) / baseline);
+  const frac = CEIL_APP * clamp01((drop - 0.4) / 0.6);
+  return sig(frac, CEIL_APP, frac === 0 ? 'Still active in the app' : 'Stopped using the app');
+}
+// Proporcional, no restando puntos planos: −20 sobre un 25 lo dejaba en 5.
+function protectionFactor(f: { activeChallenge: boolean; activeReferrer: boolean; recentPRs: boolean; activeSocial: boolean }): number {
+  let p = 0;
+  if (f.activeChallenge) p += 0.05;
+  if (f.activeReferrer) p += 0.05;
+  if (f.recentPRs) p += 0.03;
+  if (f.activeSocial) p += 0.02;
+  return Math.min(p, 0.15);
+}
 
-function bonusProtective(f: { activeReferrer: boolean; activeChallenge: boolean; recentPRs: boolean; strongAppCard: boolean; activeSocial: boolean }): number {
-  let bonus = 0;
-  if (f.activeReferrer) bonus -= 5;
-  if (f.activeChallenge) bonus -= 5;
-  if (f.recentPRs) bonus -= 4;
-  if (f.strongAppCard) bonus -= 4;
-  if (f.activeSocial) bonus -= 2;
-  return Math.max(-20, bonus);
-}
-
-function tenureMultiplier(m: number): number {
-  if (m < 2.5) return 1.0;
-  if (m <= 3) return 1.15;
-  if (m <= 6) return 1.05;
-  if (m <= 12) return 0.95;
-  return 0.85;
-}
 function getRiskTier(score: number): string {
-  if (score >= 80) return 'critical';
-  if (score >= 55) return 'high';
-  if (score >= 30) return 'medium';
+  if (score >= BAND_CRITICAL) return 'critical';
+  if (score >= BAND_HIGH) return 'high';
+  if (score >= BAND_MEDIUM) return 'medium';
   return 'low';
 }
-function classifyDriver(attRisk: number, engRisk: number, score: number, isOnboarding: boolean): string {
-  if (score < 30) return 'healthy';
+
+function classifyDriver(terms: Record<string, Sig>, score: number, isOnboarding: boolean): string {
+  if (score < BAND_MEDIUM) return 'healthy';
   if (isOnboarding) return 'onboarding';
-  if (attRisk >= 30 && engRisk >= 12) return 'both';
-  if (attRisk >= 25) return 'attendance';
-  if (engRisk >= 12) return 'engagement';
-  return 'attendance';
+  const gap = terms.gap?.frac ?? 0, drop = terms.drop?.frac ?? 0, floor = terms.floor?.frac ?? 0;
+  if (gap >= 0.15 && drop >= 0.15) return 'both';
+  if (gap >= drop && gap > 0) return 'gap';
+  if (drop > 0) return 'drop';
+  if (floor > 0) return 'volume';
+  return 'gap';
 }
-function explainEN(driver: string, days: number | null, freq: number, accountAge: number | null = null): string {
+
+// El cliente re-localiza desde `primary_driver`; esto es solo el respaldo.
+function explainEN(driver: string, d: number | null, g90: number | null, drop: number | null, rate: number, accountAge: number | null = null): string {
   switch (driver) {
     case 'healthy': return 'Showing up consistently — looks healthy.';
-    case 'engagement': return 'Attendance is stable, but engagement dropped sharply from previous behavior.';
-    case 'both': return 'Attendance is falling and app engagement has dropped.';
-    case 'onboarding': return 'New member — not yet building a routine.';
-    case 'dormant': return days != null ? `No activity for ${days}+ days.` : 'No workouts or check-ins on record.';
-    case 'new': return 'New member — not enough data yet to score.';
-    case 'never_activated': return accountAge != null
-      ? `Enrolled ${Math.round(accountAge)} days ago but never checked in or logged a workout.`
-      : 'Never checked in or logged a workout.';
-    case 'paused': return 'On a membership hold — churn alerts paused.';
-    case 'churned': return days != null ? `Likely lost — no activity for ${days}+ days.` : 'Likely lost — no activity on record.';
-    case 'attendance':
-    default:
-      if (days != null && freq > 0) return `Hasn't checked in for ${days} days (was ${freq.toFixed(1)}×/week).`;
-      if (days != null) return `Hasn't checked in for ${days} days.`;
-      return 'Attendance has dropped off.';
+    case 'gap': return d != null && g90 != null ? `${d} days out; usually never past ${g90}.` : `${d ?? 0} days since their last visit.`;
+    case 'drop': return `Still coming, but a lot less than before: ${Math.round((drop ?? 0) * 100)}% less.`;
+    case 'both': return 'Coming less often and now overdue for a visit.';
+    case 'volume': return `Coming ${rate.toFixed(1)}× a week — thin for a habit to hold.`;
+    case 'onboarding': return 'New member, not building a routine yet.';
+    case 'dormant': return `No activity for ${d ?? 0}+ days.`;
+    case 'new': return 'New member — not enough data to score yet.';
+    case 'never_activated': return accountAge != null ? `Enrolled ${Math.round(accountAge)} days ago and has never come in.` : 'Has never come in.';
+    case 'paused': return 'Membership on hold — alerts paused.';
+    case 'churned': return `Likely lost — no activity for ${d ?? 0}+ days.`;
+    default: return 'Attendance has dropped off.';
   }
 }
 
-type V3Input = {
-  tenureMonths: number; accountAgeDays: number | null; totalSessions: number; observedCheckIns: number;
-  daysSinceLastActivity: number | null; daysSinceLastCheckIn: number | null;
-  avgWeeklyVisits: number; trainingFrequency: number; cohortPercentile: number | null;
-  recentWeeklyRate: number; baselineWeeklyRate: number | null;
-  streakActive: boolean; brokenStreakLen: number;
-  visitsSoFar: number; firstWorkoutLogged: boolean;
-  logging: { baseline: number | null; recent: number };
-  app: { baseline: number | null; recent: number };
-  social: { baseline: number | null; recent: number };
-  goalsPRs: { baseline: number | null; recent: number };
-  challenge: { baseline: number | null; recent: number };
-  rewards: { baseline: number | null; recent: number };
-  activeReferrer: boolean; activeChallenge: boolean; recentPRs: boolean; strongAppCard: boolean; activeSocial: boolean;
+type V4Input = {
   isPaused: boolean;
+  accountAgeDays: number;
+  rhythm: Rhythm;
+  visitsIn21d: number;
+  app: { baseline: number | null; recent: number };
+  activeReferrer: boolean; activeChallenge: boolean; recentPRs: boolean; activeSocial: boolean;
 };
 
-function computeV3(m: V3Input, weights: Record<string, number>) {
+function computeV4(m: V4Input, weights: Record<string, number>) {
   const w = { ...DEFAULT_WEIGHTS, ...weights };
-  const tenureDays = (m.tenureMonths || 0) * 30.44;
-  const isOnboarding = tenureDays < ONBOARDING_DAYS;
-  const dsa = m.daysSinceLastActivity;
-  const hasFootprint = m.totalSessions > 0 || m.observedCheckIns > 0; // real attendance, NOT last_active_at
-  const accountAgeDays = m.accountAgeDays ?? tenureDays; // observation window (created_at), import-safe
-  const freq = m.avgWeeklyVisits || 0;
-  const days = m.daysSinceLastCheckIn != null ? Math.round(m.daysSinceLastCheckIn) : (dsa != null ? Math.round(dsa) : null);
+  const r = m.rhythm;
+  const dsv = r.daysSinceLastVisit;
+  const hasFootprint = r.visits > 0;
+  const conf = confidenceOf(r);
+  const expl = (driver: string) => explainEN(driver, dsv, r.g90, r.drop, r.weeklyRate, m.accountAgeDays);
+  const base = { signals: {} as Record<string, Sig>, confidence: conf };
 
-  // State 0: paused (vacation / membership hold)
   if (m.isPaused) {
-    return { score: 0, risk_tier: 'low', state: 'paused', primary_driver: 'paused', explanation: explainEN('paused', days, freq), trend: 'stable', key_signals: ['On hold'], signals: {} };
+    return { ...base, score: 0, risk_tier: 'low', state: 'paused', primary_driver: 'paused', explanation: expl('paused'), trend: 'stable', key_signals: ['On hold'] };
   }
-  // State 1: insufficient data — gate on real attendance footprint, not dsa
-  // (last_active_at is set at signup/import so never-attended accounts still have
-  // a non-null dsa; they must NOT fall through to the dormant 95 override).
-  // State 1a: failed activation — zero check-ins AND zero workouts EVER, past the
-  // activation window (gated on accountAgeDays so freshly-imported rosters aren't
-  // flagged on day one). A real churn risk, not "insufficient data". Flagged High,
-  // scaling with how long they've been a no-show, kept below the dormant band.
-  if (!hasFootprint && tenureDays >= GRACE_DAYS && accountAgeDays >= ACTIVATION_DEADLINE_DAYS) {
-    const weeksOverdue = Math.max(0, Math.floor((accountAgeDays - ACTIVATION_DEADLINE_DAYS) / 7));
-    const score = Math.min(78, 60 + weeksOverdue * 4);
-    const sig = 'Never activated';
-    return { score, risk_tier: getRiskTier(score), state: 'scored', primary_driver: 'never_activated', explanation: explainEN('never_activated', days, freq, accountAgeDays), trend: 'declining', key_signals: [sig], signals: {} };
+  // Perdido ANTES que «nunca activó»: si no, el que se apuntó hace tres años y
+  // no pisó el gimnasio se quedaba en 78 Alto para siempre, ordenando por encima
+  // de gente recuperable. La cola se llenaba de fantasmas.
+  const neverCameAndOld = !hasFootprint && m.accountAgeDays >= LOST_DAYS;
+  if ((dsv != null && dsv >= LOST_DAYS) || neverCameAndOld) {
+    return { ...base, score: 100, risk_tier: 'critical', state: 'churned',
+      primary_driver: neverCameAndOld ? 'never_activated' : 'churned',
+      explanation: expl(neverCameAndOld ? 'never_activated' : 'churned'), trend: 'declining', key_signals: ['No activity'] };
   }
-  if (tenureDays < GRACE_DAYS || !hasFootprint) {
-    return { score: 0, risk_tier: 'low', state: 'insufficient_data', primary_driver: 'new', explanation: explainEN('new', days, freq), trend: 'stable', key_signals: ['New member — not enough data yet'], signals: {} };
+  if (!hasFootprint && m.accountAgeDays >= ACTIVATION_DEADLINE_DAYS) {
+    const weeksOverdue = Math.max(0, Math.floor((m.accountAgeDays - ACTIVATION_DEADLINE_DAYS) / 7));
+    const score = Math.min(75, 55 + weeksOverdue * 3);
+    return { ...base, score, risk_tier: getRiskTier(score), state: 'scored', primary_driver: 'never_activated', explanation: expl('never_activated'), trend: 'declining', key_signals: ['Never activated'] };
   }
-  // State 2: churned (mathematically gone — out of the primary action queue)
-  if (dsa != null && dsa >= CHURNED_DAYS) {
-    const sig = `No activity in ${Math.round(dsa)}+ days`;
-    return { score: 100, risk_tier: 'critical', state: 'churned', primary_driver: 'churned', explanation: explainEN('churned', days, freq), trend: 'declining', key_signals: [sig], signals: {} };
-  }
-  // State 3: dormant (gone dark, still winnable)
-  if (dsa == null || dsa >= DORMANT_DAYS) {
-    const sig = dsa == null ? 'No recent activity' : `No activity in ${Math.round(dsa)}+ days`;
-    return { score: 95, risk_tier: 'critical', state: 'dormant', primary_driver: 'dormant', explanation: explainEN('dormant', days, freq), trend: 'declining', key_signals: [sig], signals: {} };
+  if (!hasFootprint || m.accountAgeDays < GRACE_DAYS) {
+    return { ...base, score: 0, risk_tier: 'low', state: 'insufficient_data', primary_driver: 'new', explanation: expl('new'), trend: 'stable', key_signals: ['New member — not enough data yet'] };
   }
 
-  const layerA: Record<string, Sig> = isOnboarding
-    ? {
-        habit_formation: sigHabitFormation(m.visitsSoFar, tenureDays),
-        recency: sigRecency(dsa, 28, 10),
-        activation: sigActivation(m.firstWorkoutLogged, tenureDays),
-      }
-    : {
-        recency: sigRecency(dsa, 25, 18),
-        frequency: sigFrequency(m.avgWeeklyVisits, m.trainingFrequency, m.cohortPercentile),
-        trend: sigTrend(m.recentWeeklyRate, m.baselineWeeklyRate),
-        streak: sigStreak(m.streakActive, m.brokenStreakLen),
-      };
-  // Low-frequency baseline guard (mirror riskScoring.js): dampen the absolute
-  // frequency penalty for members stable at their own cadence.
-  if (!isOnboarding && layerA.frequency && layerA.trend && layerA.trend.score === 0
-      && layerA.trend.dir !== 'down' && (m.baselineWeeklyRate ?? 0) >= 0.25) {
-    layerA.frequency = { ...layerA.frequency, score: round1(layerA.frequency.score * 0.55) };
+  const isOnboarding = m.accountAgeDays < ONBOARDING_DAYS;
+  const terms: Record<string, Sig> = {};
+  if (isOnboarding) {
+    terms.habit = sigHabit(r.visits, m.accountAgeDays);
+    terms.onboarding_recency = sigOnboardingRecency(dsv);
+    const act = sigActivation(m.visitsIn21d, m.accountAgeDays);
+    if (act) terms.activation = act;
+  } else if (r.g90 != null) {
+    terms.gap = sigGap(dsv, r.g90);
+    const drop = sigDrop(r.drop);
+    if (drop) terms.drop = drop;
+    terms.floor = sigFloor(r.weeklyRate);
+  } else {
+    terms.gap = sigGapGeneric(dsv);
+    terms.floor = sigFloor(r.weeklyRate);
   }
-  const layerB: Record<string, Sig> = isOnboarding ? {} : {
-    app_decline: sigAppDecline(m.app.baseline, m.app.recent),
-    challenge_decline: sigChallengeDecline(m.challenge.baseline, m.challenge.recent),
-    logging_decline: sigLoggingDecline(m.logging.baseline, m.logging.recent),
-    rewards_decline: sigRewardsDecline(m.rewards.baseline, m.rewards.recent),
-    social_decline: sigSocialDecline(m.social.baseline, m.social.recent),
-    goals_decline: sigGoalsDecline(m.goalsPRs.baseline, m.goalsPRs.recent),
+  const app = sigAppWithdrawal(m.app.baseline, m.app.recent);
+  if (app) terms.app_withdrawal = app;
+
+  let survive = 1;
+  for (const [k, t] of Object.entries(terms)) survive *= (1 - Math.min(1, t.frac * (w[k] ?? 1)));
+  const pct = (1 - survive) * 100;
+  const score = round1(Math.max(0, Math.min(100, pct * (1 - protectionFactor(m)))));
+
+  const driver = classifyDriver(terms, score, isOnboarding);
+  const keySignals = Object.values(terms).filter((t) => t.frac > 0).sort((a, b) => b.frac - a.frac).slice(0, 3).map((t) => t.label);
+  if (keySignals.length === 0) keySignals.push('Everything looks fine');
+
+  return {
+    score, risk_tier: getRiskTier(score),
+    // «Dormido» es una ETIQUETA para ordenar la cola, ya no una puntuación.
+    state: dsv != null && dsv >= DORMANT_DAYS ? 'dormant' : 'scored',
+    primary_driver: driver, explanation: expl(driver),
+    trend: r.drop != null && r.drop > 0.15 ? 'declining' : 'stable',
+    key_signals: keySignals, signals: terms, confidence: conf,
   };
-
-  const sumLayer = (layer: Record<string, Sig>) =>
-    Object.entries(layer).reduce((acc, [k, s]) => acc + s.score * (w[k] ?? 1), 0);
-  const attRisk = Math.max(0, sumLayer(layerA));
-  const engRisk = Math.max(0, sumLayer(layerB));
-  const bonus = bonusProtective(m);
-
-  let risk = (attRisk + engRisk) * tenureMultiplier(m.tenureMonths);
-  if (attRisk <= GATE_THRESHOLD) risk = Math.min(risk, MEDIUM_CAP);
-  risk = Math.max(0, Math.min(100, risk + bonus));
-  const score = round1(risk);
-
-  const signals = { ...layerA, ...layerB };
-  const driver = classifyDriver(attRisk, engRisk, score, isOnboarding);
-  const keySignals = Object.values(signals).filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, 3).map((s) => s.label);
-  if (keySignals.length === 0) keySignals.push('Engagement looks healthy');
-  const trend = layerA.trend?.dir === 'down' ? 'declining' : layerA.trend?.dir === 'up' ? 'improving' : 'stable';
-
-  return { score, risk_tier: getRiskTier(score), state: 'scored', primary_driver: driver, explanation: explainEN(driver, days, freq), trend, key_signals: keySignals, signals };
 }
 
 // ── Main handler ─────────────────────────────────────────────
@@ -342,7 +369,7 @@ serve(async (req) => {
       const memberIds = members.map((m: any) => m.id);
 
       const [checkInsRes, sessions90Res, allSessionsRes, feedRes, notifRes, challengeRes, referralsRes, bodyRes] = await Promise.all([
-        supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', memberIds).limit(20000),
+        supabase.from('check_ins').select('profile_id, checked_in_at').eq('gym_id', gymId).gte('checked_in_at', ninetyDaysAgo).in('profile_id', memberIds).limit(20000),
         supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').gte('started_at', ninetyDaysAgo).in('profile_id', memberIds).limit(20000),
         supabase.from('workout_sessions').select('profile_id, started_at').eq('gym_id', gymId).eq('status', 'completed').in('profile_id', memberIds).limit(50000),
         supabase.from('activity_feed_items').select('actor_id, created_at, type').eq('gym_id', gymId).gte('created_at', ninetyDaysAgo).in('actor_id', memberIds).limit(20000),
@@ -365,9 +392,17 @@ serve(async (req) => {
       const ensure = (map: Record<string, any>, id: string) => (map[id] || (map[id] = blank()));
 
       const lastCheckIn: Record<string, string> = {};
+      // Check-in y entreno el MISMO día son UNA visita. v3 los contaba aparte,
+      // así que a quien registraba sus entrenos se le inflaba la frecuencia.
+      const visitDays: Record<string, Set<number>> = {};
+      const addVisitDay = (id: string, t: string) => {
+        if (!t) return;
+        (visitDays[id] || (visitDays[id] = new Set<number>())).add(dayOf(t));
+      };
       const ci30: Record<string, number> = {}, ci14: Record<string, number> = {}, ci14to60: Record<string, number> = {}, ciTotal: Record<string, number> = {};
       checkIns.forEach((r: any) => {
         const id = r.profile_id, t = r.checked_in_at;
+        addVisitDay(id, r.checked_in_at);
         if (!lastCheckIn[id]) lastCheckIn[id] = t;
         ciTotal[id] = (ciTotal[id] || 0) + 1;
         if (t >= thirtyDaysAgo) ci30[id] = (ci30[id] || 0) + 1;
@@ -379,6 +414,7 @@ serve(async (req) => {
       const logging: Record<string, any> = {};
       sessions90.forEach((r: any) => {
         const id = r.profile_id, t = r.started_at;
+        addVisitDay(id, r.started_at);
         if (!lastSession[id]) lastSession[id] = t;
         const b = ensure(logging, id);
         if (t >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
@@ -425,6 +461,7 @@ serve(async (req) => {
         return lo / allFreq.length;
       };
 
+      const todayDay = dayOf(now);
       const rows: any[] = [];
       const memberSignals: Record<string, any> = {};
 
@@ -444,32 +481,24 @@ serve(async (req) => {
         const totalSessions = totalSessionsMap[m.id] || 0;
         const observedCheckIns = ciTotal[m.id] || 0;
 
-        const input: V3Input = {
-          tenureMonths,
-          accountAgeDays: (nowMs - new Date(m.created_at).getTime()) / MS_PER_DAY,
-          totalSessions, observedCheckIns, daysSinceLastActivity, daysSinceLastCheckIn,
-          avgWeeklyVisits,
-          trainingFrequency: m.preferred_training_days?.length ?? 3,
-          cohortPercentile: cohortPct(avgWeeklyVisits),
-          recentWeeklyRate: (ci14[m.id] || 0) / 2,
-          baselineWeeklyRate: (ci14to60[m.id] || 0) / ((60 - 14) / 7),
-          streakActive: false, brokenStreakLen: 0,
-          visitsSoFar: observedCheckIns, firstWorkoutLogged: totalSessions > 0,
-          logging: { baseline: lg.base / 2, recent: lg.recent },
+        const accountAgeDays = (nowMs - new Date(m.created_at).getTime()) / MS_PER_DAY;
+        const accountStartDay = dayOf(m.created_at);
+        const memberDays = [...(visitDays[m.id] || [])];
+
+        const input: V4Input = {
+          isPaused: m.membership_status === 'frozen' || (m.churn_pause_until != null && new Date(m.churn_pause_until).getTime() > nowMs),
+          accountAgeDays,
+          rhythm: buildRhythm(memberDays, todayDay),
+          // Activación = pisar el gimnasio 3 veces en sus primeras 3 semanas.
+          visitsIn21d: memberDays.filter((d) => d <= accountStartDay + 21).length,
           app: { baseline: ap.base / 2, recent: ap.recent },
-          social: { baseline: sc.base / 2, recent: sc.recent },
-          goalsPRs: { baseline: (pr.base + bd.base) / 2, recent: pr.recent + bd.recent },
-          challenge: { baseline: ch.base / 2, recent: ch.recent },
-          rewards: { baseline: null, recent: 0 },
           activeReferrer: (referralCount[m.id] || 0) >= 1,
           activeChallenge: ch.recent > 0,
           recentPRs: pr.recent > 0,
-          strongAppCard: (ap.recent >= 3) || (sc.recent >= 3),
           activeSocial: sc.recent > 0,
-          isPaused: m.membership_status === 'frozen' || (m.churn_pause_until != null && new Date(m.churn_pause_until).getTime() > nowMs),
         };
 
-        const result = computeV3(input, gymWeights);
+        const result = computeV4(input, gymWeights);
         memberSignals[m.id] = result.signals;
         if (result.risk_tier === 'high' || result.risk_tier === 'critical') highRiskCount++;
 
@@ -485,7 +514,18 @@ serve(async (req) => {
           signal_count: Object.keys(result.signals).length,
           key_signals: result.key_signals,
           velocity: 0,
-          metrics: { avgWeeklyVisits, tenureMonths, daysSinceLastActivity, attendance: true },
+          // El cliente RE-LOCALIZA la frase desde `primary_driver` + esto, así que
+          // aquí tiene que viajar todo lo que la frase nombra. Sin `g90`/`drop` la
+          // explicación traducida saldría con huecos en la ruta normal (precálculo
+          // fresco) y solo se vería bien en el motor en vivo.
+          metrics: {
+            avgWeeklyVisits, tenureMonths, daysSinceLastActivity, attendance: true,
+            g90: input.rhythm.g90, drop: input.rhythm.drop,
+            weeklyRate: input.rhythm.weeklyRate, visits: input.rhythm.visits,
+            daysSinceLastVisit: input.rhythm.daysSinceLastVisit,
+            confidence: result.confidence, klass: input.rhythm.klass,
+          },
+          model_version: 4,
           computed_at: now.toISOString(),
         });
       }
@@ -536,6 +576,21 @@ serve(async (req) => {
         const phoneMap: Record<string, string> = {};
         members!.forEach((m: any) => { if (m.phone_number) phoneMap[m.id] = m.phone_number; });
 
+        // ── Holdout: el grupo al que NO se le escribe ──
+        //
+        // El A/B de abajo compara MENSAJE A contra MENSAJE B, así que sabe cuál
+        // funciona mejor pero no si escribir sirve de algo. Este brazo se queda
+        // en silencio y se registra igual, y como la detección de "returned"
+        // (adminQueries.js) mira actividad posterior a la fila sin importarle el
+        // brazo, la medición sale gratis.
+        //
+        // La asignación usa los DOS PRIMEROS caracteres hex del id, no el
+        // último: el último ya decide el brazo A/B, y reusarlo ataría el holdout
+        // a la variante — todos los holdout serían del mismo brazo.
+        const holdoutPct = Math.max(0, Math.min(40, settings.holdout_pct ?? 0));
+        const isHoldout = (profileId: string) =>
+          holdoutPct > 0 && parseInt(profileId.slice(0, 2), 16) < (holdoutPct * 255) / 100;
+
         for (const member of atRisk) {
           const lastAttempt = memberStepMap[member.profile_id];
           let nextStepNum: number;
@@ -572,6 +627,16 @@ serve(async (req) => {
             variant = (step.message_b && parityB) ? 'B' : 'A';
             template = (step.message_b && parityB) ? step.message_b! : step.message_template;
           }
+          // Control silencioso: se registra que ERA elegible hoy y que
+          // deliberadamente no se le escribió. Sin esta fila no hay con qué
+          // comparar, y esto no se puede reconstruir hacia atrás.
+          if (isHoldout(member.profile_id)) {
+            try {
+              await supabase.from('win_back_attempts').insert({ user_id: member.profile_id, gym_id: gymId, admin_id: '00000000-0000-0000-0000-000000000000', message: template, outcome: 'no_response', step_number: nextStepNum, variant: 'holdout', ...(campaignId ? { message_template: campaignId } : {}), created_at: now.toISOString() });
+            } catch (_) {}
+            continue;
+          }
+
           const channel = step.channel || 'notification';
           if (channel === 'notification') {
             await supabase.from('notifications').insert({ profile_id: member.profile_id, gym_id: gymId, type: 'churn_followup', title: 'We miss you!', body: template, data: { source: 'churn_auto', score: member.score, tier: member.risk_tier, step: nextStepNum } });
@@ -590,22 +655,32 @@ serve(async (req) => {
         await supabase.from('churn_followup_settings').update({ last_run_at: now.toISOString(), last_run_count: atRisk.length }).eq('gym_id', gymId);
       }
 
-      // ── Auto-label churn outcomes (feeds calibration) ──
+      // ── Etiquetar desenlaces (alimenta la calibración) ──
+      //
+      // Aquí había CINCO reglas y cuatro eran circulares: definían "se fue" como
+      // `daysSinceActivity >= 30/60` — la MISMA variable que el modelo usa de
+      // entrada. Entrenar con eso le enseña al modelo a predecirse a sí mismo, y
+      // refuerza justo el sesgo de recencia que el rediseño quiere quitarle. La
+      // quinta era directamente falsa: marcaba `frozen` como baja, cuando el
+      // propio scorer trata `frozen` como `paused` — una pausa de vacaciones.
+      //
+      // El objetivo real ("¿vino entre el día 31 y el 90?") lo etiqueta ahora
+      // `label_churn_lapses()` por pg_cron (mig 0705), en SQL y sobre socios que
+      // estaban VIVOS al puntuar, que es lo que lo hace una predicción y no un
+      // eco. Aquí solo se queda la única verdad de base que esta función puede
+      // ver: que alguien marcó la membresía como cancelada.
       const outcomeInserts: any[] = [];
       for (const m of members) {
+        if (m.membership_status !== 'cancelled') continue;
         const memberScore = rows.find((r) => r.profile_id === m.id);
         if (!memberScore) continue;
-        const tenure = (nowMs - new Date(m.membership_started_at || m.created_at).getTime()) / (MS_PER_DAY * 30.44);
-        const lastCI = lastCheckIn[m.id];
-        const lastSess = lastSession[m.id];
-        const lastActivity = [m.last_active_at, lastCI, lastSess].filter(Boolean).map((t: string) => new Date(t).getTime());
-        const daysSinceActivity = lastActivity.length ? (nowMs - Math.max(...lastActivity)) / MS_PER_DAY : 999;
-        const snap = memberSignals[m.id] || {};
-        if (daysSinceActivity >= 60) outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'inactive_60d', signal_snapshot: snap, score_at_label: memberScore.score });
-        else if (daysSinceActivity >= 30) outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'inactive_30d', signal_snapshot: snap, score_at_label: memberScore.score });
-        if (m.membership_status === 'cancelled') outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'cancelled', signal_snapshot: snap, score_at_label: memberScore.score });
-        else if (m.membership_status === 'frozen') outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: true, reason: 'frozen', signal_snapshot: snap, score_at_label: memberScore.score });
-        if (tenure >= 6 && daysSinceActivity < 14 && m.membership_status === 'active') outcomeInserts.push({ profile_id: m.id, gym_id: gymId, churned: false, reason: 'retained_6m', signal_snapshot: snap, score_at_label: memberScore.score });
+        outcomeInserts.push({
+          profile_id: m.id, gym_id: gymId, churned: true,
+          reason: 'cancelled', source: 'gym_report',
+          signal_snapshot: memberSignals[m.id] || {},
+          score_at_label: memberScore.score,
+          observed_at: now.toISOString().slice(0, 10),
+        });
       }
       if (outcomeInserts.length > 0) {
         for (const outcome of outcomeInserts) {

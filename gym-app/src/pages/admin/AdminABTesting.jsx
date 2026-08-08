@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
-  FlaskConical, Plus, TrendingUp, Users, Award, Info, Bell, Route, Gift, ArrowRight,
+  FlaskConical, Plus, Send, Users, Info, Bell, Route, Gift, ArrowRight,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,7 +16,8 @@ import {
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
 import CreateCampaignModal from './components/CreateCampaignModal';
 import ExperimentCard from './components/ExperimentCard';
-import { fetchABTestingData, getExperimentType, calcVariantStats } from '../../lib/admin/abTestingHelpers';
+import { fetchABTestingData, calcVariantStats, isClaimedStatus } from '../../lib/admin/abTestingHelpers';
+import HoldoutCard from './components/HoldoutCard';
 
 const IDEA_ARCHIVO = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
 
@@ -76,6 +77,7 @@ export default function AdminABTesting() {
 
   const campaigns = data?.campaigns || [];
   const attempts = data?.attempts || [];
+  const redemptionStatus = data?.redemptionStatus || {};
 
   // ── Filtered lists ───────────────────────────────────────
   const activeCampaigns = useMemo(
@@ -87,12 +89,6 @@ export default function AdminABTesting() {
     [campaigns],
   );
 
-  const filteredCampaigns = useMemo(() => {
-    if (activeTab === 'active') return activeCampaigns;
-    if (activeTab === 'completed') return completedCampaigns;
-    return campaigns;
-  }, [activeTab, activeCampaigns, completedCampaigns, campaigns]);
-
   const tabOptions = useMemo(() => [
     { key: 'active', label: t('admin.abTesting.tabActive', 'Active'), count: activeCampaigns.length },
     { key: 'completed', label: t('admin.abTesting.tabCompleted', 'Completed'), count: completedCampaigns.length },
@@ -102,34 +98,40 @@ export default function AdminABTesting() {
   // ── Summary stats (only when data exists) ────────────────
   const summary = useMemo(() => {
     if (campaigns.length === 0) return null;
-    const totalAttempts = attempts.length;
-    const responded = attempts.filter((a) => a.responded_at != null).length;
+    // Enviados ÷ Recuperados es el embudo entero y se llena solo: el envío
+    // inserta la fila (WinBackModal) y `autoDetectReturns` marca 'returned'
+    // con actividad REAL — una sesión o un check-in posterior al envío.
+    //
+    // Aquí antes vivía una "tasa de respuesta" sobre `responded_at`. Esa
+    // columna existe (mig 0166) pero NADIE la escribe en todo el repo, así
+    // que la tarjeta enseñaba 0.0% para siempre — y se comía el sitio del
+    // denominador, que es el número que el dueño necesita ver.
+    const totalSent = attempts.length;
     const returned = attempts.filter((a) => a.outcome === 'returned').length;
-    const avgResponse = totalAttempts > 0 ? ((responded / totalAttempts) * 100).toFixed(1) : '0.0';
+    const returnRate = totalSent > 0 ? ((returned / totalSent) * 100).toFixed(1) : '0.0';
 
-    // Best performing type
-    const typeStats = {};
-    for (const c of campaigns) {
-      const type = getExperimentType(c);
-      if (!typeStats[type]) typeStats[type] = { returned: 0, total: 0 };
-      const cAttempts = attempts.filter((a) => a.message_template === c.id);
-      typeStats[type].total += cAttempts.length;
-      typeStats[type].returned += cAttempts.filter((a) => a.outcome === 'returned').length;
-    }
-    let bestType = '—';
-    let bestRate = 0;
-    for (const [type, data] of Object.entries(typeStats)) {
-      const rate = data.total > 0 ? data.returned / data.total : 0;
-      if (rate > bestRate) { bestRate = rate; bestType = type; }
-    }
+    // La otra mitad del embudo: de los premios REGALADOS, ¿cuántos se canjearon?
+    // Las dos puntas ya eran automáticas (`admin_gift_reward` crea el canje en
+    // 'pending', el escaneo del QR lo pasa a 'claimed'); lo que faltaba era el
+    // vínculo `redemption_id`, que añade la mig 0706.
+    //
+    // Los envíos ANTERIORES a 0706 solo guardaron el NOMBRE del premio en
+    // `offer`, y con un nombre no se puede unir — cuentan como 0 y no hay forma
+    // de reconstruirlos.
+    const gifted = attempts.filter((a) => a.redemption_id).length;
+    const claimed = attempts.filter(
+      (a) => a.redemption_id && isClaimedStatus(redemptionStatus[a.redemption_id]),
+    ).length;
 
     return {
       totalExperiments: campaigns.length,
-      avgResponse,
+      totalSent,
+      returnRate,
       totalRecovered: returned,
-      bestType: bestType !== '—' ? t(`admin.abTesting.types.${bestType}`, bestType) : '—',
+      gifted,
+      claimed,
     };
-  }, [campaigns, attempts, t]);
+  }, [campaigns, attempts, redemptionStatus]);
 
   // ── Actions ──────────────────────────────────────────────
   // Card "End" / "Reactivate" buttons now open a confirm modal — the actual
@@ -252,23 +254,34 @@ export default function AdminABTesting() {
               onClick={() => setActiveTab('all')}
             />
             <StatCard
-              label={t('admin.abTesting.avgResponse', 'Avg Response Rate')}
-              value={`${summary.avgResponse}%`}
-              icon={TrendingUp}
+              label={t('admin.abTesting.totalSent', 'Messages Sent')}
+              value={summary.totalSent}
+              icon={Send}
             />
             <StatCard
               label={t('admin.abTesting.totalRecovered', 'Members Recovered')}
               value={summary.totalRecovered}
+              sub={summary.totalSent > 0
+                ? t('admin.abTesting.returnRateSub', { rate: summary.returnRate, defaultValue: '{{rate}}% of sent' })
+                : undefined}
               icon={Users}
             />
             <StatCard
-              label={t('admin.abTesting.bestType', 'Best Performing Type')}
-              value={summary.bestType}
-              icon={Award}
+              label={t('admin.abTesting.totalClaimed', 'Rewards Claimed')}
+              value={summary.claimed}
+              sub={summary.gifted > 0
+                ? t('admin.abTesting.claimedSub', { gifted: summary.gifted, defaultValue: 'of {{gifted}} gifted' })
+                : t('admin.abTesting.noneGifted', 'No rewards gifted yet')}
+              icon={Gift}
             />
           </div>
         </FadeIn>
       )}
+
+      {/* El A/B compara mensaje contra mensaje; esto compara escribir contra
+          callarse, que es la pregunta anterior y la única que dice si la
+          herramienta sirve. Solo aparece si el gimnasio tiene control activo. */}
+      {!isLoading && <HoldoutCard attempts={attempts} />}
 
       {/* Tabs */}
       <FadeIn delay={0.03}>

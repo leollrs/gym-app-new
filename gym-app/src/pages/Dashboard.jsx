@@ -12,6 +12,7 @@ import { isSameDay, isBefore, startOfDay, startOfWeek, format } from 'date-fns';
 import { es as esLocale, enUS } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import { fetchOverrides, resolveForDate } from '../lib/scheduleOverrides';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { getCached, setCache } from '../lib/queryCache';
@@ -982,10 +983,26 @@ const Dashboard = () => {
   // Resolve the routine + exercises payload at render scope so we can memoize
   // it. Dispatching a fresh inline object each effect run breaks memo equality
   // for any consumer of selectedRoutine/selectedRoutineExercises.
+  // Excepciones de un día suelto. Van aparte de `schedule` a propósito: `schedule`
+  // es la semana recurrente y las excepciones tienen fecha propia, así que
+  // mezclarlas en el mismo mapa borraría la diferencia justo donde importa.
+  const [dayOverrides, setDayOverrides] = useState({});
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let alive = true;
+    const load = () => fetchOverrides(user.id).then(o => { if (alive) setDayOverrides(o); });
+    load();
+    // El mismo evento que ya escucha el resto de la app cuando cambia la semana.
+    const onChanged = () => load();
+    window.addEventListener('tugympr:schedule-changed', onChanged);
+    return () => { alive = false; window.removeEventListener('tugympr:schedule-changed', onChanged); };
+  }, [user?.id]);
+
   const selectedRoutinePayload = useMemo(() => {
     if (loading) return null;
-    const dow = selectedDate.getDay();
-    const assigned = schedule[dow];
+    // La excepción del día gana sobre la semana. Todo el que pinte un día tiene
+    // que pasar por aquí, o dirá una cosa distinta a la de al lado.
+    const assigned = resolveForDate(selectedDate, schedule, dayOverrides);
 
     if (assigned) {
       const routine = allRoutines.find(r => r.id === assigned.routineId);
@@ -1010,7 +1027,7 @@ const Dashboard = () => {
       }
     }
     return { routine: null, exercises: [], lastSession: null };
-  }, [selectedDate, schedule, loading, allRoutines]);
+  }, [selectedDate, schedule, dayOverrides, loading, allRoutines]);
 
   useEffect(() => {
     if (!selectedRoutinePayload) return;
@@ -1300,7 +1317,7 @@ const Dashboard = () => {
   // session on a closed day overrides the gym schedule — cardio is training too
   // (same principle as the streak logic in migration 0365).
   const gymNormallyClosed = gymClosedDays.has(selectedDate.getDay());
-  const hasScheduledWorkout = !!schedule[selectedDate.getDay()];
+  const hasScheduledWorkout = !!resolveForDate(selectedDate, schedule, dayOverrides);
   const _selClosedKey = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
   const cardioOnSelectedDate = (weekCardioSessions || []).some((c) => {
     const ts = c.completed_at || c.started_at;
@@ -1514,6 +1531,7 @@ const Dashboard = () => {
                   onAssignDay={handleAssignDay}
                   workoutDays={scheduledWorkoutDays}
                   schedule={schedule}
+                  dayOverrides={dayOverrides}
                   earliestDate={profile?.created_at}
                   programStart={activeProgram?.program_start}
                 />

@@ -8,6 +8,9 @@ import {
   TrendingUp, Bell, Mail, Tag, Zap, Dumbbell,
 } from 'lucide-react';
 import { supabase } from '../supabase';
+import logger from '../logger';
+import { selectAllInBatches } from '../churn/batchedSelect';
+import { autoDetectReturns } from '../churn/adminQueries';
 
 // ── Constants ──────────────────────────────────────────────
 export const EXPERIMENT_TYPES = {
@@ -26,6 +29,20 @@ export const TIER_COLORS = {
 };
 
 // ── Data fetcher ───────────────────────────────────────────
+// `redemption_id` solo existe tras la mig 0706. Si no está aplicada PostgREST
+// rechaza el SELECT ENTERO — no devuelve la columna vacía, falla la consulta —
+// y quedarse sin `attempts` vaciaría el embudo completo. De ahí el reintento.
+//
+// `responded_at` ya no se pide: la columna existe (mig 0166) pero NADIE la
+// escribe en todo el repo, así que cualquier ratio sobre ella daba 0.0% fijo.
+const ATTEMPT_COLS = 'id, user_id, variant, message_template, outcome, created_at, redemption_id';
+const ATTEMPT_COLS_PRE_0706 = 'id, user_id, variant, message_template, outcome, created_at';
+
+// Mismo criterio que la página de Recompensas del socio (`Rewards.jsx`): el
+// canje cuenta como cumplido en cualquiera de estos estados.
+const CLAIMED_STATUSES = new Set(['claimed', 'redeemed', 'approved', 'completed', 'fulfilled']);
+export const isClaimedStatus = (s) => CLAIMED_STATUSES.has(String(s || '').toLowerCase());
+
 export async function fetchABTestingData(gymId) {
   const [campaignsRes, attemptsRes] = await Promise.all([
     supabase
@@ -33,15 +50,52 @@ export async function fetchABTestingData(gymId) {
       .select('*')
       .eq('gym_id', gymId)
       .order('created_at', { ascending: false }),
-    supabase
-      .from('win_back_attempts')
-      .select('id, variant, message_template, outcome, responded_at, created_at')
-      .eq('gym_id', gymId),
+    supabase.from('win_back_attempts').select(ATTEMPT_COLS).eq('gym_id', gymId),
   ]);
+
+  let attempts = attemptsRes.data || [];
+  if (attemptsRes.error) {
+    const retry = await supabase
+      .from('win_back_attempts')
+      .select(ATTEMPT_COLS_PRE_0706)
+      .eq('gym_id', gymId);
+    attempts = retry.data || [];
+  }
+
+  // El resultado se refresca AQUÍ. `autoDetectReturns` solo se llamaba desde
+  // Riesgo de Baja, así que «Recuperados» en esta página enseñaba lo que
+  // hubiera dejado la última visita a la OTRA página. Ahora se mantiene sola.
+  try {
+    const detected = await autoDetectReturns(attempts, gymId, supabase);
+    if (detected?.attempts) attempts = detected.attempts;
+  } catch (err) {
+    logger.error('A/B: auto-detect returns failed', err);
+  }
+
+  // Canjes atados a estos envíos. Acotado con `.in('id', ids)` a los que TIENEN
+  // vínculo: `reward_redemptions` de un gimnasio pasa de 1000 filas y el tope de
+  // PostgREST truncaría en silencio si pidiéramos la tabla entera.
+  const linkedIds = [...new Set(attempts.map((a) => a.redemption_id).filter(Boolean))];
+  const { data: redemptionRows } = await selectAllInBatches(
+    (ids, from, to) => supabase
+      .from('reward_redemptions')
+      .select('id, status')
+      .eq('gym_id', gymId)
+      .in('id', ids)
+      .order('id', { ascending: true })
+      .range(from, to),
+    linkedIds,
+  );
+
+  // Objeto plano, NO un Map: React Query se persiste a localStorage en esta app
+  // y `JSON.stringify(new Map())` da `{}` — al rehidratar el `.get()` reventaría.
+  const redemptionStatus = {};
+  for (const r of redemptionRows || []) redemptionStatus[r.id] = r.status;
 
   return {
     campaigns: campaignsRes.data || [],
-    attempts: attemptsRes.data || [],
+    attempts,
+    redemptionStatus,
   };
 }
 
@@ -51,13 +105,10 @@ export function calcVariantStats(attempts, campaignId, variant) {
     (a) => a.message_template === campaignId && a.variant === variant,
   );
   const sent = rows.length;
-  const responded = rows.filter((a) => a.responded_at != null).length;
   const returned = rows.filter((a) => a.outcome === 'returned').length;
   return {
     sent,
-    responded,
     returned,
-    responseRate: sent > 0 ? ((responded / sent) * 100).toFixed(1) : '0.0',
     returnRate: sent > 0 ? ((returned / sent) * 100).toFixed(1) : '0.0',
   };
 }
@@ -66,18 +117,26 @@ export function calcVariantStats(attempts, campaignId, variant) {
 // Returns { significant, marginal, winner, zScore, requiresMoreData, perArmSize }.
 //
 // Significance rule:
-//   - Each arm needs ≥30 samples (rule of thumb for normal approximation
-//     and to keep early stopping from declaring noise as a winner).
+//   - Cada brazo necesita MIN_PER_ARM muestras.
 //   - |z| ≥ 1.96 → significant at 95% (p ≈ 0.05).
 //   - |z| ≥ 1.645 → marginal (90% confidence).
 //
-// metric: 'response' or 'return' — picks which numerator to use.
-export function abSignificance(statsA, statsB, metric = 'return') {
-  const xA = metric === 'response' ? statsA.responded : statsA.returned;
-  const xB = metric === 'response' ? statsB.responded : statsB.returned;
+// EL SUELO ERA 30 Y ERA MENTIRA. 30 es la regla de bolsillo para que la
+// aproximación normal valga, NO un cálculo de potencia. Con 30 por brazo el
+// test cantaba ganador con ruido puro: para detectar 20%→30% al 80% de potencia
+// y α=0.05 hacen falta ~294 por brazo, y ~1.100 para 20%→25%.
+//
+//     n ≈ 2·(1,96+0,84)²·p̄(1-p̄) / δ²
+//
+// 300 es ese número redondeado, o sea el mínimo con el que «ganó A» significa
+// algo. Un gimnasio solo tarda años en llegar ahí — esa es justamente la
+// respuesta honesta, y por eso la tarjeta lo dice en vez de inventar un ganador.
+export function abSignificance(statsA, statsB) {
+  const xA = statsA.returned;
+  const xB = statsB.returned;
   const nA = statsA.sent;
   const nB = statsB.sent;
-  const MIN_PER_ARM = 30;
+  const MIN_PER_ARM = 300;
 
   if (nA < MIN_PER_ARM || nB < MIN_PER_ARM) {
     return {
@@ -137,10 +196,10 @@ export function getVariantSummary(variant, t) {
   return '—';
 }
 
+// Siempre la tasa de retorno. Antes, para email y push, devolvía `responseRate`
+// — que se calculaba sobre `responded_at`, la columna que nadie escribe — así
+// que justo esos dos tipos enseñaban 0.0% en las dos variantes hiciera lo que
+// hiciera el mensaje. Volver es el único desenlace que el sistema observa solo.
 export function getKeyMetric(type, statsA, statsB) {
-  // Return the most relevant metric label and values per type
-  if (type === 'email' || type === 'push_notification') {
-    return { label: 'responseRate', a: statsA.responseRate, b: statsB.responseRate };
-  }
   return { label: 'returnRate', a: statsA.returnRate, b: statsB.returnRate };
 }

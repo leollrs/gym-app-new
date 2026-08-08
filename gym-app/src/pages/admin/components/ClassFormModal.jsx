@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Repeat, CalendarDays, Trash2, X, Upload, Loader2, Languages } from 'lucide-react';
+import { X, Upload, Loader2, Languages, AlertTriangle, Check } from 'lucide-react';
 import { AdminModal } from '../../../components/admin';
 import { useToast } from '../../../contexts/ToastContext';
 import { classImageUrl } from '../../../lib/classImageUrl';
+import { groupSlots } from '../../../lib/admin/classScheduleHelpers';
 import { useAutoTranslate } from '../../../hooks/useAutoTranslate';
-import { slotDayLabel, format12h, addMinutes, DAYS_OF_WEEK } from '../../../lib/admin/classScheduleHelpers';
+
 import TranslationPreviewModal from './TranslationPreviewModal';
 import InstructorSelector from './InstructorSelector';
 import RoutineSelector from './RoutineSelector';
-import ScheduleSlotForm from './ScheduleSlotForm';
+import ClassSchedulePlanner from './ClassSchedulePlanner';
+import ClassTypePicker from './ClassTypePicker';
+import ClassFormRail from './ClassFormRail';
 import CoverPreview, { CLASS_COVERS } from './CoverPreview';
 import ClassImage from '../../../components/ClassImage';
 
@@ -47,7 +50,7 @@ function CharCount({ value, max }) {
  *  - New class → slots accumulate in `pendingSlots` and are written in
  *    a single batch after the parent class row is inserted.
  */
-export default function ClassFormModal({ classData, initialSlots, onClose, onSave, saving, gymId, trainers = [], onAddSlot, onDeleteSlot, t, tc, lang }) {
+export default function ClassFormModal({ classData, initialSlots, onClose, onSave, saving, gymId, trainers = [], allClasses = [], onAddSlot, onDeleteSlot, onUpdateSlot, t, tc, lang }) {
   const [form, setForm] = useState({
     name: classData?.name || '',
     description: classData?.description || '',
@@ -223,253 +226,324 @@ export default function ClassFormModal({ classData, initialSlots, onClose, onSav
     );
   }
 
+  // Franjas unificadas: al editar viven en la clase (se persisten al momento),
+  // al crear se acumulan aquí y se escriben en lote tras insertar la fila.
+  const slots = isEditing ? (classData?.gym_class_schedules || []) : pendingSlots;
+  const addSlot = (slot) => {
+    if (isEditing && classData?.id) onAddSlot(classData.id, slot);
+    else setPendingSlots(s => [...s, slot]);
+  };
+  const removeSlot = (slot, idx) => {
+    if (isEditing && slot.id) onDeleteSlot(slot.id);
+    else setPendingSlots(s => s.filter((_, i) => i !== idx));
+  };
+  // Modificar una franja es UPDATE, nunca borrar-y-crear: `class_bookings`
+  // apunta a `gym_class_schedules` con ON DELETE CASCADE, así que recrear la
+  // fila para mover la hora quince minutos borraría todas las reservas.
+  const updateSlot = (slot, patch, idx) => {
+    if (isEditing && slot.id) onUpdateSlot(slot.id, patch);
+    else setPendingSlots(s => s.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
+  };
+
+  // Se cuentan HORARIOS, no filas: «lunes y miércoles a las 9» es un horario,
+  // aunque en la tabla ocupe dos filas. El encabezado decía 2 y la lista
+  // enseñaba 1.
+  const slotGroupCount = groupSlots(slots, form.duration_minutes).length;
+
+  const typeMeta = CLASS_COVERS.find(c => c.key === coverPreset) || null;
+
+  // Escoger el tipo hace cuatro cosas de una vez: portada, nombre, duración y
+  // capacidad. Nombre y números solo se pisan si el admin no los ha tocado —
+  // reescribir lo que alguien acaba de teclear es peor que no ayudar.
+  const pickType = (c) => {
+    if (!c) { setCoverPreset(''); return; }
+    setCoverPreset(c.key);
+    setImageFile(null); setImagePreview(''); setImagePath(null);
+    setForm(f => {
+      const untouched = !f.name.trim() || CLASS_COVERS.some(x => t(x.labelKey) === f.name.trim());
+      return {
+        ...f,
+        name: untouched ? t(c.labelKey) : f.name,
+        duration_minutes: slots.length ? f.duration_minutes : c.dur,
+        max_capacity: slots.length ? f.max_capacity : c.cap,
+      };
+    });
+  };
+
+  // Quién sale en la tarjeta, con la misma precedencia que usa la app del
+  // socio: el entrenador asignado manda, y el nombre suelto solo aparece
+  // cuando no hay ninguno.
+  const instructorLabel =
+    form.trainer_ids.map(id => trainers.find(x => x.id === id)?.full_name).filter(Boolean).join(', ')
+    || form.instructor.trim()
+    || null;
+
+  const missing = [];
+  if (!form.name.trim()) missing.push(t('admin.classes.missName', 'nombre'));
+  if (!slots.length) missing.push(t('admin.classes.missSlot', 'un horario'));
+
+  const sectionNum = (n) => (
+    <span className="text-[10.5px] font-bold tabular-nums w-[16px] flex-shrink-0" style={{ color: 'var(--color-text-subtle)' }}>{n}</span>
+  );
+  const inputCls = 'w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors';
+  const inputStyle = (bad) => ({
+    backgroundColor: 'var(--color-bg-deep)',
+    border: `1px solid ${bad ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`,
+    color: 'var(--color-text-primary)',
+  });
+  const capChip = (on) => ({
+    background: on ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'var(--color-bg-deep)',
+    border: `1px solid ${on ? 'var(--color-accent)' : 'var(--color-border-subtle)'}`,
+    color: on ? 'var(--color-accent)' : 'var(--color-text-muted)',
+  });
+  const CAPS = [10, 14, 20, 30];
+
   return (
-    <AdminModal isOpen onClose={onClose} title={isEditing ? t('admin.classes.editClass') : t('admin.classes.addClass')} size="lg">
-      <div className="space-y-4">
-        {/* Name */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.className')} <span className="text-red-400">*</span></label>
-            <CharCount value={form.name} max={NAME_MAX} />
+    <AdminModal
+      isOpen
+      onClose={onClose}
+      title={isEditing ? t('admin.classes.editClass') : t('admin.classes.addClass')}
+      subtitle={t('admin.classes.formSubtitle', 'Define la clase una vez, luego añade los horarios en que se repite.')}
+      size="lg"
+      footer={(
+        <div className="flex items-center gap-3 w-full flex-wrap">
+          <div className="flex items-center gap-1.5 text-[11.5px] flex-1 min-w-[150px]">
+            {missing.length ? (
+              <>
+                <AlertTriangle size={13} style={{ color: 'var(--color-warning, var(--color-accent))', flexShrink: 0 }} />
+                <span style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.classes.missingFields', { fields: missing.join(' + '), defaultValue: 'Falta {{fields}}' })}
+                </span>
+              </>
+            ) : (
+              <>
+                <Check size={13} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
+                <span style={{ color: 'var(--color-success)' }}>{t('admin.classes.readyToCreate', 'Lista para crear')}</span>
+              </>
+            )}
           </div>
-          <input value={form.name} onChange={e => { if (e.target.value.length <= NAME_MAX) setFormField('name', e.target.value); }}
-            onBlur={() => handleClassBlur('name')}
-            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.name ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }}
-            placeholder={t('admin.classes.namePlaceholder', 'Yoga, Spinning, CrossFit...')} />
-          {errors.name && <p className="text-[11px] text-red-400 mt-1">{errors.name}</p>}
+          <button onClick={onClose} className="px-4 py-2.5 text-[13px] font-bold transition-colors"
+            style={{ color: 'var(--color-admin-text-sub)', background: 'var(--color-bg-card)', border: '1px solid var(--color-admin-border)', borderRadius: 999 }}>
+            {tc('cancel')}
+          </button>
+          <button onClick={handleTranslateAndPreview} disabled={saving || translating || missing.length > 0}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 text-[13px] font-bold disabled:opacity-50 transition-all hover:brightness-[1.04]"
+            style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)', borderRadius: 999 }}>
+            {(translating || saving) ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
+            {translating ? t('admin.classes.translating') : saving ? tc('saving') : tc('save')}
+          </button>
         </div>
-
-        {/* Description */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.description')}</label>
-            <CharCount value={form.description} max={DESC_MAX} />
-          </div>
-          <textarea value={form.description} onChange={e => { if (e.target.value.length <= DESC_MAX) setFormField('description', e.target.value); }} rows={2}
-            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none resize-none transition-colors"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-        </div>
-
-        {/* Instructor (multi-select — pulls from trainers and admins) */}
-        <InstructorSelector
-          gymId={gymId}
-          values={form.trainer_ids}
-          onChange={(ids) => setForm(f => ({ ...f, trainer_ids: ids }))}
-          t={t}
-        />
-
-        {/* Guest instructor — free-text fallback persisted to
-            gym_classes.instructor_name, shown to members only when no
-            registered trainer above is assigned to the class. */}
-        <div>
-          <label className="block text-[12.5px] font-bold mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.guestInstructor', 'Guest instructor')}</label>
-          <input value={form.instructor} onChange={e => setFormField('instructor', e.target.value)}
-            className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }}
-            placeholder={t('admin.classes.guestInstructorPlaceholder', 'e.g. Coach Alex (no app account)')} />
-          <p className="text-[10px] italic mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.guestInstructorHint', 'Optional. Shown to members only when no trainer above is selected.')}</p>
-        </div>
-
-        {/* Duration + Capacity */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[12.5px] font-bold mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.duration')} ({tc('min') || 'min'}) <span className="text-red-400">*</span></label>
-            <input type="number" inputMode="numeric" min={5} max={480} value={form.duration_minutes || ''}
-              onChange={e => setFormField('duration_minutes', e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0))}
-              onBlur={() => handleClassBlur('duration_minutes')}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.duration_minutes ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
-            {errors.duration_minutes && <p className="text-[11px] text-red-400 mt-1">{errors.duration_minutes}</p>}
-          </div>
-          <div>
-            <label className="block text-[12.5px] font-bold mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.capacity')} <span className="text-red-400">*</span></label>
-            <input type="number" inputMode="numeric" min={1} max={1000} value={form.max_capacity || ''}
-              onChange={e => setFormField('max_capacity', e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0))}
-              onBlur={() => handleClassBlur('max_capacity')}
-              className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: `1px solid ${errors.max_capacity ? 'var(--color-danger-soft)' : 'var(--color-border-subtle)'}`, color: 'var(--color-text-primary)' }} />
-            {errors.max_capacity && <p className="text-[11px] text-red-400 mt-1">{errors.max_capacity}</p>}
-          </div>
-        </div>
-
-        {/* Schedule Slots */}
-        <div>
-          <label className="flex items-center gap-1.5 text-[12.5px] font-bold mb-2" style={{ color: 'var(--color-text-muted)' }}>
-            <Repeat size={12} /> {t('admin.classes.weeklySchedule', 'Weekly Schedule')}
-          </label>
-
-          {/* Slot table — existing (edit mode) or pending (new class) */}
-          {((isEditing && classData?.gym_class_schedules?.length > 0) || (!isEditing && pendingSlots.length > 0)) && (
-            <div className="rounded-xl overflow-hidden mb-2"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-                    <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.day', 'Day')}</th>
-                    <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.time', 'Time')}</th>
-                    <th className="w-10 px-2 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(isEditing ? [...classData.gym_class_schedules].sort((a, b) => {
-                    if (a.specific_date && !b.specific_date) return 1;
-                    if (!a.specific_date && b.specific_date) return -1;
-                    if (a.specific_date && b.specific_date) return a.specific_date.localeCompare(b.specific_date);
-                    return (a.day_of_week ?? 0) - (b.day_of_week ?? 0) || a.start_time.localeCompare(b.start_time);
-                  }) : pendingSlots).map((slot, idx) => {
-                    const key = slot.id || `pending-${idx}`;
-                    const onDelete = isEditing
-                      ? () => onDeleteSlot(slot.id)
-                      : () => setPendingSlots(s => s.filter((_, i) => i !== idx));
-                    return (
-                      <tr key={key} style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--color-border-subtle)' }}>
-                        <td className="px-3 py-2">
-                          {slot.specific_date ? (
-                            <span className="inline-flex items-center gap-1 font-medium" style={{ color: 'var(--color-info, #60A5FA)' }}>
-                              <CalendarDays size={11} />
-                              {slotDayLabel(slot, (d) => tc(DAYS_OF_WEEK.find(x => x.value === d)?.labelKey), lang)}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                              <Repeat size={11} style={{ color: 'var(--color-accent, #D4AF37)' }} />
-                              {tc(DAYS_OF_WEEK.find(d => d.value === slot.day_of_week)?.labelKey)}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                          {format12h(slot.start_time)} <span style={{ color: 'var(--color-text-muted)' }}>–</span> {format12h(form.duration_minutes >= 5 ? addMinutes(slot.start_time, form.duration_minutes) : slot.end_time)}
-                        </td>
-                        <td className="px-2 py-2 text-right">
-                          <button type="button" onClick={onDelete} aria-label={t('admin.classes.deleteSlot', 'Delete schedule slot')} className="p-1.5 rounded hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      )}
+    >
+      {/* La columna de la derecha mide 340 porque la tarjeta del socio mide eso
+          en un teléfono. Una vista previa más estrecha corta nombres que en la
+          app entran, que es justo lo que uno viene a comprobar aquí. */}
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-5">
+        <div className="min-w-0 space-y-5">
+          {/* ── 01 · ¿Qué clase es? ── */}
+          <section>
+            <div className="flex items-baseline gap-2.5 mb-3">
+              {sectionNum('01')}
+              <h3 className="text-[14px] font-extrabold" style={{ color: 'var(--color-text-primary)' }}>
+                {t('admin.classes.step1', '¿Qué clase es?')}
+              </h3>
             </div>
-          )}
 
-          {/* Add slot form */}
-          <ScheduleSlotForm
-            onAdd={(slot) => {
-              if (isEditing && classData?.id) {
-                onAddSlot(classData.id, slot);
-              } else {
-                setPendingSlots(s => [...s, slot]);
-              }
-            }}
-            durationMinutes={form.duration_minutes}
-            trainers={trainers}
+            <ClassTypePicker value={coverPreset} onPick={pickType} t={t} />
+
+            <div className="mt-3.5">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[12px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.classes.className')} <span style={{ color: 'var(--color-danger)' }}>*</span>
+                </label>
+                <CharCount value={form.name} max={NAME_MAX} />
+              </div>
+              <input value={form.name} onChange={e => { if (e.target.value.length <= NAME_MAX) setFormField('name', e.target.value); }}
+                onBlur={() => handleClassBlur('name')} className={inputCls} style={inputStyle(errors.name)}
+                placeholder={t('admin.classes.namePlaceholder', 'Yoga, Spinning, CrossFit...')} />
+              {errors.name && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{errors.name}</p>}
+            </div>
+
+            <div className="mt-3.5">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[12px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.description')}</label>
+                <CharCount value={form.description} max={DESC_MAX} />
+              </div>
+              <textarea value={form.description} onChange={e => { if (e.target.value.length <= DESC_MAX) setFormField('description', e.target.value); }}
+                rows={2} className={`${inputCls} resize-none`} style={inputStyle(false)}
+                placeholder={t('admin.classes.descPlaceholder', 'Intensidad, nivel, qué traer. Aparece en la ficha de la clase en la app.')} />
+            </div>
+
+            {/* Portada: la del tipo por defecto, foto propia si la quieres. */}
+            <div className="mt-3.5">
+              <label className="block text-[12px] font-bold mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.classes.classCover', 'Class Cover')}
+              </label>
+              <div className="flex items-center gap-3">
+                <div className="w-[104px] h-[66px] rounded-xl overflow-hidden flex-shrink-0 relative"
+                  style={{ border: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-deep)' }}>
+                  {imagePreview ? (
+                    <ClassImage path={imagePreview} alt="" accent={form.accent_color || 'var(--color-accent)'} loading="eager" style={{ position: 'absolute', inset: 0 }} />
+                  ) : coverPreset ? (
+                    <div className="absolute inset-0"><CoverPreview preset={coverPreset} size="square" /></div>
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center text-[10px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      {t('admin.classes.noCover', 'Sin portada')}
+                    </div>
+                  )}
+                  {(imagePreview || coverPreset) && (
+                    <button type="button" aria-label={t('admin.classes.removeImage', 'Remove image')}
+                      onClick={() => {
+                        if (imageFile) {
+                          if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+                          setImageFile(null);
+                          setImagePath(classData?.image_path ?? null);
+                          setImagePreview(classImageUrl(classData?.image_path) || classData?.image_url || '');
+                          return;
+                        }
+                        setImagePreview(''); setImagePath(null); setCoverPreset('');
+                      }}
+                      className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white">
+                      <X size={11} />
+                    </button>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                    {imagePreview ? t('admin.classes.ownPhoto', 'Foto propia') : t('admin.classes.autoCover', 'Se genera con el tipo de clase')}
+                  </p>
+                  <p className="text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('admin.classes.coverHint', 'Sube una foto de tu gimnasio si prefieres. JPG o PNG.')}
+                  </p>
+                  <label className="inline-flex items-center gap-1.5 mt-1.5 text-[12px] font-bold cursor-pointer" style={{ color: 'var(--color-accent)' }}>
+                    <Upload size={12} /> {t('admin.classes.uploadCustom', 'Or upload your own image')}
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { handleImageChange(e); setCoverPreset(''); }} />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* La rutina no es un ajuste avanzado: es lo que el entrenador ve al
+                pasar asistencia y lo que hace que la clase cuente para récords
+                y sobrecarga. Estaba escondida detrás de «Más opciones», al
+                final del formulario, donde nadie la abría. */}
+            <div className="mt-3.5">
+              <RoutineSelector gymId={gymId} value={form.workout_template_id}
+                onChange={(id) => setForm(f => ({ ...f, workout_template_id: id }))} t={t} />
+              <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.classes.routineHint', 'Opcional. El entrenador la ve al pasar asistencia y los miembros al reservar.')}
+              </p>
+            </div>
+          </section>
+
+          {/* ── 02 · ¿Quién la da y para cuántos? ── */}
+          <section style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 18 }}>
+            <div className="flex items-baseline gap-2.5 mb-3">
+              {sectionNum('02')}
+              <h3 className="text-[14px] font-extrabold" style={{ color: 'var(--color-text-primary)' }}>
+                {t('admin.classes.step2', '¿Quién la da y para cuántos?')}
+              </h3>
+            </div>
+
+            <InstructorSelector gymId={gymId} values={form.trainer_ids}
+              onChange={(ids) => setForm(f => ({ ...f, trainer_ids: ids }))} t={t} />
+
+            <div className="mt-3.5">
+              <label className="block text-[12px] font-bold mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.classes.guestInstructor', 'Guest instructor')}
+              </label>
+              <input value={form.instructor} onChange={e => setFormField('instructor', e.target.value)}
+                className={inputCls} style={inputStyle(false)}
+                placeholder={t('admin.classes.guestInstructorPlaceholder', 'e.g. Coach Alex (no app account)')} />
+              <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.classes.guestInstructorHint', 'Optional. Shown to members only when no trainer above is selected.')}
+              </p>
+            </div>
+
+            <div className="mt-3.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[12px] font-bold" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('admin.classes.capacity')} <span style={{ color: 'var(--color-danger)' }}>*</span>
+                </label>
+                <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('admin.classes.perSession', 'personas por sesión')}
+                </span>
+              </div>
+              <div className="flex gap-1.5 flex-wrap items-center">
+                {CAPS.map(n => (
+                  <button key={n} type="button" onClick={() => setFormField('max_capacity', n)}
+                    className="h-[34px] px-3.5 rounded-lg text-[12.5px] font-bold tabular-nums transition-colors"
+                    style={capChip(form.max_capacity === n)}>{n}</button>
+                ))}
+                <label className="h-[34px] px-3 rounded-lg text-[12.5px] font-bold inline-flex items-center gap-1.5"
+                  style={capChip(!CAPS.includes(form.max_capacity))}>
+                  {t('admin.classes.other', 'Otra')}
+                  <input type="number" inputMode="numeric" min={1} max={1000} value={form.max_capacity || ''}
+                    onChange={e => setFormField('max_capacity', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    onBlur={() => handleClassBlur('max_capacity')}
+                    className="w-[44px] bg-transparent outline-none text-right tabular-nums" style={{ color: 'inherit' }} />
+                </label>
+              </div>
+              <p className="text-[11px] mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.classes.capacityHint', 'Al llenarse, los miembros entran a lista de espera automáticamente.')}
+              </p>
+              {errors.max_capacity && <p className="text-[11px] mt-1" style={{ color: 'var(--color-danger)' }}>{errors.max_capacity}</p>}
+            </div>
+          </section>
+
+          {/* ── 03 · ¿Cuándo se da? ── */}
+          <section style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 18 }}>
+            <div className="flex items-baseline gap-2.5 mb-3">
+              {sectionNum('03')}
+              <h3 className="text-[14px] font-extrabold" style={{ color: 'var(--color-text-primary)' }}>
+                {t('admin.classes.step3', '¿Cuándo se da?')}
+              </h3>
+              {slotGroupCount > 0 && (
+                <span className="ml-auto text-[11.5px]" style={{ color: 'var(--color-text-subtle)' }}>
+                  {t('admin.classes.slotCount', { count: slotGroupCount, defaultValue: '{{count}} horarios' })}
+                </span>
+              )}
+            </div>
+            {slots.length === 0 && (
+              <p className="text-[11.5px] mb-2.5 leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                {t('admin.classes.noSlotsYet', 'La clase queda guardada pero no aparece en la app hasta que añadas al menos un horario.')}
+              </p>
+            )}
+            <ClassSchedulePlanner
+              slots={slots}
+              duration={form.duration_minutes}
+              onDurationChange={(d) => setFormField('duration_minutes', d)}
+              onAdd={addSlot}
+              onDelete={removeSlot}
+              onUpdate={updateSlot}
+              allClasses={allClasses}
+              excludeClassId={classData?.id}
+              trainerIds={form.trainer_ids}
+              trainers={trainers}
+              t={t}
+              tc={tc}
+              lang={lang}
+            />
+          </section>
+        </div>
+
+        {/* ── Panel derecho ── */}
+        <div className="lg:sticky lg:top-0 self-start">
+          <ClassFormRail
+            name={form.name}
+            description={form.description}
+            coverPreset={coverPreset}
+            imagePreview={imagePreview}
+            typeMeta={typeMeta}
+            instructorLabel={instructorLabel}
+            capacity={form.max_capacity}
+            duration={form.duration_minutes}
+            slots={slots}
+            hasRoutine={!!form.workout_template_id}
             t={t}
-            tc={tc}
             lang={lang}
           />
-
-          {(!isEditing && pendingSlots.length === 0 && !classData?.gym_class_schedules?.length) && (
-            <p className="text-[10px] italic mt-1.5" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.scheduleHint', 'Add time slots for when this class repeats each week')}</p>
-          )}
         </div>
-
-        {/* Workout Template */}
-        <RoutineSelector gymId={gymId} value={form.workout_template_id} onChange={(id) => setForm(f => ({ ...f, workout_template_id: id }))} t={t} />
-
-        {/* Class cover — preset or custom upload */}
-        <div>
-          <label className="block text-[12.5px] font-bold mb-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.classCover', 'Class Cover')}</label>
-
-          {/* Custom image preview */}
-          {imagePreview ? (
-            <div className="relative mx-auto mb-3 aspect-square w-full max-w-[240px] rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-admin-border)', background: 'var(--color-admin-panel)' }}>
-              {/* The preview src is either a blob: URL (file just picked) or the
-                  stored object's public URL. The stored one can be dead — this is
-                  the exact screen an admin opens to fix that, so it must not show
-                  a broken-image glyph. */}
-              <ClassImage
-                path={imagePreview}
-                alt={t('admin.classes.imagePreviewAlt', 'Class image preview')}
-                accent={form.accent_color || 'var(--color-accent)'}
-                loading="eager"
-                style={{ position: 'absolute', inset: 0 }}
-              />
-              {/* Two jobs, one button — because while a pick is staged the preset
-                  grid and the upload control are both hidden, so this ✕ is the
-                  ONLY way out. With a file staged it UNDOES the pick and restores
-                  what is actually stored; only then does a second press remove the
-                  cover. Clearing unconditionally meant "I picked the wrong photo"
-                  ended in the original being deleted from the bucket on save. */}
-              <button onClick={() => {
-                if (imageFile) {
-                  if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
-                  setImageFile(null);
-                  setImagePath(classData?.image_path ?? null);
-                  setImagePreview(classImageUrl(classData?.image_path) || classData?.image_url || '');
-                  return;
-                }
-                setImagePreview(''); setImagePath(null); setCoverPreset('');
-              }}
-                aria-label={t('admin.classes.removeImage', 'Remove image')}
-                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
-                <X size={14} />
-              </button>
-            </div>
-          ) : coverPreset ? (
-            <div className="relative mx-auto mb-3 aspect-square w-full max-w-[240px] rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-admin-border)' }}>
-              <CoverPreview preset={coverPreset} size="square" />
-              <button onClick={() => setCoverPreset('')}
-                aria-label={t('admin.classes.removeCover', 'Remove cover')}
-                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors">
-                <X size={14} />
-              </button>
-            </div>
-          ) : null}
-
-          {/* Preset grid */}
-          {!imagePreview && (
-            <>
-              <div className="grid grid-cols-4 gap-2 mb-2">
-                {CLASS_COVERS.map(c => {
-                  const Icon = c.icon;
-                  const selected = coverPreset === c.key;
-                  return (
-                    <button key={c.key} type="button"
-                      onClick={() => { setCoverPreset(c.key); setImageFile(null); setImagePreview(''); setImagePath(null); }}
-                      className={`rounded-xl p-2 flex flex-col items-center gap-1 transition-all ${selected ? 'ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg-card)] scale-[1.03]' : 'opacity-70 hover:opacity-100'}`}
-                      style={{ background: c.gradient }}>
-                      <Icon size={18} className="text-white/90" />
-                      <span className="text-[8px] font-bold text-white/80 uppercase tracking-wide">{t(c.labelKey)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Or upload custom */}
-              <label className="flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-dashed cursor-pointer transition-colors hover:opacity-80"
-                style={{ borderColor: 'var(--color-border-subtle)' }}>
-                <Upload size={14} style={{ color: 'var(--color-text-muted)' }} />
-                <span className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.uploadCustom', 'Or upload your own image')}</span>
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => { handleImageChange(e); setCoverPreset(''); }} />
-              </label>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center gap-3 mt-5">
-        <button onClick={onClose} className="flex-1 py-2.5 text-[13px] font-bold transition-colors hover:bg-[var(--color-bg-hover)]"
-          style={{ color: 'var(--color-admin-text-sub)', background: 'var(--color-bg-card)', border: '1px solid var(--color-admin-border)', borderRadius: 999 }}>
-          {tc('cancel')}
-        </button>
-        <button onClick={handleTranslateAndPreview} disabled={saving || translating || !form.name.trim()}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-[13px] font-bold disabled:opacity-50 transition-all hover:brightness-[1.04]"
-          style={{ backgroundColor: 'var(--color-accent)', color: '#fff', borderRadius: 999, boxShadow: '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' }}>
-          {(translating || saving) ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
-          {translating ? t('admin.classes.translating') : saving ? tc('saving') : tc('save')}
-        </button>
       </div>
     </AdminModal>
   );

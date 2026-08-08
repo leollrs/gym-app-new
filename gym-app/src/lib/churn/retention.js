@@ -13,6 +13,7 @@ import { DEFAULT_WEIGHTS, calculateChurnScore } from './riskScoring.js';
 import { calculateVelocity } from './metrics.js';
 import { signalTenureRiskV2 } from './churnSignalsV2.js';
 import { selectAllRows, selectAllInBatches, isMissingColumnError } from './batchedSelect.js';
+import { buildRhythm, dayOf } from './rhythm.js';
 
 /** @deprecated v2 tenure signal — kept only for legacy index.js re-export. */
 export function signalTenureRisk(tenureMonths, totalSessionsFirst90Days) {
@@ -31,9 +32,8 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const now = new Date();
   const nowMs = now.getTime();
   const ninetyDaysAgo = new Date(nowMs - 90 * MS_PER_DAY).toISOString();
-  const sixtyDaysAgo = new Date(nowMs - 60 * MS_PER_DAY).toISOString();
   const thirtyDaysAgo = new Date(nowMs - 30 * MS_PER_DAY).toISOString();
-  const fourteenDaysAgo = new Date(nowMs - 14 * MS_PER_DAY).toISOString();
+  const todayDay = dayOf(now);
 
   // ── 0. Per-gym adaptive weights (blended with defaults via confidence) ──
   let gymWeights = DEFAULT_WEIGHTS;
@@ -128,12 +128,15 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     notifRes,           // 90d notifications (app-engagement trajectory)
     challengeRes,       // challenge joins (timestamped, for trajectory + bonus)
     referralsRes,       // referrals (protective bonus)
-    bodyRes,            // 90d body logs (goal/progress trajectory)
+    // Se fue la consulta de body_weight_logs: alimentaba el eje «metas/PRs» de la
+    // Capa B de v3, que v4 no tiene. Una ida y vuelta menos por carga.
     historyRes,         // prior churn scores (score-history velocity for display)
   ] = await Promise.all([
     selectAllInBatches((ids, from, to) => supabase.from('check_ins')
       .select('profile_id, checked_in_at')
-      .eq('gym_id', gymId).gte('checked_in_at', sixtyDaysAgo).in('profile_id', ids)
+      // 90 días, no 60: buildRhythm necesita la serie entera de visitas para
+      // sacar el p90 de intervalos de cada socio, que es la vara de v4.
+      .eq('gym_id', gymId).gte('checked_in_at', ninetyDaysAgo).in('profile_id', ids)
       .order('checked_in_at', { ascending: false }).order('id', { ascending: true })
       .range(from, to), memberIds),
 
@@ -176,11 +179,6 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       .order('id', { ascending: true })
       .range(from, to), memberIds),
 
-    selectAllInBatches((ids, from, to) => supabase.from('body_weight_logs')
-      .select('profile_id, logged_at')
-      .eq('gym_id', gymId).gte('logged_at', ninetyDaysAgo).in('profile_id', ids)
-      .order('logged_at', { ascending: false }).order('id', { ascending: true })
-      .range(from, to), memberIds),
 
     // WINDOWED — and the window is load-bearing, not a performance tweak.
     //
@@ -215,33 +213,38 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const notifRows = notifRes.data || [];
   const challengeRows = challengeRes.data || [];
   const referralRows = referralsRes.data || [];
-  const bodyRows = bodyRes.data || [];
   const historyRows = historyRes.data || [];
 
   // ── Helpers: per-member counters bucketed into recent (0–30d) vs baseline (30–90d) ──
   const blank = () => ({ recent: 0, base: 0 });
   const ensure = (map, id) => (map[id] || (map[id] = blank()));
 
+  // ── Días con visita, por socio ──
+  // Check-in y entreno registrado el MISMO día son UNA visita. v3 los contaba
+  // por separado, así que a quien registraba sus entrenos se le inflaba la
+  // frecuencia y, con ella, todo lo que se derivaba de ella.
+  const visitDays = {};
+  const addVisitDay = (id, t) => {
+    if (!t) return;
+    (visitDays[id] || (visitDays[id] = new Set())).add(dayOf(t));
+  };
+
   // Check-ins: recency, observed footprint, weekly rates
   const lastCheckIn = {};
-  const ci30 = {}, ci14 = {}, ci14to60 = {}, ciTotal = {};
+  const ci30 = {}; // solo alimenta avgWeeklyVisits, que se pinta en la lista
   checkInRows.forEach((r) => {
     const id = r.profile_id, t = r.checked_in_at;
     if (!lastCheckIn[id]) lastCheckIn[id] = t;
-    ciTotal[id] = (ciTotal[id] || 0) + 1;
+    addVisitDay(id, t);
     if (t >= thirtyDaysAgo) ci30[id] = (ci30[id] || 0) + 1;
-    if (t >= fourteenDaysAgo) ci14[id] = (ci14[id] || 0) + 1;
-    if (t >= sixtyDaysAgo && t < fourteenDaysAgo) ci14to60[id] = (ci14to60[id] || 0) + 1;
   });
 
-  // Completed sessions: logging trajectory + recency
+  // Completed sessions: días de visita + recencia
   const lastSession = {};
-  const logging = {};
   session90Rows.forEach((r) => {
     const id = r.profile_id, t = r.started_at;
     if (!lastSession[id]) lastSession[id] = t;
-    const b = ensure(logging, id);
-    if (t >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
+    addVisitDay(id, t);
   });
 
   // All-time completed: totals + first-90-day count.
@@ -305,13 +308,6 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   });
 
   // Body logs → folded into goal/progress trajectory
-  const body = {};
-  bodyRows.forEach((r) => {
-    const id = r.profile_id, t = r.logged_at;
-    const b = ensure(body, id);
-    if (t >= thirtyDaysAgo) b.recent += 1; else b.base += 1;
-  });
-
   // Challenge joins → trajectory + active bonus
   const challenge = {};
   challengeRows.forEach((r) => {
@@ -328,23 +324,10 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
   const historyMap = {};
   historyRows.forEach((r) => { (historyMap[r.profile_id] || (historyMap[r.profile_id] = [])).push(r); });
 
-  // ── Cohort frequency percentile (self-tuning per gym) ──
-  // Binary search, not a linear walk. cohortPct is called once per member from the
-  // scoring map below, and the old `for (const v of allFreq)` scan made that
-  // O(members²) — 1000 members was ~500k comparisons, tolerable only because the
-  // member query was truncated at 1000. Un-truncating it (§1) removes that accidental
-  // ceiling, so a 5,000-member gym would have paid ~12.5M comparisons. Identical
-  // result: lower-bound index = count of cohort values strictly below f.
-  const allFreq = memberRows.map((m) => (ci30[m.id] || 0) / 4.33).sort((a, b) => a - b);
-  const cohortPct = (f) => {
-    if (!allFreq.length) return null;
-    let lo = 0, hi = allFreq.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (allFreq[mid] < f) lo = mid + 1; else hi = mid;
-    }
-    return lo / allFreq.length;
-  };
+  // El percentil de cohorte de v3 vivía aquí: ordenaba la frecuencia de TODO el
+  // gimnasio en cada carga para correr el ancla de 3×/semana ±2 según el cuartil.
+  // v4 no tiene ancla — cada socio se mide contra su propio ritmo — así que la
+  // cohorte no se consulta y el ordenamiento se fue con ella.
 
   // ── Build inputs + score ──
   const scored = memberRows.map((m) => {
@@ -364,51 +347,38 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
     const lastActivityAt = lastSeenMs > 0 ? new Date(lastSeenMs).toISOString() : null;
 
     const avgWeeklyVisits = (ci30[m.id] || 0) / 4.33;
-    const recentWeeklyRate = (ci14[m.id] || 0) / 2;                 // last 2 weeks
-    const baselineWeeklyRate = (ci14to60[m.id] || 0) / ((60 - 14) / 7); // ~6.57 wk window
     const totalSessions = totalSessionsMap[m.id] || 0;
-    const observedCheckIns = ciTotal[m.id] || 0;
-
-    const lg = logging[m.id] || blank();
+    const accountStartDay = dayOf(m.created_at);
     const sc = social[m.id] || blank();
     const pr = prs[m.id] || blank();
     const ap = appReads[m.id] || blank();
-    const bd = body[m.id] || blank();
     const ch = challenge[m.id] || blank();
 
+    // El ritmo propio del socio: de aquí sale la vara con la que se le mide.
+    const rhythm = buildRhythm([...(visitDays[m.id] || [])], todayDay);
+
+    // Exactamente lo que v4 lee, y nada más. La versión v3 de este objeto tenía
+    // dieciséis campos que el scorer ya no mira (ancla de frecuencia, percentil
+    // de cohorte, racha, seis ejes de declive) — dejarlos ahí no rompe nada pero
+    // hace creer que el modelo los usa, y uno de ellos costaba un ordenamiento
+    // de todo el gimnasio en cada carga.
     const memberData = {
+      rhythm,
+      // Visitas de sus primeras 3 semanas de cuenta — la activación de v4 es
+      // pisar el gimnasio, no registrar un entreno en la app.
+      visitsIn21d: [...(visitDays[m.id] || [])].filter((d) => d <= accountStartDay + 21).length,
       isPaused: m.membership_status === 'frozen' || (m.churn_pause_until != null && new Date(m.churn_pause_until).getTime() > nowMs),
-      tenureMonths,
-      // observation window since we could first see them (signup), import-safe activation gate
+      // Ventana de OBSERVACIÓN (desde created_at), no antigüedad de membresía:
+      // así un roster recién importado no marca a nadie el día uno.
       accountAgeDays: (nowMs - new Date(m.created_at).getTime()) / MS_PER_DAY,
-      totalSessions,
-      observedCheckIns,
-      daysSinceLastActivity,
-      // attendance
-      avgWeeklyVisits,
-      trainingFrequency: m.preferred_training_days?.length ?? 3, // mirror edge fn exactly
-      cohortPercentile: cohortPct(avgWeeklyVisits),
-      recentWeeklyRate,
-      baselineWeeklyRate,
-      // streak — deferred (neutral) in v1
-      streakActive: false,
-      brokenStreakLen: 0,
-      // onboarding regime
-      visitsSoFar: observedCheckIns,
-      firstWorkoutLogged: totalSessions > 0,
-      // engagement decline (baseline normalized to per-30d to match recent window)
-      logging:   { baseline: lg.base / 2, recent: lg.recent },
-      app:       { baseline: ap.base / 2, recent: ap.recent },
+      daysSinceLastActivity, // solo para el respaldo de la explicación
+      // La lente de app: corrobora, nunca constituye. Base normalizada a 30 días
+      // para que case con la ventana reciente.
       appActivity: { baseline: ap.base / 2, recent: ap.recent },
-      social:    { baseline: sc.base / 2, recent: sc.recent },
-      goalsPRs:  { baseline: (pr.base + bd.base) / 2, recent: pr.recent + bd.recent },
-      challenge: { baseline: ch.base / 2, recent: ch.recent },
-      rewards:   { baseline: null, recent: 0 }, // deferred → neutral
-      // protective bonuses
+      // Protección (multiplicativa, tope 15%)
       activeReferrer: (referralCount[m.id] || 0) >= 1,
       activeChallenge: ch.recent > 0,
       recentPRs: pr.recent > 0,
-      strongAppCard: (ap.recent >= 3) || (sc.recent >= 3),
       activeSocial: sc.recent > 0,
     };
 
@@ -435,6 +405,7 @@ export async function fetchMembersWithChurnScores(gymId, supabase) {
       keySignal: result.keySignal,
       primaryDriver: result.primaryDriver,
       explanation: result.explanation,
+      confidence: result.confidence,
       trend: result.trend,
       attRisk: result.attRisk,
       engRisk: result.engRisk,

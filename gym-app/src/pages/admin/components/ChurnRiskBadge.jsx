@@ -11,7 +11,11 @@ export default function ChurnRiskBadge({ member, navigate }) {
   const score = member.score ?? 0;
   const tier = getRiskTier(score);
   if (score < 30) return null;
-  const toneClass = score >= 80 ? 'admin-pill--hot' : score >= 55 ? 'admin-pill--hot' : 'admin-pill--warn';
+  // Del tier que getRiskTier ya devolvió dos líneas más arriba, en vez de
+  // repetir los umbrales. La versión anterior tenía las dos primeras ramas
+  // IDÉNTICAS (>=80 y >=55 daban las dos 'hot'), señal de que era una copia
+  // que nadie volvió a leer.
+  const toneClass = tier.tier === 'critical' || tier.tier === 'high' ? 'admin-pill--hot' : 'admin-pill--warn';
   const label = i18n.t(`admin.members.riskTier.${tier.tier}`, { ns: 'pages', defaultValue: tier.label });
   return (
     <span

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import SafeImg from '../components/SafeImg';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,6 +7,10 @@ import { tg } from '../lib/genderText';
 import { Trophy, Clock, ChevronDown, Zap, Dumbbell, Star, Users, Check, Flame, Gift, Swords, CheckCircle2, XCircle, Target, UserPlus, Crown, Search, CalendarDays, Share2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PROD_WEB_URL } from '../lib/appUrls';
+import { teamShareUrl } from '../lib/challengeLinks';
+import { metricUnit } from '../lib/admin/challengeConfig';
+import ChallengePrizeCelebration from '../components/ChallengePrizeCelebration';
+import ChallengeRoutineCTA from '../components/ChallengeRoutineCTA';
 import UserAvatar from '../components/UserAvatar';
 import { usePostHog } from '@posthog/react';
 import { supabase } from '../lib/supabase';
@@ -40,6 +44,17 @@ const statusOf = (c) => {
   if (isPast(new Date(c.end_date)))     return 'ended';
   return 'live';
 };
+
+// Un reto de CUMPLIMIENTO no se lee como una carrera: no importa el puesto,
+// importa si llegaste a la meta. Por eso escoge la tabla de club (barra hacia
+// la meta) en vez de la de posiciones. Se mira el FORMATO y no el tipo, porque
+// cualquier métrica puede correrse de las dos maneras: «quién viene más» y
+// «ven 12 veces» son ambas asistencia.
+//
+// El `|| type === 'milestone'` cubre los retos creados antes de que existiera
+// la columna, que eran de cumplimiento aunque no supieran decirlo.
+const isCompletionChallenge = (c) =>
+  c?.format === 'completion' || (!c?.format && c?.type === 'milestone');
 
 const TYPE_META = {
   consistency:   { labelKey: 'consistency',   icon: Dumbbell, unitKey: 'consistency'   },
@@ -834,6 +849,13 @@ const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
   const [loading, setLoading] = useState(!hasCachedState(clCacheKey));
   const status = statusOf(challenge);
   const threshold = challenge.milestone_target ? Number(challenge.milestone_target) : null;
+  // La unidad la manda la MÉTRICA, no el tipo de tabla. Esta tabla nació solo
+  // para el club (suma de récords, en lbs) y ahora la usa cualquier reto de
+  // cumplimiento: «ven 12 veces» salía como «12 lbs», que es justo el caso
+  // insignia del formato nuevo diciendo una tontería.
+  const unit = t(`challenges.typeUnits.${metricUnit(challenge)}`, {
+    defaultValue: { lbs: 'lbs', workouts: 'entrenos', prs: 'récords', visits: 'visitas', points: 'pts' }[metricUnit(challenge)] || '',
+  });
 
   const fetch = useCallback(async () => {
     const { data } = await supabase
@@ -890,18 +912,33 @@ const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
                 {madeClub ? t('challenges.club.achieved', 'Club Member!') : t('challenges.club.progress', 'Your Progress')}
               </p>
               <p className={`text-[24px] font-bold leading-tight mt-0.5 ${madeClub ? 'text-emerald-400' : 'text-[var(--color-accent,#2EC4C4)]'}`}>
-                {myEntry.score.toLocaleString()} <span className="text-[14px] font-normal">lbs</span>
+                {myEntry.score.toLocaleString()} <span className="text-[14px] font-normal">{unit}</span>
               </p>
             </div>
+            {/* Antes: «#7 en total». En un reto de cumplimiento el puesto no
+                decide nada — o llegas a la meta o no llegas — y decirle a
+                alguien que va séptimo cuando está a dos visitas de cobrar es
+                empujarle a dejarlo. Lo que mueve es cuánto FALTA. */}
             <div className="text-right">
-              <p className="text-[11px] text-[var(--color-text-muted)]">#{myRank + 1} {t('challenges.club.overall', 'overall')}</p>
-              {madeClub && <span className="text-[20px]">🏆</span>}
+              {madeClub ? (
+                <>
+                  <p className="text-[11px] text-emerald-400 font-semibold uppercase tracking-wider">{t('challenges.club.done', 'Logrado')}</p>
+                  <span className="text-[20px]">🏆</span>
+                </>
+              ) : threshold ? (
+                <>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">{t('challenges.club.remainingLabel', 'Te falta')}</p>
+                  <p className="text-[18px] font-bold text-[var(--color-text-primary)] mt-0.5 tabular-nums">
+                    {Math.max(0, threshold - myEntry.score).toLocaleString()} <span className="text-[12px] font-normal text-[var(--color-text-muted)]">{unit}</span>
+                  </p>
+                </>
+              ) : null}
             </div>
           </div>
           {threshold && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] text-[var(--color-text-muted)]">{t('challenges.club.threshold', 'Club Threshold')}: {threshold.toLocaleString()} lbs</span>
+                <span className="text-[11px] text-[var(--color-text-muted)]">{t('challenges.club.threshold', 'Club Threshold')}: {threshold.toLocaleString()} {unit}</span>
                 <span className="text-[11px] text-[var(--color-text-muted)]">{Math.min(100, Math.round((myEntry.score / threshold) * 100))}%</span>
               </div>
               <div className="h-2 bg-[var(--color-bg-secondary)] rounded-full overflow-hidden">
@@ -921,41 +958,59 @@ const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
         <p className="text-[13px] text-[var(--color-text-muted)] text-center py-6">{t('challenges.noOneJoined')}</p>
       ) : (
         <div className="space-y-3">
-          {/* Podium for ended club challenges with ≥3 entries */}
-          {status === 'ended' && entries.length >= 3 && (
-            <ChallengePodium entries={entries} unit="lbs" />
-          )}
-          {(status === 'ended' && entries.length >= 3 ? entries.slice(3, 20) : entries.slice(0, 20)).map((e, idx) => {
-            const i = status === 'ended' && entries.length >= 3 ? idx + 3 : idx;
+          {/* SIN PODIO Y SIN MEDALLAS, a propósito.
+              Esta tabla es la de los retos de CUMPLIMIENTO: gana todo el que
+              llega a la meta, y el que llega el último cobra igual que el
+              primero. Un podio de oro-plata-bronce encima decía justo lo
+              contrario — que había una carrera y que ibas tercero — y a quien
+              va por la mitad eso le dice que abandone cuando en realidad está a
+              dos visitas de cobrar. Lo que se resalta es HABER LLEGADO. */}
+          {entries.slice(0, 20).map((e, idx) => {
+            const i = idx;
             const isMe = e.id === myId;
             const aboveThreshold = threshold && e.score >= threshold;
+            // La raya de la meta va DONDE ESTÁ LA META: justo encima del primero
+            // que aún no ha llegado. Estaba pintada al final de toda la lista,
+            // debajo de gente que sí había llegado, así que no separaba nada.
+            const isFirstBelow = !!threshold && !aboveThreshold
+              && (idx === 0 || entries[idx - 1].score >= threshold);
             return (
-              <div key={e.id}
+              <Fragment key={e.id}>
+              {isFirstBelow && idx > 0 && (
+                <div className="flex items-center gap-3 py-1">
+                  <div className="flex-1 h-px bg-emerald-500/30" />
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider whitespace-nowrap">
+                    {threshold.toLocaleString()} {unit} · {t('challenges.club.clubLine', 'Meta')}
+                  </span>
+                  <div className="flex-1 h-px bg-emerald-500/30" />
+                </div>
+              )}
+              <div
                 className={`flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-colors ${
-                  isMe ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30' : 'bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)]'
+                  isMe ? 'bg-[var(--color-accent,#2EC4C4)]/10 border border-[var(--color-accent,#2EC4C4)]/30'
+                    : aboveThreshold ? 'bg-emerald-500/[0.07] border border-emerald-500/25'
+                    : 'bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)]'
                 }`}>
-                <div className="flex-shrink-0 w-8 text-center">
-                  {i < 3 ? <span className="text-[22px]">{MEDAL[i]}</span> : <span className="text-[16px] font-bold text-[var(--color-text-muted)]">{i + 1}</span>}
+                <div className="flex-shrink-0 w-8 flex items-center justify-center">
+                  {aboveThreshold
+                    ? <Check size={20} strokeWidth={3} className="text-emerald-400" />
+                    : <span className="text-[16px] font-bold text-[var(--color-text-muted)] tabular-nums">{i + 1}</span>}
                 </div>
                 <p className={`flex-1 text-[14px] font-semibold truncate ${isMe ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
                   {e.name}
                   {isMe && <span className="ml-1.5 text-[10px] font-bold text-[var(--color-accent,#2EC4C4)] bg-[var(--color-accent,#2EC4C4)]/10 px-1.5 py-0.5 rounded-full">{t('challenges.you')}</span>}
                 </p>
-                <p className={`text-[14px] font-bold flex-shrink-0 ${isMe ? 'text-[var(--color-accent,#2EC4C4)]' : 'text-[var(--color-text-primary)]'}`}>
-                  {e.score.toLocaleString()} <span className="text-[11px] font-medium text-[var(--color-text-muted)]">lbs</span>
+                <p className={`text-[14px] font-bold flex-shrink-0 tabular-nums ${isMe ? 'text-[var(--color-accent,#2EC4C4)]' : aboveThreshold ? 'text-emerald-400' : 'text-[var(--color-text-primary)]'}`}>
+                  {/* «8 / 12 visitas», no «8 visitas»: en un reto de meta el
+                      número solo significa algo al lado de la meta. */}
+                  {e.score.toLocaleString()}
+                  {threshold ? <span className="text-[var(--color-text-muted)] font-medium"> / {threshold.toLocaleString()}</span> : null}
+                  {' '}<span className="text-[11px] font-medium text-[var(--color-text-muted)]">{unit}</span>
                 </p>
-                {aboveThreshold && <span className="text-[14px] flex-shrink-0" title={t('challenges.club.clubMember', { defaultValue: 'Club member' })}>✅</span>}
               </div>
+              </Fragment>
             );
           })}
-          {/* Threshold line indicator */}
-          {threshold && entries.some(e => e.score >= threshold) && entries.some(e => e.score < threshold) && (
-            <div className="flex items-center gap-3 py-1">
-              <div className="flex-1 h-px bg-[var(--color-accent,#2EC4C4)]/30" />
-              <span className="text-[10px] font-bold text-[var(--color-accent,#2EC4C4)] uppercase tracking-wider whitespace-nowrap">— {threshold.toLocaleString()} lb {t('challenges.club.clubLine', 'Club')} —</span>
-              <div className="flex-1 h-px bg-[var(--color-accent,#2EC4C4)]/30" />
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -963,9 +1018,13 @@ const ClubLeaderboard = ({ challenge, myId, t, refreshKey }) => {
 };
 
 // ── Team Formation Modal ──────────────────────────────────
-const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t }) => {
+const TeamFormationModal =({ challenge, gymId, userId, onTeamJoined, onClose, t, focusTeamId = null }) => {
   const { showToast } = useToast();
-  const [step, setStep] = useState('choose'); // 'choose' | 'create' | 'invites'
+  // El nombre del gimnasio sale del contexto y no de una prop: hay tres
+  // tarjetas distintas que montan este modal, y encadenar la misma prop por las
+  // tres es justo como se desincronizan.
+  const { gymName } = useAuth();
+  const [step, setStep] = useState('choose'); // 'choose' | 'create'
   const [teamName, setTeamName] = useState('');
   const [friends, setFriends] = useState([]);
   const [selectedFriends, setSelectedFriends] = useState([]);
@@ -973,7 +1032,49 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
   const [myInvites, setMyInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [createdTeam, setCreatedTeam] = useState(null);
   const maxMembers = challenge.team_size || 2;
+
+  // Compartir el equipo. Se copia/comparte el enlace directo; quien lo abra cae
+  // en este mismo modal con ese equipo señalado y a un toque de entrar.
+  const shareTeam = async (team) => {
+    const url = teamShareUrl(challenge.id, team.team_id || team.id);
+    const gym = gymName || 'TuGymPR';
+    const text = t('challenges.team.shareText', {
+      team: team.team_name || team.name, challenge: challenge.name, gym,
+      defaultValue: `Join my team "${team.team_name || team.name}" in ${challenge.name} on ${gym}`,
+    });
+    try {
+      if (navigator.share) await navigator.share({ title: team.team_name || team.name, text, url });
+      else {
+        await navigator.clipboard?.writeText(`${text} ${url}`);
+        showToast(t('challenges.team.linkCopied', 'Team link copied'), 'success');
+      }
+    } catch { /* el usuario canceló */ }
+  };
+
+  // Entrar a un equipo que ya existe. Es la misma inserción que ya hace aceptar
+  // una invitación — lo que faltaba era poder llegar aquí sin ser amigo de
+  // nadie, que es justo lo que el enlace resuelve.
+  const joinTeam = async (team) => {
+    if (saving) return;
+    if (team.member_count >= maxMembers) {
+      showToast(t('challenges.team.teamFull', 'That team is already full'), 'error');
+      return;
+    }
+    setSaving(true);
+    const { error: joinErr } = await supabase.from('challenge_participants')
+      .insert({ challenge_id: challenge.id, profile_id: userId, gym_id: gymId, team_id: team.team_id, score: 0 });
+    if (joinErr) {
+      showToast(t('challenges.team.joinError', { defaultValue: 'Failed to join team' }), 'error');
+      setSaving(false);
+      return;
+    }
+    posthogClient?.capture('challenge_team_joined', { via: focusTeamId === team.team_id ? 'link' : 'list' });
+    setSaving(false);
+    onTeamJoined();
+    onClose();
+  };
 
   // Lock body scroll while team formation modal is mounted
   useEffect(() => {
@@ -991,7 +1092,11 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
         supabase.from('challenge_team_invites').select('*, team:challenge_teams(id, name, challenge_id)')
           .eq('invitee_id', userId).eq('status', 'pending'),
       ]);
-      setExistingTeams((teamsRes.data || []).filter(t => t.member_count < maxMembers));
+      // El equipo del enlace primero: quien llega invitado no debería tener que
+      // buscar el suyo en una lista.
+      const open = (teamsRes.data || []).filter(t => t.member_count < maxMembers);
+      open.sort((a, b) => (b.team_id === focusTeamId) - (a.team_id === focusTeamId));
+      setExistingTeams(open);
       // Member RLS (migration 0289) blocks the embedded profiles!fkey join from
       // returning the OTHER member's row, so the friend-picker came back empty.
       // Resolve friend identities through the owner-read, same-gym-safe view.
@@ -1003,7 +1108,7 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
       setLoading(false);
     };
     load();
-  }, [challenge.id, userId, maxMembers]);
+  }, [challenge.id, userId, maxMembers, focusTeamId]);
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) return;
@@ -1055,7 +1160,11 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
     }
     setSaving(false);
     onTeamJoined();
-    onClose();
+    // No se cierra: acabas de crear el equipo y este es EL momento en que
+    // quieres el enlace para mandarlo. Cerrar aquí obligaba a volver a entrar
+    // a buscarlo — y antes ni siquiera existía.
+    setCreatedTeam({ team_id: team.id, team_name: teamName.trim() });
+    setStep('created');
   };
 
   const handleAcceptInvite = async (invite) => {
@@ -1142,6 +1251,54 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
           </div>
         )}
 
+        {/* Equipos que ya existen y tienen sitio.
+            Esta lista se cargaba desde el primer día y NO SE PINTABA en ningún
+            sitio: sin ser amigo del capitán y sin invitación, no había manera
+            de entrar a un equipo. Ahora se ve, y el que llega por enlace la ve
+            con el suyo señalado arriba. */}
+        {step === 'choose' && existingTeams.length > 0 && (
+          <div className="mb-5">
+            <p className="text-[12px] font-semibold text-[var(--color-accent,#2EC4C4)] uppercase tracking-wider mb-3">
+              {focusTeamId
+                ? t('challenges.team.invitedToTeam', 'Te invitaron a este equipo')
+                : t('challenges.team.openTeams', 'Equipos con sitio')}
+            </p>
+            <div className="space-y-2">
+              {existingTeams.map(team => {
+                const focused = focusTeamId === team.team_id;
+                return (
+                  <div key={team.team_id}
+                    className="flex items-center gap-3 rounded-xl px-4 py-3"
+                    style={{
+                      background: focused ? 'color-mix(in srgb, var(--color-accent, #2EC4C4) 10%, transparent)' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${focused ? 'var(--color-accent, #2EC4C4)' : 'var(--color-border-default)'}`,
+                    }}>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'color-mix(in srgb, var(--color-accent, #2EC4C4) 12%, transparent)' }}>
+                      <Users size={16} className="text-[var(--color-accent,#2EC4C4)]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate">{team.team_name}</p>
+                      <p className="text-[11px] text-[var(--color-text-muted)]">
+                        {t('challenges.team.slots', {
+                          n: team.member_count, max: maxMembers,
+                          defaultValue: '{{n}} de {{max}} · quedan {{left}}',
+                          left: maxMembers - team.member_count,
+                        })}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => joinTeam(team)} disabled={saving}
+                      className="ml-auto px-3 py-1.5 rounded-lg text-[12px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50 flex-shrink-0"
+                      style={{ background: 'var(--color-accent,#2EC4C4)' }}>
+                      {t('challenges.team.join', 'Unirme')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {step === 'choose' && (
           <div className="space-y-3">
             <button type="button" onClick={() => setStep('create')}
@@ -1199,6 +1356,39 @@ const TeamFormationModal = ({ challenge, gymId, userId, onTeamJoined, onClose, t
               <button type="button" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}
                 className="flex-1 py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-on-accent,#000)] disabled:opacity-50" style={{ background: 'var(--color-accent,#2EC4C4)' }}>
                 {saving ? '...' : t('challenges.team.create', 'Create & Join')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Equipo recién creado — el enlace, aquí y ahora. */}
+        {step === 'created' && createdTeam && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-2xl px-4 py-3.5"
+              style={{ background: 'color-mix(in srgb, var(--color-accent, #2EC4C4) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-accent, #2EC4C4) 24%, transparent)' }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'color-mix(in srgb, var(--color-accent, #2EC4C4) 14%, transparent)' }}>
+                <Check size={18} className="text-[var(--color-accent,#2EC4C4)]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold text-[var(--color-text-primary)] truncate">{createdTeam.team_name}</p>
+                <p className="text-[12px] text-[var(--color-text-muted)]">
+                  {t('challenges.team.roomFor', { n: maxMembers - 1, defaultValue: 'Caben {{n}} más' })}
+                </p>
+              </div>
+            </div>
+            <p className="text-[12.5px] leading-relaxed text-[var(--color-text-muted)]">
+              {t('challenges.team.shareHint', 'Manda este enlace por WhatsApp: quien lo abra entra directo a tu equipo, sea o no tu amigo en la app.')}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={() => shareTeam(createdTeam)}
+                className="w-full py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-on-accent,#000)] inline-flex items-center justify-center gap-2"
+                style={{ background: 'var(--color-accent,#2EC4C4)' }}>
+                <Share2 size={15} /> {t('challenges.team.shareLink', 'Compartir enlace del equipo')}
+              </button>
+              <button type="button" onClick={onClose}
+                className="w-full py-3 rounded-xl text-[13px] font-bold text-[var(--color-text-muted)] bg-[var(--color-bg-secondary)] border border-[var(--color-border-default)]">
+                {t('challenges.team.done', 'Listo')}
               </button>
             </div>
           </div>
@@ -1584,10 +1774,16 @@ const FeaturedHeroCard = ({ challenge, gymId, myId, joined, participantCount, fr
             ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
             : challenge.type === 'team'
               ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
-              : challenge.type === 'milestone'
+              : isCompletionChallenge(challenge)
                 ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                 : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
           }
+          {/* La rutina que propone el reto: entrenarla ya, o meterla en la
+              semana. Va dentro del detalle porque ahí es donde el socio está
+              decidiendo si entra y qué tiene que hacer. */}
+          {joined && (
+            <ChallengeRoutineCTA challenge={challenge} userId={myId} gymId={gymId} />
+          )}
         </ChallengeDetailModal>
       )}
 
@@ -1785,10 +1981,16 @@ const ChallengeCard = ({ challenge, gymId, myId, joined, participantCount, onJoi
             ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
             : challenge.type === 'team'
               ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
-              : challenge.type === 'milestone'
+              : isCompletionChallenge(challenge)
                 ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                 : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
           }
+          {/* La rutina que propone el reto: entrenarla ya, o meterla en la
+              semana. Va dentro del detalle porque ahí es donde el socio está
+              decidiendo si entra y qué tiene que hacer. */}
+          {joined && (
+            <ChallengeRoutineCTA challenge={challenge} userId={myId} gymId={gymId} />
+          )}
         </ChallengeDetailModal>
       )}
 
@@ -1955,7 +2157,7 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
                 </p>
                 {challenge.type === 'team'
                   ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
-                  : challenge.type === 'milestone'
+                  : isCompletionChallenge(challenge)
                     ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                     : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                 }
@@ -1986,7 +2188,7 @@ const DiscoverCard = ({ challenge, gymId, myId, joined, participantCount, onJoin
                 ? <ParticipantList challengeId={challenge.id} t={t} refreshKey={joined} />
                 : challenge.type === 'team'
                   ? <TeamLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
-                  : challenge.type === 'milestone'
+                  : isCompletionChallenge(challenge)
                     ? <ClubLeaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
                     : <Leaderboard challenge={challenge} myId={myId} t={t} refreshKey={joined} />
               }
@@ -2323,8 +2525,12 @@ export default function Challenges({ embedded = false }) {
         // status filter: drafts/archived are admin-side states — members only
         // ever see launched challenges (live/upcoming/ended tabs come from
         // dates via statusOf, which assumes the row was actually published).
-        const { data: cData } = await supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id, exercise_id, scoring_metric, team_size, exercise_ids, milestone_target, status').eq('gym_id', profile.gym_id).in('status', ['active', 'completed']).order('start_date', { ascending: false }).limit(50);
+        const { data: cData, error: cErr } = await supabase.from('challenges').select('id, name, description, type, start_date, end_date, reward_description, gym_id, exercise_id, scoring_metric, team_size, exercise_ids, milestone_target, format, workout_template_id, program_id, status').eq('gym_id', profile.gym_id).in('status', ['active', 'completed']).order('start_date', { ascending: false }).limit(50);
         if (cancelled) return;
+        // Un fallo de la consulta NO puede escribir una lista vacía: este estado
+        // se respalda en localStorage, así que «no hay retos» se quedaría pegado
+        // y el socio leería eso en un gimnasio lleno de retos vivos.
+        if (cErr) { setLoading(false); return; }
         setChallenges(cData || []);
       } finally {
         if (!cancelled) setLoading(false);
@@ -2430,6 +2636,31 @@ export default function Challenges({ embedded = false }) {
       try { document.getElementById(`ch-${cid}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { /* noop */ }
     }, 300);
   }, [loading, challenges, location.search]);
+
+  // Enlace de EQUIPO: /challenges?challenge=<id>&team=<teamId>.
+  //
+  // Hasta ahora, para entrar a un equipo había que ser amigo aceptado del
+  // capitán Y recibir una invitación nominal. O sea: el reto por equipos no se
+  // podía llenar con la gente del gimnasio a la que uno le escribe por
+  // WhatsApp, que es exactamente como se arman los equipos en un gimnasio.
+  // El enlace abre el modal con ese equipo señalado y a un toque de entrar.
+  const [linkTeam, setLinkTeam] = useState(null);
+  const handledTeamRef = useRef(null);
+  useEffect(() => {
+    if (loading || !challenges.length) return;
+    let cid = null, tid = null;
+    try {
+      const q = new URLSearchParams(location.search);
+      cid = q.get('challenge'); tid = q.get('team');
+    } catch { /* noop */ }
+    if (!cid || !tid || handledTeamRef.current === tid) return;
+    const target = challenges.find(c => c.id === cid);
+    // Solo si tiene sentido: reto de equipos, vivo, y sin haberse unido ya.
+    if (!target || target.type !== 'team' || myJoinedIds.has(target.id)) return;
+    if (statusOf(target) === 'ended') return;
+    handledTeamRef.current = tid;
+    setLinkTeam({ challenge: target, teamId: tid });
+  }, [loading, challenges, location.search, myJoinedIds]);
 
   // Invite a friend to a challenge — shares a deep link that opens the app
   // straight on this challenge (App.jsx routes /challenge/:id → the
@@ -2730,6 +2961,25 @@ export default function Challenges({ embedded = false }) {
           </SwipeableTabView>
         )}
       </div>
+
+      {/* Se reparte solo al cerrar el reto (migración 0707); esto es lo primero
+          que ve el ganador al entrar. */}
+      <ChallengePrizeCelebration userId={user?.id} t={t} lang={i18n.language} />
+
+      {/* Alguien abrió un enlace de equipo. Se monta aquí y no dentro de una
+          tarjeta porque el reto puede estar en otra pestaña, o ni siquiera
+          visible todavía cuando llega el enlace. */}
+      {linkTeam && (
+        <TeamFormationModal
+          challenge={linkTeam.challenge}
+          gymId={profile?.gym_id}
+          userId={user?.id}
+          focusTeamId={linkTeam.teamId}
+          onTeamJoined={() => { setLinkTeam(null); handleJoin(null); }}
+          onClose={() => setLinkTeam(null)}
+          t={t}
+        />
+      )}
     </div>
   );
 }

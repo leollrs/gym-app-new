@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Trophy, Megaphone, Dumbbell, Zap, UserPlus, CheckCheck, ChevronLeft, X, Trash2, Calendar, Gift, Target, TrendingUp } from 'lucide-react';
+import { Bell, Trophy, Megaphone, Dumbbell, Zap, UserPlus, CheckCheck, ChevronLeft, X, Trash2, Calendar, Gift, Target, TrendingUp, Star } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications, useInvalidate } from '../hooks/useSupabaseQuery';
@@ -30,6 +30,10 @@ const TYPE_META = {
   class_booking:    { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
   session_reminder: { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
   class_reminder:   { icon: Calendar, color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
+  // La valoración de una clase no es «tienes clase»: pide una acción, no avisa
+  // de una fecha. Estrella, y con el acento del gimnasio para que se distinga
+  // del azul del resto de avisos de clase.
+  class_review:     { icon: Star,     color: 'text-[var(--color-accent)]', bg: 'bg-[var(--color-accent)]/10' },
   reward:           { icon: Gift,     color: 'text-amber-400',   bg: 'bg-amber-500/10'   },
   goal:             { icon: Target,   color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
   weekly_summary:   { icon: TrendingUp, color: 'text-[var(--color-accent)]', bg: 'bg-[var(--color-accent)]/10' },

@@ -217,7 +217,21 @@ export default function WinBackModal({ member, gymId, adminId, activeCampaign, o
           attemptRow.variant = assignedVariant;
           attemptRow.message_template = activeCampaign.id;
         }
-        const { error: attemptErr } = await supabase.from('win_back_attempts').insert(attemptRow);
+        // El canje ya se rastrea solo ('pending' al regalarlo -> 'claimed' al
+        // escanear el QR en el gimnasio). Esto es el hilo que lo ata a ESTE
+        // envío; sin él solo queda `offer`, que es el nombre del premio y no
+        // distingue a dos socios que recibieron el mismo. (mig 0706)
+        if (redemptionId) attemptRow.redemption_id = redemptionId;
+
+        let { error: attemptErr } = await supabase.from('win_back_attempts').insert(attemptRow);
+        // 0706 sin aplicar -> la columna no existe y PostgREST rechaza el insert
+        // entero. Quedarse sin el vínculo es malo; quedarse sin el intento es
+        // peor, porque ese es el denominador del embudo. Reintenta sin él.
+        if (attemptErr && redemptionId) {
+          logger.error('win_back_attempts: redemption_id rechazado (¿0706 sin aplicar?), reintentando sin vínculo', attemptErr);
+          delete attemptRow.redemption_id;
+          ({ error: attemptErr } = await supabase.from('win_back_attempts').insert(attemptRow));
+        }
         if (attemptErr) logger.error('win_back_attempts insert failed:', attemptErr);
       } catch (e) { logger.error('win_back_attempts failed:', e); }
 

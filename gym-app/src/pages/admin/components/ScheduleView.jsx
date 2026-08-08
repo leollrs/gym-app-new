@@ -3,7 +3,12 @@ import { Calendar, CalendarDays, Repeat, Edit3, Trash2, Users, Clock, ChevronLef
 
 const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
 const MONO_FONT = '"JetBrains Mono", ui-monospace, monospace';
-const fmtISO = (d) => d.toISOString().slice(0, 10);
+// Fecha LOCAL, no UTC. `toISOString()` convierte a UTC antes de cortar, así que
+// en Puerto Rico (UTC-4) a partir de las 8 de la noche devolvía el día
+// siguiente: el calendario redondeaba mañana como «hoy», «Hoy» saltaba al día
+// equivocado y la vista de día abría en el día que no era. Todas las noches.
+const fmtISO = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** Pill segmented control (Día / Semana / Mes). */
 function Segmented({ items, active, onSelect }) {
@@ -180,6 +185,9 @@ export default function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc
 
   const dowHeaders = [t('admin.classes.daySun', 'D'), t('admin.classes.dayMon', 'L'), t('admin.classes.dayTue', 'M'), t('admin.classes.dayWed', 'X'), t('admin.classes.dayThu', 'J'), t('admin.classes.dayFri', 'V'), t('admin.classes.daySat', 'S')];
 
+  // Se rellenan los huecos del principio Y del final para que el mes salga
+  // siempre como un rectángulo completo. Con la rejilla a cajas, media semana
+  // sin celdas deja el borde de abajo cortado a la mitad.
   const monthGrid = useMemo(() => {
     if (viewMode !== 'month') return [];
     const y = anchor.getFullYear(), m = anchor.getMonth();
@@ -188,6 +196,7 @@ export default function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc
     const cells = [];
     for (let i = 0; i < firstDay; i++) cells.push(null);
     for (let d = 1; d <= total; d++) cells.push(new Date(y, m, d));
+    while (cells.length % 7 !== 0) cells.push(null);
     return cells;
   }, [viewMode, anchor]);
 
@@ -240,37 +249,69 @@ export default function ScheduleView({ classes, onEditClass, onDeleteSlot, t, tc
       {/* Month → calendar grid; Day/Week → day list */}
       {viewMode === 'month' ? (
         <>
-          <div>
-            <div className="grid grid-cols-7 mb-1">
+          {/* Rejilla de mes con celdas de verdad. Antes eran números sueltos
+              flotando en el vacío: sin las líneas, la vista no se leía como un
+              calendario y el número de clases del día era un 8px que había que
+              acercarse a mirar.
+
+              Los bordes no se doblan porque el marco exterior lo pone el
+              contenedor y cada celda solo dibuja el suyo de la derecha y el de
+              abajo. */}
+          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-admin-border)' }}>
+            <div className="grid grid-cols-7" style={{ background: 'var(--color-admin-panel)' }}>
               {dowHeaders.map((dh, i) => (
-                <div key={i} className="text-center" style={{ fontFamily: MONO_FONT, fontSize: 11.5, fontWeight: 600, letterSpacing: '1px', color: 'var(--color-admin-text-faint)', padding: '4px 0' }}>{dh}</div>
+                <div key={i} className="text-center" style={{
+                  fontFamily: MONO_FONT, fontSize: 11.5, fontWeight: 700, letterSpacing: '1px',
+                  color: 'var(--color-admin-text-faint)', padding: '7px 0',
+                  borderRight: i < 6 ? '1px solid var(--color-admin-border)' : 'none',
+                  borderBottom: '1px solid var(--color-admin-border)',
+                }}>{dh}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-y-0.5">
+            <div className="grid grid-cols-7">
               {monthGrid.map((d, i) => {
-                if (!d) return <div key={`e-${i}`} />;
+                const lastCol = i % 7 === 6;
+                const lastRow = i >= monthGrid.length - 7;
+                const edges = {
+                  borderRight: lastCol ? 'none' : '1px solid var(--color-admin-border)',
+                  borderBottom: lastRow ? 'none' : '1px solid var(--color-admin-border)',
+                };
+                // Hueco de relleno: se pinta la caja igual, apagada, para que la
+                // cuadrícula sea un rectángulo y no una escalera.
+                if (!d) return (
+                  <div key={`e-${i}`} style={{ ...edges, minHeight: 62, background: 'color-mix(in srgb, var(--color-admin-border) 22%, transparent)' }} />
+                );
                 const iso = fmtISO(d);
                 const count = slotsForDate(d).length;
                 const isToday = iso === todayStr;
                 const sel = monthSelectedDate === iso;
                 return (
-                  <button key={iso} onClick={() => setMonthSelectedDate(prev => prev === iso ? null : iso)} className="flex flex-col items-center py-1">
+                  <button key={iso} onClick={() => setMonthSelectedDate(prev => prev === iso ? null : iso)}
+                    className="flex flex-col items-start text-left transition-colors"
+                    style={{
+                      ...edges, minHeight: 62, padding: '6px 7px',
+                      background: sel
+                        ? 'color-mix(in srgb, var(--color-accent) 15%, transparent)'
+                        : isToday ? 'color-mix(in srgb, var(--color-accent) 6%, transparent)' : 'transparent',
+                      boxShadow: sel ? 'inset 0 0 0 1.5px var(--color-accent)' : 'none',
+                    }}>
                     <span className="grid place-items-center" style={{
-                      minWidth: 34, height: 32, padding: '0 8px', borderRadius: 999,
-                      fontFamily: MONO_FONT, fontSize: 14, fontWeight: (isToday || sel) ? 700 : 500,
-                      color: sel ? '#fff' : isToday ? 'var(--color-accent)' : (count > 0 ? 'var(--color-admin-text)' : 'var(--color-admin-text-muted)'),
-                      background: sel ? 'var(--color-accent)' : 'transparent',
-                      border: `1.5px solid ${isToday && !sel ? 'color-mix(in srgb, var(--color-accent) 35%, transparent)' : 'transparent'}`,
-                      boxShadow: sel ? '0 2px 8px color-mix(in srgb, var(--color-accent) 32%, transparent)' : 'none',
+                      minWidth: 22, height: 22, borderRadius: 999,
+                      fontFamily: MONO_FONT, fontSize: 13, fontWeight: (isToday || sel) ? 800 : 500,
+                      color: isToday ? 'var(--color-text-on-accent)' : count > 0 ? 'var(--color-admin-text)' : 'var(--color-admin-text-faint)',
+                      background: isToday ? 'var(--color-accent)' : 'transparent',
                     }}>{d.getDate()}</span>
-                    <span style={{ height: 8, marginTop: 2 }}>
-                      {count > 0 && (
-                        <span className="inline-flex items-center gap-0.5">
-                          <span className="rounded-full" style={{ width: 4, height: 4, background: 'var(--color-accent)' }} />
-                          <span style={{ fontFamily: MONO_FONT, fontSize: 8, fontWeight: 700, color: 'var(--color-admin-text-muted)' }}>{count}</span>
+                    {count > 0 && (
+                      <span className="inline-flex items-baseline gap-1 mt-auto" style={{
+                        padding: '2px 7px', borderRadius: 7,
+                        background: 'color-mix(in srgb, var(--color-accent) 16%, transparent)',
+                      }}>
+                        <span style={{ fontFamily: MONO_FONT, fontSize: 13, fontWeight: 800, color: 'var(--color-accent)', lineHeight: 1 }}>{count}</span>
+                        <span className="hidden sm:inline" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase', color: 'color-mix(in srgb, var(--color-accent) 72%, transparent)' }}>
+                          {count === 1 ? t('admin.classes.classOne', 'clase') : t('admin.classes.classMany', 'clases')}
                         </span>
-                      )}
-                    </span>
+                      </span>
+                    )}
                   </button>
                 );
               })}

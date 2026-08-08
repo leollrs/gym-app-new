@@ -242,6 +242,39 @@ serve(async (req) => {
       });
     }
 
+    // ── DESACTIVADA A PROPÓSITO (v4, 2026-08-07) ──────────────────────────
+    //
+    // Esta función entrena contra `churn_outcomes.signal_snapshot` y escribe las
+    // columnas `w_*` de v2 en `gym_churn_weights`. Con v4 nada de eso encaja:
+    //
+    //   · el scorer v4 lee `w_gap`, `w_drop`, `w_floor`, `w_habit`,
+    //     `w_onboarding_recency`, `w_activation`, `w_app_withdrawal` — columnas
+    //     que esta función NO escribe, así que lo que produzca es inerte;
+    //   · los `signal_snapshot` que se guardan desde 0705 son métricas de ritmo
+    //     (g90, caída, tasa semanal), no puntuaciones de señales v3, así que
+    //     entrenaría sobre columnas que no existen en esas filas;
+    //   · y las etiquetas de antes de 0705 son CIRCULARES — definían «se fue»
+    //     como `daysSinceActivity >= 30`, que es la propia entrada del modelo.
+    //     Entrenar con ellas reforzaría justo el sesgo de recencia que v4 quita.
+    //
+    // Además la calibración POR GIMNASIO está descartada por diseño: necesita
+    // ~200 desenlaces etiquetados, que a ~15/mes son trece meses, y sobreajusta.
+    // La diferencia entre gimnasios ya entra por el `g90` de cada socio. Si algún
+    // día se calibra, será agrupando gimnasios y contra `source='observed_lapse'`.
+    //
+    // Se apaga aquí, en la puerta, en vez de dejarlo documentado en un markdown:
+    // era inerte por casualidad —porque los nombres de columna no coinciden— y
+    // esa es una casualidad que el próximo cambio de esquema puede deshacer.
+    // Interruptor y no `return` a secas para que el cuerpo siga siendo código
+    // vivo (y siga compilando) el día que alguien lo reescriba contra
+    // `source='observed_lapse'` y las columnas w_* de v4.
+    if (Deno.env.get('CHURN_CALIBRATION_ENABLED') !== 'true') {
+      return new Response(JSON.stringify({
+        status: 'disabled',
+        reason: 'Calibration is disabled for churn model v4. See src/lib/churn/MODEL_V4_SPEC.md §9.',
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const results: any[] = [];
 
     for (const gym of gyms) {

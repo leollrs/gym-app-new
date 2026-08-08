@@ -51,6 +51,13 @@ const STRINGS = {
     scanWithPhone: 'Scan with your phone camera',
     membersIn: 'members in',
     memberIn: 'member in',
+    // Completion challenges — everyone who reaches the target wins, so the
+    // slide can't talk about first place.
+    goalChallenge: 'Goal Challenge',
+    reachTarget: 'Reach',
+    alreadyMadeIt: 'already made it',
+    firstToFinish: 'Be the first to finish',
+    everyoneWhoFinishes: 'Everyone who finishes',
     // Metric labels (override TV_METRIC_DEFS in EN; keeps consistency)
     metric_volume: 'Volume',
     metric_workouts: 'Workouts',
@@ -134,6 +141,11 @@ const STRINGS = {
     scanWithPhone: 'Escanea con la cámara de tu celular',
     membersIn: 'miembros dentro',
     memberIn: 'miembro dentro',
+    goalChallenge: 'Reto de Cumplimiento',
+    reachTarget: 'Llega a',
+    alreadyMadeIt: 'ya lo lograron',
+    firstToFinish: 'Sé el primero en lograrlo',
+    everyoneWhoFinishes: 'Todo el que llegue',
     metric_volume: 'Volumen',
     metric_workouts: 'Sesiones',
     metric_prs: 'Top PRs',
@@ -215,4 +227,24 @@ export function tvPeriodLabel(lang, periodKey) {
     case 'month':
     default:      return s.period_30;
   }
+}
+
+// La unidad en la que se cuenta un reto, para la línea «Llega a 12 ___».
+//
+// Vive aquí y no en `challengeConfig` porque la TV corre SIN sesión: no puede
+// tocar i18next, que depende del idioma del perfil. Es el mismo motivo por el
+// que existe todo este diccionario.
+const CHALLENGE_UNIT = {
+  consistency:   'unit_sessions',
+  volume:        'unit_lbs',
+  pr_count:      'unit_records',
+  specific_lift: 'unit_lbs',
+  milestone:     'unit_lbs',
+  check_in:      'unit_visits',
+  team:          'unit_sessions',
+};
+
+export function tvChallengeUnit(lang, type) {
+  const s = getTvStrings(lang);
+  return s[CHALLENGE_UNIT[type] || 'unit_sessions'];
 }

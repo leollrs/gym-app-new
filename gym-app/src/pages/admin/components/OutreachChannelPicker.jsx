@@ -45,7 +45,7 @@ function PillToggle({ on, disabled }) {
   );
 }
 
-export default function OutreachChannelPicker({ value, onChange, t, lockedToEmail = false }) {
+export default function OutreachChannelPicker({ value, onChange, t, lockedToEmail = false, reachFor }) {
   const set = (key, on) => onChange({ ...value, [key]: on });
 
   const channels = [
@@ -128,8 +128,11 @@ export default function OutreachChannelPicker({ value, onChange, t, lockedToEmai
                 <p className="text-[13.5px] font-bold truncate" style={{ color: 'var(--color-text-primary)', letterSpacing: '-0.2px' }}>
                   {ch.label}
                 </p>
+                {/* El alcance real gana a la descripción fija: «Miembros con
+                    correo registrado» vale igual para un gimnasio de 10 que
+                    para uno de 900, y no dice a cuántos deja fuera. */}
                 <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
-                  {ch.desc}
+                  {reachFor?.(ch.key) || ch.desc}
                 </p>
               </div>
               <PillToggle on={on} disabled={ch.disabled && !ch.forceOn} />

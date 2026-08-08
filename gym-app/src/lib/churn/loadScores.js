@@ -1,26 +1,25 @@
 /**
  * loadGymChurnScores — cheap, consistent per-member churn scores for a gym.
  *
- * Reads the nightly precompute (churn_risk_scores) written by the
- * compute-churn-scores edge function, which runs the SAME v3 model. We just map
- * the persisted row — the v3 score already bakes in the dormant override and the
- * insufficient-data grace, so there is NO read-time override anymore.
+ * Lee el precálculo nocturno (churn_risk_scores) que escribe la edge function
+ * compute-churn-scores, que corre EL MISMO modelo v4. Aquí solo se mapea la fila.
  *
- * Falls back to the live (v3) engine when the precompute is stale, missing, or
- * still v2 (i.e. written before the v3 edge function was deployed — detected by
- * the absence of the v3 `primary_driver`/`state` columns).
+ * Cae al motor en vivo cuando el precálculo está viejo, falta, o lo escribió una
+ * versión anterior del modelo (`model_version < MODEL_VERSION`, mig 0705). Ese
+ * último caso es el que desacopla el despliegue: subir el cliente ya da números
+ * v4 aunque la edge function siga en v3.
  *
  * Returns the same shape as fetchMembersWithChurnScores so Overview, Members,
  * and AdminChurn use it interchangeably and always agree.
  */
 
-import { getRiskTier, buildExplanation } from './riskScoring.js';
+import { getRiskTier, buildExplanation, MODEL_VERSION } from './riskScoring.js';
 import { fetchMembersWithChurnScores } from './retention.js';
 import { selectAllRows, isMissingColumnError } from './batchedSelect.js';
 
 const MS_PER_DAY = 86400000;
 const FRESH_MS = 26 * MS_PER_DAY / 24;   // a little slack past 24h (cron is daily)
-const MIN_COVERAGE = 0.5;                // < this fraction with a v3 row → recompute live
+const MIN_COVERAGE = 0.5;                // menos de esta fracción con fila de la versión actual → recalcular en vivo
 
 /**
  * newestPerMember — { profile_id → newest timestamp } for a gym-wide activity table.
@@ -95,12 +94,12 @@ export async function loadGymChurnScores(gymId, supabase) {
 
   if (membersError || !memberRows?.length) return [];
 
-  // ── 2. Precomputed v3 scores (latest per member, last 7 days) ──
+  // ── 2. Precálculo (lo más reciente por socio, últimos 7 días) ──
   const scoresSince = new Date(Date.now() - 7 * MS_PER_DAY).toISOString();
   const { data: scoreRows } = await selectAllRows((from, to) =>
     supabase
       .from('churn_risk_scores')
-      .select('profile_id, score, risk_tier, key_signals, velocity, primary_driver, explanation, state, trend, metrics, computed_at')
+      .select('profile_id, score, risk_tier, key_signals, velocity, primary_driver, explanation, state, trend, metrics, model_version, computed_at')
       .eq('gym_id', gymId)
       .gte('computed_at', scoresSince)
       // profile_id tiebreaker: the nightly cron stamps an entire gym with one
@@ -120,16 +119,27 @@ export async function loadGymChurnScores(gymId, supabase) {
     if (t > newest) newest = t;
   });
 
-  // A row counts as v3 only if it carries the v3 columns (primary_driver set).
-  const v3Covered = memberRows.filter((m) => latest[m.id] && latest[m.id].primary_driver != null).length;
+  // Una fila solo cuenta si la escribió ESTA versión del modelo.
+  //
+  // Antes se deducía de si `primary_driver` venía relleno — un proxy. Ahora hay
+  // columna (mig 0705), y eso es lo que desacopla el despliegue: mientras la
+  // edge function siga escribiendo v3, el cliente ve `model_version < 4` y
+  // recalcula en vivo con v4. Números correctos desde que se sube esto; el
+  // despliegue solo lo hace rápido.
+  //
+  // `?? 3` porque las filas anteriores a la migración no traen la columna, y en
+  // una base sin migrar PostgREST la devuelve como undefined en vez de fallar.
+  const covered = memberRows.filter(
+    (m) => latest[m.id] && (latest[m.id].model_version ?? 3) >= MODEL_VERSION,
+  ).length;
   const fresh = newest > 0
     && (Date.now() - newest) < FRESH_MS
-    && v3Covered / memberRows.length >= MIN_COVERAGE;
+    && covered / memberRows.length >= MIN_COVERAGE;
 
-  // ── 3. Stale / missing / pre-v3 precompute → live (v3) engine ──
+  // ── 3. Precálculo viejo, ausente o de otra versión → motor en vivo ──
   if (!fresh) return fetchMembersWithChurnScores(gymId, supabase);
 
-  // ── 4. Fresh v3 precompute → light activity fetch for DISPLAY recency only ──
+  // ── 4. Precálculo fresco → lectura ligera solo para la recencia que se PINTA ──
   // This is the NORMAL path — it runs on every Overview / Members / Churn load when
   // the nightly precompute is fresh, which is most of the time.
   const sixtyDaysAgo = new Date(Date.now() - 60 * MS_PER_DAY).toISOString();
@@ -195,6 +205,7 @@ export async function loadGymChurnScores(gymId, supabase) {
       keySignals,
       keySignal: keySignals[0] || 'Engagement looks healthy',
       primaryDriver: driver,
+      confidence: row?.metrics?.confidence || 'low',
       // Localize from the driver (the edge fn's stored text is English-only). Pass the
       // persisted avgWeeklyVisits (metrics JSONB) so the attendance reason keeps its
       // "(was X×/wk)" clause — matching the live engine's wording exactly, no freshness drift.
@@ -202,6 +213,12 @@ export async function loadGymChurnScores(gymId, supabase) {
         ? buildExplanation(driver, {
             daysSinceLastCheckIn, daysSinceLastActivity,
             avgWeeklyVisits: row?.metrics?.avgWeeklyVisits,
+            // v4: la frase nombra el ritmo propio del socio («no suele pasar de
+            // 5 días»), así que estos tienen que venir del snapshot persistido.
+            daysSinceLastVisit: row?.metrics?.daysSinceLastVisit,
+            g90: row?.metrics?.g90,
+            drop: row?.metrics?.drop,
+            weeklyRate: row?.metrics?.weeklyRate,
             accountAgeDays: m.created_at ? (now - new Date(m.created_at).getTime()) / MS_PER_DAY : null,
           })
         : (row?.explanation || ''),

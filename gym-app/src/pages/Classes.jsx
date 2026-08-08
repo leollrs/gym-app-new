@@ -11,6 +11,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import ClassImage from '../components/ClassImage';
+import { ClassStatusPill, ClassCatTag, CFD, CFB, CFM, GOLD } from '../components/ClassCardBadges';
 import { PROD_WEB_URL } from '../lib/appUrls';
 import { format, addDays, startOfWeek, isSameDay, subDays, addWeeks } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
@@ -357,43 +358,8 @@ function MonthGridView({ anchor, today, allSchedules, dayLabels, dateFnsLocale, 
    instructor row, capacity, sticky action bar. Slides up over a
    blurred scrim; closes via ✕, scrim tap, or Esc.
    ============================================================ */
-const CFD = '"Archivo","Familjen Grotesk",system-ui,sans-serif';   // display
-const CFB = '"Familjen Grotesk",-apple-system,system-ui,sans-serif'; // body
-const CFM = '"JetBrains Mono","SF Mono",ui-monospace,monospace';     // mono
-const GOLD = '#D4AF37';
-
-/* status pill (gold available · accent booked · danger full · muted passed) */
-function ClassStatusPill({ stateKey, accent, t, waitlistPos }) {
-  const map = {
-    available: { txt: t('classes.statusAvailable', 'Disponible'), c: GOLD, bg: 'rgba(212,175,55,0.15)', ln: 'rgba(212,175,55,0.4)' },
-    booked:    { txt: t('classes.booked', 'Reservada'), c: accent, bg: `color-mix(in srgb, ${accent} 13%, transparent)`, ln: `color-mix(in srgb, ${accent} 32%, transparent)`, check: true },
-    waitlisted:{ txt: t('classes.waitlistedShort', { position: waitlistPos || 1, defaultValue: `Lista · #${waitlistPos || 1}` }), c: '#F59E0B', bg: 'rgba(245,158,11,0.15)', ln: 'rgba(245,158,11,0.35)' },
-    full:      { txt: t('classes.full', 'Llena'), c: 'var(--color-danger)', bg: 'rgba(240,99,75,0.12)', ln: 'rgba(240,99,75,0.34)' },
-    attended:  { txt: t('classes.attended', 'Asistida'), c: 'var(--color-success)', bg: 'color-mix(in srgb, var(--color-success) 14%, transparent)', ln: 'color-mix(in srgb, var(--color-success) 32%, transparent)', check: true },
-    passed:    { txt: t('classes.statusFinished', 'Finalizada'), c: 'var(--color-text-muted)', bg: 'rgba(255,255,255,0.06)', ln: 'rgba(255,255,255,0.09)' },
-  };
-  const s = map[stateKey] || map.available;
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px',
-      background: s.bg, border: `1px solid ${s.ln}`, borderRadius: 999,
-      fontFamily: CFB, fontSize: 11.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: s.c }}>
-      {s.check && <Check size={12} strokeWidth={2.6} />}
-      {s.txt}
-    </span>
-  );
-}
-
-/* gold category tag (Workout — only when the class carries a template) */
-function ClassCatTag({ t }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 12px 6px 10px',
-      background: 'rgba(212,175,55,0.15)', border: '1px solid rgba(212,175,55,0.4)', borderRadius: 999,
-      fontFamily: CFB, fontSize: 12.5, fontWeight: 800, letterSpacing: 0.2, color: GOLD }}>
-      <Dumbbell size={14} strokeWidth={2.2} />
-      {t('classes.hasWorkout', { defaultValue: 'Workout' }).split(' ').slice(-1)[0]}
-    </span>
-  );
-}
+// Tipografía y distintivos: definidos una sola vez en ClassCardBadges para que
+// la vista previa del formulario de admin pinte EXACTAMENTE esta tarjeta.
 
 /* round glass control over the hero photo */
 function GlassCircleBtn({ children, onClick, label }) {
@@ -888,6 +854,7 @@ export default function Classes() {
   const navigate = useNavigate();
   const location = useLocation();
   const pendingFocusRef = useRef(null); // invite deep-link: { sid, d } awaiting schedule load
+  const pendingRateRef = useRef(null);  // ?rate=<bookingId> ya atendido — que no se reabra solo
   const posthog = usePostHog();
   const classesEnabled = useFeatureEnabled('classes');
 
@@ -1099,6 +1066,36 @@ export default function Classes() {
     pendingFocusRef.current = null;
     setDetailModal({ sched, cls: sched.gym_classes, booking, dateStr });
   }, [allSchedules, bookingsByDate, selectedDate]);
+
+  // ── Aviso post-clase: /classes?rate=<bookingId> ──
+  // A dónde lleva la notificación «¿qué tal estuvo la clase?». Se busca la
+  // reserva POR ID en vez de dentro de `myUpcoming`, porque el rango cargado
+  // depende de por dónde ande el calendario y la clase puede ser de ayer: si el
+  // aviso a veces abre el modal y a veces no hace nada, no sirve. La RLS
+  // (`bookings_select_own`) ya impide leer la reserva de otra persona.
+  useEffect(() => {
+    let id = null;
+    try { id = new URLSearchParams(location.search).get('rate'); } catch { /* noop */ }
+    if (!id || pendingRateRef.current === id) return;
+    pendingRateRef.current = id;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('gym_class_bookings')
+        .select('id, rating, attended, gym_class_schedules(gym_classes(name, name_es))')
+        .eq('id', id)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      // Ya valorada, o nunca marcada como asistida: no se abre nada. Volver a
+      // pedir una valoración que ya se dio es la forma más rápida de que la
+      // gente apague los avisos.
+      if (data.rating != null || !data.attended) return;
+      const cls = data.gym_class_schedules?.gym_classes;
+      const name = (i18n.language?.startsWith('es') && cls?.name_es) ? cls.name_es : cls?.name;
+      setRatingModal({ bookingId: data.id, className: name || t('classes.title') });
+    })();
+    return () => { cancelled = true; };
+  }, [location.search, i18n.language, t]);
 
   // Convenience: bookings + counts + schedules slice for the currently-selected day.
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');

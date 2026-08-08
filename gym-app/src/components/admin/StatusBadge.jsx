@@ -2,7 +2,11 @@
  * Status badge for membership status and risk tiers.
  */
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, AlertOctagon, Info, CheckCircle } from 'lucide-react';
+import { AlertTriangle, AlertOctagon, Info, CheckCircle, HelpCircle, PauseCircle, XCircle } from 'lucide-react';
+// El modelo de churn es el dueño de los umbrales. Importar sin ciclo: riskScoring
+// no depende de componentes, solo de i18next.
+import { getRiskTier } from '../../lib/churn/riskScoring';
+import { riskToneKey } from '../../lib/churn/riskTone';
 
 // All status/risk colors now route through CSS vars so they auto-adapt to
 // light/dark and to the premium triage palette (danger=hot orange, warning=amber,
@@ -16,10 +20,13 @@ const STATUS_CONFIG = {
 };
 
 const RISK_CONFIG = {
-  critical: { key: 'critical', tone: 'hot',   Icon: AlertOctagon },
-  high:     { key: 'high',     tone: 'hot',   Icon: AlertTriangle },   // hot + AlertTriangle differentiates from critical
-  medium:   { key: 'medium',   tone: 'warn',  Icon: Info },
-  low:      { key: 'low',      tone: 'good',  Icon: CheckCircle },
+  critical:          { key: 'critical',          Icon: AlertOctagon },
+  high:              { key: 'high',              Icon: AlertTriangle },
+  medium:            { key: 'medium',            Icon: Info },
+  low:               { key: 'low',               Icon: CheckCircle },
+  insufficient_data: { key: 'insufficient_data', Icon: HelpCircle },
+  paused:            { key: 'paused',            Icon: PauseCircle },
+  churned:           { key: 'churned',           Icon: XCircle },
 };
 
 const TONE_VARS = {
@@ -34,6 +41,8 @@ const TONE_VARS = {
 export function StatusBadge({ status }) {
   const { t } = useTranslation('pages');
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
+  // STATUS_CONFIG, no riskToneKey: esto pinta el ESTADO DE MEMBRESÍA
+  // (activo/congelado/baneado), que no tiene nada que ver con el riesgo.
   const tone = TONE_VARS[cfg.tone] ?? TONE_VARS.neutral;
   const label = t(`admin.statusLabels.${(status || 'active').toLowerCase()}`);
   if (cfg.dot) {
@@ -62,6 +71,7 @@ export function StatusBadge({ status }) {
 export function StatusDot({ status, size = 9 }) {
   const { t } = useTranslation('pages');
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
+  // Igual que StatusBadge: estado de membresía, no riesgo.
   const tone = TONE_VARS[cfg.tone] ?? TONE_VARS.neutral;
   const label = t(`admin.statusLabels.${(status || 'active').toLowerCase()}`);
   return (
@@ -71,10 +81,40 @@ export function StatusDot({ status, size = 9 }) {
   );
 }
 
+/**
+ * Punto de estado por RIESGO DE BAJA, no por estado de membresía.
+ *
+ * El de antes (StatusDot) pintaba activo/congelado, así que en un gimnasio donde
+ * nadie está congelado TODOS los puntos salían del mismo color y la columna no
+ * decía nada. Este dice lo único que el admin quiere ver de un vistazo bajando
+ * por la lista: a quién está a punto de perder.
+ *
+ * El color sale de riskTone.js, igual que en toda la app. Lo único propio de
+ * aquí es que CONGELADO manda sobre el tier y pinta azul: no es un nivel de
+ * riesgo, es una membresía en pausa, y mezclarlo con los tiers haría que un
+ * congelado se leyera como alguien a quien vas a perder.
+ */
+export function RiskDot({ score, state = 'scored', membershipStatus, size = 9 }) {
+  const { t } = useTranslation('pages');
+  const frozen = membershipStatus === 'frozen';
+  // Mismo tierFromScore que la barra de Riesgo de Baja, que a su vez delega en
+  // el modelo. Mismo número → mismo color, por construcción.
+  const tier = tierFromScore(score, state);
+  const tone = frozen ? TONE_VARS.info : (TONE_VARS[riskToneKey(tier)] ?? TONE_VARS.neutral);
+  const label = frozen
+    ? t('admin.statusLabels.frozen')
+    : t(`admin.riskLabels.${(tier || 'low').toLowerCase()}`);
+  return (
+    <span className="inline-flex items-center" title={label} aria-label={label} role="img">
+      <span className="rounded-full flex-shrink-0" style={{ width: size, height: size, background: tone.dot, boxShadow: `0 0 0 3px color-mix(in srgb, ${tone.dot} 16%, transparent)` }} />
+    </span>
+  );
+}
+
 export function RiskBadge({ tier, score }) {
   const { t } = useTranslation('pages');
   const cfg = RISK_CONFIG[tier] ?? RISK_CONFIG.low;
-  const tone = TONE_VARS[cfg.tone] ?? TONE_VARS.neutral;
+  const tone = TONE_VARS[riskToneKey(tier)] ?? TONE_VARS.neutral;
   const RiskIcon = cfg.Icon;
   const label = t(`admin.riskLabels.${(tier || 'low').toLowerCase()}`);
   return (
@@ -95,10 +135,26 @@ export function RiskBadge({ tier, score }) {
   );
 }
 
-export function ScoreBar({ score }) {
-  const tier = score >= 80 ? 'critical' : score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low';
-  const cfg = RISK_CONFIG[tier];
-  const tone = TONE_VARS[cfg.tone];
+/**
+ * Tier a partir del puntaje, delegando en getRiskTier — el del MODELO de churn.
+ *
+ * Había tres definiciones del mismo umbral y no coincidían: el modelo cortaba
+ * «Alto» en 55, la tarjeta de Riesgo de Baja decía «55–79» en su propio texto,
+ * y ScoreBar cortaba en 60. Un miembro con 57 se contaba como Alto arriba y se
+ * pintaba de color Medio abajo, en la misma pantalla.
+ *
+ * El modelo manda. Aquí solo se traduce su `tier` a un tono del tema: los
+ * colores que getRiskTier devuelve son hex fijos y no siguen la marca del
+ * gimnasio, así que de ahí se toma el NIVEL, nunca el color.
+ */
+function tierFromScore(score, state = 'scored') {
+  const n = Number(score);
+  return getRiskTier(Number.isFinite(n) ? n : 0, state).tier;
+}
+
+export function ScoreBar({ score, state = 'scored' }) {
+  const tier = tierFromScore(score, state);
+  const tone = TONE_VARS[riskToneKey(tier)];
   const display = score % 1 === 0 ? score : score.toFixed(1);
   return (
     <div className="flex items-center gap-2">

@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, Dumbbell, Clock, ChevronRight, ChevronLeft, Pencil, X, Trash2, CheckCircle2, Circle, Lock,
   Calendar, Zap, Heart, BookOpen, AlertTriangle, Activity, Target, Info, RotateCcw, Play, Loader2,
-  ClipboardList, LogOut,
+  ClipboardList, LogOut, Pause as PauseIcon, PlayCircle,
 } from 'lucide-react';
 import ExerciseVideoThumb from '../components/ExerciseVideoThumb';
 // Lazy so the heavy ExerciseLibrary module only loads when a routine exercise is
@@ -716,6 +716,21 @@ const Workouts = () => {
   const [programLevelFilter, setProgramLevelFilter] = useState('All');
   const [programDurationFilter, setProgramDurationFilter] = useState('all'); // 'all' | 'quick'
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  // La forma en que un programa del gimnasio entra al modal de detalle. Estaba
+  // escrita a mano en el único sitio que lo abría; ahora la usan dos —la tarjeta
+  // y el enlace `?program=` que traen los retos— y una sola definición evita que
+  // se separen.
+  const asTemplate = (prog) => ({
+    ...prog,
+    id: `gym_${prog.id}`,
+    image: null,
+    level: 'All Levels',
+    daysPerWeek: prog.weeks?.['1']?.length || 5,
+    durationWeeks: prog.duration_weeks || 6,
+    category: 'Gym Exclusive',
+  });
+
+
   // Switch program confirmation flow: null | 'confirm' | 'final'
   const [switchStep, setSwitchStep] = useState(null);
   const [switchingProgram, setSwitchingProgram] = useState(false);
@@ -920,7 +935,7 @@ const Workouts = () => {
     if (!user?.id || !profile?.gym_id) return;
     const load = async () => {
       const [gpRes, obRes, lwRes] = await Promise.all([
-        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
+        supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('member_onboarding').select('fitness_level, primary_goal, training_days_per_week, available_equipment, injuries_notes, height_inches, initial_weight_lbs, age, sex, height_cm, weight_kg, gender, priority_muscles').eq('profile_id', user.id).maybeSingle(),
         supabase.from('body_weight_logs').select('weight_lbs').eq('profile_id', user.id).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
@@ -952,7 +967,9 @@ const Workouts = () => {
         const onboardingUpdated = ob.updated_at ? new Date(ob.updated_at) : new Date(ob.created_at);
         if (onboardingUpdated > programCreated) setGoalsMismatch(true);
       }
-      if (latest && new Date(latest.expires_at) <= new Date() && !latest.expiry_notified) {
+      // `!latest.paused_at`: un programa apartado no ha terminado. Sin esto, el
+      // socio que lo pausa recibe «tu programa terminó» en mitad de la pausa.
+      if (latest && !latest.paused_at && new Date(latest.expires_at) <= new Date() && !latest.expiry_notified) {
         supabase.from('notifications').insert({
           profile_id: user.id, gym_id: profile.gym_id, type: 'milestone',
           title: t('workouts.programEnded'),
@@ -1252,8 +1269,74 @@ const Workouts = () => {
     }
   };
 
-  const programActive  = generatedProgram && new Date(generatedProgram.expires_at) > today;
-  const programExpired = generatedProgram && new Date(generatedProgram.expires_at) <= today;
+  // Un programa PAUSADO no está corriendo (no tiene calendario) pero tampoco
+  // ha terminado: sin esta distinción la app le decía «tu programa terminó,
+  // ¿y ahora qué?» a alguien que solo lo apartó dos semanas.
+  const [pausing, setPausing] = useState(false);
+
+  // Mismo contrato que los otros setters de este estado: la fila más nueva,
+  // expirada o no. Las tarjetas ya re-comprueban `programActive`/`programPaused`.
+  const reloadPrograms = async () => {
+    const { data } = await supabase.from('generated_programs')
+      .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days')
+      .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
+    const programs = data || [];
+    setAllPrograms(programs);
+    setGeneratedProgram(programs[0] || null);
+  };
+
+  // Pausar y reanudar viven en el servidor (migración 0711) porque hay que
+  // guardar el calendario, soltarlo y devolverlo entero: hacerlo desde el
+  // cliente significaría que cerrar la app a mitad deja al socio sin semana y
+  // sin nada guardado a lo que volver.
+  const handlePauseProgram = async (programId) => {
+    if (pausing) return;
+    setPausing(true);
+    const { error } = await supabase.rpc('pause_member_program', { p_program_id: programId });
+    setPausing(false);
+    if (error) { showToast(error.message || t('workouts.pauseFailed', 'No se pudo pausar'), 'error'); return; }
+    showToast(t('workouts.programPaused', 'Programa en pausa'), 'success');
+    announceProgramChange();
+    await reloadPrograms();
+  };
+
+  const handleResumeProgram = async (programId) => {
+    if (pausing) return;
+    setPausing(true);
+    const { data, error } = await supabase.rpc('resume_member_program', { p_program_id: programId });
+    setPausing(false);
+    if (error) { showToast(error.message || t('workouts.resumeFailed', 'No se pudo reanudar'), 'error'); return; }
+    showToast(t('workouts.programResumed', {
+      n: data?.paused_days ?? 0,
+      defaultValue: 'De vuelta. Se te devolvieron {{n}} días.',
+    }), 'success');
+    announceProgramChange();
+    await reloadPrograms();
+  };
+
+  // Enlace de programa: /workouts?program=<uuid>.
+  //
+  // Es lo que abre un reto que propone un programa entero. Cae en el mismo modal
+  // de detalle que la tarjeta del gimnasio, así que hereda el flujo de cambio de
+  // programa de dos pasos que ya existe — incluido el aviso de que vas a
+  // sustituir el que tienes.
+  const location = useLocation();
+  const handledProgramRef = useRef(null);
+  useEffect(() => {
+    if (programsLoading || !gymPrograms.length) return;
+    let pid = null;
+    try { pid = new URLSearchParams(location.search).get('program'); } catch { /* noop */ }
+    if (!pid || handledProgramRef.current === pid) return;
+    const prog = gymPrograms.find(p => p.id === pid);
+    if (!prog) return;
+    handledProgramRef.current = pid;
+    loadExerciseNames();
+    setSelectedTemplate(asTemplate(prog));
+  }, [programsLoading, gymPrograms, location.search]);
+
+  const programPaused  = !!generatedProgram?.paused_at;
+  const programActive  = generatedProgram && !programPaused && new Date(generatedProgram.expires_at) > today;
+  const programExpired = generatedProgram && !programPaused && new Date(generatedProgram.expires_at) <= today;
   // Routines belonging to the CURRENT active program — these are locked from
   // deletion + shown highlighted. Resolved precisely via the active program's
   // persisted routine_ids, so routines left over from a regenerated/replaced
@@ -1576,7 +1659,7 @@ const Workouts = () => {
       try { localStorage.removeItem(`qs_cache_v1_${user.id}`); } catch {}
       // Refetch programs + routines so the UI reflects the new program.
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days')
         .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
@@ -1623,7 +1706,7 @@ const Workouts = () => {
         return;
       }
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days')
         .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
@@ -1729,18 +1812,27 @@ const Workouts = () => {
       // is what Discover reads to badge the template "Enrolled". Leaving the
       // program without dropping it left the member enrolled in something they
       // are no longer doing — and the Start button on that card stayed hidden.
-      if (target?.template_id) {
+      // `template_id` viene prefijado: `gym_<uuid>` para un programa del
+      // gimnasio y `tmpl_<slug>` para una plantilla del catálogo estático.
+      // `gym_program_enrollments.program_id` es UUID, así que meterle el
+      // prefijo levantaba un 22P02 «invalid input syntax for type uuid» SIEMPRE
+      // — y como el error solo se logueaba, la matrícula sobrevivía a que el
+      // socio se saliera. Los programas del catálogo no tienen matrícula.
+      const enrolledProgramId = target?.template_id?.startsWith('gym_')
+        ? target.template_id.slice(4)
+        : null;
+      if (enrolledProgramId) {
         const { error: enrErr } = await supabase.from('gym_program_enrollments')
-          .delete().eq('program_id', target.template_id).eq('profile_id', user.id);
+          .delete().eq('program_id', enrolledProgramId).eq('profile_id', user.id);
         if (enrErr) logger.error('Workouts: gym enrollment survived the leave:', enrErr);
-        else setEnrolledIds((prev) => { const s = new Set(prev); s.delete(target.template_id); return s; });
+        else setEnrolledIds((prev) => { const s = new Set(prev); s.delete(enrolledProgramId); return s; });
       }
       announceProgramChange();
     } else {
       await supabase.from('generated_programs').delete().eq('id', id);
     }
     const { data: allGp } = await supabase.from('generated_programs')
-      .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
+      .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days')
       .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
     const programs = allGp || [];
     setAllPrograms(programs);
@@ -1959,7 +2051,7 @@ const Workouts = () => {
         await supabase.from('generated_programs').delete().in('id', ids);
       }
       const { data: allGp } = await supabase.from('generated_programs')
-        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
+        .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days')
         .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20);
       const programs = allGp || [];
       setAllPrograms(programs);
@@ -2274,6 +2366,18 @@ const Workouts = () => {
         });
       }
 
+      // Las rutinas que este programa creó. Se sella AQUÍ y no al construir el
+      // mapa porque arriba `createdRoutineIds` todavía está vacío: las rutinas
+      // se crean en el bucle de encima.
+      //
+      // Faltaba, y por eso fallaban DOS cosas a la vez en los programas del
+      // gimnasio: salir del programa no encontraba nada que quitar del
+      // calendario y caía en el borrado a lo bruto —que a su vez se cancela si
+      // hay otro programa vivo, o sea, te quedabas entrenando el programa que
+      // acabas de dejar—; y «Reanudar» moría con `no_routines_linked` porque no
+      // sabía qué rutinas rehidratar.
+      scheduleMapData.routine_ids = [...createdRoutineIds];
+
       // ── Commit phase. From here the switch actually happens. ─────────────
       let insertRes = await supabase.from('generated_programs').insert({
         ...insertData,
@@ -2350,7 +2454,7 @@ const Workouts = () => {
       // 4. Refresh state — programs, routines, AND workout schedule
       const [{ data: allGp }, { data: schedData }] = await Promise.all([
         supabase.from('generated_programs')
-          .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified')
+          .select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days')
           .eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20),
         supabase.from('workout_schedule')
           .select('routine_id, day_of_week')
@@ -2490,6 +2594,45 @@ const Workouts = () => {
           An earlier version gated this on active_trainer_plan_id and rendered
           the plan separately above; that kept it out of every other surface,
           which is the whole reason the hero exists. */}
+      {/* Programa en pausa. No es «activo» (no tiene calendario) ni «terminado»
+          (le quedan semanas), así que necesita su propia tarjeta: si no, un
+          programa pausado desaparecía de la pantalla y el socio no tenía por
+          dónde volver. */}
+      {!programLoading && programPaused && generatedProgram && (
+        <div className="rounded-2xl p-4 mb-4" style={{
+          background: 'var(--color-surface-hover)', border: '1px dashed var(--color-border-default)',
+        }}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl grid place-items-center flex-shrink-0"
+              style={{ background: 'var(--color-bg-card)' }}>
+              <PauseIcon size={18} style={{ color: 'var(--color-text-muted)' }} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', letterSpacing: '.1em' }}>
+                {t('workouts.paused', 'En pausa')}
+              </p>
+              <p className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                {generatedProgram.split_type}
+              </p>
+              <p className="text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('workouts.pausedSince', {
+                  n: Math.max(0, Math.floor((Date.now() - new Date(generatedProgram.paused_at).getTime()) / 86400000)),
+                  defaultValue: 'Lleva {{n}} días apartado. Los días parados se te devuelven al reanudar.',
+                })}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => handleResumeProgram(generatedProgram.id)}
+            disabled={pausing}
+            className="w-full mt-3 py-3 rounded-xl text-[13px] font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+            style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent, #000)' }}
+          >
+            <PlayCircle size={16} /> {t('workouts.resumeProgramNow', 'Reanudar')}
+          </button>
+        </div>
+      )}
+
       {!programLoading && programActive && (() => {
         const viewWeek = programViewWeek || currentWeekNum;
         const isViewingCurrentWeek = viewWeek === currentWeekNum;
@@ -3337,14 +3480,30 @@ const Workouts = () => {
                     missing entirely. Sits under the card content rather than as a
                     third header pill: the title reserves pr-44 and a third pill
                     overflows it on a 375px screen. */}
-                <button
-                  onClick={() => setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive: true })}
-                  className="w-full mt-4 pt-3.5 flex items-center justify-center gap-1.5 text-[12.5px] font-bold text-red-400 active:opacity-60 transition-opacity"
-                  style={{ borderTop: '1px solid var(--color-border-subtle)' }}
-                >
-                  <LogOut size={13} strokeWidth={2.2} />
-                  {t('workouts.leaveProgram', 'Leave program')}
-                </button>
+                {/* Pausar y salir, juntos. Antes solo se podía SALIR, así que
+                    apartar un programa dos semanas —una lesión, un viaje— pasaba
+                    por darlo de baja y luego «Reanudar», que en realidad forja un
+                    programa nuevo. Pausar guarda el calendario y devuelve los días
+                    parados al final: pausar no acorta el plan. */}
+                <div className="w-full mt-4 pt-3.5 grid grid-cols-2 gap-2" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
+                  <button
+                    onClick={() => handlePauseProgram(prog.id)}
+                    disabled={pausing}
+                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12.5px] font-bold active:opacity-60 transition-opacity disabled:opacity-50"
+                    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
+                  >
+                    <PauseIcon size={13} strokeWidth={2.2} />
+                    {t('workouts.pauseProgram', 'Pausar')}
+                  </button>
+                  <button
+                    onClick={() => setLeaveProgramConfirm({ id: prog.id, name: prog.split_type, isActive: true })}
+                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12.5px] font-bold text-red-400 active:opacity-60 transition-opacity"
+                    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-border-subtle)' }}
+                  >
+                    <LogOut size={13} strokeWidth={2.2} />
+                    {t('workouts.leaveProgram', 'Leave program')}
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -3682,7 +3841,7 @@ const Workouts = () => {
                 return (
                   <button
                     key={prog.id}
-                    onClick={() => { loadExerciseNames(); setSelectedTemplate({ ...prog, id: `gym_${prog.id}`, image: null, level: 'All Levels', daysPerWeek: prog.weeks?.['1']?.length || 5, durationWeeks: prog.duration_weeks || 6, category: 'Gym Exclusive' }); }}
+                    onClick={() => { loadExerciseNames(); setSelectedTemplate(asTemplate(prog)); }}
                     className="relative text-left rounded-2xl overflow-hidden active:scale-[0.98] transition-transform duration-150"
                     style={{ aspectRatio: '3 / 4', border: '1px solid color-mix(in srgb, var(--color-accent) 20%, transparent)' }}
                     aria-label={`${progName(prog)} - Gym Exclusive program`}
@@ -4204,7 +4363,7 @@ const Workouts = () => {
         onCreateManual={() => { setBuilderProgram(null); setShowBuilder(true); }}
         onGenerated={() => {
           if (user?.id) {
-            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
+            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
               .then(({ data }) => {
                 const programs = data || [];
                 setAllPrograms(programs);
@@ -4225,7 +4384,7 @@ const Workouts = () => {
           setShowBuilder(false);
           setBuilderProgram(null);
           if (user?.id) {
-            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
+            supabase.from('generated_programs').select('id, profile_id, split_type, program_start, expires_at, routines_a_count, created_at, template_id, duration_weeks, schedule_map, expiry_notified, paused_at, paused_days').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(20)
               .then(({ data }) => {
                 const programs = data || [];
                 setAllPrograms(programs);

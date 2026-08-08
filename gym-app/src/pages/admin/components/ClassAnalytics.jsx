@@ -5,12 +5,18 @@ import { Star, UserX, XCircle, Dumbbell, TrendingUp, TrendingDown, ChevronLeft, 
 import { supabase } from '../../../lib/supabase';
 import { selectAllRows } from '../../../lib/churn/batchedSelect';
 import { format12h } from '../../../lib/admin/classScheduleHelpers';
+import { calcClassStats } from '../../../lib/admin/classStats';
+import { dateKey, startOfDay } from '../../../lib/dateKey';
 
 const DISPLAY_FONT = 'var(--admin-font-display, "Archivo", system-ui, sans-serif)';
 
 // Attendance → traffic-light color so weak slots/days pop visually.
 const attColor = (pct) => pct >= 75 ? 'var(--color-success)' : pct >= 50 ? 'var(--color-warning)' : 'var(--color-danger)';
-const fmtISO = (d) => d.toISOString().slice(0, 10);
+// LOCAL, no `toISOString()`. Esto ANCLA toda la pantalla: la ventana de fechas,
+// qué cuenta como pasado y, por tanto, el no-show. Con UTC, a partir de las 8
+// de la noche en Puerto Rico la semana se corría un día y las reservas de esta
+// misma tarde entraban como no-shows de una clase que aún no había empezado.
+const fmtISO = dateKey;
 
 /**
  * Full per-class analytics. The same booking set is sliced every which way:
@@ -31,7 +37,7 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
   const maxCap = classItem?.max_capacity || 0;
 
   const [gran, setGran] = useState('week'); // 'week' | 'month' | '90' | 'all'
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
 
   const range = useMemo(() => {
     if (gran === 'all') return { from: null, to: null, label: t('admin.classes.periodAll', 'All time'), nav: false };
@@ -52,7 +58,10 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
 
   const step = (dir) => setAnchor(prev => {
     const d = new Date(prev);
-    if (gran === 'month') d.setMonth(d.getMonth() + dir);
+    // El día 1 ANTES de mover el mes. `setMonth` sobre un 31 desborda al mes
+    // siguiente (31 de marzo − 1 mes = 3 de marzo, porque el 31 de febrero no
+    // existe), así que a fin de mes el paso atrás se saltaba un mes entero.
+    if (gran === 'month') { d.setDate(1); d.setMonth(d.getMonth() + dir); }
     else d.setDate(d.getDate() + dir * 7);
     return d;
   });
@@ -119,8 +128,7 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
     const bookings = data?.bookings || [];
     const scheds = data?.scheds || [];
     const trainerNames = data?.trainerNames || {};
-    const today = fmtISO(new Date());
-    const isPast = (b) => b.booking_date < today;
+    const now = new Date();
 
     // The class ALREADY has an instructor — use it as the per-slot fallback so
     // "by trainer" works out of the box. A per-slot trainer_id (0512) only
@@ -143,24 +151,14 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
       return `${dowName(s.day_of_week)} · ${format12h(s.start_time)}`;
     };
 
-    const calc = (rows) => {
-      const total = rows.length;
-      const attended = rows.filter(b => b.attended).length;
-      const cancelled = rows.filter(b => b.status === 'cancelled').length;
-      const noShows = rows.filter(b => !b.attended && b.status === 'confirmed' && isPast(b)).length;
-      const confirmedPast = rows.filter(b => isPast(b) && (b.status === 'confirmed' || b.attended)).length;
-      const rated = rows.filter(b => b.attended && b.rating != null);
-      const avgRating = rated.length ? rated.reduce((s, b) => s + b.rating, 0) / rated.length : null;
-      const sessions = new Set(rows.map(b => b.booking_date)).size;
-      return {
-        total, attended, cancelled, noShows, confirmedPast, sessions,
-        attendanceRate: total ? Math.round((attended / total) * 100) : 0,
-        noShowRate: confirmedPast ? Math.round((noShows / confirmedPast) * 100) : 0,
-        cancellationRate: total ? Math.round((cancelled / total) * 100) : 0,
-        avgRating: avgRating != null ? avgRating.toFixed(1) : null,
-        avgFill: (sessions && maxCap) ? Math.round((total / sessions / maxCap) * 100) : null,
-      };
-    };
+    // La MISMA función que usa la cabecera del detalle (`lib/admin/classStats`).
+    // Antes esta pantalla llevaba su propia copia, línea por línea, de la
+    // aritmética de asistencia, no-show, cancelación y ocupación. Dos copias de
+    // la misma cuenta en la misma pantalla no se quedan iguales: en cuanto una
+    // se toca —y se acaba de tocar, para dejar de fingir un no-show cuando
+    // nadie marca asistencia— la cabecera y la pestaña dicen cosas distintas
+    // del mismo dato y quien mira no sabe a cuál creerle.
+    const calc = (rows) => calcClassStats(rows, maxCap, now);
 
     const overall = calc(bookings);
 
@@ -279,11 +277,31 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
         </div>
       ) : (
         <>
+          {/* Dicho una vez, arriba, en lugar de dejar cinco secciones en 0 %.
+              Todo lo que hay debajo de asistencia sale de `attended`, y esa
+              columna solo se llena si el socio hace check-in en la app o el
+              entrenador marca la clase. Sin eso, las barras salen a cero y se
+              leen como «esta clase va fatal». */}
+          {a.overall.confirmedPast > 0 && !a.overall.attendanceTracked && (
+            <div className="flex gap-2.5 px-3 py-2.5 rounded-xl"
+              style={{ background: 'color-mix(in srgb, var(--color-warning, #F59E0B) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning, #F59E0B) 28%, transparent)' }}>
+              <UserX size={15} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--color-warning, #F59E0B)' }} />
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                  {t('admin.classes.noAttendanceTitle', 'Nadie está marcando la asistencia')}
+                </p>
+                <p className="text-[11.5px] mt-0.5 leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                  {t('admin.classes.noAttendanceBody', 'Hay {{n}} reservas de sesiones ya pasadas y ninguna marcada como asistida, así que todo lo de asistencia sale en blanco. Se llena cuando el socio hace check-in desde la app o el entrenador marca la clase desde su pantalla.', { n: a.overall.confirmedPast })}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Overall KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
             <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
               <p className="text-[10px] font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.attendanceRate')}</p>
-              <p className="text-[18px] font-bold" style={{ color: a.overall.total ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>{a.overall.total ? `${a.overall.attendanceRate}%` : '--'}</p>
+              <p className="text-[18px] font-bold" style={{ color: (a.overall.total && a.overall.attendanceTracked) ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>{(a.overall.total && a.overall.attendanceTracked) ? `${a.overall.attendanceRate}%` : '--'}</p>
               <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{a.overall.attended}/{a.overall.total}</p>
             </div>
             <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
@@ -300,8 +318,15 @@ export default function ClassAnalytics({ classItem, t, lang = 'es' }) {
                 <UserX size={11} style={{ color: 'var(--color-danger)' }} />
                 <p className="text-[10px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noShowRate')}</p>
               </div>
-              <p className="text-[18px] font-bold" style={{ color: a.overall.noShowRate > 20 ? 'var(--color-danger)' : a.overall.noShowRate > 10 ? 'var(--color-warning)' : 'var(--color-success)' }}>{a.overall.confirmedPast ? `${a.overall.noShowRate}%` : '--'}</p>
-              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{a.overall.noShows} {t('admin.classes.noShows')}</p>
+              {/* Sin una sola asistencia marcada en la ventana, el no-show
+                  sería 100 % por construcción — no dice nada de la clase, dice
+                  que nadie hace check-in. Guion y el motivo. */}
+              <p className="text-[18px] font-bold" style={{ color: !a.overall.attendanceTracked ? 'var(--color-text-muted)' : a.overall.noShowRate > 20 ? 'var(--color-danger)' : a.overall.noShowRate > 10 ? 'var(--color-warning)' : 'var(--color-success)' }}>{(a.overall.confirmedPast && a.overall.attendanceTracked) ? `${a.overall.noShowRate}%` : '--'}</p>
+              <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                {a.overall.confirmedPast && !a.overall.attendanceTracked
+                  ? t('admin.classes.statNoAttendance', 'nadie marca asistencia')
+                  : `${a.overall.noShows} ${t('admin.classes.noShows')}`}
+              </p>
             </div>
             <div className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
               <div className="flex items-center gap-1.5 mb-1">

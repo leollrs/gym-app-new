@@ -1,3 +1,10 @@
+import { riskColorVar } from '../../lib/churn/riskTone';
+// Las bandas vienen del scorer, NO cableadas aquí. Estaban en 80/55/30 (v3) en
+// ocho sitios de este fichero: con v4 en 70/45/25 un socio de 72 habría pintado
+// la insignia roja de «Crítico» y contado como «Alto» en la tarjeta de arriba,
+// además de caer en la pestaña equivocada. Es la misma clase de fallo que las
+// definiciones duplicadas de color de riesgo.
+import { getRiskTier, BAND_CRITICAL, BAND_HIGH, BAND_MEDIUM } from '../../lib/churn/riskScoring';
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -348,11 +355,11 @@ export default function AdminChurn() {
 
   const atRiskMembers = useMemo(() => {
     // Exclude churned (60d+ → "lost" tab) and paused (vacation/hold) from the action queue.
-    let list = members.filter(m => m.churnScore >= 30 && m.state !== 'churned' && m.state !== 'paused');
+    let list = members.filter(m => m.churnScore >= BAND_MEDIUM && m.state !== 'churned' && m.state !== 'paused');
     if (riskFilter === 'needs-action') list = list.filter(m => !contactedIds.has(m.id));
-    else if (riskFilter === 'critical') list = list.filter(m => m.churnScore >= 80);
-    else if (riskFilter === 'high') list = list.filter(m => m.churnScore >= 55 && m.churnScore < 80);
-    else if (riskFilter === 'medium') list = list.filter(m => m.churnScore >= 30 && m.churnScore < 55);
+    else if (riskFilter === 'critical') list = list.filter(m => m.churnScore >= BAND_CRITICAL);
+    else if (riskFilter === 'high') list = list.filter(m => m.churnScore >= BAND_HIGH && m.churnScore < BAND_CRITICAL);
+    else if (riskFilter === 'medium') list = list.filter(m => m.churnScore >= BAND_MEDIUM && m.churnScore < BAND_HIGH);
     else if (riskFilter === 'contacted') list = list.filter(m => contactedIds.has(m.id));
     else if (riskFilter === 'returned') {
       const returnedUserIds = new Set(winBackAttempts.filter(a => a.outcome === 'returned').map(a => a.user_id));
@@ -401,9 +408,9 @@ export default function AdminChurn() {
     let critical = 0, high = 0, med = 0;
     for (const m of members) {
       if (m.state === 'churned' || m.state === 'paused') continue;
-      if (m.churnScore >= 80) critical++;
-      else if (m.churnScore >= 55) high++;
-      else if (m.churnScore >= 30) med++;
+      if (m.churnScore >= BAND_CRITICAL) critical++;
+      else if (m.churnScore >= BAND_HIGH) high++;
+      else if (m.churnScore >= BAND_MEDIUM) med++;
     }
     return { criticalCount: critical, highRiskCount: high, medRiskCount: med };
   }, [members]);
@@ -412,12 +419,12 @@ export default function AdminChurn() {
 
   // "Needs Action" = at-risk members who have NOT been contacted
   const needsActionMembers = useMemo(() => {
-    return members.filter(m => m.churnScore >= 30 && !contactedIds.has(m.id) && m.state !== 'churned' && m.state !== 'paused');
+    return members.filter(m => m.churnScore >= BAND_MEDIUM && !contactedIds.has(m.id) && m.state !== 'churned' && m.state !== 'paused');
   }, [members, contactedIds]);
 
   // "Recently Contacted" = at-risk members who HAVE been contacted
   const recentlyContactedMembers = useMemo(() => {
-    return members.filter(m => m.churnScore >= 30 && contactedIds.has(m.id) && m.state !== 'churned' && m.state !== 'paused');
+    return members.filter(m => m.churnScore >= BAND_MEDIUM && contactedIds.has(m.id) && m.state !== 'churned' && m.state !== 'paused');
   }, [members, contactedIds]);
 
   // "Returned" = members with a returned win-back outcome
@@ -486,9 +493,9 @@ export default function AdminChurn() {
   const toggleSelected = (id) => { setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }); };
   const selectAllByTier = (tier) => {
     const tierMembers = atRiskMembers.filter(m => {
-      if (tier === 'critical') return m.churnScore >= 80;
-      if (tier === 'high') return m.churnScore >= 55 && m.churnScore < 80;
-      if (tier === 'medium') return m.churnScore >= 30 && m.churnScore < 55;
+      if (tier === 'critical') return m.churnScore >= BAND_CRITICAL;
+      if (tier === 'high') return m.churnScore >= BAND_HIGH && m.churnScore < BAND_CRITICAL;
+      if (tier === 'medium') return m.churnScore >= BAND_MEDIUM && m.churnScore < BAND_HIGH;
       return false;
     });
     setSelectedIds(prev => { const next = new Set(prev); tierMembers.forEach(m => next.add(m.id)); return next; });
@@ -720,7 +727,10 @@ export default function AdminChurn() {
       width: '128px',
       render: (m) => {
         const s = Math.round(m.churnScore || 0);
-        const color = s >= 80 ? 'var(--color-danger)' : s >= 55 ? 'var(--color-warning)' : 'var(--color-success)';
+        // Del modelo + riskTone, no de umbrales aquí. El ternario anterior se
+        // saltaba `medium` entero: de 30 a 54 pintaba VERDE, o sea igual que un
+        // riesgo bajo, cuando el modelo los separa.
+        const color = riskColorVar(getRiskTier(s, m.state ?? 'scored').tier);
         const TrendIcon = m.trend === 'declining' ? TrendingUp : m.trend === 'improving' ? TrendingDown : null;
         const trendColor = m.trend === 'declining' ? 'var(--color-danger)' : 'var(--color-success)';
         return (
@@ -870,13 +880,35 @@ export default function AdminChurn() {
           <div className="flex-1" style={{ minWidth: 220 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, color: 'var(--color-danger)', textTransform: 'uppercase', marginBottom: 3 }}>{t('admin.churn.priorityEyebrow', "Today's priority action")}</div>
             <div style={{ fontSize: 14, color: 'var(--color-admin-text)', fontWeight: 600, lineHeight: 1.4 }}>
-              {t('admin.churn.priorityBanner', {
-                count: needsActionMembers.length,
-                name: topRiskMember.full_name,
-                score: Math.round(topRiskMember.churnScore),
-                days: topRiskMember.daysSinceLastCheckIn != null ? Math.round(topRiskMember.daysSinceLastCheckIn) : 0,
-                defaultValue: '{{count}} members need follow-up. Highest risk is {{name}} — score {{score}}, {{days}}d without check-in.',
-              })}
+              {(() => {
+                // `daysSinceLastCheckIn` es NULL cuando el miembro no ha hecho
+                // check-in NUNCA — que es justo por lo que suele encabezar esta
+                // lista. Antes ese null se imprimía como 0 y el cartel decía
+                // «0d sin check-in», o sea lo contrario: que vino hoy. El cero
+                // más caro posible, porque va en la frase que decide a quién
+                // llamas primero.
+                //
+                // Mismo orden que la tabla: check-in, y si tampoco hay, la
+                // última actividad. Si no hay ninguna de las dos, la frase lo
+                // dice con palabras en vez de inventar un número.
+                const raw = topRiskMember.daysSinceLastCheckIn ?? topRiskMember.daysSinceLastActivity;
+                const days = raw != null ? Math.round(raw) : null;
+                const common = {
+                  count: needsActionMembers.length,
+                  name: topRiskMember.full_name,
+                  score: Math.round(topRiskMember.churnScore),
+                };
+                return days != null
+                  ? t('admin.churn.priorityBanner', {
+                      ...common,
+                      days,
+                      defaultValue: '{{count}} members need follow-up. Highest risk is {{name}} — score {{score}}, {{days}}d without check-in.',
+                    })
+                  : t('admin.churn.priorityBannerNever', {
+                      ...common,
+                      defaultValue: '{{count}} members need follow-up. Highest risk is {{name}} — score {{score}}, never checked in.',
+                    });
+              })()}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -1072,7 +1104,12 @@ export default function AdminChurn() {
                             {m.username && (
                               <span className="text-[11px] text-[var(--color-admin-text-faint)] truncate">@{m.username}</span>
                             )}
-                            <RiskBadge tier={m.churnScore >= 80 ? 'critical' : m.churnScore >= 55 ? 'high' : 'medium'} />
+                            {/* El tier del MODELO, no un ternario aquí. El que
+                                había era una cuarta copia de los umbrales y
+                                además nunca bajaba de 'medium': un miembro de
+                                riesgo bajo lucía insignia de Medio junto a una
+                                barra verde, en la misma fila. */}
+                            <RiskBadge tier={m.riskTier?.tier} />
                             {hasReturned && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-success-soft)] text-[var(--color-success)] border border-[var(--color-success)]">
                                 {t('admin.churn.returnedBadge', 'Returned')}
@@ -1111,7 +1148,7 @@ export default function AdminChurn() {
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-bg-hover)] text-[var(--color-admin-text-muted)] border border-[var(--color-admin-border)] hover:text-[var(--color-admin-text)] transition-colors">
                           <Phone size={12} /> {t('admin.churn.contact', 'Contact')}
                         </button>
-                        {m.churnScore >= 60 && (
+                        {m.churnScore >= BAND_HIGH && (
                           <button onClick={() => setWinBackModal(m)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[var(--color-danger-soft)] text-[var(--color-danger)] border border-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] transition-colors">
                             <RotateCcw size={12} /> {t('admin.churn.winBack', 'Win Back')}

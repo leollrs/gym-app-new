@@ -70,7 +70,7 @@ export default function ExperimentCard({ campaign, attempts, onEnd, onReactivate
   const metric = getKeyMetric(type, statsA, statsB); // { label, a, b }
   const metricLabel = t(`admin.abTesting.${metric.label}`, metric.label);
 
-  const sig = abSignificance(statsA, statsB, 'return');
+  const sig = abSignificance(statsA, statsB);
   // Only declare a winner once the test is closed AND reaches (at least marginal)
   // significance — keeps admins from acting on early noise.
   const showWinner = !isActive && (sig.significant || sig.marginal);

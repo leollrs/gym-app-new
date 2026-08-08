@@ -23,6 +23,9 @@ import ConfirmDemoteModal from './components/ConfirmDemoteModal';
 import ContactPanel from './components/ContactPanel';
 import CheckinPhotoEditor from '../../components/CheckinPhotoEditor';
 import { signCheckinPhotos } from '../../lib/checkinPhoto';
+import { riskColorVar } from '../../lib/churn/riskTone';
+import MemberDetail from './components/MemberDetail';
+import { fetchMemberById } from '../../lib/admin/memberQueries';
 
 const MS_PER_DAY = 86400000;
 const EMPTY_WEEKS = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -173,9 +176,17 @@ function clientStatus(c) {
 const STATUS_TONE = { activo: 'success', riesgo: 'hot', enfriando: 'warn', nuevo: 'info' };
 const STATUS_COLOR = { activo: 'var(--color-success)', riesgo: 'var(--color-danger)', enfriando: 'var(--color-warning)', nuevo: 'var(--color-info)' };
 
-function StatusDot({ status }) {
-  return <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: STATUS_COLOR[status] || 'var(--color-admin-text-muted)' }} />;
+function StatusDot({ status, color }) {
+  return <span className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: color || STATUS_COLOR[status] || 'var(--color-admin-text-muted)' }} />;
 }
+
+// Color del estado de un cliente. Cuando el estado viene del RIESGO, sale de
+// riskTone — el mismo sitio que Miembros y Riesgo de Baja. `STATUS_COLOR.riesgo`
+// era rojo fijo y metía `critical` y `high` en el mismo saco, así que un cliente
+// con 78 salía rojo aquí y ámbar en las otras dos pantallas. Los demás estados
+// (nuevo, enfriando, activo) no son niveles de riesgo y conservan su color.
+const clientStatusColor = (st, tier) =>
+  (st === 'riesgo' ? riskColorVar(tier) : STATUS_COLOR[st] || 'var(--color-admin-text-muted)');
 
 function RetentionBar({ value, width = 84 }) {
   const c = retColor(value);
@@ -275,6 +286,29 @@ export default function AdminTrainers() {
   const [showAddTrainer, setShowAddTrainer] = useState(false);
   const [confirmDemote, setConfirmDemote] = useState(null);
   const [confirmUnassign, setConfirmUnassign] = useState(null);
+  // Ficha del cliente, AQUÍ. Antes esto navegaba a /admin/members?member=ID y te
+  // sacaba de la página del entrenador: perdías el contexto y volver era el
+  // botón atrás. La ficha es un modal; que se abra donde estás.
+  const [clientDetail, setClientDetail] = useState(null);
+  const [loadingClient, setLoadingClient] = useState(null); // id mientras carga
+
+  // La fila del cliente solo trae lo que la tabla necesita (nombre, sesiones,
+  // riesgo). MemberDetail quiere el perfil entero, así que se pide al abrir —
+  // igual que hace AdminMembers con ?member=ID.
+  const openClientDetail = async (clientId) => {
+    if (!gymId) return;
+    setLoadingClient(clientId);
+    try {
+      const full = await fetchMemberById(gymId, clientId);
+      if (full) setClientDetail(full);
+      else showToast(t('admin.trainers.clientLoadFailed', 'No se pudo abrir la ficha'), 'error');
+    } catch (err) {
+      logger.error('AdminTrainers: fetchMemberById:', err);
+      showToast(t('admin.trainers.clientLoadFailed', 'No se pudo abrir la ficha'), 'error');
+    } finally {
+      setLoadingClient(null);
+    }
+  };
   const [unassigning, setUnassigning] = useState(false);
   const [demoting, setDemoting] = useState(false);
   const [detailMenuOpen, setDetailMenuOpen] = useState(false);
@@ -639,27 +673,43 @@ export default function AdminTrainers() {
                 <div className="space-y-0.5">
                   {clients.map(c => {
                     const st = clientStatus(c);
+                    const stColor = clientStatusColor(st, c.churnTier);
+                    const riskColor = riskColorVar(c.churnTier);
+                    const openMember = () => openClientDetail(c.id);
                     return (
-                      <div key={c.id} className="flex items-center gap-2.5 py-2 px-2 rounded-lg group transition-colors"
+                      // La fila abre la ficha del miembro. AdminMembers ya sabe
+                      // abrirla desde ?member=ID, así que se reutiliza esa puerta
+                      // en vez de montar aquí otro modal con la mitad de los datos.
+                      <div key={c.id} role="button" tabIndex={0}
+                        onClick={openMember}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMember(); } }}
+                        title={t('admin.trainers.openClient', 'Ver ficha del miembro')}
+                        aria-busy={loadingClient === c.id}
+                        style={{ opacity: loadingClient === c.id ? 0.55 : 1 }}
+                        className="flex items-center gap-2.5 py-2 px-2 rounded-lg group transition-colors cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)]"
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-hover)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                         <Avatar name={c.name} size="sm" tone={STATUS_TONE[st]} />
                         <div className="flex-1 min-w-0">
                           <p className="text-[13px] font-medium truncate" style={{ color: 'var(--color-admin-text)' }}>{c.name}</p>
-                          <p className="text-[10.5px] truncate mt-0.5 inline-flex items-center gap-1.5" style={{ color: STATUS_COLOR[st] }}>
-                            <StatusDot status={st} /> {t(`admin.trainers.status.${st}`, st)}
+                          <p className="text-[10.5px] truncate mt-0.5 inline-flex items-center gap-1.5" style={{ color: stColor }}>
+                            <StatusDot status={st} color={stColor} /> {t(`admin.trainers.status.${st}`, st)}
                           </p>
                         </div>
                         {c.churnScore !== null && (c.churnTier === 'critical' || c.churnTier === 'high' || c.churnTier === 'medium') && (
+                          // Mismo riskColorVar que el punto y que las otras dos
+                          // pantallas, en vez del ternario medium/resto de antes.
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full admin-mono"
-                            style={{ color: c.churnTier === 'medium' ? 'var(--color-warning)' : 'var(--color-danger)', background: c.churnTier === 'medium' ? 'var(--color-warning-soft)' : 'var(--color-danger-soft)' }}>
+                            style={{ color: riskColor, background: `color-mix(in srgb, ${riskColor} 14%, transparent)` }}>
                             {Math.round(c.churnScore)}%
                           </span>
                         )}
                         <span className="admin-mono text-[12px] font-bold tabular-nums text-right" style={{ color: 'var(--color-admin-text-sub)', minWidth: 52 }}>
                           {c.sessions30d} {t('admin.trainers.sesAbbr', 'ses.')}
                         </span>
-                        <button onClick={() => setConfirmUnassign({ trainerId: m.id, clientId: c.id, clientName: c.name })}
+                        {/* stopPropagation: la fila entera abre la ficha, y sin
+                            esto desasignar la abriría de camino. */}
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmUnassign({ trainerId: m.id, clientId: c.id, clientName: c.name }); }}
                           className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors flex-shrink-0"
                           style={{ backgroundColor: 'var(--color-danger-soft)', color: 'var(--color-danger)' }}
                           title={t('admin.trainers.unassignClient', 'Unassign client')} aria-label={t('admin.trainers.unassignClient', 'Unassign client')}>
@@ -702,7 +752,12 @@ export default function AdminTrainers() {
   const showEmpty = !isLoading && !error && trainers.length === 0;
 
   return (
-    <div className="admin-shell px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1320px] mx-auto overflow-x-hidden">
+    // Sin `admin-shell` aquí: AdminLayout YA lo pone en el contenedor de toda
+    // la página. Repetirlo en una caja de 1320 centrada pintaba el fondo del
+    // admin sobre un rectángulo que terminaba donde terminaba el contenido —
+    // se leía como una página distinta metida dentro de la página. Las demás
+    // pantallas usan AdminPageShell, que solo aporta márgenes y hereda el fondo.
+    <div className="px-4 md:px-8 py-6 pb-28 md:pb-12 max-w-[1320px] mx-auto overflow-x-hidden">
       {view === 'detail' && selected ? (
         // ───── Direction B: master-detail ─────
         <>
@@ -889,6 +944,22 @@ export default function AdminTrainers() {
       )}
 
       <ConfirmDemoteModal isOpen={!!confirmDemote} onClose={() => setConfirmDemote(null)} trainer={demoteTrainer} clientCount={demoteClientCount} onConfirm={demoteToMember} />
+
+      {/* La ficha del cliente, sobre esta misma página. `key` por id para que
+          abrir otro cliente remonte el modal en vez de reciclarlo con el estado
+          del anterior. onNoteSaved se llama SIN guarda dentro, así que tiene que
+          existir; aquí no hay lista que refrescar, pero un cambio de estado sí
+          altera el recuento del entrenador, y por eso ese recarga. */}
+      {clientDetail && (
+        <MemberDetail
+          key={clientDetail.id}
+          member={clientDetail}
+          gymId={gymId}
+          onClose={() => setClientDetail(null)}
+          onNoteSaved={() => {}}
+          onStatusChanged={() => refetch()}
+        />
+      )}
 
       {/* Message a trainer — in-app message + push (email/SMS if on file). Reuses the
           admin ContactPanel; its churn-risk header auto-hides for staff. */}

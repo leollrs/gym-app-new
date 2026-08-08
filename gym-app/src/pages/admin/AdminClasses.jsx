@@ -17,6 +17,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { validateImageFile } from '../../lib/validateImage';
 import { classImageUrl } from '../../lib/classImageUrl';
+import { todayKey } from '../../lib/dateKey';
 import { format, addDays } from 'date-fns';
 import { useAutoTranslate } from '../../hooks/useAutoTranslate';
 import {
@@ -31,8 +32,8 @@ import CoverPreview, { CLASS_COVERS } from './components/CoverPreview';
 import BookingsTabView from './components/BookingsTabView';
 import { slotDayLabel, format12h, addMinutes, DAYS_OF_WEEK } from '../../lib/admin/classScheduleHelpers';
 import TranslationPreviewModal from './components/TranslationPreviewModal';
-import ScheduleSlotForm from './components/ScheduleSlotForm';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
+import SlotDeleteConfirm from './components/SlotDeleteConfirm';
 import ClassFormModal from './components/ClassFormModal';
 import BookingsView from './components/BookingsView';
 import ClassDetailModal from './components/ClassDetailModal';
@@ -49,7 +50,9 @@ import ClassRoutinesPanel from './components/ClassRoutinesPanel';
 // TranslationPreviewModal extracted to ./components/TranslationPreviewModal
 // ClassFormModal (+ CharCount, NAME_MAX, DESC_MAX, DEFAULT_COLOR) extracted to ./components/ClassFormModal
 
-// ScheduleSlotForm + DeleteConfirmModal extracted to ./components/
+// DeleteConfirmModal extracted to ./components/
+// ScheduleSlotForm sustituido por ClassSchedulePlanner (avisa de solapes y de
+// choques de instructor, que el viejo no hacía). Componente borrado.
 
 // SlotCard + ScheduleView extracted to ./components/ScheduleView
 // buildScheduleSummary + ClassesListView extracted to ./components/ClassesListView
@@ -109,7 +112,7 @@ export default function AdminClasses() {
     queryFn: async () => {
       const { data } = await supabase
         .from('gym_classes')
-        .select('*, gym_class_schedules(id, day_of_week, start_time, end_time, specific_date), trainer:profiles!gym_classes_trainer_id_fkey(id, full_name, avatar_url), gym_class_trainers(trainer:profiles(id, full_name, avatar_url))')
+        .select('*, gym_class_schedules(id, day_of_week, start_time, end_time, specific_date, override_capacity, trainer_id), trainer:profiles!gym_classes_trainer_id_fkey(id, full_name, avatar_url), gym_class_trainers(trainer:profiles(id, full_name, avatar_url))')
         .eq('gym_id', gymId)
         .order('name');
       // IMPORTANT: don't bake image_url into the cached row. The persisted
@@ -155,7 +158,7 @@ export default function AdminClasses() {
   // ── Compute today's classes count ──
   const todaysClasses = useMemo(() => {
     const today = new Date().getDay(); // 0=Sun, 1=Mon...
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayKey();
     return classes.filter(c =>
       c.is_active && c.gym_class_schedules?.some(s =>
         s.day_of_week === today || s.specific_date === todayStr,
@@ -166,7 +169,7 @@ export default function AdminClasses() {
   // ── Today's classes (with schedule slots) for the surfaced summary ──
   const todaysClassList = useMemo(() => {
     const today = new Date().getDay();
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayKey();
     return classes
       .filter(c => c.is_active)
       .flatMap(c =>
@@ -187,7 +190,7 @@ export default function AdminClasses() {
   const { data: todaysBookings = [] } = useQuery({
     queryKey: ['admin', 'classes-today-bookings', gymId],
     queryFn: async () => {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = todayKey();
       const { data } = await supabase
         .from('gym_class_bookings')
         .select('class_id')
@@ -210,7 +213,7 @@ export default function AdminClasses() {
   const { data: upcomingBookings = 0 } = useQuery({
     queryKey: ['admin', 'classes-upcoming-bookings', gymId],
     queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayKey();
       const { count } = await supabase
         .from('gym_class_bookings')
         .select('id', { count: 'exact', head: true })
@@ -440,16 +443,59 @@ export default function AdminClasses() {
     else showToast(error.message, 'error');
   };
 
+  // ── Update schedule slot ──
+  // UPDATE, no borrar-y-crear. `class_bookings.schedule_id` referencia esta
+  // tabla con ON DELETE CASCADE: recrear la fila para mover la hora quince
+  // minutos borraría en silencio todas las reservas de esa franja.
+  const handleUpdateSlot = async (slotId, patch) => {
+    const payload = {
+      start_time: patch.start_time,
+      end_time: patch.end_time,
+      trainer_id: patch.trainer_id ?? null,
+    };
+    if ('specific_date' in patch) payload.specific_date = patch.specific_date;
+    const { error } = await supabase
+      .from('gym_class_schedules')
+      .update(payload)
+      .eq('id', slotId)
+      .eq('gym_id', gymId);
+    if (error) {
+      showToast(error.message || tc('somethingWentWrong'), 'error');
+      return;
+    }
+    logAdminAction('update_schedule_slot', 'gym_class_schedule', slotId);
+    queryClient.invalidateQueries({ queryKey: adminKeys.classes.all(gymId) });
+  };
+
   // ── Delete schedule slot ──
+  // Se pregunta ANTES. Borrar una franja hace CASCADE sobre las reservas
+  // (`gym_class_bookings.schedule_id`), así que el cubo de basura cancelaba de
+  // golpe la reserva de cada persona apuntada a esa hora, sin preguntar y sin
+  // avisarles. Los tres sitios que borran franjas (el horario, el formulario y
+  // el detalle) pasan por aquí, así que la confirmación les vale a los tres.
+  const [slotDelete, setSlotDelete] = useState(null);   // { slot, cls }
+  const [deletingSlot, setDeletingSlot] = useState(false);
+
+  const handleDeleteSlot = (slotId) => {
+    const cls = classes.find(c => (c.gym_class_schedules || []).some(s => s.id === slotId));
+    const slot = (cls?.gym_class_schedules || []).find(s => s.id === slotId);
+    // Sin fila que enseñar no hay nada que confirmar: la franja ya no existe.
+    if (!slot) return;
+    setSlotDelete({ slot, cls });
+  };
+
   // Returning the deleted row + early-exit prevents flooding the audit log
   // when the user double-clicks (or React renders fire several handlers).
-  const handleDeleteSlot = async (slotId) => {
+  const deleteSlotNow = async (slotId) => {
+    setDeletingSlot(true);
     const { data: deletedRows, error } = await supabase
       .from('gym_class_schedules')
       .delete()
       .eq('id', slotId)
       .eq('gym_id', gymId)
       .select('id');
+    setDeletingSlot(false);
+    setSlotDelete(null);
     if (error) {
       showToast(error.message || tc('somethingWentWrong'), 'error');
       return;
@@ -666,8 +712,12 @@ export default function AdminClasses() {
           saving={saving}
           gymId={gymId}
           trainers={trainers}
+          // Para avisar de solapes —y sobre todo de que el instructor ya está
+          // dando otra clase a esa hora— el formulario necesita ver el resto.
+          allClasses={classes}
           onAddSlot={handleAddSlot}
           onDeleteSlot={handleDeleteSlot}
+          onUpdateSlot={handleUpdateSlot}
           t={t}
           tc={tc}
           lang={i18n.language}
@@ -685,10 +735,33 @@ export default function AdminClasses() {
         />
       )}
 
+      {/* Se renderiza el ÚLTIMO a propósito: el formulario de clase también
+          borra franjas y es un modal, y ambos salen por portal con el mismo
+          z-index — a igualdad de z manda el orden del DOM. */}
+      {slotDelete && (
+        <SlotDeleteConfirm
+          slot={slotDelete.slot}
+          classItem={slotDelete.cls}
+          onConfirm={() => deleteSlotNow(slotDelete.slot.id)}
+          onCancel={() => setSlotDelete(null)}
+          deleting={deletingSlot}
+          dayLabel={dayLabel}
+          t={t}
+          tc={tc}
+          lang={i18n.language}
+        />
+      )}
+
       {detailClass && (
         <ClassDetailModal
           classItem={detailClass}
           onClose={() => setDetailClassId(null)}
+          // Editar desde el detalle: antes había que cerrarlo y buscar el lápiz
+          // en la fila. Sigue abriendo el MISMO formulario — un solo sitio donde
+          // se cambian las cosas.
+          onEdit={(c) => { setDetailClassId(null); setFormModal(c); }}
+          onDeleteSlot={(slot) => handleDeleteSlot(slot.id)}
+          trainers={trainers}
           dayLabel={dayLabel}
           gymId={gymId}
           t={t}

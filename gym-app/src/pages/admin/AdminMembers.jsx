@@ -1,15 +1,13 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, ChevronRight, ChevronLeft, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, RefreshCw, MessageSquare, Send, QrCode } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { Search, ChevronRight, ChevronLeft, Users, Download, Link, Copy, Trash2, Clock, KeyRound, CheckCircle, XCircle, UserPlus, Mail, Phone, ChevronDown, CheckSquare, Square, X, AlertTriangle, RefreshCw, MessageSquare, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import logger from '../../lib/logger';
 import { sendNotification } from '../../lib/notifications';
-import { inviteUrl as buildInviteUrl } from '../../lib/appUrls';
-import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
+import { formatDistanceToNow, differenceInDays } from 'date-fns';
 import { es as esLocale } from 'date-fns/locale/es';
 import { exportCSV } from '../../lib/csvExport';
 import { exportGymWorkoutHistory, exportGymPersonalRecords, exportGymBodyMetrics, exportSelectedMembersCSV } from '../../lib/exportData';
@@ -19,13 +17,17 @@ import { useQuery } from '@tanstack/react-query';
 import { adminKeys } from '../../lib/adminQueryKeys';
 
 // Shared components
-import { PageHeader, FilterBar, Avatar, TableSkeleton, AdminPageShell, AdminTable, StatCard, AdminTabs } from '../../components/admin';
+import { PageHeader, FilterBar, Avatar, TableSkeleton, AdminPageShell, AdminTable, StatCard, AdminTabs, AdminModal } from '../../components/admin';
 import { SwipeableTabContent } from '../../components/admin/AdminTabs';
-import { StatusBadge, StatusDot } from '../../components/admin/StatusBadge';
+import { StatusBadge, RiskDot } from '../../components/admin/StatusBadge';
+import ContactPanel from './components/ContactPanel';
 
 // Sub-components
 import InviteModal from './components/InviteModal';
 import CreateInviteModal from './components/CreateInviteModal';
+import InviteDetailModal from './components/InviteDetailModal';
+import InviteResendButtons from './components/InviteResendButtons';
+import { inviteChannels } from '../../lib/admin/inviteChannels';
 import MemberDetail from './components/MemberDetail';
 import PasswordResetApprovalModal from './components/PasswordResetApprovalModal';
 import ProspectsTab from './components/ProspectsTab';
@@ -96,7 +98,6 @@ export default function AdminMembers() {
   const [allMembers, setAllMembers] = useState([]);
   const [hasMoreMembers, setHasMoreMembers] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [quickMsgMemberId, setQuickMsgMemberId] = useState(null);
   // Prospects (mig 0681). `prospectEdit` holds the row being edited, or the
   // sentinel 'new' when adding. `convertingProspect` is the row whose
   // conversion opened CreateInviteModal — it stays set so the success handler
@@ -272,7 +273,28 @@ export default function AdminMembers() {
   });
 
   const [copiedId, setCopiedId] = useState(null);
-  const [qrInvite, setQrInvite] = useState(null); // invite object to show QR for
+  const [resendInvite, setResendInvite] = useState(null); // invite whose channel picker is open
+  const [confirmRevoke, setConfirmRevoke] = useState(null); // invite pending delete confirmation
+  const [detailInvite, setDetailInvite] = useState(null); // invite whose detail/resend sheet is open
+  const [contactMember, setContactMember] = useState(null); // member whose contact panel is open
+
+  // ContactPanel lee `member.phone_number` de la prop, y la consulta de la lista
+  // NO lo trae (profiles se pide sin él). Sin esto, SMS y WhatsApp abrían con el
+  // destinatario en blanco: no falla, pero obliga a teclear el número a mano,
+  // que es justo lo que el panel existe para ahorrar.
+  //
+  // Se pide al abrir y no en la lista a propósito: son 43 filas de las que casi
+  // ninguna se contacta, y MemberDetail ya lo hace así porque la columna podría
+  // no existir en una base sin migrar. Si falla, se abre igual sin número.
+  const openContact = async (m) => {
+    setContactMember(m);
+    try {
+      const { data } = await supabase.from('profiles').select('phone_number').eq('id', m.id).single();
+      if (data?.phone_number) setContactMember((prev) => (prev?.id === m.id ? { ...prev, phone_number: data.phone_number } : prev));
+    } catch (err) {
+      logger.error('AdminMembers: phone lookup for contact panel:', err);
+    }
+  };
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exporting, setExporting] = useState(null);
   const exportMenuRef = useRef(null);
@@ -282,7 +304,7 @@ export default function AdminMembers() {
   // touch-action scroll-chaining via index.css `.modal-scroll-lock`, which a bare
   // `document.body.style.overflow` does not — and it composes with nested modals
   // instead of clobbering their saved value.
-  useScrollLock(!!qrInvite || !!bulkAction || !!quickMsgMemberId);
+  useScrollLock(!!detailInvite || !!confirmRevoke || !!resendInvite || !!bulkAction || !!contactMember);
 
   // Close export menu on outside click
   useEffect(() => {
@@ -413,11 +435,30 @@ export default function AdminMembers() {
 
   const handleRevokeInvite = async (inviteId) => {
     const { error } = await supabase.from('gym_invites').delete().eq('id', inviteId).eq('gym_id', gymId);
-    if (error) logger.error('Failed to revoke invite:', error);
-    else {
-      logAdminAction('revoke_invite', 'invite', inviteId);
-      refetchInvites();
+    if (error) {
+      logger.error('Failed to revoke invite:', error);
+      showToast(t('admin.memberInvites.revokeFailed', 'No se pudo eliminar la invitación'), 'error');
+      return;
     }
+    logAdminAction('revoke_invite', 'invite', inviteId);
+    showToast(t('admin.memberInvites.revoked', 'Invitación eliminada'), 'success');
+    refetchInvites();
+  };
+
+  // «Reenviar» PREGUNTA por dónde y reenvía. Antes solo abría el detalle —un
+  // botón que promete una acción y entrega un diálogo—, y después elegía el
+  // canal solo: correo si lo había, si no SMS. Eso es cómodo hasta que la
+  // invitación tiene el correo mal escrito y el teléfono bien; entonces el
+  // botón manda al mismo sitio que ya falló, y en silencio.
+  //
+  // Con un solo canal disponible el diálogo enseña un solo botón, y eso también
+  // es información: dice POR DÓNDE va a salir antes de que salga.
+  const handleResendInvite = (inv) => {
+    if (inviteChannels(inv).length === 0) {
+      showToast(t('admin.memberInvites.noContactToResend', 'Sin correo ni teléfono: copia el enlace y dáselo a mano'), 'error');
+      return;
+    }
+    setResendInvite(inv);
   };
 
   const handleNoteSaved = (memberId, newNote) => {
@@ -587,19 +628,6 @@ export default function AdminMembers() {
     setBulkAction(null);
   };
 
-  const handleQuickMessage = async (memberId, message) => {
-    if (!message?.trim()) return;
-    try {
-      await sendNotification(memberId, gymId, { type: 'admin_message', title: i18n.t('notifications.messageFromGym', { ns: 'common', defaultValue: 'Message from your gym' }), body: message, data: { source: 'admin_quick_message' } });
-      logAdminAction('quick_message', 'member', memberId);
-      showToast(t('admin.members.messageSent', { defaultValue: 'Message sent' }), 'success');
-    } catch (err) {
-      logger.error('Quick message failed for member:', memberId, err);
-      showToast(t('admin.members.messageFailed', { defaultValue: 'Failed to send message' }), 'error');
-    }
-    setQuickMsgMemberId(null);
-  };
-
   const handleExport = () => {
     exportCSV({
       filename: 'members',
@@ -633,6 +661,115 @@ export default function AdminMembers() {
     { key: 'invites', label: t('admin.members.tabInvites', 'Invites'), count: pendingCount },
     { key: 'prospects', label: t('admin.members.tabProspects', 'Prospects'), count: openProspectCount },
     { key: 'resets', label: t('admin.members.tabResets', 'Resets'), count: resetCount },
+  ];
+
+  // Invitaciones con el MISMO AdminTable que la tabla de miembros. Antes era una
+  // rejilla propia y por eso se veía de otra app: otro ancho, otra cabecera,
+  // otra densidad. Compartir el componente es lo único que garantiza que no se
+  // vuelvan a separar.
+  const inviteTableColumns = [
+    {
+      key: 'member_name',
+      label: k('colInvitee'),
+      sortable: true,
+      sortValue: (i) => (i.member_name || '').toLowerCase(),
+      render: (inv) => (
+        <div className="min-w-0">
+          <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--color-admin-text)' }}>
+            {inv.member_name || k('unnamed')}
+          </p>
+          <p className="text-[12px] truncate" style={{ color: 'var(--color-admin-text-muted)' }}>
+            {inv.email || inv.phone || k('noContact')}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'invite_code',
+      label: k('colCode'),
+      width: '170px',
+      render: (inv) => {
+        const expired = getInviteStatus(inv) === 'expired';
+        return (
+          <button onClick={(e) => { e.stopPropagation(); handleCopyCode(inv); }}
+            title={k('copyInviteCode')}
+            className="inline-flex items-stretch rounded-lg overflow-hidden"
+            style={{ border: '1px solid var(--color-border-default)', background: 'rgba(255,255,255,0.035)' }}>
+            <span className={`font-mono text-[13px] font-bold tracking-[0.08em] px-2.5 py-1.5 ${expired ? 'line-through' : ''}`}
+              style={{ color: expired ? 'var(--color-text-faint)' : 'var(--color-admin-text)' }}>
+              {inv.invite_code}
+            </span>
+            <span className="w-[28px] grid place-items-center"
+              style={{ borderLeft: '1px solid var(--color-border-subtle)', color: copiedId === inv.id ? '#10B981' : 'var(--color-text-faint)' }}>
+              {copiedId === inv.id ? <CheckCircle size={13} /> : <Copy size={13} />}
+            </span>
+          </button>
+        );
+      },
+    },
+    {
+      key: 'validity',
+      label: k('colValidity'),
+      width: '170px',
+      render: (inv) => {
+        const st = getInviteStatus(inv);
+        if (st === 'claimed') {
+          return <span className="text-[12.5px] font-semibold inline-flex items-center gap-1.5" style={{ color: '#10B981' }}><CheckCircle size={12} />{k('statusClaimed')}</span>;
+        }
+        if (st === 'expired') {
+          return <span className="text-[12.5px] font-semibold" style={{ color: '#EF4444' }}>{k('statusExpired')}</span>;
+        }
+        // Sin expires_at la invitación no caduca nunca: no hay cuenta atrás que
+        // enseñar, y forzar una imprimía "d restantes" sin número delante.
+        if (!inv.expires_at) {
+          return <span className="text-[12.5px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{k('statusPending')}</span>;
+        }
+        const left = differenceInDays(new Date(inv.expires_at), new Date());
+        const tone = left > 14 ? '#10B981' : left > 6 ? '#D4AF37' : '#EF4444';
+        return (
+          <div>
+            {/* daysLeftShort YA dice "d restantes" — añadirle otro sufijo fue lo
+                que imprimía "25d restantes restantes". */}
+            <p className="text-[12.5px] font-semibold" style={{ color: tone }}>{left}{k('daysLeftShort')}</p>
+            <div className="h-[3px] rounded-full mt-1.5 w-[92px] overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+              <i className="block h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, (left / 30) * 100))}%`, background: tone }} />
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      label: '',
+      width: '190px',
+      // Sin botón de QR: el detalle de la invitación ya lo enseña, y aquí
+      // sobraba — nadie escanea un QR desde una fila de una tabla.
+      render: (inv) => {
+        const pending = getInviteStatus(inv) === 'pending';
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {pending && (
+              <button onClick={(e) => { e.stopPropagation(); handleResendInvite(inv); }}
+                className="inline-flex items-center gap-1.5 px-2.5 h-[29px] rounded-lg text-[12px] font-semibold"
+                style={{ border: '1px solid var(--color-border-default)', color: 'var(--color-admin-text)' }}>
+                <Send size={12} />
+                {k('resend')}
+              </button>
+            )}
+            {pending && (
+              // Rojo de base, no solo al pasar por encima: es la única acción
+              // destructiva de la fila y debe verse antes de tocarla.
+              <button onClick={(e) => { e.stopPropagation(); setConfirmRevoke(inv); }}
+                title={k('revokeInvite')} aria-label={k('revokeInvite')}
+                className="w-[30px] h-[30px] grid place-items-center rounded-lg transition-colors"
+                style={{ color: 'var(--color-danger)', border: '1px solid color-mix(in srgb, var(--color-danger) 22%, transparent)', background: 'color-mix(in srgb, var(--color-danger) 8%, transparent)' }}>
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
   ];
 
   const memberTableColumns = [
@@ -678,9 +815,12 @@ export default function AdminMembers() {
       key: 'membership_status',
       label: t('admin.members.colStatus', 'Status'),
       sortable: true,
-      render: (m) => <StatusDot status={m.membership_status} />,
-      className: 'text-center',
-      headerClassName: 'text-center',
+      // El PUNTAJE, no risk_tier: es el mismo número que pinta la barra en
+      // Riesgo de Baja, así que el color sale igual en las dos pantallas.
+      render: (m) => <RiskDot score={m.score} state={m.state} membershipStatus={m.membership_status} />,
+      // Sin `text-center`: la cabecera se quedaba a la izquierda y el punto en
+      // mitad de la columna, a 120px de su propio título. Todas las columnas
+      // alinean a la izquierda, que es donde empieza su encabezado.
     },
     {
       key: 'last_seen',
@@ -701,7 +841,7 @@ export default function AdminMembers() {
       width: '48px',
       render: (m) => (
         <button
-          onClick={(e) => { e.stopPropagation(); setQuickMsgMemberId(m.id); }}
+          onClick={(e) => { e.stopPropagation(); openContact(m); }}
           className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110"
           style={{ color: 'var(--color-text-muted)', backgroundColor: 'transparent' }}
           onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--color-accent) 12%, transparent)'; e.currentTarget.style.color = 'var(--color-accent)'; }}
@@ -958,7 +1098,7 @@ export default function AdminMembers() {
                     </div>
                     <div className="flex items-center gap-2.5 flex-shrink-0">
                       <button
-                        onClick={(e) => { e.stopPropagation(); setQuickMsgMemberId(m.id); }}
+                        onClick={(e) => { e.stopPropagation(); openContact(m); }}
                         className="p-1.5 rounded-lg transition-colors"
                         style={{ color: 'var(--color-text-muted)' }}
                         title={t('admin.members.message', 'Message')}
@@ -1041,110 +1181,44 @@ export default function AdminMembers() {
           <TableSkeleton rows={6} />
         ) : (
           <div className="space-y-4">
-            {/* Invite sub-filter tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 pb-1">
-              {[
+            {/* Sub-filtro de invitaciones. Usa el MISMO AdminTabs que la fila de
+                arriba en vez de píldoras propias: eran dos sistemas distintos en
+                una pantalla —subrayado dorado arriba, píldoras con fondo abajo—
+                y se leían como dos apps pegadas. Compartir el componente hace
+                que no puedan volver a separarse cuando uno de los dos cambie.
+                equalWidth={false} → en línea y desplazable, que son tres. */}
+            <AdminTabs
+              tabs={[
                 { key: 'pending', label: k('filterPending'), count: pendingInvites.length },
                 { key: 'claimed', label: k('filterClaimed'), count: claimedInvites.length },
                 { key: 'all', label: k('filterAll'), count: allInvites.length },
-              ].map(opt => (
-                <button
-                  key={opt.key}
-                  onClick={() => setInviteFilter(opt.key)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold flex-shrink-0 whitespace-nowrap transition-colors border ${
-                    inviteFilter === opt.key
-                      ? 'bg-[#D4AF37]/12 text-[#D4AF37] border-[#D4AF37]/25'
-                      : 'bg-white/4 text-[#6B7280] border-white/6 hover:text-[#9CA3AF]'
-                  }`}
-                >
-                  {opt.label}
-                  <span className="text-[10px] opacity-70">{opt.count}</span>
-                </button>
-              ))}
+              ]}
+              active={inviteFilter}
+              onChange={setInviteFilter}
+              equalWidth={false}
+              // Prefijo propio: la fila de arriba ya usa el de por defecto y dos
+              // instancias compartiéndolo darían ids duplicados en el DOM.
+              idPrefix="invite-filter"
+            />
+
+            {/* AdminTabs apunta con aria-controls a `<idPrefix>-panel-<key>`.
+                Sin este id la referencia no resolvería a nada y un lector de
+                pantalla anunciaría una pestaña que no controla ningún panel. */}
+            {/* AdminTable apunta con aria-controls al panel; este id lo hace
+                resolver. Y es el MISMO componente que la tabla de miembros. */}
+            <div id={`invite-filter-panel-${inviteFilter}`} role="tabpanel" aria-labelledby={`invite-filter-${inviteFilter}`}>
+              <AdminTable
+                columns={inviteTableColumns}
+                data={filteredInvites}
+                onRowClick={(inv) => setDetailInvite(inv)}
+                emptyState={(
+                  <div className="text-center py-16">
+                    <UserPlus size={28} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
+                    <p className="text-[14px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{k('noInvitesFound')}</p>
+                  </div>
+                )}
+              />
             </div>
-
-            {filteredInvites.length === 0 ? (
-              <div className="text-center py-16">
-                <UserPlus size={28} className="mx-auto mb-3" style={{ color: 'var(--color-text-faint)' }} />
-                <p className="text-[14px] font-medium" style={{ color: 'var(--color-text-muted)' }}>{k('noInvitesFound')}</p>
-              </div>
-            ) : (
-              <div className="rounded-[14px] overflow-hidden"
-                style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-                <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                  {filteredInvites.map(inv => {
-                    const status = getInviteStatus(inv);
-                    const now = new Date();
-                    const expiresAt = inv.expires_at ? new Date(inv.expires_at) : null;
-                    const daysLeft = expiresAt && status === 'pending' ? differenceInDays(expiresAt, now) : null;
-
-                    const statusColors = {
-                      pending: { bg: 'bg-[#D4AF37]/12', text: 'text-[#D4AF37]', border: 'border-[#D4AF37]/25' },
-                      claimed: { bg: 'bg-[#10B981]/12', text: 'text-[#10B981]', border: 'border-[#10B981]/25' },
-                      expired: { bg: 'bg-[#EF4444]/12', text: 'text-[#EF4444]', border: 'border-[#EF4444]/25' },
-                    };
-                    const sc = statusColors[status] || statusColors.pending;
-
-                    return (
-                      <div key={inv.id}
-                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.03] transition-all">
-                        <div className="w-9 h-9 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
-                          {status === 'claimed' ? (
-                            <CheckCircle size={15} className="text-[#10B981]" />
-                          ) : (
-                            <Clock size={15} className="text-[#D4AF37]" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-[14px] font-semibold text-[var(--color-admin-text)] truncate">{inv.member_name || k('unnamed')}</p>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sc.bg} ${sc.text} border ${sc.border}`}>
-                              {status === 'pending' && daysLeft !== null
-                                ? `${k('statusPending')} · ${daysLeft}${k('daysLeftShort')}`
-                                : status === 'claimed'
-                                ? k('statusClaimed')
-                                : status === 'expired'
-                                ? k('statusExpired')
-                                : k('statusPending')}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-[#6B7280]">
-                            {inv.email && <span className="inline-flex items-center gap-0.5 mr-2"><Mail size={9} /> {inv.email}</span>}
-                            {inv.phone && <span className="inline-flex items-center gap-0.5 mr-2"><Phone size={9} /> {inv.phone}</span>}
-                            {!inv.email && !inv.phone && k('noContact')}
-                            {' · '}{format(new Date(inv.created_at), 'MMM d, yyyy', dateFnsLocale)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <code className="text-[12px] font-mono text-[#D4AF37] bg-[#D4AF37]/8 px-2.5 py-1 rounded-lg border border-[#D4AF37]/15 hidden sm:block">
-                            {inv.invite_code}
-                          </code>
-                          <button onClick={() => handleCopyCode(inv)}
-                            title={k('copyInviteCode')}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-[var(--color-bg-hover)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] hover:border-[var(--color-admin-border)] transition-colors">
-                            <Copy size={12} />
-                            {copiedId === inv.id ? k('copied') : k('copy')}
-                          </button>
-                          <button onClick={() => setQrInvite(inv)}
-                            title={t('admin.members.qrCodeTitle', 'QR Code')}
-                            className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-[var(--color-bg-hover)] border border-[var(--color-admin-border)] text-[var(--color-admin-text-muted)] hover:text-[var(--color-admin-text)] hover:border-[var(--color-admin-border)] transition-colors">
-                            <QrCode size={12} />
-                          </button>
-                          {status === 'pending' && (
-                            <button onClick={() => handleRevokeInvite(inv.id)}
-                              title={k('revokeInvite')}
-                              aria-label={k('revokeInvite')}
-                              className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-semibold bg-[#EF4444]/8 border border-[#EF4444]/15 text-[#EF4444]/70 hover:text-[#EF4444] hover:border-[#EF4444]/30 transition-colors min-w-[44px] min-h-[44px] focus:ring-2 focus:ring-[#D4AF37] focus:outline-none">
-                              <Trash2 size={12} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )
           );
@@ -1222,26 +1296,68 @@ export default function AdminMembers() {
 
       {showInvite && <InviteModal gymId={gymId} onClose={() => setShowInvite(false)} />}
 
-      {/* QR Code modal for invites */}
-      {qrInvite && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4 pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:p-6 px-4" onClick={() => setQrInvite(null)}>
-          <div className="w-full max-w-[320px] p-6 rounded-2xl text-center" onClick={e => e.stopPropagation()}
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
-            <p className="text-[15px] font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>{qrInvite.member_name}</p>
-            <p className="text-[22px] font-mono font-bold tracking-[0.2em] mb-4" style={{ color: 'var(--color-accent)' }}>{qrInvite.invite_code}</p>
-            <div className="bg-white p-4 rounded-xl inline-block mb-4">
-              <QRCodeSVG value={buildInviteUrl(qrInvite.invite_code)} size={180} level="H" />
-            </div>
-            <p className="text-[11px] font-mono mb-4 break-all" style={{ color: 'var(--color-text-muted)' }}>
-              app.tugympr.com/invite/{qrInvite.invite_code}
-            </p>
-            <button onClick={() => setQrInvite(null)}
-              className="px-6 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-              style={{ background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)' }}>
-              {t('common:close', 'Close')}
+      {detailInvite && (
+        <InviteDetailModal
+          // key por id: abrir otra invitación remonta el modal, así el
+          // formulario no arranca con lo que había escrito para la anterior.
+          key={detailInvite.id}
+          invite={detailInvite}
+          status={getInviteStatus(detailInvite)}
+          gymId={gymId}
+          dateFnsLocale={dateFnsLocale}
+          onClose={() => setDetailInvite(null)}
+          onSaved={(updated) => { setDetailInvite(updated); refetchInvites(); }}
+        />
+      )}
+
+      {/* Por dónde reenviar. Los botones son el MISMO componente que usa el
+          detalle, así que los dos sitios ofrecen los mismos canales y ninguno
+          se queda atrás cuando se añada otro. */}
+      {resendInvite && (
+        <AdminModal isOpen onClose={() => setResendInvite(null)} size="sm"
+          title={k('resend')}
+          subtitle={resendInvite.member_name || k('unnamed')}
+          titleIcon={Send}>
+          <p className="text-[13px] mb-4" style={{ color: 'var(--color-text-muted)' }}>
+            {t('admin.memberInvites.resendPick', {
+              code: resendInvite.invite_code,
+              defaultValue: 'Sale el mismo código {{code}}, así que el que ya diste sigue valiendo.',
+            })}
+          </p>
+          <InviteResendButtons
+            invite={resendInvite}
+            layout="stack"
+            onSent={() => setResendInvite(null)}
+          />
+        </AdminModal>
+      )}
+
+      {/* Confirmar antes de eliminar. Borrar una invitación es IRREVERSIBLE y
+          además invalida el código que quizá ya diste por teléfono — no puede
+          depender de un solo clic en un icono pequeño. */}
+      {confirmRevoke && (
+        <AdminModal isOpen onClose={() => setConfirmRevoke(null)} size="sm"
+          title={k('revokeInvite')}>
+          <p className="text-[13px] mb-5" style={{ color: 'var(--color-text-muted)' }}>
+            {t('admin.memberInvites.revokeConfirm', {
+              name: confirmRevoke.member_name || k('unnamed'),
+              code: confirmRevoke.invite_code,
+              defaultValue: 'Se elimina la invitación de {{name}}. El código {{code}} deja de funcionar para siempre; si ya se lo diste, tendrás que crear otra.',
+            })}
+          </p>
+          <div className="flex gap-3">
+            <button onClick={() => setConfirmRevoke(null)}
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors hover:opacity-80"
+              style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg-hover)' }}>
+              {t('admin.members.cancel', 'Cancelar')}
+            </button>
+            <button onClick={() => { const id = confirmRevoke.id; setConfirmRevoke(null); handleRevokeInvite(id); }}
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-opacity hover:opacity-90"
+              style={{ background: 'var(--color-danger)', color: '#fff' }}>
+              {k('revokeInvite')}
             </button>
           </div>
-        </div>
+        </AdminModal>
       )}
 
       {showCreateInvite && (
@@ -1350,40 +1466,23 @@ export default function AdminMembers() {
       )}
 
       {/* Quick message modal for individual member */}
-      {quickMsgMemberId && (() => {
-        const targetMember = members.find(m => m.id === quickMsgMemberId);
-        return (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4 pt-[calc(56px+env(safe-area-inset-top)+12px)] pb-[calc(80px+env(safe-area-inset-bottom)+12px)] md:p-6"
-            onClick={() => setQuickMsgMemberId(null)}>
-            <div className="w-full max-w-md mx-4 p-6 rounded-2xl shadow-2xl"
-              style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
-              onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-3 mb-4">
-                <Avatar name={targetMember?.full_name} src={targetMember?.checkin_photo_url} />
-                <div className="min-w-0">
-                  <h3 className="text-[16px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                    {t('admin.members.messageToMember', { name: targetMember?.full_name?.split(' ')[0] || '', defaultValue: 'Message {{name}}' })}
-                  </h3>
-                  <p className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>{t('admin.members.sentAsNotification', { defaultValue: 'Sent as in-app notification' })}</p>
-                </div>
-              </div>
-              <textarea id="quick-msg" rows={3} autoFocus placeholder={t('admin.members.typeMessage')}
-                className="w-full rounded-xl px-4 py-2.5 text-[13px] outline-none resize-none mb-4 transition-colors"
-                style={{ backgroundColor: 'var(--color-bg-input)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-primary)' }} />
-              <div className="flex gap-2">
-                <button onClick={() => setQuickMsgMemberId(null)}
-                  className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-                  style={{ backgroundColor: 'var(--color-bg-input)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}>{t('admin.members.cancel')}</button>
-                <button onClick={() => { const msg = document.getElementById('quick-msg').value; if (msg.trim()) handleQuickMessage(quickMsgMemberId, msg); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-[13px] transition-all hover:scale-[1.02]"
-                  style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}>
-                  <Send size={13} /> {t('admin.members.send')}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Panel de contacto completo. Sustituye al cuadro que solo mandaba
+          notificación in-app: los cuatro canales viven aquí y ContactPanel ya
+          resuelve el correo por RPC (profiles NO tiene columna email) y el
+          teléfono. Sin onMarkContacted esto reventaría — lo llama sin guarda —
+          y esta pantalla no lleva registro de contactados, que es cosa del
+          panel de Riesgo de Baja. */}
+      {contactMember && (
+        <ContactPanel
+          member={contactMember}
+          gymId={gymId}
+          adminId={profile?.id}
+          isContacted={false}
+          onMarkContacted={() => {}}
+          onUnmarkContacted={() => {}}
+          onClose={() => setContactMember(null)}
+        />
+      )}
     </AdminPageShell>
   );
 }

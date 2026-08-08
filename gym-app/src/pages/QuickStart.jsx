@@ -5,6 +5,7 @@ import { Play, Plus, Dumbbell, ChevronRight, ChevronDown, Clock, X, CheckCircle2
 import { useScrollLock } from '../hooks/useScrollLock';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import { fetchOverrides, dateKey } from '../lib/scheduleOverrides';
 import { useAuth } from '../contexts/AuthContext';
 import { timeAgo as formatTimeAgo } from '../lib/dateUtils';
 import Skeleton from '../components/Skeleton';
@@ -413,9 +414,19 @@ const QuickStart = () => {
         }
       }
 
-      // Find today's scheduled routine using schedule map
+      // Find today's scheduled routine using schedule map.
+      //
+      // La excepción de HOY gana sobre la semana: es el sentido entero de poner
+      // algo «solo hoy». Si esto leyera solo `scheduleMap`, el Panel enseñaría
+      // la rutina del reto y /record arrancaría otra distinta — que es peor que
+      // no tener excepciones.
       let todayR = null;
-      if (scheduleMap[todayDow]) {
+      const overridesToday = await fetchOverrides(user.id, { daysBack: 0, daysAhead: 0 });
+      const todayOverride = overridesToday[dateKey(new Date())]?.routineId;
+      if (todayOverride) {
+        todayR = allRoutines.find(r => r.id === todayOverride) || null;
+      }
+      if (!todayR && scheduleMap[todayDow]) {
         todayR = allRoutines.find(r => r.id === scheduleMap[todayDow]) || null;
       }
 

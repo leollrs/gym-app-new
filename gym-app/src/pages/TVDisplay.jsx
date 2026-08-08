@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import { derivePalette, TV_METRIC_DEFS } from '../lib/tv/palette';
-import { getTvStrings, getMetricSlides, tvPeriodLabel } from '../lib/tv/strings';
+import { Check } from 'lucide-react';
+import { getTvStrings, getMetricSlides, tvPeriodLabel, tvChallengeUnit } from '../lib/tv/strings';
 import { PROD_WEB_URL } from '../lib/appUrls';
 import TVStyleStadium from '../components/tv/TVStyleStadium';
 import TVStyleBrutal from '../components/tv/TVStyleBrutal';
@@ -520,6 +521,19 @@ function CodeEntryScreen({ sessionId, initialError, onAuthenticated, lang = 'en'
 function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
   const c = slide.challenge;
   const tStr = getTvStrings(lang);
+  // ¿CARRERA o META? Es la pregunta que decide toda la diapositiva.
+  //
+  // Un reto de cumplimiento —«ven 12 veces»— no tiene primero, segundo ni
+  // tercero: o llegas o no llegas, y quien llega cobra lo mismo que el que
+  // llegó antes. Pintarlo con podio le dice a la mitad de la sala que van
+  // perdiendo una carrera que no existe, que es exactamente lo contrario de lo
+  // que el reto quiere provocar.
+  //
+  // `format` llega de la 0715. Mientras esa migración no esté aplicada viene
+  // `undefined` y todo se comporta como antes — competitivo —, así que la
+  // pantalla no se rompe esperándola.
+  const isGoal = c.format === 'completion' && Number(c.milestone_target) > 0;
+  const target = Number(c.milestone_target) || 0;
   const now = new Date();
   const endDate = c.end_date ? new Date(c.end_date) : null;
   const startDate = c.start_date ? new Date(c.start_date) : null;
@@ -570,7 +584,7 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
       <div className="flex flex-col min-h-0 overflow-hidden">
         <div className="mb-4 lg:mb-5 flex-shrink-0">
           <p className="text-[12px] lg:text-[13px] font-bold tracking-[0.3em] uppercase mb-2" style={{ color: accent }}>
-            {tStr.activeChallenge} · {timeLabel}
+            {isGoal ? tStr.goalChallenge : tStr.activeChallenge} · {timeLabel}
           </p>
           <h1
             className="font-black leading-none tracking-tight mb-3 text-[40px] lg:text-[48px] xl:text-[56px]"
@@ -578,6 +592,14 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
           >
             {c.name}
           </h1>
+          {/* En un reto de meta, LA META es el titular. Sin ella, «Ven 12 veces»
+              es un nombre bonito y nadie sabe en qué va ni cuánto le falta. */}
+          {isGoal && (
+            <p className="font-black leading-none tracking-tight mb-3 text-[22px] lg:text-[27px]"
+              style={{ color: accent, letterSpacing: '-0.01em' }}>
+              {tStr.reachTarget} {target.toLocaleString()} {tvChallengeUnit(lang, c.type)}
+            </p>
+          )}
           {c.description && (
             <p className="text-[15px] lg:text-[17px] leading-snug max-w-2xl line-clamp-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
               {c.description}
@@ -588,7 +610,11 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
               className="inline-flex items-center gap-2 px-3 lg:px-4 py-1.5 lg:py-2 rounded-full mt-3 lg:mt-4 text-[12px] lg:text-[14px] font-bold"
               style={{ background: `${accent}22`, color: accent, border: `1px solid ${accent}44` }}
             >
-              🏆 {c.reward_description}
+              {/* Un trofeo dice «gana uno». En un reto de meta el premio es de
+                  todo el que llegue, y decirlo cambia quién se apunta. */}
+              {isGoal
+                ? <>✓ {tStr.everyoneWhoFinishes}: {c.reward_description}</>
+                : <>🏆 {c.reward_description}</>}
             </div>
           )}
         </div>
@@ -600,43 +626,67 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
           {topTen.length === 0 ? (
             <div className="h-full flex items-center justify-center rounded-2xl border-2 border-dashed" style={{ borderColor: `${accent}30` }}>
               <div className="text-center px-8">
-                <p className="text-[26px] lg:text-[32px] font-black" style={{ color: accent }}>{tStr.beTheFirst}</p>
+                <p className="text-[26px] lg:text-[32px] font-black" style={{ color: accent }}>{isGoal ? tStr.firstToFinish : tStr.beTheFirst}</p>
                 <p className="text-[14px] lg:text-[16px] mt-2" style={{ color: 'rgba(255,255,255,0.4)' }}>{tStr.scanToJoin}</p>
               </div>
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 lg:gap-2 h-full">
-              {topTen.map((p, i) => (
+              {topTen.map((p, i) => {
+                // En un reto de meta lo que destaca es HABER LLEGADO, no el
+                // puesto: quien va tercero y ya cumplió ha ganado lo mismo que
+                // el primero, y quien va séptimo todavía puede ganar. Por eso
+                // el resalte sigue al check, no al índice.
+                const score = Number(p.score) || 0;
+                const done = isGoal && score >= target;
+                const lit = isGoal ? done : i < 3;
+                const pct = isGoal && target ? Math.min(100, Math.round((score / target) * 100)) : 0;
+                return (
                 <div
                   key={p.profile_id}
-                  className="relative flex items-center gap-3 lg:gap-4 rounded-lg lg:rounded-xl px-3 lg:px-4 min-h-0"
+                  className="relative flex items-center gap-3 lg:gap-4 rounded-lg lg:rounded-xl px-3 lg:px-4 min-h-0 overflow-hidden"
                   style={{
                     flex: '1 1 0',
-                    background: i < 3 ? `${accent}10` : 'rgba(255,255,255,0.03)',
-                    border: i < 3 ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.05)',
+                    background: lit ? `${accent}10` : 'rgba(255,255,255,0.03)',
+                    border: lit ? `1px solid ${accent}33` : '1px solid rgba(255,255,255,0.05)',
                   }}
                 >
-                  <div className="w-8 lg:w-10 flex items-center justify-center flex-shrink-0">
-                    {i < 3 ? (
+                  {/* La barra va DETRÁS de la fila, no debajo: a tres metros de
+                      distancia una barra fina de 4px no se ve, y una fila que
+                      se llena de color sí. */}
+                  {isGoal && !done && pct > 0 && (
+                    <div className="absolute inset-y-0 left-0 pointer-events-none"
+                      style={{ width: `${pct}%`, background: `${accent}12` }} />
+                  )}
+                  <div className="w-8 lg:w-10 flex items-center justify-center flex-shrink-0 relative">
+                    {isGoal ? (
+                      done
+                        ? <Check size={26} strokeWidth={3.5} style={{ color: accent }} />
+                        : <span className="text-[15px] lg:text-[19px] font-black tabular-nums" style={{ color: 'rgba(255,255,255,0.3)' }}>{pct}%</span>
+                    ) : i < 3 ? (
                       <span className="text-[20px] lg:text-[26px]">{['🥇', '🥈', '🥉'][i]}</span>
                     ) : (
                       <span className="text-[15px] lg:text-[19px] font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
                     )}
                   </div>
                   <p
-                    className="flex-1 font-black truncate text-[15px] lg:text-[20px]"
-                    style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.9)' }}
+                    className="flex-1 font-black truncate text-[15px] lg:text-[20px] relative"
+                    style={{ color: lit ? accent : 'rgba(255,255,255,0.9)' }}
                   >
                     {p.name}
                   </p>
                   <p
-                    className="font-black tabular-nums flex-shrink-0 text-[15px] lg:text-[20px]"
-                    style={{ color: i === 0 ? accent : 'rgba(255,255,255,0.75)' }}
+                    className="font-black tabular-nums flex-shrink-0 text-[15px] lg:text-[20px] relative"
+                    style={{ color: lit ? accent : 'rgba(255,255,255,0.75)' }}
                   >
+                    {/* «8 / 12» dice cuánto falta. «8» a secas, en un reto de
+                        meta, no dice nada. */}
                     {p.score != null ? Number(p.score).toLocaleString() : '—'}
+                    {isGoal && <span style={{ color: 'rgba(255,255,255,0.35)' }}> / {target.toLocaleString()}</span>}
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -663,9 +713,18 @@ function ChallengeSlide({ slide, accent, gymSlug, lang = 'en' }) {
         <p className="text-[12px] lg:text-[14px] font-semibold text-center" style={{ color: 'rgba(255,255,255,0.5)' }}>
           {tStr.scanWithPhone}
         </p>
-        {participants.length > 0 && (
-          <p className="text-[11px] lg:text-[13px] font-bold uppercase tracking-widest mt-3 lg:mt-4" style={{ color: accent }}>
-            {participants.length} {participants.length === 1 ? tStr.memberIn : tStr.membersIn}
+        {/* Cuánta gente hay dentro — y, en un reto de meta, cuánta YA llegó.
+            Ese segundo número es el que mueve a quien pasa por delante: «ocho
+            ya lo lograron» es prueba de que se puede, y no lo era «hay 23
+            apuntados». Los totales vienen del servidor (0715) porque la lista
+            de arriba son solo diez. Mientras la migración no esté aplicada,
+            `participant_count` es undefined y se cae al recuento de la lista,
+            que es lo que se enseñaba antes. */}
+        {(c.participant_count ?? participants.length) > 0 && (
+          <p className="text-[11px] lg:text-[13px] font-bold uppercase tracking-widest mt-3 lg:mt-4 text-center" style={{ color: accent }}>
+            {isGoal && c.completed_count != null
+              ? `${c.completed_count} ${lang === 'es' ? 'de' : 'of'} ${c.participant_count} ${tStr.alreadyMadeIt}`
+              : `${c.participant_count ?? participants.length} ${(c.participant_count ?? participants.length) === 1 ? tStr.memberIn : tStr.membersIn}`}
           </p>
         )}
       </div>

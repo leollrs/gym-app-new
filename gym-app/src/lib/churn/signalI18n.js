@@ -7,7 +7,19 @@
 // If you add a new `label:` value in the edge function, add it here too —
 // otherwise it'll render raw English on the Spanish side.
 const SIGNAL_I18N = {
-  // ── v3 model labels (churnSignalsV3.js + compute-churn-scores edge fn) ──
+  // ── Rótulos v4 (churnSignalsV4.js + compute-churn-scores) ──
+  'On their usual rhythm':         'admin.churnSignals.v4OnRhythm',
+  'Holding their rate':            'admin.churnSignals.v4RateStable',
+  'Good visit volume':             'admin.churnSignals.v4GoodVolume',
+  'Started well':                  'admin.churnSignals.v4Activated',
+  'Everything looks fine':         'admin.churnSignals.v4Healthy',
+  'Came recently':                 'admin.churnSignals.recentlyActive',
+  'Still active in the app':       'admin.churnSignals.appActive',
+  'Stopped using the app':         'admin.churnSignals.appActivityDropped',
+  'On hold':                       'admin.churnSignals.onHold',
+  'No activity':                   'admin.churnSignals.noRecentActivity',
+
+  // ── v3 model labels (compute-churn-scores anterior) ──
   'No recent activity':            'admin.churnSignals.noRecentActivity',
   'Active recently':               'admin.churnSignals.recentlyActive',
   'Attendance stable':             'admin.churnSignals.stable',
@@ -150,6 +162,16 @@ export function translateSignal(t, sig) {
   if ((m2 = raw.match(/^Not building a routine \((\d+) visits in (\d+)w\)$/i)))
     return t('admin.churnSignals.notBuildingHabit', { v: Number(m2[1]), w: Number(m2[2]), defaultValue: raw });
 
+  // v4 dynamic labels — los números varían por socio, no pueden ser claves.
+  if ((m2 = raw.match(/^(\d+) days out — usually never past (\d+)$/i)))
+    return t('admin.churnSignals.v4GapVsUsual', { d: Number(m2[1]), g: Number(m2[2]), defaultValue: raw });
+  if ((m2 = raw.match(/^Was coming (\d+)% less$/i)))
+    return t('admin.churnSignals.v4RateDown', { pct: Number(m2[1]), defaultValue: raw });
+  if ((m2 = raw.match(/^([\d.]+) visits\/week$/i)))
+    return t('admin.churnSignals.v4LowVolume', { n: m2[1], defaultValue: raw });
+  if ((m2 = raw.match(/^Only (\d+) visits in their first weeks$/i)))
+    return t('admin.churnSignals.v4NotActivated', { n: Number(m2[1]), defaultValue: raw });
+
   const code = raw.replace(/^[-•·\s]+/, '').toLowerCase();
   if (SIGNAL_CODE_I18N[code]) return t(SIGNAL_CODE_I18N[code]);
 
@@ -162,6 +184,14 @@ export function translateSignal(t, sig) {
 
 /** Maps signal keys (from riskScoring.js) to i18n display name keys. */
 const SIGNAL_NAME_I18N = {
+  // ── claves v4 ──
+  gap:                  'admin.churnSignals.nameGap',
+  drop:                 'admin.churnSignals.nameDrop',
+  floor:                'admin.churnSignals.nameFloor',
+  habit:                'admin.churnSignals.nameHabitFormation',
+  onboarding_recency:   'admin.churnSignals.nameRecency',
+  app_withdrawal:       'admin.churnSignals.nameAppDecline',
+
   // ── v3 signal keys ──
   recency:              'admin.churnSignals.nameRecency',
   frequency:            'admin.churnSignals.nameFrequency',

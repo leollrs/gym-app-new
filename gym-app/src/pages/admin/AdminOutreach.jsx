@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import posthogClient from 'posthog-js';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Send, Loader2, Sparkles, Eye, Mail, ChevronDown, History } from 'lucide-react';
+import { Send, Loader2, Sparkles, Mail, ChevronDown, History, CheckCircle, Plus, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase, authHeader, isSessionError } from '../../lib/supabase';
@@ -14,8 +14,13 @@ import { getEmailTemplates, getSmsTemplates } from '../../lib/adminMessageTempla
 import { resolveOutreachAudience } from '../../lib/admin/outreachAudience';
 import { sendOutreach } from '../../lib/admin/outreachSender';
 import { enqueueOutreach, nudgeOutreachJob, fetchOutreachProgress, cancelOutreachJob } from '../../lib/admin/outreachQueue';
+import { fetchReachFacts, toReachSets, computeReach, smsSegments, smsCost, SMS_SEGMENT_CHARS, PUSH_PREVIEW_CHARS } from '../../lib/admin/outreachReach';
 import OutreachAudiencePicker from './components/OutreachAudiencePicker';
 import OutreachChannelPicker from './components/OutreachChannelPicker';
+import OutreachReachCard from './components/OutreachReachCard';
+import OutreachPreview from './components/OutreachPreview';
+import OutreachConfirmModal from './components/OutreachConfirmModal';
+import { OutreachStepper, StepFooter } from './components/OutreachStepper';
 import { getPrebuiltTemplates } from './components/emailTemplatePrebuilts';
 import { dbRowToTemplate } from '../../lib/admin/emailTemplateRenderer';
 import { renderDesignerEmail } from '../../lib/admin/emailDesignerTemplates';
@@ -93,6 +98,11 @@ function SendRow({ row, t }) {
  * channel. Replaces the per-page bulk message / win-back / broadcast popups
  * that used to live in AdminMembers, AdminChurn, AdminMessaging, etc.
  *
+ * Ya no es un formulario largo sino TRES PREGUNTAS en fila: a quién, por dónde,
+ * qué. Cada paso dice qué le falta antes de dejarte seguir, la derecha lleva la
+ * cuenta de a cuántos llega DE VERDAD, y enviar pasa por una confirmación —
+ * porque es irreversible y no lo parecía.
+ *
  * Deep-link query params let other pages prefill the composer:
  *  - ?audience=critical | high | medium | low — pre-selects a churn tier
  *  - ?audience=member&ids=uuid,uuid           — pre-selects specific members
@@ -131,6 +141,13 @@ export default function AdminOutreach() {
     };
   });
 
+  // ── Paso actual y el más lejano visitado. `furthest` es lo que hace que el
+  // rail de arriba sea navegable hacia atrás sin dejar saltar hacia delante.
+  const [step, setStep] = useState(1);
+  const [furthest, setFurthest] = useState(1);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const bodyRef = useRef(null);
+
   // ── Content
   // `?body=` deep-link param lets other pages (e.g. AdminABTesting "Ship
   // winner to Outreach") prefill the composer body. Decoded once on mount.
@@ -148,6 +165,7 @@ export default function AdminOutreach() {
   // the email body verbatim. The body textarea then only feeds push/SMS/in-app.
   const [designer, setDesigner] = useState(null); // { id, html, subject, kind }
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [previewChannel, setPreviewChannel] = useState('push');
   // El trabajo de correo en curso. Sobrevive a que se cierre la pestaña; esto
   // solo es la ventana para mirarlo mientras siga abierta.
   const [activeJobId, setActiveJobId] = useState(null);
@@ -200,11 +218,6 @@ export default function AdminOutreach() {
     );
   }, [emailLocked]);
 
-  // ── Prefill from email template deep-link (?template=<id> or ?prebuilt=<key>)
-  // Runs once on mount. If a saved template id is provided, we hydrate from the
-  // gym_email_templates row; if a prebuilt key is provided, we look it up in
-  // the in-memory prebuilt catalog. Either way we flip channels.email on and
-  // set subject + body from the template's stored content.
   // ── Prefill from a designer template (?designer=<id>). Renders the polished
   // editorial HTML with the gym's name/logo, an adaptive palette derived from
   // the gym's brand colors, and keeps the per-recipient merge tokens literal
@@ -296,7 +309,7 @@ export default function AdminOutreach() {
       });
       if (!r) return;
       setReward(null);
-      setDesigner({ id: picked.id, html: r.html, subject: r.subject, kind: 'design' });
+      setDesigner({ id: picked.id, html: r.html, subject: r.subject, kind: 'design', name: r.subject });
       setSubject(r.subject);
       setBody(prev => prev || r.preview);
       setTemplateKey('');
@@ -309,7 +322,7 @@ export default function AdminOutreach() {
     // bloques que montar, y pasarla por el motor la dejaría en blanco.
     if (tpl.designer_id && tpl.designer_html) {
       setReward(null);
-      setDesigner({ id: tpl.designer_id, html: tpl.designer_html, subject: tpl.designer_subject || tpl.name, kind: 'design' });
+      setDesigner({ id: tpl.designer_id, html: tpl.designer_html, subject: tpl.designer_subject || tpl.name, kind: 'design', name: tpl.name });
       setSubject(tpl.designer_subject || tpl.name || '');
       setBody(prev => prev || tpl.designer_preview || '');
       setTemplateKey('');
@@ -349,7 +362,7 @@ export default function AdminOutreach() {
       }),
       keepTokens: true,
     });
-    setDesigner({ id: tpl.id, html, subject: tpl.header?.text || tpl.name || '', kind: 'template' });
+    setDesigner({ id: tpl.id, html, subject: tpl.header?.text || tpl.name || '', kind: 'template', name: tpl.name });
     setSubject(tpl.header?.text || tpl.name || '');
     // `|| prev`: una plantilla sin titular ni cuerpo dejaba `body` vacío, y
     // `canSend` lo exige — el botón se apagaba sin explicación. Las otras dos
@@ -415,6 +428,40 @@ export default function AdminOutreach() {
   });
   const recipientCount = recipients.length;
 
+  // Los hechos de alcance son POR GIMNASIO, no por audiencia: quién tiene push y
+  // quién consiente correo no cambia al cambiar el filtro. Una consulta, y
+  // cambiar de audiencia recalcula en memoria.
+  const { data: reachRaw } = useQuery({
+    // Clave nueva a propósito: en la caché persistida de quien ya cargó la
+    // página quedó `{push:{}, emailOk:{}}` —el Set aplastado por JSON—, y con
+    // la clave vieja se seguiría leyendo esa basura hasta que caducara.
+    queryKey: ['admin', 'outreach', gymId, 'reach-facts-v2'],
+    queryFn: () => fetchReachFacts(gymId),
+    enabled: !!gymId,
+    staleTime: 5 * 60_000,
+  });
+  // Los Sets se arman AQUÍ, nunca dentro de la caché: React Query se persiste a
+  // localStorage y un Set rehidrata como `{}` — sin `.has` y con la página caída.
+  const reachFacts = useMemo(() => toReachSets(reachRaw), [reachRaw]);
+  const reach = useMemo(
+    () => computeReach(recipients, reachFacts, channels),
+    [recipients, reachFacts, channels],
+  );
+
+  const channelName = (c) => ({
+    push: t('admin.outreach.channelPushShort', 'Push'),
+    inApp: t('admin.outreach.channelInAppShort', 'In-app'),
+    email: t('admin.outreach.channelEmailShort', 'Email'),
+    sms: t('admin.outreach.channelSmsShort', 'SMS'),
+  }[c] || c);
+
+  const missReason = (c) => ({
+    push: t('admin.outreach.missPush', 'sin push activo'),
+    inApp: t('admin.outreach.missInApp', 'sin app'),
+    email: t('admin.outreach.missEmail', 'no consienten correo'),
+    sms: t('admin.outreach.missSms', 'sin teléfono'),
+  }[c] || c);
+
   // Recent sends — pulled from admin_audit_log so admins see what went out.
   const { data: recent = [], refetch: refetchRecent } = useQuery({
     queryKey: ['admin', 'outreach', gymId, 'recent'],
@@ -459,14 +506,79 @@ export default function AdminOutreach() {
     return next;
   });
 
-  const anyChannelOn = channels.push || channels.inApp || channels.email || channels.sms;
   // `!jobRunning`: la rama de correo NO espera al empujón —a propósito, para que
   // cerrar la pestaña no importe—, así que `sending` volvía a false en cuanto la
   // RPC devolvía y un segundo clic creaba OTRA campaña sobre la misma audiencia.
   // `UNIQUE (job_id, profile_id)` deduplica DENTRO de un trabajo, no entre dos.
   // Y `setActiveJobId` pisaba el anterior, dejando la primera sin poder mirarla.
   const jobRunning = jobProgress?.status === 'queued' || jobProgress?.status === 'running';
-  const canSend = !!gymId && anyChannelOn && body.trim().length > 0 && !sending && !jobRunning;
+
+  // ── Lo que le falta a cada paso. La MISMA cadena apaga el botón y explica por
+  // qué: no hay forma de que digan cosas distintas.
+  const blockFor = (n) => {
+    if (n === 1) {
+      if (recipientsLoading && !recipientCount) return t('admin.outreach.blockResolving', 'Contando a quién le toca…');
+      if (!recipientCount) return t('admin.outreach.blockNoAudience', 'Esta audiencia no tiene a nadie hoy.');
+      return null;
+    }
+    if (n === 2) {
+      if (!reach.active.length) return t('admin.outreach.blockNoChannel', 'Elige al menos un canal.');
+      if (!reach.unique) return t('admin.outreach.blockNoReach', 'Nadie de esta audiencia es alcanzable por esos canales.');
+      return null;
+    }
+    if (!body.trim() && !designer?.html) return t('admin.outreach.blockNoBody', 'Escribe el mensaje o adjunta un diseño.');
+    if (channels.email && !subject.trim() && !designer?.html) return t('admin.outreach.blockNoSubject', 'El correo necesita un asunto.');
+    if (jobRunning) return t('admin.outreach.blockJobRunning', 'Ya hay una campaña en curso.');
+    if (!gymId) return t('admin.outreach.blockNoGym', 'Sin gimnasio.');
+    return null;
+  };
+
+  const goto = (n) => {
+    setStep(n);
+    setFurthest((f) => Math.max(f, n));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const steps = [
+    {
+      n: 1,
+      q: t('admin.outreach.step1', '¿A quién le hablas?'),
+      answer: recipientsLoading && !recipientCount
+        ? '…'
+        : `${audienceLabel} · ${recipientCount}`,
+    },
+    {
+      n: 2,
+      q: t('admin.outreach.step2', '¿Por dónde le llega?'),
+      answer: reach.active.length
+        ? reach.active.map(channelName).join(' · ')
+        : t('admin.outreach.stepUnset', 'Sin elegir'),
+    },
+    {
+      n: 3,
+      q: t('admin.outreach.step3', '¿Qué le dices?'),
+      answer: designer?.name
+        ? t('admin.outreach.stepDesign', { name: designer.name, defaultValue: 'Diseño: {{name}}' })
+        : body.trim()
+          ? `${body.trim().slice(0, 34)}${body.trim().length > 34 ? '…' : ''}`
+          : t('admin.outreach.stepUnwritten', 'Sin escribir'),
+    },
+  ];
+
+  // Insertar un token donde esté el cursor, no al final: escribes «Hola , qué
+  // tal» y quieres el nombre en medio, que es donde está el cursor.
+  const insertToken = (token) => {
+    const el = bodyRef.current;
+    const at = el ? el.selectionStart : body.length;
+    const end = el ? el.selectionEnd : body.length;
+    const next = body.slice(0, at) + token + body.slice(end);
+    setBody(next);
+    requestAnimationFrame(() => {
+      if (!bodyRef.current) return;
+      bodyRef.current.focus();
+      bodyRef.current.setSelectionRange(at + token.length, at + token.length);
+    });
+  };
 
   // Send a one-off test of the current designer email to the admin's own
   // address — same edge function as the broadcast, just an audience of one.
@@ -501,11 +613,11 @@ export default function AdminOutreach() {
   };
 
   const handleSend = async () => {
-    if (!canSend) return;
+    if (blockFor(3) || sending) return;
     setSending(true);
     try {
-      const recipients = await resolveOutreachAudience(gymId, audience);
-      if (!recipients.length) {
+      const list = await resolveOutreachAudience(gymId, audience);
+      if (!list.length) {
         showToast(t('admin.outreach.emptyAudience', 'No members match this audience'), 'error');
         setSending(false);
         return;
@@ -523,7 +635,7 @@ export default function AdminOutreach() {
       let results = null;
       if (anyOther) {
         results = await sendOutreach({
-          gymId, recipients, channels: others, subject, body,
+          gymId, recipients: list, channels: others, subject, body,
           personalize: { gymName, coachName: gymName },
           templateKey: designer ? `designer:${designer.id}` : templateKey,
           audienceLabel,
@@ -535,7 +647,7 @@ export default function AdminOutreach() {
         // en servidor con `member_email_context`, que además trae el token de
         // baja y las estadísticas del miembro de una sola vez.
         const { jobId } = await enqueueOutreach({
-          recipients, subject,
+          recipients: list, subject,
           body,
           html: designer?.html || null,
           personalize: { gymName, coachName: gymName },
@@ -545,7 +657,7 @@ export default function AdminOutreach() {
         });
         setActiveJobId(jobId);
         showToast(
-          t('admin.outreach.queued', { count: recipients.length, defaultValue: 'En cola para {{count}} miembro(s). Puedes cerrar esta página.' }),
+          t('admin.outreach.queued', { count: list.length, defaultValue: 'En cola para {{count}} miembro(s). Puedes cerrar esta página.' }),
           'success',
         );
         // Sin `await`: los empujones aceleran mientras la pestaña esté abierta,
@@ -555,7 +667,7 @@ export default function AdminOutreach() {
       }
 
       if (results) {
-        setLastResult({ recipients: recipients.length, results });
+        setLastResult({ recipients: list.length, results });
         const sent = (results.sms?.sent || 0) + (results.push?.sent || 0) + (results.inApp?.sent || 0);
         const failed = (results.sms?.failed || 0) + (results.push?.failed || 0) + (results.inApp?.failed || 0);
         if (sent > 0) {
@@ -580,9 +692,15 @@ export default function AdminOutreach() {
             defaultValue: 'Enviados {{sent}}, {{failed}} fallaron ({{why}})',
           }), 'error');
         } else if (!channels.email) {
-          showToast(t('admin.outreach.sentToast', { count: recipients.length, defaultValue: 'Sent to {{count}} member(s)' }), 'success');
+          showToast(t('admin.outreach.sentToast', { count: list.length, defaultValue: 'Sent to {{count}} member(s)' }), 'success');
         }
+      } else {
+        setLastResult({ recipients: list.length, results: null });
       }
+      setConfirmOpen(false);
+      setStep(4);
+      setFurthest(4);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       refetchRecent();
     } catch (err) {
       showToast(
@@ -596,6 +714,37 @@ export default function AdminOutreach() {
     }
   };
 
+  const startOver = () => {
+    setSubject('');
+    setBody('');
+    setDesigner(null);
+    setReward(null);
+    setTemplateKey('');
+    setLastResult(null);
+    setStep(1);
+    setFurthest(1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // ── Medidores por canal. El SMS se cobra y el push se corta, y hasta ahora
+  // ninguna de las dos cosas aparecía mientras escribías.
+  const meters = [];
+  if (channels.sms) {
+    const segs = smsSegments(body);
+    meters.push({
+      key: 'sms', over: body.length > SMS_SEGMENT_CHARS,
+      text: `SMS ${body.length}/${SMS_SEGMENT_CHARS} · ${segs}× · $${smsCost(reach.per.sms, body).toFixed(2)}`,
+    });
+  }
+  if (channels.push) {
+    meters.push({
+      key: 'push', over: body.length > PUSH_PREVIEW_CHARS,
+      text: `Push ${body.length}/${PUSH_PREVIEW_CHARS}${body.length > PUSH_PREVIEW_CHARS ? ` · ${t('admin.outreach.meterCut', 'se corta')}` : ''}`,
+    });
+  }
+  if (channels.email) meters.push({ key: 'email', over: false, text: `${channelName('email')} · ${t('admin.outreach.meterNoLimit', 'sin límite')}` });
+  if (channels.inApp) meters.push({ key: 'inApp', over: false, text: `${channelName('inApp')} · ${t('admin.outreach.meterNoLimit', 'sin límite')}` });
+
   return (
     <AdminPageShell>
       <div data-admin-tour="outreach">
@@ -607,275 +756,389 @@ export default function AdminOutreach() {
       </div>
 
       <div className="grid lg:grid-cols-[1fr_360px] gap-5 min-w-0">
-        {/* ── Left column: composer ─────────────────────────── */}
-        <div className="space-y-4 min-w-0">
-          <FadeIn>
-            <AdminCard padding="p-4 sm:p-5">
-              <OutreachAudiencePicker gymId={gymId} value={audience} onChange={setAudience} t={t} />
-            </AdminCard>
-          </FadeIn>
+        {/* ── Left column: the three questions ──────────────── */}
+        <div className="min-w-0">
+          {step < 4 && <OutreachStepper steps={steps} step={step} furthest={furthest} onGo={goto} />}
 
-          <FadeIn delay={40}>
-            <AdminCard padding="p-4 sm:p-5">
-              <OutreachChannelPicker value={channels} onChange={setChannels} t={t} lockedToEmail={emailLocked} />
-            </AdminCard>
-          </FadeIn>
+          {step === 1 && (
+            <FadeIn>
+              <AdminCard padding="p-4 sm:p-5">
+                <OutreachAudiencePicker gymId={gymId} value={audience} onChange={setAudience} t={t} />
+                <StepFooter
+                  step={1}
+                  block={blockFor(1)}
+                  nextLabel={t('admin.outreach.nextChannels', 'Elegir canales')}
+                  onNext={() => goto(2)}
+                />
+              </AdminCard>
+            </FadeIn>
+          )}
 
-          <FadeIn delay={80}>
-            <AdminCard padding="p-4 sm:p-5">
-              <div className="space-y-3">
-                <label className="block text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
-                  {t('admin.outreach.content', 'Message')}
-                </label>
-
-                {designer && (
-                  <div
-                    className="rounded-xl overflow-hidden"
-                    style={{ border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 7%, transparent)' }}
-                  >
-                    <div className="flex items-center justify-between gap-2 px-3 py-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Sparkles size={13} style={{ color: 'var(--color-accent)' }} />
-                        <span className="text-[12px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                          {t('admin.outreach.designerAttached', 'Designer email attached')}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={handleSendTest}
-                          disabled={sendingTest || !user?.email}
-                          title={user?.email || ''}
-                          className="flex items-center gap-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50"
-                          style={{ color: 'var(--color-accent)' }}
-                        >
-                          {sendingTest ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
-                          {t('admin.outreach.sendTest', 'Send test')}
-                        </button>
-                        <span style={{ color: 'var(--color-text-subtle)' }}>·</span>
-                        <button
-                          type="button"
-                          onClick={() => setDesigner(null)}
-                          className="text-[11px] font-semibold transition-colors hover:underline"
-                          style={{ color: 'var(--color-text-muted)' }}
-                        >
-                          {t('admin.outreach.designerRemove', 'Remove')}
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ height: 280, overflow: 'hidden', background: '#f0eee9' }}>
-                      <iframe
-                        title="designer-preview"
-                        srcDoc={designer.html}
-                        scrolling="no"
-                        tabIndex={-1}
-                        aria-hidden="true"
-                        style={{ width: 640, height: 620, border: 0, transform: 'scale(0.45)', transformOrigin: 'top left', pointerEvents: 'none' }}
-                      />
-                    </div>
-                    <p className="px-3 py-2 text-[10.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                      {t('admin.outreach.designerHint', 'Email recipients get this full design. The body below is only used for push, SMS and in-app.')}
-                    </p>
-                  </div>
+          {step === 2 && (
+            <FadeIn>
+              <AdminCard padding="p-4 sm:p-5">
+                <OutreachChannelPicker
+                  value={channels} onChange={setChannels} t={t} lockedToEmail={emailLocked}
+                  // Cada canal dice a cuántos alcanza DE VERDAD, en vez de una
+                  // descripción fija que valía igual para un gimnasio de 10 que
+                  // para uno de 900.
+                  reachFor={(key) => {
+                    if (!recipientCount) return null;
+                    const gap = recipientCount - reach.per[key];
+                    return gap > 0
+                      ? t('admin.outreach.channelReachGap', {
+                        n: reach.per[key], total: recipientCount, gap, miss: missReason(key),
+                        defaultValue: 'Alcanza a {{n}} de {{total}} — {{gap}} {{miss}}',
+                      })
+                      : t('admin.outreach.channelReachAll', {
+                        n: reach.per[key], defaultValue: 'Alcanza a los {{n}}',
+                      });
+                  }}
+                />
+                {channels.sms && reach.per.sms > 0 && (
+                  <p className="mt-3 text-[11.5px] leading-relaxed px-3 py-2.5 rounded-xl"
+                    style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                    {t('admin.outreach.smsCostNote', {
+                      count: reach.per.sms, cost: smsCost(reach.per.sms, '').toFixed(2),
+                      defaultValue: 'El SMS se cobra: {{count}} mensajes × $0.0125 = ${{cost}} por cada 160 caracteres.',
+                    })}
+                  </p>
                 )}
+                <StepFooter
+                  step={2}
+                  block={blockFor(2)}
+                  nextLabel={t('admin.outreach.nextWrite', 'Escribir mensaje')}
+                  onBack={() => goto(1)}
+                  onNext={() => goto(3)}
+                />
+              </AdminCard>
+            </FadeIn>
+          )}
 
-                {activeTemplates.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <p className="flex-1 text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                        <Sparkles size={11} className="inline mr-1" />
-                        {t('admin.outreach.useTemplate', 'Start from a template')}
-                      </p>
-                      {/* El catálogo COMPLETO, aquí dentro. Antes había que ir a
-                          Plantillas de Email, buscarla y pulsar un avión de papel
-                          que te devolvía a esta misma pantalla. */}
+          {step === 3 && (
+            <FadeIn>
+              <AdminCard padding="p-4 sm:p-5">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 h-[38px] rounded-[10px] text-[12.5px] font-bold"
+                      style={{
+                        color: 'var(--color-accent)',
+                        background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+                      }}
+                    >
+                      <Sparkles size={13} /> {t('admin.outreach.browseTemplates', 'Escoger una plantilla')}
+                    </button>
+                    {(body || designer) && (
                       <button
                         type="button"
-                        onClick={() => setPickerOpen(true)}
-                        className="px-3 py-1.5 rounded-[9px] text-[11.5px] font-bold min-h-[36px]"
-                        style={{
-                          color: 'var(--color-accent)',
-                          background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
-                          border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
-                        }}
+                        onClick={() => { setBody(''); setSubject(''); setDesigner(null); setReward(null); setTemplateKey(''); }}
+                        className="inline-flex items-center gap-1.5 px-3 h-[38px] rounded-[10px] text-[12.5px] font-semibold"
+                        style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
                       >
-                        {t('admin.outreach.browseTemplates', 'Ver todas mis plantillas')}
+                        {t('admin.outreach.startBlank', 'Empezar en blanco')}
+                      </button>
+                    )}
+                  </div>
+
+                  {designer && (
+                    <div
+                      className="rounded-xl px-3 py-2.5 flex items-center gap-2 flex-wrap"
+                      style={{ border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', background: 'color-mix(in srgb, var(--color-accent) 7%, transparent)' }}
+                    >
+                      <Sparkles size={13} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                      <span className="flex-1 min-w-[160px]">
+                        <span className="block text-[12px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                          {t('admin.outreach.designerAttached', 'Designer email attached')}
+                        </span>
+                        <span className="block text-[10.5px] leading-snug" style={{ color: 'var(--color-text-muted)' }}>
+                          {t('admin.outreach.designerHint', 'Email recipients get this full design. The body below is only used for push, SMS and in-app.')}
+                        </span>
+                      </span>
+                      <button
+                        type="button" onClick={handleSendTest} disabled={sendingTest || !user?.email} title={user?.email || ''}
+                        className="inline-flex items-center gap-1.5 px-2.5 h-[30px] rounded-lg text-[11.5px] font-bold disabled:opacity-50"
+                        style={{ color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
+                      >
+                        {sendingTest ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
+                        {t('admin.outreach.sendTest', 'Send test')}
+                      </button>
+                      <button
+                        type="button" onClick={() => setDesigner(null)}
+                        aria-label={t('admin.outreach.designerRemove', 'Remove')}
+                        className="w-[30px] h-[30px] grid place-items-center rounded-lg"
+                        style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border-subtle)' }}
+                      >
+                        <X size={13} />
                       </button>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeTemplates.map(tpl => (
-                        <button
-                          key={tpl.key}
-                          type="button"
-                          onClick={() => handleTemplate(tpl.key)}
-                          className="px-3 py-1.5 rounded-[9px] text-[11.5px] font-semibold transition-colors border"
-                          style={{
-                            background: templateKey === tpl.key ? 'var(--color-text-primary)' : 'var(--color-bg-deep)',
-                            color: templateKey === tpl.key ? 'var(--color-bg-card)' : 'var(--color-text-secondary)',
-                            borderColor: templateKey === tpl.key ? 'transparent' : 'var(--color-border-subtle)',
-                          }}
-                        >
-                          {tpl.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {channels.email && (
-                  <div>
-                    <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                      {t('admin.outreach.subject', 'Subject')}
-                    </label>
-                    <input
-                      value={subject}
-                      onChange={e => setSubject(e.target.value)}
-                      placeholder={t('admin.outreach.subjectPlaceholder', 'e.g. We miss you, {{first_name}}!')}
-                      className={inputClass}
-                      style={inputStyle}
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                    {t('admin.outreach.body', 'Body')}
-                  </label>
-                  <textarea
-                    value={body}
-                    onChange={e => setBody(e.target.value)}
-                    rows={8}
-                    placeholder={t('admin.outreach.bodyPlaceholder', 'Write your message — use {{first_name}} for personalization')}
-                    className={`${inputClass} resize-y min-h-[140px]`}
-                    style={inputStyle}
-                  />
-                  <div className="flex items-center flex-wrap gap-1.5 mt-2">
-                    {['{{first_name}}', '{{name}}'].map(v => (
-                      <span
-                        key={v}
-                        className="font-mono text-[10.5px] px-1.5 py-0.5 rounded-md"
-                        style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', color: 'var(--color-accent)' }}
-                      >
-                        {v}
-                      </span>
-                    ))}
-                    <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                      {t('admin.outreach.varsHint', 'are replaced per recipient.')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </AdminCard>
-          </FadeIn>
-
-        </div>
-
-        {/* ── Right column: summary + recent sends (sticky) ─── */}
-        <div className="space-y-4 lg:sticky lg:top-6 self-start">
-          <FadeIn>
-            <AdminCard padding="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Eye size={14} style={{ color: 'var(--color-accent)' }} />
-                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
-                  {t('admin.outreach.summary', 'Summary')}
-                </span>
-              </div>
-              <dl className="space-y-2 text-[12.5px]">
-                <div className="flex items-start justify-between gap-3">
-                  <dt style={{ color: 'var(--color-text-muted)' }}>{t('admin.outreach.audienceLabel', 'Audience')}</dt>
-                  <dd className="text-right font-semibold" style={{ color: 'var(--color-text-primary)' }}>{audienceLabel}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt style={{ color: 'var(--color-text-muted)' }}>{t('admin.outreach.recipientsLabel', 'Recipients')}</dt>
-                  <dd className="text-right font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                    {recipientsLoading && recipients.length === 0
-                      ? <Loader2 size={12} className="inline animate-spin" />
-                      : (
-                        <span
-                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-bold tabular-nums"
-                          style={{
-                            background: 'var(--color-accent)',
-                            color: 'var(--color-text-on-accent)',
-                          }}
-                        >
-                          {recipientCount}
-                        </span>
-                      )}
-                  </dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt style={{ color: 'var(--color-text-muted)' }}>{t('admin.outreach.channelsLabel', 'Channels')}</dt>
-                  <dd className="text-right font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                    {Object.entries(channels).filter(([, v]) => v).map(([k]) => ({
-                      push: t('admin.outreach.channelPushShort', 'Push'),
-                      inApp: t('admin.outreach.channelInAppShort', 'In-app'),
-                      email: t('admin.outreach.channelEmailShort', 'Email'),
-                      sms: t('admin.outreach.channelSmsShort', 'SMS'),
-                    }[k] || k)).join(', ') || '—'}
-                  </dd>
-                </div>
-              </dl>
-
-              {/* Who will receive this — resolved recipient preview */}
-              {recipientCount > 0 && (
-                <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowRecipients(s => !s)}
-                    className="flex items-center justify-between w-full text-[12px] font-semibold transition-colors"
-                    style={{ color: 'var(--color-accent)' }}
-                  >
-                    <span>{showRecipients ? t('admin.outreach.hideRecipients', 'Hide recipients') : t('admin.outreach.viewRecipients', 'View recipients')}</span>
-                    <ChevronDown size={14} className="transition-transform" style={{ transform: showRecipients ? 'rotate(180deg)' : 'none' }} />
-                  </button>
-                  {showRecipients && (
-                    <div className="mt-2 max-h-64 overflow-y-auto space-y-1">
-                      {recipients.slice(0, 100).map(r => (
-                        <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: 'var(--color-bg-deep)' }}>
-                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)' }}>
-                            {(r.full_name || '?')[0].toUpperCase()}
-                          </div>
-                          <span className="text-[12px] truncate" style={{ color: 'var(--color-text-secondary)' }}>{r.full_name || t('admin.outreach.unnamed', 'Unnamed')}</span>
-                        </div>
-                      ))}
-                      {recipients.length > 100 && (
-                        <p className="text-[11px] text-center py-1.5" style={{ color: 'var(--color-text-muted)' }}>
-                          {t('admin.outreach.andMore', { count: recipients.length - 100, defaultValue: '+{{count}} more' })}
-                        </p>
-                      )}
+                  {channels.email && (
+                    <div>
+                      <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                        {t('admin.outreach.subject', 'Subject')}
+                        <span style={{ color: 'var(--color-text-subtle)' }}> — {t('admin.outreach.subjectOnlyEmail', 'solo lo ve quien recibe por correo')}</span>
+                      </label>
+                      <input
+                        value={subject}
+                        onChange={e => setSubject(e.target.value)}
+                        placeholder={t('admin.outreach.subjectPlaceholder', 'e.g. We miss you, {{first_name}}!')}
+                        className={inputClass}
+                        style={inputStyle}
+                      />
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* Send action lives in the summary so the CTA sits with the count it acts on. */}
-              <button
-                onClick={handleSend}
-                disabled={!canSend}
-                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-[14px] transition-all disabled:cursor-not-allowed hover:brightness-[1.04] active:scale-[0.99]"
-                style={{
-                  background: canSend ? 'var(--color-accent)' : 'var(--color-bg-hover)',
-                  color: canSend ? 'var(--color-text-on-accent)' : 'var(--color-text-muted)',
-                  boxShadow: canSend ? '0 2px 10px color-mix(in srgb, var(--color-accent) 32%, transparent)' : 'none',
-                }}
-              >
-                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                {sending ? t('admin.outreach.sending', 'Sending…') : t('admin.outreach.send', 'Send message')}
-              </button>
-              {recipientCount > 0 && (
-                <p className="text-[11.5px] text-center mt-2" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.outreach.willReceive', { count: recipientCount, defaultValue: '{{count}} people will receive this message' })}
-                </p>
-              )}
-              {lastResult && (
-                <p className="text-[11px] text-center mt-1" style={{ color: 'var(--color-text-subtle)' }}>
-                  {t('admin.outreach.lastSent', { count: lastResult.recipients, defaultValue: 'Last sent to {{count}} recipient(s)' })}
-                </p>
-              )}
-            </AdminCard>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('admin.outreach.body', 'Body')}
+                    </label>
+                    <textarea
+                      ref={bodyRef}
+                      value={body}
+                      onChange={e => setBody(e.target.value)}
+                      rows={8}
+                      placeholder={t('admin.outreach.bodyPlaceholder', 'Write your message — use {{first_name}} for personalization')}
+                      className={`${inputClass} resize-y min-h-[150px]`}
+                      style={inputStyle}
+                    />
+
+                    {meters.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {meters.map(m => (
+                          <span
+                            key={m.key}
+                            className="text-[11px] font-semibold px-2 py-1 rounded-lg tabular-nums"
+                            style={{
+                              color: m.over ? 'var(--color-danger)' : 'var(--color-text-muted)',
+                              background: m.over ? 'color-mix(in srgb, var(--color-danger) 10%, transparent)' : 'var(--color-bg-deep)',
+                              border: `1px solid ${m.over ? 'color-mix(in srgb, var(--color-danger) 28%, transparent)' : 'var(--color-border-subtle)'}`,
+                            }}
+                          >
+                            {m.text}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center flex-wrap gap-1.5 mt-2.5">
+                      <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                        {t('admin.outreach.insert', 'Insertar:')}
+                      </span>
+                      {['{{first_name}}', '{{name}}'].map(v => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => insertToken(v)}
+                          className="font-mono text-[10.5px] px-1.5 py-1 rounded-md transition-opacity hover:opacity-80"
+                          style={{ background: 'color-mix(in srgb, var(--color-accent) 14%, transparent)', color: 'var(--color-accent)' }}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                      <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {t('admin.outreach.varsHint', 'are replaced per recipient.')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <StepFooter
+                  step={3}
+                  block={blockFor(3)}
+                  hint={t('admin.outreach.reviewHint', 'El siguiente paso enseña el desglose antes de enviar nada.')}
+                  nextLabel={t('admin.outreach.reviewAndSend', 'Revisar y enviar')}
+                  nextIcon={Send}
+                  onBack={() => goto(2)}
+                  onNext={() => setConfirmOpen(true)}
+                />
+              </AdminCard>
+            </FadeIn>
+          )}
+
+          {/* ── Enviado ── */}
+          {step === 4 && (
+            <FadeIn>
+              <AdminCard padding="p-5">
+                <div className="flex items-center gap-3">
+                  <span className="w-[42px] h-[42px] rounded-xl grid place-items-center flex-shrink-0"
+                    style={{ background: 'color-mix(in srgb, var(--color-success) 14%, transparent)', color: 'var(--color-success)' }}>
+                    <CheckCircle size={22} />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="text-[16px] font-extrabold" style={{ color: 'var(--color-text-primary)' }}>
+                      {channels.email
+                        ? t('admin.outreach.doneQueuedTitle', 'Mensaje en camino')
+                        : t('admin.outreach.doneTitle', 'Mensaje enviado')}
+                    </h2>
+                    <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('admin.outreach.doneBody', {
+                        count: lastResult?.recipients ?? reach.unique,
+                        channels: reach.active.map(channelName).join(', '),
+                        defaultValue: 'Salió a {{count}} personas por {{channels}}.',
+                      })}
+                    </p>
+                  </div>
+                </div>
+
+                {channels.email && (
+                  <p className="mt-3 text-[11.5px] leading-relaxed px-3 py-2.5 rounded-xl"
+                    style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}>
+                    {t('admin.outreach.jobSafeToLeave', 'Sigue en el servidor. Puedes cerrar esta página.')}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 mt-5">
+                  <button
+                    type="button" onClick={() => setShowHistory(true)}
+                    className="h-[44px] rounded-xl text-[13px] font-semibold inline-flex items-center justify-center gap-2"
+                    style={{ border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-secondary)' }}
+                  >
+                    <History size={14} /> {t('admin.outreach.viewHistory', 'View history')}
+                  </button>
+                  <button
+                    type="button" onClick={startOver}
+                    className="h-[44px] rounded-xl text-[13px] font-bold inline-flex items-center justify-center gap-2"
+                    style={{ background: 'var(--color-accent)', color: 'var(--color-text-on-accent)' }}
+                  >
+                    <Plus size={14} /> {t('admin.outreach.anotherMessage', 'Otro mensaje')}
+                  </button>
+                </div>
+              </AdminCard>
+            </FadeIn>
+          )}
+
+          {/* ══ La campaña en curso ══════════════════════════════════════════
+              Existe para decir una cosa: esto ya no depende de esta pestaña. */}
+          {activeJobId && jobProgress && (
+            <FadeIn>
+              <AdminCard className="mt-4">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[220px]">
+                    <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                      {jobProgress.status === 'done'
+                        ? t('admin.outreach.jobDone', 'Campaña terminada')
+                        : jobProgress.status === 'cancelled'
+                          ? t('admin.outreach.jobCancelled', 'Campaña cancelada')
+                          : t('admin.outreach.jobRunning', 'Enviando…')}
+                    </p>
+                    <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('admin.outreach.jobCounts', {
+                        sent: jobProgress.sent, total: jobProgress.total,
+                        failed: jobProgress.failed, skipped: jobProgress.skipped,
+                        defaultValue: '{{sent}} de {{total}} · {{failed}} fallidos · {{skipped}} omitidos',
+                      })}
+                    </p>
+                    <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-deep)' }}>
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${Math.round(((jobProgress.total - jobProgress.remaining) / Math.max(1, jobProgress.total)) * 100)}%`,
+                          background: 'var(--color-accent)',
+                          transition: 'width 400ms ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {(jobProgress.status === 'queued' || jobProgress.status === 'running') ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try { await cancelOutreachJob(activeJobId); }
+                        catch (e) { showToast(e.message || 'Failed', 'error'); }
+                      }}
+                      className="px-3 py-2 rounded-[9px] text-[12px] font-bold min-h-[40px]"
+                      style={{ color: 'var(--color-danger)', border: '1px solid var(--color-border-subtle)' }}
+                    >
+                      {t('admin.outreach.jobCancel', 'Detener')}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setActiveJobId(null)}
+                      className="px-3 py-2 rounded-[9px] text-[12px] font-bold min-h-[40px]"
+                      style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-subtle)' }}
+                    >
+                      {t('common.close', 'Cerrar')}
+                    </button>
+                  )}
+                </div>
+              </AdminCard>
+            </FadeIn>
+          )}
+        </div>
+
+        {/* ── Right column: alcance real, vista previa, historial (sticky) ─── */}
+        <div className="space-y-4 lg:sticky lg:top-6 self-start">
+          <FadeIn>
+            <OutreachReachCard
+              reach={reach}
+              audienceLabel={audienceLabel}
+              channelName={channelName}
+              missReason={missReason}
+              compact={step >= 3}
+              onEditChannels={() => goto(2)}
+              t={t}
+            />
           </FadeIn>
 
-          <FadeIn delay={40}>
+          {step === 3 && (
+            <FadeIn delay={40}>
+              <OutreachPreview
+                channel={previewChannel}
+                onChannel={setPreviewChannel}
+                activeChannels={reach.active}
+                channelName={channelName}
+                subject={subject}
+                body={body}
+                designerHtml={designer?.html || null}
+                gymName={gymName}
+                sampleRecipient={recipients[0]}
+                t={t}
+              />
+            </FadeIn>
+          )}
+
+          {step === 1 && recipientCount > 0 && (
+            <FadeIn delay={40}>
+              <AdminCard padding="p-4">
+                <button
+                  type="button"
+                  onClick={() => setShowRecipients(s => !s)}
+                  className="flex items-center justify-between w-full text-[12px] font-semibold transition-colors"
+                  style={{ color: 'var(--color-accent)' }}
+                >
+                  <span>{showRecipients ? t('admin.outreach.hideRecipients', 'Hide recipients') : t('admin.outreach.viewRecipients', 'View recipients')}</span>
+                  <ChevronDown size={14} className="transition-transform" style={{ transform: showRecipients ? 'rotate(180deg)' : 'none' }} />
+                </button>
+                {showRecipients && (
+                  <div className="mt-2 max-h-64 overflow-y-auto space-y-1">
+                    {recipients.slice(0, 100).map(r => (
+                      <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: 'var(--color-bg-deep)' }}>
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-muted)' }}>
+                          {(r.full_name || '?')[0].toUpperCase()}
+                        </div>
+                        <span className="text-[12px] truncate" style={{ color: 'var(--color-text-secondary)' }}>{r.full_name || t('admin.outreach.unnamed', 'Unnamed')}</span>
+                      </div>
+                    ))}
+                    {recipients.length > 100 && (
+                      <p className="text-[11px] text-center py-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                        {t('admin.outreach.andMore', { count: recipients.length - 100, defaultValue: '+{{count}} more' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </AdminCard>
+            </FadeIn>
+          )}
+
+          {/* «Qué mandé y qué pasó» es la mitad del valor de esta herramienta y
+              estaba detrás de un enlace en una esquina. Ahora está siempre. */}
+          <FadeIn delay={80}>
             <AdminCard padding="p-4">
               <span className="text-[11px] font-bold uppercase tracking-wider block mb-3" style={{ color: 'var(--color-text-muted)', letterSpacing: '0.1em' }}>
                 {t('admin.outreach.recentSends', 'Recent sends')}
@@ -969,69 +1232,20 @@ export default function AdminOutreach() {
         )}
       </AdminModal>
 
-      {/* ══ La campaña en curso ══════════════════════════════════════════
-          Existe para decir una cosa: esto ya no depende de esta pestaña. */}
-      {activeJobId && jobProgress && (
-        <FadeIn>
-          <AdminCard className="mt-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex-1 min-w-[220px]">
-                <p className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>
-                  {jobProgress.status === 'done'
-                    ? t('admin.outreach.jobDone', 'Campaña terminada')
-                    : jobProgress.status === 'cancelled'
-                      ? t('admin.outreach.jobCancelled', 'Campaña cancelada')
-                      : t('admin.outreach.jobRunning', 'Enviando…')}
-                </p>
-                <p className="text-[11.5px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                  {t('admin.outreach.jobCounts', {
-                    sent: jobProgress.sent, total: jobProgress.total,
-                    failed: jobProgress.failed, skipped: jobProgress.skipped,
-                    defaultValue: '{{sent}} de {{total}} · {{failed}} fallidos · {{skipped}} omitidos',
-                  })}
-                </p>
-                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-bg-deep)' }}>
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${Math.round(((jobProgress.total - jobProgress.remaining) / Math.max(1, jobProgress.total)) * 100)}%`,
-                      background: 'var(--color-accent)',
-                      transition: 'width 400ms ease',
-                    }}
-                  />
-                </div>
-              </div>
-              {(jobProgress.status === 'queued' || jobProgress.status === 'running') ? (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try { await cancelOutreachJob(activeJobId); }
-                    catch (e) { showToast(e.message || 'Failed', 'error'); }
-                  }}
-                  className="px-3 py-2 rounded-[9px] text-[12px] font-bold min-h-[40px]"
-                  style={{ color: 'var(--color-danger)', border: '1px solid var(--color-border-subtle)' }}
-                >
-                  {t('admin.outreach.jobCancel', 'Detener')}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setActiveJobId(null)}
-                  className="px-3 py-2 rounded-[9px] text-[12px] font-bold min-h-[40px]"
-                  style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-subtle)' }}
-                >
-                  {t('common.close', 'Cerrar')}
-                </button>
-              )}
-            </div>
-            {/* Lo único que de verdad importa saber. */}
-            {(jobProgress.status === 'queued' || jobProgress.status === 'running') && (
-              <p className="mt-2 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                {t('admin.outreach.jobSafeToLeave', 'Sigue en el servidor. Puedes cerrar esta página.')}
-              </p>
-            )}
-          </AdminCard>
-        </FadeIn>
+      {confirmOpen && (
+        <OutreachConfirmModal
+          reach={reach}
+          audienceLabel={audienceLabel}
+          channelName={channelName}
+          missReason={missReason}
+          subject={subject}
+          body={body}
+          designerName={designer?.name || null}
+          sending={sending}
+          onSend={handleSend}
+          onClose={() => !sending && setConfirmOpen(false)}
+          t={t}
+        />
       )}
 
       {pickerOpen && (

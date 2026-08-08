@@ -5,12 +5,23 @@ import { useRef, useEffect, useCallback, useState } from 'react';
  */
 export default function AdminTabs({ tabs, active, onChange, className = '', idPrefix = 'admin-tab', equalWidth = true }) {
   const containerRef = useRef(null);
+  const stripRef = useRef(null);
   const tabRefs = useRef([]);
   const activeIndex = tabs.findIndex(t => t.key === active);
 
+  // Traer la pestaña activa a la vista SOLO cuando la tira se desplaza de
+  // verdad. `scrollIntoView` no se queda en su elemento: sube por los ancestros
+  // hasta encontrar algo que pueda desplazarse, y si la tira cabe entera (el
+  // caso de equalWidth, que es una rejilla) lo que acaba moviendo es LA PÁGINA.
+  // Se notaba como que las pestañas saltan solas al pulsarlas y el contenido se
+  // va a mitad de pantalla. Aquí se desplaza la tira a mano, sin tocar nada más.
   useEffect(() => {
     const el = tabRefs.current[activeIndex];
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    const strip = stripRef.current;
+    if (!el || !strip) return;
+    if (strip.scrollWidth <= strip.clientWidth) return; // no hay nada que desplazar
+    const target = el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2;
+    strip.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
   }, [activeIndex]);
 
   const handleKeyDown = (e, i) => {
@@ -27,6 +38,7 @@ export default function AdminTabs({ tabs, active, onChange, className = '', idPr
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div
+        ref={stripRef}
         className={equalWidth ? 'grid gap-2' : 'flex overflow-x-auto scrollbar-hide -mx-4 px-4 gap-4'}
         style={equalWidth ? { gridTemplateColumns: `repeat(${tabs.length}, 1fr)` } : undefined}
         role="tablist"

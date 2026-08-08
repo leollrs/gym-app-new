@@ -1,35 +1,136 @@
-import { useState } from 'react';
-import { Calendar, BarChart3, Users, CalendarDays, Clock, UserCheck, Repeat } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Calendar, BarChart3, Users, AlertTriangle } from 'lucide-react';
 import { AdminModal } from '../../../components/admin';
+import { supabase } from '../../../lib/supabase';
 import { slotDayLabel, format12h } from '../../../lib/admin/classScheduleHelpers';
-import CoverPreview from './CoverPreview';
-import ClassImage from '../../../components/ClassImage';
+import { projectSessions } from '../../../lib/admin/classConflicts';
+import {
+  calcClassStats, duplicateSlots, describeNextSession,
+} from '../../../lib/admin/classStats';
 import ClassAnalytics from './ClassAnalytics';
 import BookingsView from './BookingsView';
+import ClassDetailHeader from './ClassDetailHeader';
+import ClassWeekGrid from './ClassWeekGrid';
+import ClassSlotList from './ClassSlotList';
+import { dateKey } from '../../../lib/dateKey';
 
 /**
- * Three-tab modal the admin sees when they click a class row: Schedule
- * (read-only summary + slot list), Analytics (ClassAnalytics — 30-day
- * stats), Bookings (BookingsView — date picker with per-slot attendee
- * lists and inline cancel).
+ * Lo que el admin ve al pulsar una clase.
  *
- * The slot list here is read-only — edits go through the pencil button
- * on the parent page, which opens ClassFormModal. Keeping this surface
- * read-only avoids two ways to mutate the same data.
+ * LO QUE HABÍA. Tres pestañas y, en la primera, una ficha con la foto, el
+ * nombre, el instructor, la duración y el aforo, más la lista de franjas en
+ * texto. Todo cierto y todo inerte: no había forma de saber si la clase
+ * funciona sin irse a Analíticas y leer.
+ *
+ * AHORA la primera pantalla responde a lo que uno viene a preguntar:
+ *   · cuatro cifras arriba — ocupación, próxima sesión, horarios, no-show;
+ *   · la semana DIBUJADA, con cada franja coloreada por lo llena que va;
+ *   · y un aviso cuando hay dos horarios idénticos, que es un fallo real que
+ *     nadie detectaba: el socio ve la clase repetida en la app y las reservas
+ *     se parten entre las dos.
+ *
+ * La lista de franjas sigue siendo de solo lectura — se edita con el lápiz, que
+ * abre el formulario. Dos sitios para cambiar lo mismo es como se desincronizan.
  */
-export default function ClassDetailModal({ classItem, onClose, dayLabel, gymId, t, tc, lang }) {
+export default function ClassDetailModal({ classItem, onClose, onEdit, onDeleteSlot, trainers = [], dayLabel, gymId, t, tc, lang }) {
   const [detailTab, setDetailTab] = useState('schedule');
+  const slots = useMemo(() => classItem.gym_class_schedules || [], [classItem]);
+
+  // Las últimas cuatro semanas. Es la ventana de la que habla la cabecera, y la
+  // que hace que «ocupación media» signifique algo: con «todo el histórico», una
+  // clase que arrancó floja hace un año arrastra el número para siempre.
+  const { data: recent } = useQuery({
+    queryKey: ['admin', 'class-detail-recent', classItem.id],
+    queryFn: async () => {
+      const from = new Date();
+      from.setDate(from.getDate() - 28);
+      const { data, error } = await supabase
+        .from('gym_class_bookings')
+        .select('schedule_id, status, attended, rating, booking_date')
+        .eq('class_id', classItem.id)
+        .gte('booking_date', dateKey(from))
+        .order('booking_date', { ascending: true })
+        .limit(1000);   // PostgREST corta ahí igual; se deja explícito
+      if (error) return null;
+      return data || [];
+    },
+    enabled: !!classItem.id,
+    staleTime: 60 * 1000,
+  });
+
+  const stats = useMemo(() => {
+    if (!recent) return null;
+    const base = calcClassStats(recent, classItem.max_capacity);
+    // Franjas recurrentes sin una sola reserva en la ventana.
+    const withBookings = new Set(recent.map(b => b.schedule_id));
+    const idleSlots = slots.filter(s => !s.specific_date && !withBookings.has(s.id)).length;
+    return { ...base, idleSlots };
+  }, [recent, classItem.max_capacity, slots]);
+
+  // Reservas vivas por franja: lo que colorea la rejilla. Las canceladas no
+  // ocupan sitio, así que no cuentan como ocupación.
+  const bookedBySlot = useMemo(() => {
+    if (!recent) return null;
+    const m = {};
+    recent.forEach(b => {
+      if (b.status === 'cancelled' || !b.schedule_id) return;
+      m[b.schedule_id] = (m[b.schedule_id] || 0) + 1;
+    });
+    // Se reparte entre las sesiones de la ventana para que el número sea «por
+    // sesión» y no «cuatro semanas acumuladas», que llenaría todo de rojo o de
+    // verde según la antigüedad.
+    const sessionsBySlot = {};
+    recent.forEach(b => {
+      if (b.status === 'cancelled' || !b.schedule_id) return;
+      (sessionsBySlot[b.schedule_id] ||= new Set()).add(b.booking_date);
+    });
+    Object.keys(m).forEach(k => {
+      const n = sessionsBySlot[k]?.size || 1;
+      m[k] = Math.round(m[k] / n);
+    });
+    return m;
+  }, [recent]);
+
+  const dups = useMemo(() => duplicateSlots(slots), [slots]);
+  const dupIds = useMemo(() => new Set(dups.flat().map(s => s.id)), [dups]);
+
+  const nextSession = useMemo(() => describeNextSession(
+    projectSessions(slots, { weeks: 2 }), lang,
+    { today: t('admin.classes.today', 'Hoy'), time: format12h },
+  ), [slots, lang, t]);
+
+  const coaches = useMemo(() => {
+    const names = new Set();
+    if (classItem.trainer?.full_name) names.add(classItem.trainer.full_name);
+    (classItem.gym_class_trainers || []).forEach(r => { if (r?.trainer?.full_name) names.add(r.trainer.full_name); });
+    if (!names.size && (classItem.instructor || classItem.instructor_name)) {
+      names.add(classItem.instructor || classItem.instructor_name);
+    }
+    return [...names];
+  }, [classItem]);
 
   const DETAIL_TABS = [
-    { key: 'schedule', label: t('admin.classes.tabSchedule'), icon: Calendar },
-    { key: 'analytics', label: t('admin.classes.analytics'), icon: BarChart3 },
-    { key: 'bookings', label: t('admin.classes.bookings'), icon: Users },
+    { key: 'schedule', label: t('admin.classes.tabSchedule'), icon: Calendar, count: slots.length },
+    { key: 'analytics', label: t('admin.classes.analytics'), icon: BarChart3, count: null },
+    { key: 'bookings', label: t('admin.classes.bookings'), icon: Users, count: null },
   ];
+
+  const sortedSlots = useMemo(() => slots.slice().sort((a, b) => {
+    if (a.specific_date && !b.specific_date) return 1;
+    if (!a.specific_date && b.specific_date) return -1;
+    if (a.specific_date && b.specific_date) return a.specific_date.localeCompare(b.specific_date);
+    return (a.day_of_week ?? 0) - (b.day_of_week ?? 0) || String(a.start_time).localeCompare(String(b.start_time));
+  }), [slots]);
 
   return (
     <AdminModal isOpen onClose={onClose} title={classItem.name} size="lg">
-      {/* Detail tabs */}
-      <div className="flex gap-1 mb-4 -mt-1 overflow-x-auto scrollbar-hide" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+      <ClassDetailHeader
+        classItem={classItem} stats={stats} nextSession={nextSession}
+        coaches={coaches} t={t} lang={lang}
+      />
+
+      <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide" style={{ borderBottom: '1px solid var(--color-admin-border)' }}>
         {DETAIL_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = detailTab === tab.key;
@@ -37,126 +138,63 @@ export default function ClassDetailModal({ classItem, onClose, dayLabel, gymId, 
             <button key={tab.key} onClick={() => setDetailTab(tab.key)}
               className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-[12px] font-semibold transition-all duration-200 border-b-2 -mb-px whitespace-nowrap"
               style={{
-                color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                color: isActive ? 'var(--color-accent)' : 'var(--color-admin-text-muted)',
                 borderColor: isActive ? 'var(--color-accent)' : 'transparent',
               }}>
               <Icon size={13} /> {tab.label}
+              {tab.count > 0 && (
+                <span className="text-[10px] tabular-nums px-1.5 rounded-full"
+                  style={{ background: 'var(--color-admin-panel)', color: 'var(--color-admin-text-muted)' }}>{tab.count}</span>
+              )}
             </button>
           );
         })}
       </div>
 
-      {/* Schedule tab */}
       {detailTab === 'schedule' && (
         <div className="space-y-3">
-          {/* Class info — read-only summary of the class. Edits are done via
-              the pencil icon (Edit class form), not here. */}
-          <div
-            className="rounded-xl p-3 flex items-start gap-3"
-            style={{ backgroundColor: 'var(--color-bg-deep)', border: '1px solid var(--color-border-subtle)' }}
-          >
-            {classItem.image_path ? (
-              <ClassImage
-                path={classItem.image_path}
-                alt={classItem.name}
-                accent={classItem.accent_color || 'var(--color-accent)'}
-                fallback={classItem.cover_preset ? <CoverPreview preset={classItem.cover_preset} size="md" className="!rounded-none" /> : null}
-                className="w-14 h-14 rounded-lg flex-shrink-0"
-                style={{ border: '1px solid var(--color-border-subtle)' }}
-              />
-            ) : classItem.cover_preset ? (
-              <CoverPreview preset={classItem.cover_preset} size="md" className="flex-shrink-0" />
-            ) : (
-              <div
-                className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${classItem.accent_color || 'var(--color-accent)'}20` }}
-              >
-                <CalendarDays size={20} style={{ color: classItem.accent_color || 'var(--color-accent)' }} />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 style={{ fontFamily: 'var(--admin-font-display, "Archivo", system-ui, sans-serif)', fontSize: 16, fontWeight: 800, letterSpacing: '-0.3px', color: 'var(--color-text-primary)' }}>
-                  {(lang === 'es' && classItem.name_es) ? classItem.name_es : classItem.name}
-                </h3>
-                {!classItem.is_active && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: 'var(--color-border-subtle)', color: 'var(--color-text-muted)' }}>
-                    {t('admin.classes.inactive')}
-                  </span>
-                )}
-              </div>
-              {((lang === 'es' && classItem.description_es) || classItem.description) && (
-                <p className="text-[12px] mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  {(lang === 'es' && classItem.description_es) ? classItem.description_es : classItem.description}
+          {/* Horarios duplicados. No es una rareza: el formulario deja añadir la
+              misma franja dos veces, el socio ve la clase repetida en la app y
+              las reservas se parten entre las dos. Nadie lo detectaba. */}
+          {dups.length > 0 && (
+            <div className="flex gap-2.5 px-3 py-3 rounded-xl"
+              style={{ background: 'color-mix(in srgb, var(--color-warning, #F59E0B) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning, #F59E0B) 30%, transparent)' }}>
+              <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--color-warning, #F59E0B)' }} />
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-bold" style={{ color: 'var(--color-admin-text)' }}>
+                  {t('admin.classes.dupTitle', { count: dups.length, defaultValue: '{{count}} horarios repetidos' })}
                 </p>
-              )}
-              <div className="flex items-center gap-3 mt-1.5 text-[11px] flex-wrap" style={{ color: 'var(--color-text-muted)' }}>
-                {(classItem.trainer?.full_name || classItem.instructor || classItem.instructor_name) && (
-                  <span className="inline-flex items-center gap-1">
-                    <UserCheck size={11} style={{ color: 'var(--color-accent)' }} />
-                    {classItem.trainer?.full_name || classItem.instructor || classItem.instructor_name}
-                  </span>
-                )}
-                <span className="inline-flex items-center gap-1">
-                  <Clock size={11} /> {classItem.duration_minutes} min
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Users size={11} /> {classItem.max_capacity}
-                </span>
+                <p className="text-[11.5px] mt-0.5 leading-relaxed" style={{ color: 'var(--color-admin-text-sub)' }}>
+                  {dups.map(g => slotDayLabel(g[0], dayLabel, lang) + ' · ' + format12h(g[0].start_time)).join(' · ')}
+                  {' — '}
+                  {t('admin.classes.dupBody', 'los miembros ven la clase dos veces en la app y las reservas se parten entre las dos. Quita la sobrante desde el lápiz.')}
+                </p>
               </div>
             </div>
-          </div>
-
-          {/* Schedule slots — READ-ONLY in the detail modal. To edit slots,
-              the admin uses the pencil button → Edit class form. */}
-          {classItem.gym_class_schedules?.length > 0 ? (
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border-subtle)', backgroundColor: 'var(--color-bg-deep)' }}>
-              {classItem.gym_class_schedules
-                .slice()
-                .sort((a, b) => {
-                  if (a.specific_date && !b.specific_date) return 1;
-                  if (!a.specific_date && b.specific_date) return -1;
-                  if (a.specific_date && b.specific_date) return a.specific_date.localeCompare(b.specific_date);
-                  return (a.day_of_week ?? 0) - (b.day_of_week ?? 0) || a.start_time.localeCompare(b.start_time);
-                })
-                .map((slot, i) => (
-                  <div
-                    key={slot.id}
-                    className="flex items-center justify-between px-3 py-2.5"
-                    style={{ borderTop: i === 0 ? 'none' : '1px solid var(--color-border-subtle)' }}
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {slot.specific_date ? (
-                        <CalendarDays size={12} style={{ color: 'var(--color-info)' }} />
-                      ) : (
-                        <Repeat size={12} style={{ color: 'var(--color-accent)' }} />
-                      )}
-                      <span className="text-[12.5px] font-semibold capitalize truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {slotDayLabel(slot, dayLabel, lang)}
-                      </span>
-                    </div>
-                    <span className="text-[12px] tabular-nums flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
-                      {format12h(slot.start_time)} – {format12h(slot.end_time)}
-                    </span>
-                  </div>
-                ))}
-            </div>
-          ) : (
-            <p className="text-[12px] italic py-2" style={{ color: 'var(--color-text-muted)' }}>{t('admin.classes.noScheduleSlots')}</p>
           )}
+
+          <ClassWeekGrid
+            schedules={slots} capacity={classItem.max_capacity}
+            bookedBySlot={bookedBySlot} duplicateIds={dupIds} lang={lang} t={t}
+          />
+
+          <ClassSlotList
+            slots={sortedSlots}
+            capacity={classItem.max_capacity}
+            bookedBySlot={bookedBySlot}
+            duplicateIds={dupIds}
+            trainers={trainers}
+            mainTrainerId={classItem.trainer_id || classItem.trainer?.id || null}
+            onAddSlot={onEdit ? () => onEdit(classItem) : null}
+            onEditSlot={onEdit ? () => onEdit(classItem) : null}
+            onDeleteSlot={onDeleteSlot}
+            dayLabel={dayLabel} t={t} lang={lang}
+          />
         </div>
       )}
 
-      {/* Analytics tab */}
-      {detailTab === 'analytics' && (
-        <ClassAnalytics classItem={classItem} t={t} lang={lang} />
-      )}
-
-      {/* Bookings tab */}
-      {detailTab === 'bookings' && (
-        <BookingsView classItem={classItem} gymId={gymId} t={t} tc={tc} />
-      )}
+      {detailTab === 'analytics' && <ClassAnalytics classItem={classItem} t={t} lang={lang} />}
+      {detailTab === 'bookings' && <BookingsView classItem={classItem} gymId={gymId} t={t} tc={tc} />}
     </AdminModal>
   );
 }

@@ -243,7 +243,12 @@ async function sendPush(
 // within its time window (streak warning, nutrition reminder) dedup'd the
 // in-app row but still fired a fresh push every hour. Real failures also
 // return false (no row → no push).
-async function insertNotif(supabase: ReturnType<typeof createClient>, profileId: string, gymId: string, type: string, title: string, body: string, dedupKey: string) {
+// `data` es opcional y por defecto no se escribe — la fila de la notificación
+// in-app la lee `Notifications.jsx`, que navega con `n.data.route` cuando existe
+// y no hace nada cuando no. Sin ella, una notificación que pide una acción
+// concreta («valora la clase») se queda en un aviso que no lleva a ninguna
+// parte, y el push sí llevaba. Los avisos que no piden nada la siguen omitiendo.
+async function insertNotif(supabase: ReturnType<typeof createClient>, profileId: string, gymId: string, type: string, title: string, body: string, dedupKey: string, data?: Record<string, unknown>) {
   // Pre-check: skip the INSERT entirely when this dedup_key already exists.
   // This cron re-runs through the day and re-evaluates members who still
   // qualify, so without a pre-check every run after the first re-attempts the
@@ -260,6 +265,7 @@ async function insertNotif(supabase: ReturnType<typeof createClient>, profileId:
 
   const { error } = await supabase.from('notifications').insert({
     profile_id: profileId, gym_id: gymId, type, title, body, dedup_key: dedupKey,
+    ...(data ? { data } : {}),
   });
   if (error) {
     // 23505 = a concurrent run inserted between our pre-check and this insert
@@ -517,6 +523,121 @@ async function checkClassReminders(
  * failure: the in-app notification and the push have already gone out, and a
  * mail problem must not fail the reminder run for everyone behind this member.
  */
+// ── «¿Qué tal estuvo?» — la valoración de la clase ──────────
+//
+// EL PROBLEMA. La app SÍ sabe recoger valoraciones de clase desde el primer
+// día: hay columna (`gym_class_bookings.rating`, 0158), hay modal, y las
+// analíticas del admin enseñan media y desglose por estrellas. Pero el modal
+// solo aparecía en el instante justo después de pulsar «Check-in» — y quien lo
+// cerraba, o quien entraba con el QR de recepción, ya no lo volvía a ver salvo
+// que se acordara de buscar el botón «Valorar» en una reserva pasada. Resultado:
+// la columna se quedaba vacía, y el panel del dueño enseñaba «--» para siempre
+// en un dato que ya estaba construido.
+//
+// POR QUÉ NO ES POR MIEMBRO. El resto de avisos de este fichero se evalúan uno
+// a uno dentro del bucle de socios; esto no puede, porque tendría que correr a
+// TODAS las horas (las clases son a cualquier hora) y eso son 24 consultas por
+// socio y día. Aquí se pregunta una vez por gimnasio: qué reservas de este
+// gimnasio están marcadas como asistidas, sin valorar, y de una clase que acabó
+// hace un rato.
+//
+// LA HORA ES LA DEL GIMNASIO. `booking_date` + `end_time` son hora de pared del
+// local, así que la cuenta de «hace cuánto acabó» se hace en la zona del
+// gimnasio y no en UTC ni en la del servidor.
+async function checkClassReviewPrompts(
+  supabase: ReturnType<typeof createClient>,
+  gymId: string,
+  timezone: string,
+  members: Member[],
+) {
+  const gymToday = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: timezone,
+  }).format(new Date());
+  const gymHour = localHour(timezone);
+  // La víspera entra porque una clase que acaba a las 11 de la noche se
+  // pregunta ya pasada la medianoche local, y entonces `booking_date` es ayer.
+  const gymYesterday = (() => {
+    const d = new Date(`${gymToday}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const { data: rows } = await supabase
+    .from('gym_class_bookings')
+    // Se llega al nombre POR LA FRANJA, igual que el recordatorio de clase de
+    // más arriba: es la ruta de embed que ya está probada en producción.
+    .select('id, profile_id, booking_date, gym_class_schedules(start_time, end_time, gym_classes(name, name_es))')
+    .eq('gym_id', gymId)
+    .in('booking_date', [gymToday, gymYesterday])
+    .eq('attended', true)
+    .is('rating', null)
+    .limit(500);
+  if (!rows?.length) return 0;
+
+  // Solo socios activos con el push maestro encendido llegan en `members`, así
+  // que este índice hace de filtro y de fuente del idioma a la vez.
+  const byId = new Map(members.map(m => [m.id, m]));
+
+  let sent = 0;
+  for (const raw of rows) {
+    const b = raw as Record<string, any>;
+    const member = byId.get(b.profile_id);
+    if (!member) continue;
+    // Mismo cajón que el recordatorio de clase: es la única preferencia de esta
+    // familia que la pantalla de Ajustes pinta de verdad. Una columna nueva
+    // sería un interruptor que el socio no puede volver a encender.
+    if (member.notif_workout_reminders === false) continue;
+
+    const sched = b.gym_class_schedules;
+    const cls = sched?.gym_classes;
+    if (!sched || !cls) continue;
+
+    // Sin hora de fin se supone una hora de clase — es mejor preguntar una hora
+    // tarde que no preguntar.
+    const endRaw = String(sched.end_time || '').slice(0, 5);
+    const endHour = endRaw
+      ? Number(endRaw.slice(0, 2))
+      : Number(String(sched.start_time || '00').slice(0, 2)) + 1;
+    if (!Number.isFinite(endHour)) continue;
+
+    const dayDelta = b.booking_date === gymToday ? 0 : 1;
+    const hoursSinceEnd = gymHour + dayDelta * 24 - endHour;
+    // Ventana de tres horas, no de una: el cron es horario y una pasada que se
+    // pierda no puede dejar la clase sin preguntar para siempre. El dedup se
+    // encarga de que solo salga una vez.
+    if (hoursSinceEnd < 1 || hoursSinceEnd > 3) continue;
+
+    const lang = (member.language || 'en').startsWith('es') ? 'es' : 'en';
+    const className = (lang === 'es' && cls.name_es) ? cls.name_es : cls.name;
+
+    const title = msg(lang, 'How was the class?', '¿Qué tal estuvo la clase?');
+    const body = msg(
+      lang,
+      `Rate ${className} — it takes one tap and it tells your gym what's working.`,
+      `Valora ${className} — es un toque, y le dice a tu gimnasio qué está funcionando.`,
+    );
+
+    // Una sola pregunta por socio y por DÍA de clase, no por reserva: quien
+    // encadena dos clases el mismo día recibe un aviso, no dos. Y como la clave
+    // lleva la fecha, la clase de la semana que viene sí vuelve a preguntar.
+    const dedupKey = `class_review_${b.profile_id}_${b.booking_date}`;
+    const route = `/classes?rate=${b.id}`;
+    const inserted = await insertNotif(
+      supabase, b.profile_id, gymId, 'class_review', title, body, dedupKey,
+      { route, type: 'class_review', booking_id: b.id },
+    );
+    if (inserted) {
+      sent++;
+      await sendPush(
+        supabase, b.profile_id, title, body,
+        { route, type: 'class_review' },
+        isQuietHours(timezone),
+      );
+    }
+  }
+  return sent;
+}
+
 async function fireAutomatedEmail(
   supabase: ReturnType<typeof createClient>,
   profileId: string,
@@ -947,6 +1068,14 @@ Deno.serve(async (req) => {
           notif_friend_activity: m.notif_friend_activity ?? null,
           notif_push_enabled: m.notif_push_enabled ?? null,
         }));
+
+      // Una vez por gimnasio, no una por socio: la consulta es la misma para
+      // todos y las clases pueden ser a cualquier hora del día.
+      try {
+        await checkClassReviewPrompts(supabase, gym.id, gymTimezone, members);
+      } catch (e) {
+        console.warn(`Class review prompts failed for gym ${gym.id}:`, (e as Error).message);
+      }
 
       for (const member of members) {
         try {

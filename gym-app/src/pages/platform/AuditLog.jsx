@@ -40,6 +40,7 @@ const ACTION_CONFIG = {
   delete_account:              { icon: Trash2,    color: 'red',     labelKey: 'platform.audit.actions.deleteAccount' },
   generate_invite_code:        { icon: KeyRound,  color: 'emerald', labelKey: 'platform.audit.actions.generateInviteCode' },
   invite_member:               { icon: Mail,      color: 'emerald', labelKey: 'platform.audit.actions.inviteMember' },
+  send_invite:                 { icon: Mail,      color: 'blue',    labelKey: 'platform.audit.actions.sendInvite' },
   resend_invite:               { icon: Mail,      color: 'blue',    labelKey: 'platform.audit.actions.resendInvite' },
   revoke_invite:               { icon: Mail,      color: 'red',     labelKey: 'platform.audit.actions.revokeInvite' },
   add_member:                  { icon: UserPlus,  color: 'emerald', labelKey: 'platform.audit.actions.addMember' },
@@ -214,6 +215,8 @@ function buildDescription(action, metadata, t) {
       return t('platform.audit.desc.inviteMember', { target, defaultValue: 'created an invite for {{target}}' });
     case 'add_member':
       return t('platform.audit.desc.addMember', { target, defaultValue: 'added member {{target}}' });
+    case 'send_invite':
+      return t('platform.audit.desc.sendInvite', { target, defaultValue: 'sent an invite to {{target}}' });
     case 'resend_invite':
       return t('platform.audit.desc.resendInvite', { target, defaultValue: 'resent invite to {{target}}' });
     case 'revoke_invite':
@@ -268,6 +271,8 @@ function buildDescription(action, metadata, t) {
       return t('platform.audit.desc.deleteClass', { name: metadata?.class_name || metadata?.name || unknown(), defaultValue: 'deleted class "{{name}}"' });
     case 'delete_schedule_slot':
       return t('platform.audit.desc.deleteSlot', 'removed a class schedule slot');
+    case 'update_schedule_slot':
+      return t('platform.audit.desc.updateSlot', 'changed a class schedule slot');
     case 'create_program':
       return t('platform.audit.desc.createProgram', { name: metadata?.program_name || metadata?.name || unknown(), defaultValue: 'created program "{{name}}"' });
     case 'update_program':

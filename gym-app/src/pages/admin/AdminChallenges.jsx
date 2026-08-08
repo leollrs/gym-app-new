@@ -591,11 +591,37 @@ export default function AdminChallenges() {
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { id: 'streak5', icon: ICON.flame, tone: 'hot', type: 'consistency', cover: 'fire', title: t('admin.challenges.tpl5Streak', '5-Day Streak'), desc: t('admin.challenges.tpl5StreakDesc', 'Visit 5 days in a row') },
-            { id: 'prparty', icon: ICON.trophy, tone: 'warn', type: 'pr_count', cover: 'compete', title: t('admin.challenges.tplPRParty', 'PR Party'), desc: t('admin.challenges.tplPRPartyDesc', 'Set any PR this week') },
-            { id: 'bringfriend', icon: ICON.users, tone: 'coach', type: 'team', cover: 'team', title: t('admin.challenges.tplBringFriend', 'Bring a Friend'), desc: t('admin.challenges.tplBringFriendDesc', 'Referral bonus doubled') },
+            // Las plantillas cubren los DOS formatos a propósito. Antes las tres
+            // eran competitivas, así que el reto de cumplimiento —el que puede
+            // ganar todo el mundo— había que armarlo a mano y nadie lo hacía.
+            { id: 'come12', icon: ICON.users, tone: 'good', type: 'check_in', format: 'completion', target: 12, days: 30, cover: 'growth',
+              title: t('admin.challenges.tplCome12', 'Come 12 times'), desc: t('admin.challenges.tplCome12Desc', 'Everyone who shows up 12 times this month wins. Reaches the people who never log a workout.') },
+            { id: 'streak5', icon: ICON.flame, tone: 'hot', type: 'consistency', cover: 'fire', days: 7,
+              title: t('admin.challenges.tpl5Streak', '5-Day Streak'), desc: t('admin.challenges.tpl5StreakDesc', 'Visit 5 days in a row') },
+            { id: 'volumewar', icon: ICON.dumbbell, tone: 'warn', type: 'volume', cover: 'power', days: 30,
+              title: t('admin.challenges.tplVolumeWar', 'Volume War'), desc: t('admin.challenges.tplVolumeWarDesc', 'Most weight lifted all month') },
+            { id: 'prparty', icon: ICON.trophy, tone: 'warn', type: 'pr_count', cover: 'compete', days: 7,
+              title: t('admin.challenges.tplPRParty', 'PR Party'), desc: t('admin.challenges.tplPRPartyDesc', 'Set any PR this week') },
+            { id: 'club1000', icon: ICON.medal, tone: 'info', type: 'milestone', format: 'completion', target: 1000, days: 60, cover: 'champion',
+              title: t('admin.challenges.tplClub1000', '1000 lb Club'), desc: t('admin.challenges.tplClub1000Desc', 'Squat + bench + deadlift to 1000. Needs a routine: it is a goal, not a race.') },
+            { id: 'transform21', icon: ICON.target, tone: 'info', type: 'consistency', format: 'completion', target: 15, days: 21, cover: 'growth', requiresProgram: true,
+              title: t('admin.challenges.tplTransform21', '21-Day Transformation'), desc: t('admin.challenges.tplTransform21Desc', 'A whole program, start to finish. Attach the program — that is what they are signing up for.') },
+            { id: 'teams4', icon: ICON.users, tone: 'coach', type: 'team', cover: 'team', teamSize: 4, days: 30,
+              title: t('admin.challenges.tplTeams4', 'Teams of 4'), desc: t('admin.challenges.tplTeams4Desc', 'Members build their own team and share a link') },
+            { id: 'bringfriend', icon: ICON.users, tone: 'coach', type: 'team', cover: 'team', teamSize: 2, days: 14,
+              title: t('admin.challenges.tplBringFriend', 'Bring a Friend'), desc: t('admin.challenges.tplBringFriendDesc', 'Referral bonus doubled') },
           ].map((tpl) => (
-            <button key={tpl.id} type="button" onClick={() => { setTemplatePrefill({ name: tpl.title, description: tpl.desc, type: tpl.type, cover_preset: tpl.cover }); setShowTemplates(false); setShowCreate(true); }}
+            <button key={tpl.id} type="button" onClick={() => {
+                setTemplatePrefill({
+                  name: tpl.title, description: tpl.desc, type: tpl.type, cover_preset: tpl.cover,
+                  ...(tpl.format ? { format: tpl.format } : {}),
+                  ...(tpl.target ? { milestone_target: tpl.target } : {}),
+                  ...(tpl.days ? { days: tpl.days } : {}),
+                  ...(tpl.teamSize ? { team_size: tpl.teamSize } : {}),
+                  ...(tpl.requiresProgram ? { requiresProgram: true } : {}),
+                });
+                setShowTemplates(false); setShowCreate(true);
+              }}
               style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', borderRadius: 16, padding: '18px 18px 16px', background: TK.surface2, border: `1px solid ${TK.borderSolid}`, cursor: 'pointer' }}>
               <IconChip ch={tpl.icon} tone={tpl.tone} size={44} r={13} strokeW={2} />
               <div style={{ fontFamily: FK.display, fontSize: 16.5, fontWeight: 800, color: TK.text, letterSpacing: -0.3, marginTop: 14 }}>{tpl.title}</div>

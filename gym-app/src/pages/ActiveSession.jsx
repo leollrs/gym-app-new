@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { selectInBatches } from '../lib/churn/batchedSelect';
 import logger from '../lib/logger';
 import { trackError } from '../lib/errorTracker';
+import { fetchOverrides, dateKey } from '../lib/scheduleOverrides';
 import { useAuth } from '../contexts/AuthContext';
 import { computeSuggestion, computeIntraSessionSuggestion, applyReadinessToSuggestion, epley1RM as engineEpley1RM } from '../lib/overloadEngine';
 import { computeReadiness, exerciseReadiness } from '../lib/readinessEngine';
@@ -597,11 +598,17 @@ const ActiveSession = () => {
     } catch { }
 
     const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    supabase
-      .from('workout_schedule')
-      .select('day_of_week, routine_id')
-      .eq('profile_id', user.id)
-      .then(({ data: schedule }) => {
+    // Se piden las dos cosas: la semana Y las excepciones de hoy. Sin lo
+    // segundo, alguien que puso esta rutina para hoy a propósito —desde un reto,
+    // por ejemplo— abría la sesión y la app le decía «esto es de los miércoles,
+    // ¿seguro?». Regañar al socio por hacer justo lo que pidió.
+    Promise.all([
+      supabase.from('workout_schedule').select('day_of_week, routine_id').eq('profile_id', user.id),
+      fetchOverrides(user.id, { daysBack: 0, daysAhead: 0 }),
+    ])
+      .then(([{ data: schedule }, overrides]) => {
+        const todayOverrideId = overrides?.[dateKey(new Date())]?.routineId;
+        if (todayOverrideId === id) return;   // hoy toca ESTA, y punto
         if (!schedule?.length) return;
         const todayDow = new Date().getDay();
         const todaysRoutineId = schedule.find(s => s.day_of_week === todayDow)?.routine_id;
@@ -1650,7 +1657,23 @@ const ActiveSession = () => {
         .eq('id', id)
         .single();
 
-      if (routineErr || !routine) { setDataLoading(false); return; }
+      if (routineErr || !routine) {
+        // No se puede leer la rutina. La causa real conocida es de PERMISOS: la
+        // rutina de una clase la crea el staff (`created_by = <staff>`,
+        // `is_public = false`) y `routines_select_own` no deja al socio verla,
+        // así que `.single()` devuelve 0 filas. Lo arregla la migración 0708.
+        //
+        // Antes esto era un `return` mudo: el socio pulsaba «empezar a
+        // registrar» desde una clase y entraba a una sesión VACÍA, sin error y
+        // sin explicación. Un fallo invisible dura para siempre porque nadie
+        // puede reportarlo.
+        try {
+          trackError('routine_unreadable', routineErr || new Error('routine not found'),
+            { routineId: id, source: 'ActiveSession' });
+        } catch { /* nunca romper la pantalla por el reporte */ }
+        setDataLoading(false);
+        return;
+      }
 
       setRoutineName(localizeRoutineName(routine.name));
 

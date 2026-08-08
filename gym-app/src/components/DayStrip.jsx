@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, memo } from 'react';
 import { startOfWeek, addDays, addWeeks, isSameDay, format, isBefore, isAfter, startOfDay } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 
 /* Normalise any date/string to a local YYYY-MM-DD key so comparisons
    are never tripped up by timezone offsets in ISO strings. */
@@ -12,7 +12,7 @@ const toLocalKey = (v) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], schedule = {}, earliestDate, programStart }) => {
+const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], schedule = {}, dayOverrides = {}, earliestDate, programStart }) => {
   const { t, i18n } = useTranslation('pages');
   const DAYS = t('dayStrip.days', { returnObjects: true });
   const today = new Date();
@@ -46,6 +46,9 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
     return `${startStr} – ${endStr}`;
   }, [isCurrentWeek, viewingWeekStart, t, i18n.language]);
 
+  // Un día que ya pasó no se planifica.
+  const isPastSelection = isBefore(startOfDay(selectedDate), startOfDay(new Date()));
+
   // Pre-build a Set of local date keys for O(1) lookups
   const completedKeys = useMemo(() => new Set(workoutDays.map(toLocalKey)), [workoutDays]);
 
@@ -60,7 +63,10 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
     const isPast = isBefore(startOfDay(date), todayStart);
     const isFuture = isAfter(startOfDay(date), todayStart);
     const hasCompleted = completedKeys.has(toLocalKey(date));
-    const assigned = schedule[i];
+    // La excepción de esa FECHA gana sobre la semana, igual que en la tarjeta
+    // de arriba. Leyendo solo el mapa recurrente, la píldora decía «descanso»
+    // el mismo día en que la tarjeta enseñaba la rutina del reto.
+    const assigned = dayOverrides[toLocalKey(date)] || schedule[i];
     const dayNum = format(date, 'd');
 
     let state = 'rest';
@@ -190,6 +196,26 @@ const DayStrip = ({ selectedDate, onSelectDate, onAssignDay, workoutDays = [], s
           </button>
         ))}
       </div>
+
+      {/* Poner un entreno en el día seleccionado.
+          `onAssignDay` llevaba aquí desde siempre —Dashboard la pasa— y nunca se
+          llamaba: era una prop muerta.
+          Va FUERA de la tira y no dentro de la píldora por dos razones: un
+          control interactivo dentro de un <button> es HTML inválido y su
+          aria-label competía con el del padre; y la primera versión lo escondía
+          con `!isFuture`, o sea que faltaba justo en el viernes que uno quiere
+          preparar y sobraba en el domingo que ya pasó. */}
+      {onAssignDay && !isPastSelection && (
+        <button
+          type="button"
+          onClick={() => onAssignDay(selectedDate.getDay())}
+          className="w-full mt-2 py-1.5 rounded-lg text-[11.5px] font-bold inline-flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          <Plus size={12} strokeWidth={2.6} />
+          {t('dayStrip.assignDay', 'Assign a workout to this day')}
+        </button>
+      )}
     </div>
   );
 };

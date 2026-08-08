@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../../../lib/supabase';
+import { dateKey, todayKey } from '../../../lib/dateKey';
 import { useToast } from '../../../contexts/ToastContext';
 
 /**
@@ -51,7 +52,7 @@ export default function BookingsView({ classItem, gymId, t, tc }) {
       const cursor = new Date(horizonStart);
       while (cursor <= horizonEnd) {
         if (cursor.getDay() === s.day_of_week) {
-          set.add(cursor.toISOString().slice(0, 10));
+          set.add(dateKey(cursor));
         }
         cursor.setDate(cursor.getDate() + 1);
       }
@@ -61,7 +62,7 @@ export default function BookingsView({ classItem, gymId, t, tc }) {
 
   // Default selection: today if it's valid, else the next future valid date,
   // else the most recent past valid date.
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayKey();
   const initialDate = useMemo(() => {
     if (!validDates.length) return todayStr;
     if (validDates.includes(todayStr)) return todayStr;
@@ -182,12 +183,12 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
   const shiftDay = (delta) => {
     const d = new Date(`${date}T00:00:00`);
     d.setDate(d.getDate() + delta);
-    setDate(d.toISOString().slice(0, 10));
+    setDate(dateKey(d));
   };
   const shiftWeek = (delta) => {
     const d = new Date(`${date}T00:00:00`);
     d.setDate(d.getDate() + delta * 7);
-    setDate(d.toISOString().slice(0, 10));
+    setDate(dateKey(d));
   };
   const goToToday = () => {
     setDate(todayStr);
@@ -323,7 +324,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
       {viewMode === 'week' && (
         <div className="space-y-3">
           {weekDays.map((d) => {
-            const dateStr = d.toISOString().slice(0, 10);
+            const dateStr = dateKey(d);
             const isValid = validSet.has(dateStr);
             const isToday = dateStr === todayStr;
             const isSelected = dateStr === date;
@@ -401,7 +402,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
           <div className="grid grid-cols-7 gap-1 px-1">
             {monthCells.map((d, i) => {
               if (!d) return <div key={`pad-${i}`} style={{ height: 36 }} />;
-              const dateStr = d.toISOString().slice(0, 10);
+              const dateStr = dateKey(d);
               const isValid = validSet.has(dateStr);
               const isSelected = dateStr === date;
               const isToday = dateStr === todayStr;
@@ -452,7 +453,7 @@ function BookingsViewer({ classItem, gymId, validDates, date, setDate, schedules
       {viewMode === 'month' && (() => {
         const monthDates = monthCells
           .filter(Boolean)
-          .map(d => d.toISOString().slice(0, 10))
+          .map(dateKey)
           .filter(ds => validSet.has(ds));
         if (monthDates.length === 0) return null;
         return (

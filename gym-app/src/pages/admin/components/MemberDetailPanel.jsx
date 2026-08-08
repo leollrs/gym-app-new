@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { Avatar } from '../../../components/admin';
 import { RiskBadge, ScoreBar } from '../../../components/admin/StatusBadge';
 import { translateSignal, translateSignalName } from '../../../lib/churn/signalI18n';
+import { getRiskTier, BAND_HIGH } from '../../../lib/churn/riskScoring';
 import { outcomeConfig, METHOD_I18N } from './churnDisplay';
 
 /**
@@ -29,9 +30,16 @@ export default function MemberDetailPanel({ member, contactLogs, contactedIds, w
     );
   }
 
-  const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
-  const tierColor = riskTier === 'critical' ? 'var(--color-danger)' : riskTier === 'high' ? 'var(--color-warning)' : 'var(--color-info)';
-  const avatarTone = riskTier === 'critical' ? 'hot' : riskTier === 'high' ? 'warn' : 'info';
+  // Del modelo, no de un ternario aquí. El que había era otra copia de los
+  // umbrales y además NUNCA bajaba de 'medium': un miembro de riesgo bajo se
+  // pintaba igual que uno medio.
+  const riskTier = getRiskTier(member.churnScore ?? 0, member.state ?? 'scored').tier;
+  const tierColor = riskTier === 'critical' ? 'var(--color-danger)'
+    : riskTier === 'high' ? 'var(--color-warning)'
+    : riskTier === 'low' ? 'var(--color-success)' : 'var(--color-info)';
+  const avatarTone = riskTier === 'critical' ? 'hot'
+    : riskTier === 'high' ? 'warn'
+    : riskTier === 'low' ? 'good' : 'info';
   const daysInactive = member.daysSinceLastCheckIn != null ? Math.round(member.daysSinceLastCheckIn) : member.daysSinceLastActivity != null ? Math.round(member.daysSinceLastActivity) : null;
   const tenureMonths = member.tenureMonths != null ? Math.round(member.tenureMonths) : null;
   const isContacted = contactedIds.has(member.id);
@@ -102,6 +110,14 @@ export default function MemberDetailPanel({ member, contactLogs, contactedIds, w
             <span style={{ color: tierColor, fontWeight: 700 }}>{t('admin.churn.whyFlagged', 'Why flagged')}: </span>
             {member.explanation}
           </p>
+          {/* La confianza va APARTE del número, nunca dentro. Un 62 sacado de
+              tres visitas y un 62 sacado de un año de historia no son lo mismo,
+              y meterlo en la cifra los volvería indistinguibles. */}
+          {member.confidence && member.confidence !== 'high' && (
+            <p style={{ fontSize: 10.5, marginTop: 3, color: 'var(--color-admin-text-faint)' }}>
+              {t(`admin.churn.confidence.${member.confidence}`, member.confidence === 'medium' ? 'Datos parciales' : 'Pocos datos')}
+            </p>
+          )}
         </div>
       )}
 
@@ -143,7 +159,10 @@ export default function MemberDetailPanel({ member, contactLogs, contactedIds, w
                           <div key={key}>
                             <div className="flex items-center justify-between mb-0.5">
                               <span className="text-[10px] font-semibold text-[#E5E7EB]">{translateSignalName(t, key)}</span>
-                              <span className="text-[9px] font-bold tabular-nums" style={{ color: barColor }}>{s.score}/{s.maxPts}</span>
+                              {/* Porcentaje, no «42.5/85»: el cociente de puntos
+                                  internos no le dice nada al dueño, y con v4 las
+                                  unidades ya no son puntos sino fracciones. */}
+                              <span className="text-[9px] font-bold tabular-nums" style={{ color: barColor }}>{Math.round(pct)}%</span>
                             </div>
                             <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
                               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
@@ -248,7 +267,7 @@ export default function MemberDetailPanel({ member, contactLogs, contactedIds, w
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold border transition-colors ${isContacted ? 'bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20' : 'bg-[#D4AF37]/12 text-[#D4AF37] border-[#D4AF37]/25 hover:bg-[#D4AF37]/20'}`}>
             <Phone size={12} /> {isContacted ? t('admin.churn.contacted', 'Contacted') : t('admin.churn.contact', 'Contact')}
           </button>
-          {member.churnScore >= 55 && (
+          {member.churnScore >= BAND_HIGH && (
             <button onClick={() => onWinBack(member)}
               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[12px] font-semibold bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 hover:bg-[#EF4444]/18 transition-colors">
               <RotateCcw size={12} /> {t('admin.churn.winBack', 'Win Back')}

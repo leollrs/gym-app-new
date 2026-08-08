@@ -1,3 +1,4 @@
+import { getRiskTier } from '../../../lib/churn/riskScoring';
 import { useState, useEffect, useMemo } from 'react';
 import { MessageSquare, Mail, Phone, CheckCircle, Send, Gift, Smartphone, MessageCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -150,7 +151,9 @@ export default function ContactPanel({
     manual: t('admin.churn.contactManual', 'Marked contacted'),
   }[m] || m);
 
-  const riskTier = member.churnScore >= 80 ? 'critical' : member.churnScore >= 55 ? 'high' : 'medium';
+  // Del modelo. El ternario que había nunca bajaba de 'medium', así que un
+  // miembro de riesgo bajo salía etiquetado como medio en su propio panel.
+  const riskTier = getRiskTier(member.churnScore ?? 0, member.state ?? 'scored').tier;
 
   const handleSendMessage = async () => {
     if (!notifMsg.trim()) return;

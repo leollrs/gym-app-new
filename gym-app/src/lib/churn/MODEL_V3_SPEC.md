@@ -1,3 +1,12 @@
+> ## ⚠️ SUPERSEDIDO POR v4 (2026-08-07)
+>
+> Este documento describe el modelo que YA NO CORRE. Se conserva por historia y
+> porque explica de dónde venían los parches (ancla de 3×/semana, amortiguador,
+> multiplicador de antigüedad, overrides de 30/60 días, compuerta de asistencia)
+> y por qué se quitaron.
+>
+> **El modelo vivo está en [`MODEL_V4_SPEC.md`](./MODEL_V4_SPEC.md).**
+
 # Churn Model v3 — Attendance-First Behavioral Retention Model
 
 **Status:** BUILT (2026-06-02), build-green + deno-check clean, uncommitted. Awaiting user

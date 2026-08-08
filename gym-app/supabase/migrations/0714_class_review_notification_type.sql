@@ -1,0 +1,31 @@
+-- ============================================================
+-- 0714 — El tipo de notificación `class_review`
+-- ============================================================
+-- `notifications.type` es el ENUM notification_type (0001), no texto libre: un
+-- valor que no está en el enum hace fallar el INSERT entero, sin degradación
+-- silenciosa. El aviso post-clase («¿qué tal estuvo?») escribe una fila de
+-- notificación antes de mandar el push, así que sin este valor no saldría ni
+-- uno solo — y el fallo aparecería como un warning en los logs del cron, no
+-- como algo visible en la app.
+--
+-- Los valores de clase que ya existen son otra cosa:
+--   class_booking       — alguien tocó tu reserva
+--   class_reminder      — la clase que reservaste se acerca (0652)
+--   class_waitlist_full — se llenó la lista de espera
+--   class_proposal      — una propuesta de un entrenador
+-- Ninguno significa «la clase terminó, dinos qué te pareció», que es esto.
+--
+-- OJO, no confundir con `client_review` (0334): ese es del lado del entrenador.
+--
+-- ADD VALUE IF NOT EXISTS es idempotente, así que re-ejecutar esta migración es
+-- seguro. En Postgres 15+ (lo de Supabase) puede ir dentro de una transacción,
+-- que es por lo que las migraciones anteriores del repo lo hacen igual sin
+-- tratamiento especial.
+--
+-- IMPORTANTE PARA QUIEN LA APLIQUE: un valor de enum recién creado NO se puede
+-- USAR en la misma transacción que lo crea. Esta migración solo lo añade; el
+-- primer INSERT que lo use viene del cron, en otra sesión, así que no hay
+-- problema — pero no le añadas nada debajo que inserte notificaciones.
+-- ============================================================
+
+ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'class_review';
